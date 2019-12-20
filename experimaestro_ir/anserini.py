@@ -1,38 +1,47 @@
-import asyncio
 from pathlib import Path
 import os
 import sys
-from shlex import quote as shquote
 import re
+import asyncio
+import subprocess
+import logging
 
-from datamaestro_text.data.trec import TipsterCollection, AdhocDocuments
-from experimaestro import Task, Argument, Typename, PathArgument, parse_commandline, progress
+from datamaestro_text.data.trec import TipsterCollection, AdhocDocuments, AdhocTopics, TrecTopics
+
+from experimaestro_ir.models import Model, BM25
+from experimaestro import task, argument, Typename, pathargument, parse_commandline, progress
 from experimaestro_ir import NAMESPACE
 
 ANSERINI_NS = Typename("ir.anserini")
 
-@Argument("storePositions", default=False)
-@Argument("storeDocvectors", default=False)
-@Argument("storeRawDocs", default=False)
-@Argument("collection", type=AdhocDocuments)
-@Argument("threads", default=8)
-@PathArgument("index_path", "index")
-@Task(ANSERINI_NS("index"), description="Index a collection")
+
+def javacommand():
+    from pyserini.setup import configure_classpath
+    configure_classpath(os.environ["ANSERINI_CLASSPATH"])
+    from jnius_config import get_classpath
+
+    command = ["{}/bin/java".format(os.environ["JAVA_HOME"]), "-cp"]
+    command.append(":".join(get_classpath()))
+
+    return command
+
+@argument("storePositions", default=False)
+@argument("storeDocvectors", default=False)
+@argument("storeRawDocs", default=False)
+@argument("documents", type=AdhocDocuments)
+@argument("threads", default=8)
+@pathargument("index_path", "index")
+@task(ANSERINI_NS.index, description="Index a documents")
 class IndexCollection:
     CLASSPATH = "io.anserini.index.IndexCollection"
     
     def execute(self):
-        from pyserini.setup import configure_classpath
-        configure_classpath(os.environ["ANSERINI_CLASSPATH"])
-        from jnius_config import get_classpath
-
-        command = ["{}/bin/java".format(os.environ["JAVA_HOME"]), "-cp"]
-        command.append(":".join(get_classpath()))
+        command = javacommand()
         command.append(IndexCollection.CLASSPATH)
         command.extend(["-index", self.index_path, "-threads", self.threads])
       
-        if isinstance(self.collection, TipsterCollection):
-            command.extend(["-collection", "TrecCollection",  "-generator", "JsoupGenerator", "-input", self.collection.path])
+        if isinstance(self.documents, TipsterCollection):
+            command.extend(["-collection", "TrecCollection",  "-generator", "JsoupGenerator", "-input", self.documents.path])
 
         if self.storePositions:
             command.append("-storePositions")
@@ -46,7 +55,7 @@ class IndexCollection:
         # Index and keep track of progress through regular expressions
         RE_FILES = re.compile(rb""".*index\.IndexCollection \(IndexCollection.java:\d+\) - (\d+) files found""")
         RE_FILE = re.compile(rb""".*index\.IndexCollection\$LocalIndexerThread \(IndexCollection.java:\d+\).* docs added.""")
-        print(RE_FILES)
+
         async def run(command):
             proc = await asyncio.create_subprocess_exec(
                 *command,
@@ -70,10 +79,37 @@ class IndexCollection:
                     indexedfiles += 1
                     progress(indexedfiles / nfiles)
                 else:
-                    print(data.decode("utf-8"))
+                    sys.stdout.write(data.decode("utf-8"),)
 
             await proc.wait()
             sys.exit(proc.returncode)
                 
             
         asyncio.run(run([str(s) for s in command]))
+
+@argument("index", IndexCollection)
+@argument("topics", AdhocTopics)
+@argument("model", Model)
+@pathargument("retrieved", "retrieved.trecdocs")
+@task(ANSERINI_NS.search)
+def SearchCollection(index: IndexCollection, topics: AdhocTopics, model: Model, retrieved: Path):
+    command = javacommand()
+    command.append("io.anserini.search.SearchCollection")
+    command.extend(("-index", index.index_path, "-topics", topics.path))
+
+    if topics.__class__ == TrecTopics:
+        command.extend(("-topicreader", "Trec"))
+    else:
+        raise NotImplementedError("Cannot handle topics %s" %  topics.__class__)
+
+
+    if model.__class__ == BM25:
+        command.extend(("-bm25", "-k1", str(model.k1), "-b", str(model.b)))
+    else:
+        raise NotImplementedError("Cannot handle model %s" %  model.__class__)
+
+    command.extend(("-output", retrieved))
+ 
+    logging.info("Starting command %s", command)
+    p = subprocess.run(command)
+    sys.exit(p.returncode)
