@@ -7,9 +7,9 @@ import subprocess
 import logging
 
 from datamaestro_text.data.trec import TipsterCollection, AdhocDocuments, AdhocTopics, TrecTopics
-
-from experimaestro_ir.models import Model, BM25
 from experimaestro import task, argument, Typename, pathargument, parse_commandline, progress
+from experimaestro_ir.models import Model, BM25
+from experimaestro_ir.utils import Handler
 from experimaestro_ir import NAMESPACE
 
 ANSERINI_NS = Typename("ir.anserini")
@@ -87,6 +87,7 @@ class IndexCollection:
             
         asyncio.run(run([str(s) for s in command]))
 
+
 @argument("index", IndexCollection)
 @argument("topics", AdhocTopics)
 @argument("model", Model)
@@ -95,21 +96,29 @@ class IndexCollection:
 def SearchCollection(index: IndexCollection, topics: AdhocTopics, model: Model, retrieved: Path):
     command = javacommand()
     command.append("io.anserini.search.SearchCollection")
-    command.extend(("-index", index.index_path, "-topics", topics.path))
+    command.extend(("-index", index.index_path, "-output", retrieved))
 
-    if topics.__class__ == TrecTopics:
-        command.extend(("-topicreader", "Trec"))
-    else:
-        raise NotImplementedError("Cannot handle topics %s" %  topics.__class__)
+    # Topics
 
+    topicshandler = Handler()
 
-    if model.__class__ == BM25:
-        command.extend(("-bm25", "-k1", str(model.k1), "-b", str(model.b)))
-    else:
-        raise NotImplementedError("Cannot handle model %s" %  model.__class__)
+    @topicshandler()
+    def trectopics(topics: TrecTopics):
+        return ("-topicreader", "Trec", "-topics", topics.path)
 
-    command.extend(("-output", retrieved))
- 
+    command.extend(topicshandler[topics])
+
+    # Model
+
+    modelhandler = Handler()
+
+    @modelhandler()
+    def handle(bm25: BM25):
+        return ("-bm25", "-k1", str(model.k1), "-b", str(model.b))
+
+    command.extend(modelhandler[model])
+
+    # Start 
     logging.info("Starting command %s", command)
     p = subprocess.run(command)
     sys.exit(p.returncode)
