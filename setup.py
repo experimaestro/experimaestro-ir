@@ -28,7 +28,12 @@ setup(
     author_email='benjamin@piwowarski.fr',
     url='https://github.com/bpiwowar/experimaestro-ir',
     packages=find_packages(exclude=['test*', 'tools']),
-    install_requires=["experimaestro"],
+    install_requires=[ 
+        "experimaestro",
+        "datamaestro_text",
+        "pyserini>=0.7.0",
+        "pytrec_eval"
+    ],
     license='GPL 3.0',
     classifiers=[
         'Development Status :: %s' % DEVSTATUS,

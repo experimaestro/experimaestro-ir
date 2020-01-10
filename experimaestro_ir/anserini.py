@@ -7,17 +7,19 @@ import subprocess
 import logging
 
 from datamaestro_text.data.trec import TipsterCollection, AdhocDocuments, AdhocTopics, TrecTopics
-from experimaestro import task, argument, Typename, pathargument, parse_commandline, progress
+from experimaestro import task, argument, Identifier, pathargument, parse_commandline, progress
 from experimaestro_ir.models import Model, BM25
 from experimaestro_ir.utils import Handler
 from experimaestro_ir import NAMESPACE
+import experimaestro_ir as ir
 
-ANSERINI_NS = Typename("ir.anserini")
+ANSERINI_NS = Identifier("ir.anserini")
 
 
 def javacommand():
-    from pyserini.setup import configure_classpath
-    configure_classpath(os.environ["ANSERINI_CLASSPATH"])
+    from pyserini.pyclass import configure_classpath
+    #os.environ.get("ANSERINI_CLASSPATH", None))
+    # configure_classpath()
     from jnius_config import get_classpath
 
     command = ["{}/bin/java".format(os.environ["JAVA_HOME"]), "-cp"]
@@ -29,7 +31,7 @@ def javacommand():
 @argument("storeDocvectors", default=False)
 @argument("storeRawDocs", default=False)
 @argument("documents", type=AdhocDocuments)
-@argument("threads", default=8)
+@argument("threads", default=8, ignored=True)
 @pathargument("index_path", "index")
 @task(ANSERINI_NS.index, description="Index a documents")
 class IndexCollection:
@@ -91,12 +93,11 @@ class IndexCollection:
 @argument("index", IndexCollection)
 @argument("topics", AdhocTopics)
 @argument("model", Model)
-@pathargument("retrieved", "retrieved.trecdocs")
-@task(ANSERINI_NS.search)
-def SearchCollection(index: IndexCollection, topics: AdhocTopics, model: Model, retrieved: Path):
+@task(ANSERINI_NS.search, ir.TrecSearchResults)
+def SearchCollection(index: IndexCollection, topics: AdhocTopics, model: Model, results: Path):
     command = javacommand()
     command.append("io.anserini.search.SearchCollection")
-    command.extend(("-index", index.index_path, "-output", retrieved))
+    command.extend(("-index", index.index_path, "-output", results))
 
     # Topics
 
