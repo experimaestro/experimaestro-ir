@@ -29,7 +29,7 @@ setup(
     url='https://github.com/bpiwowar/experimaestro-ir',
     packages=find_packages(exclude=['test*', 'tools']),
     install_requires=[ 
-        "experimaestro",
+        "experimaestro>=0.5.7",
         "datamaestro_text",
         "pyserini>=0.7.0",
         "pytrec_eval"
