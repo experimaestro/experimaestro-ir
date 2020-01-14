@@ -6,8 +6,14 @@ NS = NAMESPACE.models
 @config(NS.model)
 class Model: pass
 
-
 @argument("k1", default=0.9)
 @argument("b", default=0.4)
 @config(NS.bm25)
 class BM25(Model): pass
+
+
+
+@config(NS.model.reorderer)
+class Reorderer: 
+    """A model that re-orders the results"""
+    pass

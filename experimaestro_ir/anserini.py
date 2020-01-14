@@ -12,6 +12,7 @@ from experimaestro_ir.models import Model, BM25
 from experimaestro_ir.utils import Handler
 from experimaestro_ir import NAMESPACE
 import experimaestro_ir as ir
+import experimaestro_ir.trec as trec
 
 ANSERINI_NS = Identifier("ir.anserini")
 
@@ -30,6 +31,7 @@ def javacommand():
 @argument("storePositions", default=False)
 @argument("storeDocvectors", default=False)
 @argument("storeRawDocs", default=False)
+@argument("storeTransformedDocs", default=False)
 @argument("documents", type=AdhocDocuments)
 @argument("threads", default=8, ignored=True)
 @pathargument("index_path", "index")
@@ -51,6 +53,8 @@ class IndexCollection:
             command.append("-storeDocvectors")
         if self.storeRawDocs:
             command.append("-storeRawDocs")
+        if self.storeTransformedDocs:
+            command.append("-storeTransformedDocs")
 
 
 
@@ -93,7 +97,7 @@ class IndexCollection:
 @argument("index", IndexCollection)
 @argument("topics", AdhocTopics)
 @argument("model", Model)
-@task(ANSERINI_NS.search, ir.TrecSearchResults)
+@task(ANSERINI_NS.search, trec.TrecSearchResults)
 def SearchCollection(index: IndexCollection, topics: AdhocTopics, model: Model, results: Path):
     command = javacommand()
     command.append("io.anserini.search.SearchCollection")
