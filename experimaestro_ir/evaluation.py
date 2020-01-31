@@ -1,14 +1,13 @@
 from experimaestro import argument, task
 import experimaestro_ir as ir
-from datamaestro_text.data.trec import TrecAssessments, TrecSearchResults
-from experimaestro.ir.
+from datamaestro_text.data.trec import TrecAdhocAssessments, TrecAdhocResults
 
 import logging
 import pytrec_eval
 
-@argument("assessments", TrecAssessments)
-@argument("results", TrecSearchResults)
-@task(ir.NAMESPACE.evaluate.trec)
+@argument("assessments", TrecAdhocAssessments)
+@argument("results", TrecAdhocResults)
+@task(ir.NS.evaluate.trec)
 def TrecEval(assessments, results): 
     """Evaluate an IR ad-hoc run with trec-eval"""
     logging.info("Reading assessments %s", assessments.path)

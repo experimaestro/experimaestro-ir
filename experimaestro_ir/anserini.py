@@ -14,7 +14,7 @@ from experimaestro_ir import NAMESPACE
 import experimaestro_ir as ir
 import experimaestro_ir.trec as trec
 
-ANSERINI_NS = Identifier("ir.anserini")
+ANSERINI_NS = ir.NS.anserini
 
 
 def javacommand():

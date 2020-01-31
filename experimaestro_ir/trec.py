@@ -1,14 +1,8 @@
 from pathlib import Path
 from experimaestro import config, task, pathargument, argument
-from datamaestro_text import NAMESPACE
+import experimaetro_ir as ir
 
-NS = NAMESPACE.trec
-
-@pathargument("results", "results.trec")
-@config(NS.searchresults)
-class TrecSearchResults:
-    """Search results in the TREC format"""
-    pass
+NS = ir.trec
 
 @argument("base", type=TrecSearchResults)
 @task(parents=TrecSearchResults)

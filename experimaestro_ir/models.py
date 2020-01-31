@@ -1,7 +1,7 @@
 from experimaestro import argument, config
-from . import NAMESPACE
+import experimaestro_ir as ir
 
-NS = NAMESPACE.models
+NS = ir.NS.models
 
 @config(NS.model)
 class Model: pass
