@@ -12,7 +12,6 @@ class Model: pass
 class BM25(Model): pass
 
 
-
 @config(NS.model.reorderer)
 class Reorderer: 
     """A model that re-orders the results"""
