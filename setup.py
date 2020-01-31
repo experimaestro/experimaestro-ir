@@ -32,6 +32,7 @@ setup(
         "experimaestro>=0.5.7",
         "datamaestro_text",
         "pyserini>=0.7.0",
+        "capreolus",
         "pytrec_eval"
     ],
     license='GPL 3.0',
