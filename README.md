@@ -1,5 +1,25 @@
-# experimaestro-ir
+# Information Retrieval for experimaestro
+
+
 IR module for experimaestro
+
+## Install
+
+Install with
+
+```
+pip install experimaestro_ir
+```
+
+Specific extra dependencies can be used if you plan to use some
+specific part of this module, e.g. for neural models
+
+```
+pip install experimaestro_ir[neural]
+```
+
+## Example
+
 
 ```python
 import click
@@ -17,7 +37,9 @@ CPU_COUNT = multiprocessing.cpu_count()
 from experimaestro import experiment
 from experimaestro_ir.evaluation import TrecEval
 from experimaestro_ir.models import BM25
-from experimaestro_ir.matchzoo import DRMM, MatchZooLearn
+
+from experimaestro_ir.anserini import IndexCollection, SearchCollection
+from experimaestro_ir.neural.capreolus import DRMM, LearnModel
 from experimaestro_ir.trec.adhoc import Reorder
 
 # --- Defines the experiment
@@ -30,7 +52,6 @@ def cli(port, workdir, debug):
     """Runs an experiment"""
     logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
 
-    from experimaestro_ir.anserini import IndexCollection, SearchCollection
 
     bm25 = BM25()
 
@@ -50,7 +71,7 @@ def cli(port, workdir, debug):
         # Train with MatchZoo
         training = [prepare_dataset("gov.nist.trec.adhoc.2")]
         drmm = DRMM().tag("ranker", "match_pyramid")
-        learnedmodel = MatchZooLearn(model=drmm, training=training).submit()
+        learnedmodel = LearnModel(model=drmm, training=training).submit()
 
         # Re-order resutls with MatchZoo
         search = Reorder(results=bm25, topics=trec1.topics, model=learnedmodel).submit()

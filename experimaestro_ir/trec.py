@@ -1,8 +1,9 @@
 from pathlib import Path
 from experimaestro import config, task, pathargument, argument
-import experimaetro_ir as ir
+import experimaestro_ir as ir
 
-NS = ir.trec
+NS = ir.NS.trec
+
 
 @argument("base", type=TrecSearchResults)
 @task(parents=TrecSearchResults)

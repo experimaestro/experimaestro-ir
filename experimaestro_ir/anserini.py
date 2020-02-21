@@ -6,11 +6,23 @@ import asyncio
 import subprocess
 import logging
 
-from datamaestro_text.data.trec import TipsterCollection, AdhocDocuments, AdhocTopics, TrecTopics
-from experimaestro import task, argument, Identifier, pathargument, parse_commandline, progress
+from datamaestro_text.data.trec import (
+    TipsterCollection,
+    AdhocDocuments,
+    AdhocTopics,
+    TrecAdhocTopics,
+)
+from experimaestro import (
+    task,
+    argument,
+    Identifier,
+    pathargument,
+    parse_commandline,
+    progress,
+)
 from experimaestro_ir.models import Model, BM25
 from experimaestro_ir.utils import Handler
-from experimaestro_ir import NAMESPACE
+
 import experimaestro_ir as ir
 import experimaestro_ir.trec as trec
 
@@ -19,7 +31,8 @@ ANSERINI_NS = ir.NS.anserini
 
 def javacommand():
     from pyserini.pyclass import configure_classpath
-    #os.environ.get("ANSERINI_CLASSPATH", None))
+
+    # os.environ.get("ANSERINI_CLASSPATH", None))
     # configure_classpath()
     from jnius_config import get_classpath
 
@@ -27,6 +40,7 @@ def javacommand():
     command.append(":".join(get_classpath()))
 
     return command
+
 
 @argument("storePositions", default=False)
 @argument("storeDocvectors", default=False)
@@ -38,14 +52,23 @@ def javacommand():
 @task(ANSERINI_NS.index, description="Index a documents")
 class IndexCollection:
     CLASSPATH = "io.anserini.index.IndexCollection"
-    
+
     def execute(self):
         command = javacommand()
         command.append(IndexCollection.CLASSPATH)
         command.extend(["-index", self.index_path, "-threads", self.threads])
-      
+
         if isinstance(self.documents, TipsterCollection):
-            command.extend(["-collection", "TrecCollection",  "-generator", "JsoupGenerator", "-input", self.documents.path])
+            command.extend(
+                [
+                    "-collection",
+                    "TrecCollection",
+                    "-generator",
+                    "JsoupGenerator",
+                    "-input",
+                    self.documents.path,
+                ]
+            )
 
         if self.storePositions:
             command.append("-storePositions")
@@ -56,24 +79,25 @@ class IndexCollection:
         if self.storeTransformedDocs:
             command.append("-storeTransformedDocs")
 
-
-
         # Index and keep track of progress through regular expressions
-        RE_FILES = re.compile(rb""".*index\.IndexCollection \(IndexCollection.java:\d+\) - (\d+) files found""")
-        RE_FILE = re.compile(rb""".*index\.IndexCollection\$LocalIndexerThread \(IndexCollection.java:\d+\).* docs added.""")
+        RE_FILES = re.compile(
+            rb""".*index\.IndexCollection \(IndexCollection.java:\d+\) - (\d+) files found"""
+        )
+        RE_FILE = re.compile(
+            rb""".*index\.IndexCollection\$LocalIndexerThread \(IndexCollection.java:\d+\).* docs added."""
+        )
 
         async def run(command):
             proc = await asyncio.create_subprocess_exec(
-                *command,
-                stderr=None,
-                stdout=asyncio.subprocess.PIPE)
+                *command, stderr=None, stdout=asyncio.subprocess.PIPE
+            )
 
             nfiles = -1
             indexedfiles = 0
 
             while True:
                 data = await proc.stdout.readline()
-                
+
                 if not data:
                     break
 
@@ -89,8 +113,7 @@ class IndexCollection:
 
             await proc.wait()
             sys.exit(proc.returncode)
-                
-            
+
         asyncio.run(run([str(s) for s in command]))
 
 
@@ -98,7 +121,9 @@ class IndexCollection:
 @argument("topics", AdhocTopics)
 @argument("model", Model)
 @task(ANSERINI_NS.search, trec.TrecSearchResults)
-def SearchCollection(index: IndexCollection, topics: AdhocTopics, model: Model, results: Path):
+def SearchCollection(
+    index: IndexCollection, topics: AdhocTopics, model: Model, results: Path
+):
     command = javacommand()
     command.append("io.anserini.search.SearchCollection")
     command.extend(("-index", index.index_path, "-output", results))
@@ -123,7 +148,7 @@ def SearchCollection(index: IndexCollection, topics: AdhocTopics, model: Model, 
 
     command.extend(modelhandler[model])
 
-    # Start 
+    # Start
     logging.info("Starting command %s", command)
     p = subprocess.run(command)
     sys.exit(p.returncode)
