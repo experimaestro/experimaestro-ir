@@ -1,9 +1,15 @@
-from experimaestro import argument, task
+from experimaestro import argument, task, pathargument, config
 import experimaestro_ir as ir
-from datamaestro_text.data.trec import TrecAdhocAssessments, TrecAdhocResults
+from datamaestro_text.data.trec import TrecAdhocAssessments
 
 import logging
 import pytrec_eval
+
+
+@pathargument("results", "results.docs")
+@config(ir.NS.adhoc.results)
+class TrecAdhocResults:
+    pass
 
 
 @argument("assessments", TrecAdhocAssessments)

@@ -19,10 +19,11 @@ from experimaestro import (
     pathargument,
     parse_commandline,
     progress,
+    config,
 )
 from experimaestro_ir.models import Model, BM25
 from experimaestro_ir.utils import Handler
-
+from experimaestro_ir.evaluation import TrecAdhocResults
 import experimaestro_ir as ir
 import experimaestro_ir.trec as trec
 
@@ -120,7 +121,7 @@ class IndexCollection:
 @argument("index", IndexCollection)
 @argument("topics", AdhocTopics)
 @argument("model", Model)
-@task(ANSERINI_NS.search, trec.TrecSearchResults)
+@task(ANSERINI_NS.search, TrecAdhocResults)
 def SearchCollection(
     index: IndexCollection, topics: AdhocTopics, model: Model, results: Path
 ):
