@@ -2,6 +2,18 @@
 
 ## Install
 
+Install with
+
+```
+pip install experimaestro_ir
+```
+
+Specific extra dependencies can be used if you plan to use some
+specific part of this module, e.g. for neural models
+
+```
+pip install experimaestro_ir[neural]
+```
 
 ## Example
 
