@@ -3,7 +3,7 @@
 # Information Retrieval for experimaestro
 
 
-Information Retrieval module for [experimaestro](https://experimaestro.github.io/)
+Information Retrieval module for [experimaestro](https://experimaestro.github.io/experimaestro-python/)
 
 ## Install
 
@@ -22,4 +22,4 @@ pip install experimaestro_ir[neural]
 
 ## Documentation
 
-Full documentation can be read at [IR@experimaestro](https://experimaestro-ir.github.io)
+Full documentation can be read at [IR@experimaestro](https://experimaestro-ir.readthedocs.io/)
