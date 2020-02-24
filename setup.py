@@ -15,12 +15,8 @@ def get_description():
     return desc
 
 
-DEVSTATUS = "alpha"
-VERSION = "0.0.1"
-
 setup(
     name="experimaestro_ir",
-    version=VERSION,
     python_requires=">=3.5",
     description="Experimaestro common module for IR experiments",
     long_description=get_description(),
@@ -29,16 +25,10 @@ setup(
     author_email="benjamin@piwowarski.fr",
     url="https://github.com/bpiwowar/experimaestro-ir",
     packages=find_packages(exclude=["test*", "tools"]),
-    install_requires=[
-        "experimaestro>=0.5.7",
-        "datamaestro_text",
-        "pyserini>=0.7.0",
-        "pytrec_eval",
-    ],
-    extras_require={"neural": ["capreolus>=0.1.4"]},
+    use_scm_version=True,
     license="GPL 3.0",
     classifiers=[
-        "Development Status :: %s" % DEVSTATUS,
+        "Development Status :: alpha",
         "Environment :: Console",
         "Intended Audience :: Developers",
         "License :: OSI Approved :: MIT License",
@@ -48,4 +38,12 @@ setup(
         "Programming Language :: Python :: 3.8",
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
+    install_requires=[
+        "experimaestro>=0.5.7",
+        "datamaestro_text",
+        "pyserini>=0.7.0",
+        "pytrec_eval",
+    ],
+    extras_require={"neural": ["capreolus>=0.1.4"]},
+    setup_requires=["setuptools_scm", "setuptools >=30.3.0"],
 )

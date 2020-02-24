@@ -1,0 +1,32 @@
+# Configuration
+
+site_name: Information Retrieval for Experimaestro
+site_description: experimaestro-ir Information Retrieval module for Experimaestro
+repo_url: https://github.com/bpiwowar/experimaestro_ir
+
+# Main pages
+pages:
+  - Home: index.md
+
+
+markdown_extensions:
+  - pymdownx.details
+  - pymdownx.superfences
+  - footnotes
+  - admonition
+  - pymdownx.snippets:
+      base_path: .
+  - toc:
+      baselevel: 1
+
+# Theme
+theme:
+    name: material
+    feature:
+        tabs: true
+    palette:
+        primary: 'indigo'
+        accent: 'indigo'
+    font:
+        text: 'Roboto'
+        code: 'Roboto Mono'
