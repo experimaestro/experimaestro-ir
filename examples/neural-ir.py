@@ -14,7 +14,7 @@ from experimaestro import experiment
 from experimaestro_ir.evaluation import TrecEval
 from experimaestro_ir.models import BM25
 from experimaestro_ir.anserini import IndexCollection, SearchCollection
-from experimaestro_ir.neural.capreolus import DRMM, ModelLearn
+from experimaestro_ir.neural.capreolus import DRMM, ModelLearn, ModelRerank
 
 # --- Defines the experiment
 
@@ -32,10 +32,10 @@ def cli(port, workdir, debug):
     # Sets the working directory and the name of the xp
     with experiment(workdir, "index", port=port) as xp:
         # Index the collection
-        trec1 = prepare_dataset("gov.nist.trec.adhoc.1")
-        trec2 = prepare_dataset("gov.nist.trec.adhoc.2")
+        training_ds = prepare_dataset("gov.nist.trec.adhoc.1")
+        test_ds = prepare_dataset("gov.nist.trec.adhoc.2")
+
         documents = trec1.documents
-        documents.tag("dataset", "trec-1")
         index = IndexCollection(
             documents=documents,
             storePositions=True,
@@ -56,11 +56,13 @@ def cli(port, workdir, debug):
 
         # Train with MatchZoo
         training = [prepare_dataset("gov.nist.trec.adhoc.2")]
-        model = DRMM().tag("ranker", "match_pyramid")
+        model = DRMM().tag("ranker", "drmm")
         learnedmodel = ModelLearn(model=model, training=training).submit()
 
         # Re-order resutls with MatchZoo
-        search = Reorder(results=bm25, topics=trec1.topics, model=learnedmodel).submit()
+        search = ModelRerank(
+            base=bm25, topics=trec1.topics, model=learnedmodel
+        ).submit()
         eval = TrecEval(assessments=trec1.assessments, results=search).submit()
 
 

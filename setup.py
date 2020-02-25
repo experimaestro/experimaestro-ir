@@ -39,7 +39,7 @@ setup(
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
     install_requires=[
-        "experimaestro>=0.5.7",
+        "experimaestro>=0.5.10",
         "datamaestro_text",
         "pyserini>=0.7.0",
         "pytrec_eval",

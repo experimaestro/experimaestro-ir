@@ -1,21 +1,49 @@
 import importlib
 from datamaestro_text.data.ir import Adhoc
+from datamaestro_text.data.trec import AdhocTopics, TrecAdhocResults
 from experimaestro import config, task, argument
 from experimaestro_ir import NS
+from experimaestro_ir.models import Model
+from experimaestro_ir.evaluation import TrecAdhocResults
 from typing import List
+
+import capreolus.collection
+import capreolus.benchmark
 
 CNS = NS.capreolus
 
 
-@argument("model")
 @config(CNS.model)
 class CapreolusModel:
-    def create(self):
-        module = importlib.import_module(
-            f"capreolus.reranker.reranker.{self.CAPREOLUS_NAME}"
-        )
+    def create(self, collection, benchmark):
+        module = importlib.import_module(f"capreolus.reranker.{self.CAPREOLUS_NAME}")
         factory = getattr(module, self.CAPREOLUS_NAME)
         config = {name: getattr(self, name) for name in factory.required_params()}
+
+        # From pipeline.py
+        # self.reranker = self.module2cls["reranker"](
+        #   self.extractors[0].embeddings, self.benchmark.reranking_runs[cfg["fold"]], cfg
+        # )
+
+        self.extractors = []
+        for cls in factory.EXTRACTORS:
+            cfg = {}
+            extractor = cls(
+                None,  # self.cache_path,
+                None,  # extractor_cache_dir,
+                None,  # self.cfg,
+                benchmark=benchmark,  # benchmark=self.benchmark,
+                collection=collection,  # collection=self.collection,
+                index=None,  # index=self.index,
+            )
+            extractor.build_from_benchmark(embeddings="glove6b", keepstops=False)
+            self.extractors.append(extractor)
+
+        embeddings = None
+        return factory(self.extractors[0].embeddings, None, config)
+
+
+# --- DRMM
 
 
 @argument("nbins", default=29, help="number of bins in matching histogram")
@@ -27,6 +55,23 @@ class CapreolusModel:
 @config(CNS.model.drmm)
 class DRMM(CapreolusModel):
     CAPREOLUS_NAME = "DRMM"
+
+
+# --- Collection
+
+
+class CapreolusCollection(capreolus.collection.Collection):
+    def __init__(self, collections: List[Adhoc]):
+        assert len(collections) == 1, "Can cope with one collection only at the moment"
+        self.collections = collections
+
+
+class CapreolusBenchmark(capreolus.benchmark.Benchmark):
+    def __init__(self):
+        pass
+
+
+# --- Learning pipeline parameters
 
 
 @argument(
@@ -71,14 +116,14 @@ class Pipeline:
 @task(CNS.learn)
 class ModelLearn:
     def execute(self):
-        # Adapted from train.py#train + pi in capreolus
+        # Adapted from train.py#train  in capreolus
 
-        reranker = model.create()
+        # Build a Capreolus collection and benchmark from training
+        collection = CapreolusCollection(self.training)
+        benchmark = CapreolusBenchmark()
 
-        benchmark = pipeline.benchmark
-        logger.debug(
-            "initialized pipeline with results path: %s", pipeline.reranker_path
-        )
+        reranker = self.model.create(collection, benchmark)
+
         post_pipeline_init_time = time.time()
         run_path = os.path.join(pipeline.reranker_path, fold)
         logger.info("initialized pipeline with results path: %s", run_path)
@@ -255,3 +300,12 @@ class ModelLearn:
 
         with open("{0}/config.json".format(run_path), "w") as fp:
             json.dump(_config, fp)
+
+
+@argument("base", type=Model)
+@argument("model", type=ModelLearn)
+@argument("topics", type=AdhocTopics)
+@task(CNS.rerank)
+class ModelRerank(TrecAdhocResults):
+    def execute(self):
+        pass

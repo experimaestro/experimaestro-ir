@@ -134,7 +134,7 @@ def SearchCollection(
     topicshandler = Handler()
 
     @topicshandler()
-    def trectopics(topics: TrecTopics):
+    def trectopics(topics: TrecAdhocTopics):
         return ("-topicreader", "Trec", "-topics", topics.path)
 
     command.extend(topicshandler[topics])
@@ -145,7 +145,7 @@ def SearchCollection(
 
     @modelhandler()
     def handle(bm25: BM25):
-        return ("-bm25", "-k1", str(model.k1), "-b", str(model.b))
+        return ("-bm25", "-bm25.k1", str(model.k1), "-bm25.b", str(model.b))
 
     command.extend(modelhandler[model])
 
