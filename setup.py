@@ -41,9 +41,9 @@ setup(
     install_requires=[
         "experimaestro>=0.5.10",
         "datamaestro_text",
-        "pyserini>=0.7.0",
+        "pyserini>=0.9.0",
         "pytrec_eval",
     ],
-    extras_require={"neural": ["capreolus>=0.1.4"]},
+    extras_require={"neural": ["git+https://github.com/Georgetown-IR-Lab/OpenNIR.git"]},
     setup_requires=["setuptools_scm", "setuptools >=30.3.0"],
 )

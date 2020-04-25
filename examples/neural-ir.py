@@ -14,7 +14,8 @@ from experimaestro import experiment
 from experimaestro_ir.evaluation import TrecEval
 from experimaestro_ir.models import BM25
 from experimaestro_ir.anserini import IndexCollection, SearchCollection
-from experimaestro_ir.neural.capreolus import DRMM, ModelLearn, ModelRerank
+from experimaestro_ir.neural.onir.rankers import DRMM
+from experimaestro_ir.neural.onir.trainers import PointwiseTrainer
 
 # --- Defines the experiment
 
@@ -54,8 +55,9 @@ def cli(port, workdir, debug):
             assessments=trec1.assessments, results=bm25_search
         ).submit()
 
-        # Train with MatchZoo
+        # Train with OpenNIR DRMM
         training = [prepare_dataset("gov.nist.trec.adhoc.2")]
+        trainer = PointwiseTrainer()
         model = DRMM().tag("ranker", "drmm")
         learnedmodel = ModelLearn(model=model, training=training).submit()
 
