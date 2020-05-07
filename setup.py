@@ -17,7 +17,7 @@ def get_description():
 
 setup(
     name="experimaestro_ir",
-    python_requires=">=3.5",
+    python_requires=">=3.6",
     description="Experimaestro common module for IR experiments",
     long_description=get_description(),
     long_description_content_type="text/markdown",
@@ -39,11 +39,16 @@ setup(
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
     install_requires=[
-        "experimaestro>=0.5.10",
-        "datamaestro_text",
+        "experimaestro>=0.5.10.dev0",
+        "datamaestro_text>=2020.01.17",
         "pyserini>=0.9.0",
         "pytrec_eval",
     ],
-    extras_require={"neural": ["git+https://github.com/Georgetown-IR-Lab/OpenNIR.git"]},
+    extras_require={},
     setup_requires=["setuptools_scm", "setuptools >=30.3.0"],
+    entry_points={
+        "datamaestro.repositories": {
+            "ir = experimaestro_ir:Repository"
+        }
+    }
 )

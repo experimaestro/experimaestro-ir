@@ -43,15 +43,16 @@ def javacommand():
     return command
 
 
+
 @argument("storePositions", default=False)
 @argument("storeDocvectors", default=False)
-@argument("storeRawDocs", default=False)
-@argument("storeTransformedDocs", default=False)
+@argument("storeRaw", default=False)
+@argument("storeContents", default=False)
 @argument("documents", type=AdhocDocuments)
 @argument("threads", default=8, ignored=True)
 @pathargument("index_path", "index")
-@task(ANSERINI_NS.index, description="Index a documents")
-class IndexCollection:
+@task(ANSERINI_NS.indexcollection, description="Index a documents")
+class IndexCollection(Index):
     CLASSPATH = "io.anserini.index.IndexCollection"
 
     def execute(self):
@@ -64,8 +65,6 @@ class IndexCollection:
                 [
                     "-collection",
                     "TrecCollection",
-                    "-generator",
-                    "JsoupGenerator",
                     "-input",
                     self.documents.path,
                 ]
@@ -75,18 +74,20 @@ class IndexCollection:
             command.append("-storePositions")
         if self.storeDocvectors:
             command.append("-storeDocvectors")
-        if self.storeRawDocs:
+        if self.storeRaw:
             command.append("-storeRawDocs")
-        if self.storeTransformedDocs:
-            command.append("-storeTransformedDocs")
+        if self.storeContents:
+            command.append("-storeContents")
 
+        print(command)
         # Index and keep track of progress through regular expressions
         RE_FILES = re.compile(
-            rb""".*index\.IndexCollection \(IndexCollection.java:\d+\) - (\d+) files found"""
+            rb""".*index\.IndexCollection \(IndexCollection.java:\d+\) - ([\d,]+) files found"""
         )
         RE_FILE = re.compile(
             rb""".*index\.IndexCollection\$LocalIndexerThread \(IndexCollection.java:\d+\).* docs added."""
         )
+        RE_COMPLETE = re.compile(rb""".*IndexCollection\.java.*Indexing Complete.*documents indexed""")
 
         async def run(command):
             proc = await asyncio.create_subprocess_exec(
@@ -95,6 +96,7 @@ class IndexCollection:
 
             nfiles = -1
             indexedfiles = 0
+            complete = False
 
             while True:
                 data = await proc.stdout.readline()
@@ -103,8 +105,9 @@ class IndexCollection:
                     break
 
                 m = RE_FILES.match(data)
+                complete = complete or (RE_COMPLETE.match(data) is not None)
                 if m:
-                    nfiles = int(m.group(1).decode("utf-8"))
+                    nfiles = int(m.group(1).decode("utf-8").replace(",", ""))
                     print("%d files to index" % nfiles)
                 elif RE_FILE.match(data):
                     indexedfiles += 1
@@ -113,6 +116,9 @@ class IndexCollection:
                     sys.stdout.write(data.decode("utf-8"),)
 
             await proc.wait()
+            if proc.returncode == 0 and not complete:
+                logging.error("Did not see the indexing complete log message -- exiting with error")
+                sys.exit(1)
             sys.exit(proc.returncode)
 
         asyncio.run(run([str(s) for s in command]))
