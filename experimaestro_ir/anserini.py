@@ -21,6 +21,7 @@ from experimaestro import (
     progress,
     config,
 )
+from experimaestro_ir.dm.data.anserini import Index
 from experimaestro_ir.models import Model, BM25
 from experimaestro_ir.utils import Handler
 from experimaestro_ir.evaluation import TrecAdhocResults
