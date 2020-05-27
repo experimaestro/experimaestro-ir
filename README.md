@@ -5,6 +5,8 @@
 
 Information Retrieval module for [experimaestro](https://experimaestro.github.io/experimaestro-python/)
 
+The full documentation can be read at [IR@experimaestro](https://experimaestro-ir.readthedocs.io/).
+
 ## Install
 
 Install with
@@ -15,8 +17,5 @@ pip install experimaestro_ir
 
 ## Sub-projects
 
-- Adapted [OpenNIR]() for neural IR experiments
+- [OpenNIR adapted to experimaestro](https://github.com/bpiwowar/OpenNIR-xpm) for neural IR experiments
 
-## Documentation
-
-Full documentation can be read at [IR@experimaestro](https://experimaestro-ir.readthedocs.io/)
