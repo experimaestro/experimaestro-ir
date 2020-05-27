@@ -14,11 +14,8 @@ from experimaestro import experiment
 from experimaestro_ir.evaluation import TrecEval
 from experimaestro_ir.models import BM25
 from experimaestro_ir.anserini import IndexCollection, SearchCollection
-from experimaestro_ir.neural.onir.rankers import DRMM
-from experimaestro_ir.neural.onir.trainers import PointwiseTrainer
 
 # --- Defines the experiment
-
 
 @click.option("--debug", is_flag=True, help="Print debug information")
 @click.option("--port", type=int, default=12345, help="Port for monitoring")
@@ -33,15 +30,15 @@ def cli(port, workdir, debug):
     # Sets the working directory and the name of the xp
     with experiment(workdir, "index", port=port) as xp:
         # Index the collection
-        training_ds = prepare_dataset("gov.nist.trec.adhoc.1")
-        test_ds = prepare_dataset("gov.nist.trec.adhoc.2")
+        xp.setenv("JAVA_HOME", os.environ["JAVA_HOME"])
+        trec1 = prepare_dataset("gov.nist.trec.adhoc.1")
 
         documents = trec1.documents
         index = IndexCollection(
             documents=documents,
             storePositions=True,
             storeDocvectors=True,
-            storeTransformedDocs=True,
+            storeContents=True,
             threads=CPU_COUNT,
         ).submit()
 
@@ -52,7 +49,7 @@ def cli(port, workdir, debug):
             .submit()
         )
         bm25_eval = TrecEval(
-            assessments=trec1.assessments, results=bm25_search
+            assessments=trec1.assessments, run=bm25_search
         ).submit()
 
 if __name__ == "__main__":
