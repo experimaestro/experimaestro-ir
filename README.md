@@ -3,7 +3,6 @@
 
 # Information Retrieval for experimaestro
 
-
 Information Retrieval module for [experimaestro](https://experimaestro.github.io/experimaestro-python/)
 
 ## Install
@@ -14,12 +13,9 @@ Install with
 pip install experimaestro_ir
 ```
 
-Specific extra dependencies can be used if you plan to use some
-specific part of this module, e.g. for neural models
+## Sub-projects
 
-```
-pip install experimaestro_ir[neural]
-```
+- Adapted [OpenNIR]() for neural IR experiments
 
 ## Documentation
 

@@ -17,7 +17,7 @@ def get_description():
 
 setup(
     name="experimaestro_ir",
-    python_requires=">=3.6",
+    python_requires=">=3.7",
     description="Experimaestro common module for IR experiments",
     long_description=get_description(),
     long_description_content_type="text/markdown",
@@ -39,7 +39,7 @@ setup(
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
     install_requires=[
-        "experimaestro>=0.5.10.dev0",
+        "experimaestro>=0.6.1.dev",
         "datamaestro_text>=2020.01.17",
         "pyserini>=0.9.0",
         "pytrec_eval",

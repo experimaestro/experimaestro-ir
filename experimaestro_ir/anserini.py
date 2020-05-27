@@ -6,7 +6,7 @@ import asyncio
 import subprocess
 import logging
 
-from datamaestro_text.data.trec import (
+from datamaestro_text.data.ir.trec import (
     TipsterCollection,
     AdhocDocuments,
     AdhocTopics,
@@ -16,7 +16,7 @@ from experimaestro import (
     task,
     argument,
     Identifier,
-    pathargument,
+    pathoption,
     parse_commandline,
     progress,
     config,
@@ -24,7 +24,7 @@ from experimaestro import (
 from experimaestro_ir.dm.data.anserini import Index
 from experimaestro_ir.models import Model, BM25
 from experimaestro_ir.utils import Handler
-from experimaestro_ir.evaluation import TrecAdhocResults
+from experimaestro_ir.evaluation import TrecAdhocRun
 import experimaestro_ir as ir
 import experimaestro_ir.trec as trec
 
@@ -51,7 +51,7 @@ def javacommand():
 @argument("storeContents", default=False)
 @argument("documents", type=AdhocDocuments)
 @argument("threads", default=8, ignored=True)
-@pathargument("index_path", "index")
+@pathoption("index_path", "index")
 @task(ANSERINI_NS.indexcollection, description="Index a documents")
 class IndexCollection(Index):
     CLASSPATH = "io.anserini.index.IndexCollection"
@@ -128,7 +128,7 @@ class IndexCollection(Index):
 @argument("index", IndexCollection)
 @argument("topics", AdhocTopics)
 @argument("model", Model)
-@task(ANSERINI_NS.search, TrecAdhocResults)
+@task(ANSERINI_NS.search, TrecAdhocRun)
 def SearchCollection(
     index: IndexCollection, topics: AdhocTopics, model: Model, results: Path
 ):

@@ -1,12 +1,12 @@
 from pathlib import Path
-from experimaestro import config, task, pathargument, argument
-from datamaestro_text.data.trec import TrecAdhocResults
+from experimaestro import config, task, pathoption, argument
+from datamaestro_text.data.ir.trec import TrecAdhocRun
 import experimaestro_ir as ir
 
 NS = ir.NS.trec
 
 
-@argument("base", type=TrecAdhocResults)
-@task(parents=TrecAdhocResults)
-def Reorder(results: TrecAdhocResults, base: TrecAdhocResults):
+@argument("base", type=TrecAdhocRun)
+@task(parents=TrecAdhocRun)
+def Reorder(results: TrecAdhocRun, base: TrecAdhocRun):
     pass
