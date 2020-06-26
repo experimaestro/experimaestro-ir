@@ -42,7 +42,7 @@ setup(
         "experimaestro>=0.7.2",
         "datamaestro_text>=2020.5.27",
         "pyserini>=0.9.0",
-        "pytrec_eval",
+        "git+https://github.com/cvangysel/pytrec_eval.git#egg=pytrec_eval",
     ],
     extras_require={},
     setup_requires=["setuptools_scm", "setuptools >=30.3.0"],
