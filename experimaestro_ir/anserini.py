@@ -45,15 +45,11 @@ def javacommand():
 
 
 
-@argument("storePositions", default=False)
-@argument("storeDocvectors", default=False)
-@argument("storeRaw", default=False)
-@argument("storeContents", default=False)
 @argument("documents", type=AdhocDocuments)
 @argument("threads", default=8, ignored=True)
 @pathoption("index_path", "index")
 @task(ANSERINI_NS.indexcollection, description="Index a documents")
-class IndexCollection:
+class IndexCollection(Index):
     CLASSPATH = "io.anserini.index.IndexCollection"
 
     def execute(self):
@@ -131,7 +127,7 @@ class IndexCollection:
 @pathoption("path", "results.trec")
 @task(ANSERINI_NS.search, TrecAdhocRun)
 def SearchCollection(
-    index: IndexCollection, topics: AdhocTopics, model: Model, path: Path
+    index: Index, topics: AdhocTopics, model: Model, path: Path
 ):
     command = javacommand()
     command.append("io.anserini.search.SearchCollection")
