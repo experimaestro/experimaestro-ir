@@ -1,4 +1,5 @@
-from experimaestro import argument, task, pathoption, config
+from typing import List
+from experimaestro import param, task, pathoption, config
 import experimaestro_ir as ir
 from datamaestro_text.data.ir.trec import TrecAdhocAssessments, TrecAdhocRun, TrecAdhocResults
 
@@ -7,14 +8,15 @@ import pytrec_eval
 
 
 
-@argument("assessments", TrecAdhocAssessments)
-@argument("run", TrecAdhocRun)
+@param("assessments", TrecAdhocAssessments)
+@param("run", TrecAdhocRun)
+@param('metrics', type=List[str], default=['map','p@20','ndcg', 'ndcg@20', 'mrr'])
 @pathoption("aggregated", "aggregated.dat")
 @pathoption("detailed", "detailed.dat")
 @task(ir.NS.evaluate.trec)
 class TrecEval():
     def config(self):
-        return TrecAdhocResults(aggregated=self.aggregated, detailed=self.detailed)
+        return TrecAdhocResults(results=self.aggregated, detailed=self.detailed, metrics=self.metrics)
 
     def execute(self):
         """Evaluate an IR ad-hoc run with trec-eval"""

@@ -121,7 +121,7 @@ class IndexCollection(Index):
         asyncio.run(run([str(s) for s in command]))
 
 
-@argument("index", IndexCollection)
+@argument("index", Index)
 @argument("topics", AdhocTopics)
 @argument("model", Model)
 @pathoption("path", "results.trec")
@@ -131,7 +131,7 @@ def SearchCollection(
 ):
     command = javacommand()
     command.append("io.anserini.search.SearchCollection")
-    command.extend(("-index", index.index_path, "-output", path))
+    command.extend(("-index", index.path, "-output", path))
 
     # Topics
 
