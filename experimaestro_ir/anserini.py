@@ -50,6 +50,8 @@ def javacommand():
 @pathoption("index_path", "index")
 @task(ANSERINI_NS.indexcollection, description="Index a documents")
 class IndexCollection(Index):
+    """An [Anserini](https://github.com/castorini/anserini) index
+    """
     CLASSPATH = "io.anserini.index.IndexCollection"
 
     def execute(self):

@@ -5,9 +5,9 @@ site_description: experimaestro-ir Information Retrieval module for Experimaestr
 repo_url: https://github.com/bpiwowar/experimaestro-ir
 
 # Main pages
-pages:
+nav:
   - Home: index.md
-
+  - Tasks and Configs: xpm.md
 
 markdown_extensions:
   - pymdownx.details
@@ -18,6 +18,13 @@ markdown_extensions:
       base_path: .
   - toc:
       baselevel: 1
+
+plugins:
+  - experimaestro:
+        path: xpm.md
+        name: Tasks and configurations
+        modules: 
+            - Experimaestro IR: experimaestro_ir
 
 # Theme
 theme:

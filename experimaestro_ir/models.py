@@ -14,10 +14,3 @@ class Model:
 @config(NS.bm25)
 class BM25(Model):
     pass
-
-
-@config(NS.model.reorderer)
-class Reorderer:
-    """A model that re-orders the results"""
-
-    pass
