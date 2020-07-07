@@ -19,11 +19,13 @@ class FallbackMetrics(_metrics.BaseMetrics):
                 return True
         return False
 
-    def calc_metrics(self,
-                     qrels: Union[str, dict],
-                     run: Union[str, dict],
-                     metrics: Iterable[Union[str, _metrics.Metric]],
-                     verbose: bool = False) -> dict:
+    def calc_metrics(
+        self,
+        qrels: Union[str, dict],
+        run: Union[str, dict],
+        metrics: Iterable[Union[str, _metrics.Metric]],
+        verbose: bool = False,
+    ) -> dict:
         metrics = set(map(_metrics.Metric.parse, metrics))
         result = {}
 
@@ -35,22 +37,24 @@ class FallbackMetrics(_metrics.BaseMetrics):
                 these_metrics = set(filter(metric_source.supports, metrics))
                 if these_metrics:
                     if verbose:
-                        logger.debug(f'using {metric_source} for {these_metrics}')
+                        logger.debug(f"using {metric_source} for {these_metrics}")
                     these_qrels = qrels.in_format(metric_source.QRELS_FORMAT)
                     these_run = run.in_format(metric_source.RUN_FORMAT)
-                    these_values = metric_source.calc_metrics(these_qrels, these_run, these_metrics)
+                    these_values = metric_source.calc_metrics(
+                        these_qrels, these_run, these_metrics
+                    )
                     for metric in these_values:
                         metrics.discard(metric)
                         result[metric] = these_values[metric]
                 else:
                     if verbose:
-                        logger.debug(f'no metrics supported by {metric_source}')
+                        logger.debug(f"no metrics supported by {metric_source}")
                 if not metrics:
                     if verbose:
-                        logger.debug(f'all metrics covered')
+                        logger.debug(f"all metrics covered")
                     break
             if metrics:
-                logger.warn(f'missing support for metrics: {metrics}')
+                logger.warn(f"missing support for metrics: {metrics}")
             result = {str(k): v for k, v in result.items()}
             return result
         finally:
@@ -58,7 +62,12 @@ class FallbackMetrics(_metrics.BaseMetrics):
             run.close()
 
     class FormatManager:
-        def __init__(self, item: Union[str, dict], to_dict: Callable[[TextIO], dict], to_file: Callable[[dict, TextIO], None]):
+        def __init__(
+            self,
+            item: Union[str, dict],
+            to_dict: Callable[[TextIO], dict],
+            to_file: Callable[[dict, TextIO], None],
+        ):
             self.item = item
             if isinstance(self.item, str):
                 self.file = self.item
@@ -67,7 +76,7 @@ class FallbackMetrics(_metrics.BaseMetrics):
                 self.file = None
                 self.dict = self.item
             else:
-                raise ValueError(f'unsupported format {type(item)}')
+                raise ValueError(f"unsupported format {type(item)}")
             self.tmp_file = None
             self.to_dict = to_dict
             self.to_file = to_file
@@ -75,18 +84,18 @@ class FallbackMetrics(_metrics.BaseMetrics):
         def in_format(self, fmt: Optional[str]) -> Union[str, dict]:
             if fmt is None:
                 return self.item
-            if fmt == 'dict':
+            if fmt == "dict":
                 if self.dict is None:
-                    with open(self.file, 'rt') as f:
+                    with open(self.file, "rt") as f:
                         self.dict = self.to_dict(f)
                 return self.dict
-            if fmt == 'file':
+            if fmt == "file":
                 if self.file is None:
-                    self.tmp_file = NamedTemporaryFile('w+t')
+                    self.tmp_file = NamedTemporaryFile("w+t")
                     self.to_file(self.dict, self.tmp_file)
                     self.file = self.tmp_file.name
                 return self.file
-            raise ValueError(f'unsuported fmt={fmt}')
+            raise ValueError(f"unsuported fmt={fmt}")
 
         def close(self) -> None:
             if self.tmp_file is not None:

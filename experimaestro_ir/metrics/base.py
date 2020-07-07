@@ -3,7 +3,9 @@ import re
 
 
 class Metric:
-    def __init__(self, name: str, args: Mapping[str, str] = None, cutoff: Optional[int] = None):
+    def __init__(
+        self, name: str, args: Mapping[str, str] = None, cutoff: Optional[int] = None
+    ):
         if args is None:
             args = {}
         self._name = name
@@ -23,11 +25,11 @@ class Metric:
         return self._cutoff
 
     @classmethod
-    def parse(cls, metric: Union[str, 'Metric']) -> 'Metric':
+    def parse(cls, metric: Union[str, "Metric"]) -> "Metric":
         if isinstance(metric, Metric):
             return metric
         # metric format: name_opt1-val1_opt2-val2@cutoff
-        match = re.match(r'^([^-_@]+)((_[^-_@]+-[^-_@]+)*)?(@([^-_@]+))?$', metric)
+        match = re.match(r"^([^-_@]+)((_[^-_@]+-[^-_@]+)*)?(@([^-_@]+))?$", metric)
         name = match.group(1)
         _ = match.group(2)
         settings_text = match.group(3)
@@ -37,8 +39,8 @@ class Metric:
             cutoff = int(cutoff)
         args = {}
         if settings_text:
-            for setting in settings_text[1:].split('_'):
-                key, value = setting.split('-')
+            for setting in settings_text[1:].split("_"):
+                key, value = setting.split("-")
                 args[key] = value
         return cls(name, args, cutoff)
 
@@ -48,11 +50,11 @@ class Metric:
 
     def __str__(self) -> str:
         result = self.name
-        args = '_'.join(['-'.join(p) for p in self._args_frzn])
-        if args != '':
-            result += f'_{args}'
+        args = "_".join(["-".join(p) for p in self._args_frzn])
+        if args != "":
+            result += f"_{args}"
         if self.cutoff is not None:
-            result += f'@{self.cutoff}'
+            result += f"@{self.cutoff}"
         return result
 
     def __repr__(self) -> str:
@@ -77,5 +79,7 @@ class BaseMetrics:
     def supports(self, metric):
         raise NotImplementedError()
 
-    def calc_metrics(self, qrels, run, metrics: Iterable[Union[str, Metric]], verbose: bool = False):
+    def calc_metrics(
+        self, qrels, run, metrics: Iterable[Union[str, Metric]], verbose: bool = False
+    ):
         raise NotImplementedError()

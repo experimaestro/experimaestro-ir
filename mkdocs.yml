@@ -23,7 +23,7 @@ plugins:
   - experimaestro:
         path: xpm.md
         name: Tasks and configurations
-        modules: 
+        modules:
             - Experimaestro IR: experimaestro_ir
 
 # Theme

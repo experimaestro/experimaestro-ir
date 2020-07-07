@@ -1,22 +1,27 @@
 from typing import List
 from experimaestro import param, task, pathoption, config
 import experimaestro_ir as ir
-from datamaestro_text.data.ir.trec import TrecAdhocAssessments, TrecAdhocRun, TrecAdhocResults
+from datamaestro_text.data.ir.trec import (
+    TrecAdhocAssessments,
+    TrecAdhocRun,
+    TrecAdhocResults,
+)
 
 import logging
 import pytrec_eval
 
 
-
 @param("assessments", TrecAdhocAssessments)
 @param("run", TrecAdhocRun)
-@param('metrics', type=List[str], default=['map','p@20','ndcg', 'ndcg@20', 'mrr'])
+@param("metrics", type=List[str], default=["map", "p@20", "ndcg", "ndcg@20", "mrr"])
 @pathoption("aggregated", "aggregated.dat")
 @pathoption("detailed", "detailed.dat")
 @task(ir.NS.evaluate.trec)
-class TrecEval():
+class TrecEval:
     def config(self):
-        return TrecAdhocResults(results=self.aggregated, detailed=self.detailed, metrics=self.metrics)
+        return TrecAdhocResults(
+            results=self.aggregated, detailed=self.detailed, metrics=self.metrics
+        )
 
     def execute(self):
         """Evaluate an IR ad-hoc run with trec-eval"""
@@ -52,6 +57,9 @@ class TrecEval():
                     "all",
                     pytrec_eval.compute_aggregated_measure(
                         measure,
-                        [query_measures[measure] for query_measures in results.values()],
+                        [
+                            query_measures[measure]
+                            for query_measures in results.values()
+                        ],
                     ),
                 )

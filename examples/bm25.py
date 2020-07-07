@@ -17,6 +17,7 @@ from experimaestro_ir.anserini import IndexCollection, SearchCollection
 
 # --- Defines the experiment
 
+
 @click.option("--debug", is_flag=True, help="Print debug information")
 @click.option("--port", type=int, default=12345, help="Port for monitoring")
 @click.argument("workdir", type=Path)
@@ -48,9 +49,8 @@ def cli(port, workdir, debug):
             .tag("model", "bm25")
             .submit()
         )
-        bm25_eval = TrecEval(
-            assessments=trec1.assessments, run=bm25_search
-        ).submit()
+        bm25_eval = TrecEval(assessments=trec1.assessments, run=bm25_search).submit()
+
 
 if __name__ == "__main__":
     cli()

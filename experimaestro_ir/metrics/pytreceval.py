@@ -1,12 +1,13 @@
 import re
 import pytrec_eval
 from experimaestro_ir import metrics as _metrics
+
 Metric = _metrics.Metric
 
 
-OPT_REL = r'(_rel-(?P<rel>\d+))?'
-OPT_GAIN = r'(_gain-(?P<gains>\d+=\d+(:\d+=\d+)+))?'
-CUT = r'@(?P<par>\d+)'
+OPT_REL = r"(_rel-(?P<rel>\d+))?"
+OPT_GAIN = r"(_gain-(?P<gains>\d+=\d+(:\d+=\d+)+))?"
+CUT = r"@(?P<par>\d+)"
 
 
 # Defines metrics available in trec_eval and supported by this module.
@@ -16,14 +17,14 @@ CUT = r'@(?P<par>\d+)'
 # value considered relevant (e.g., p-l-4@5 is precision at 5 of documents graded at least a
 # relevance of 4).
 PTE_METRIC_MAP = {
-    rf'^mrr{OPT_REL}$': 'recip_rank',
-    rf'^rprec{OPT_REL}$': 'Rprec',
-    rf'^map{OPT_REL}$': 'map',
-    rf'^map{OPT_REL}{CUT}$': 'map_cut_{par}',
-    rf'^ndcg{OPT_GAIN}$': 'ndcg',
-    rf'^ndcg{OPT_GAIN}{CUT}$': 'ndcg_cut_{par}',
-    rf'^p{OPT_REL}{CUT}$': 'P_{par}',
-    rf'^r{OPT_REL}{CUT}$': 'recall_{par}',
+    rf"^mrr{OPT_REL}$": "recip_rank",
+    rf"^rprec{OPT_REL}$": "Rprec",
+    rf"^map{OPT_REL}$": "map",
+    rf"^map{OPT_REL}{CUT}$": "map_cut_{par}",
+    rf"^ndcg{OPT_GAIN}$": "ndcg",
+    rf"^ndcg{OPT_GAIN}{CUT}$": "ndcg_cut_{par}",
+    rf"^p{OPT_REL}{CUT}$": "P_{par}",
+    rf"^r{OPT_REL}{CUT}$": "recall_{par}",
 }
 
 
@@ -31,8 +32,9 @@ class PyTrecEvalMetrics(_metrics.BaseMetrics):
     """
     Faster than TrecEvalMetrics (by using the native pytrec_eval package).
     """
-    QRELS_FORMAT = 'dict'
-    RUN_FORMAT = 'dict'
+
+    QRELS_FORMAT = "dict"
+    RUN_FORMAT = "dict"
 
     def supports(self, metric):
         metric = _metrics.Metric.parse(metric)
@@ -52,7 +54,7 @@ class PyTrecEvalMetrics(_metrics.BaseMetrics):
                 match = re.match(exp, str(metric))
                 if match:
                     params = match.groupdict()
-                    rel, gains = int(params.get('rel') or '1'), params.get('gain')
+                    rel, gains = int(params.get("rel") or "1"), params.get("gain")
                     rel_args.setdefault((rel, gains), {})
                     metric_name = PTE_METRIC_MAP[exp].format(**params)
                     rel_args[rel, gains][metric_name] = str(metric)
@@ -60,7 +62,9 @@ class PyTrecEvalMetrics(_metrics.BaseMetrics):
         result = {}
         for (rel, gains), measures in rel_args.items():
             these_qrels = self._apply_gains(qrels_dict, gains)
-            evaluator = pytrec_eval.RelevanceEvaluator(these_qrels, set(measures.keys()), relevance_level=rel)
+            evaluator = pytrec_eval.RelevanceEvaluator(
+                these_qrels, set(measures.keys()), relevance_level=rel
+            )
             pte_results = evaluator.evaluate(run_dict)
             # translate and filter this to the output format
             for pte_name, onir_name in measures.items():
@@ -72,7 +76,7 @@ class PyTrecEvalMetrics(_metrics.BaseMetrics):
     def _apply_gains(self, qrels, gains):
         if gains:
             # apply custom gains
-            gain_map = [g.split('=') for g in gains.split(':')]
+            gain_map = [g.split("=") for g in gains.split(":")]
             gain_map = {int(k): int(v) for k, v in gain_map}
             new_qrels = {}
             for qid in qrels:

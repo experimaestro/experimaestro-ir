@@ -44,7 +44,6 @@ def javacommand():
     return command
 
 
-
 @argument("documents", type=AdhocDocuments)
 @argument("threads", default=8, ignored=True)
 @pathoption("index_path", "index")
@@ -52,6 +51,7 @@ def javacommand():
 class IndexCollection(Index):
     """An [Anserini](https://github.com/castorini/anserini) index
     """
+
     CLASSPATH = "io.anserini.index.IndexCollection"
 
     def execute(self):
@@ -61,12 +61,7 @@ class IndexCollection(Index):
 
         if isinstance(self.documents, TipsterCollection):
             command.extend(
-                [
-                    "-collection",
-                    "TrecCollection",
-                    "-input",
-                    self.documents.path,
-                ]
+                ["-collection", "TrecCollection", "-input", self.documents.path,]
             )
 
         if self.storePositions:
@@ -86,7 +81,9 @@ class IndexCollection(Index):
         RE_FILE = re.compile(
             rb""".*index\.IndexCollection\$LocalIndexerThread \(IndexCollection.java:\d+\).* docs added."""
         )
-        RE_COMPLETE = re.compile(rb""".*IndexCollection\.java.*Indexing Complete.*documents indexed""")
+        RE_COMPLETE = re.compile(
+            rb""".*IndexCollection\.java.*Indexing Complete.*documents indexed"""
+        )
 
         async def run(command):
             proc = await asyncio.create_subprocess_exec(
@@ -116,7 +113,9 @@ class IndexCollection(Index):
 
             await proc.wait()
             if proc.returncode == 0 and not complete:
-                logging.error("Did not see the indexing complete log message -- exiting with error")
+                logging.error(
+                    "Did not see the indexing complete log message -- exiting with error"
+                )
                 sys.exit(1)
             sys.exit(proc.returncode)
 
@@ -128,9 +127,7 @@ class IndexCollection(Index):
 @argument("model", Model)
 @pathoption("path", "results.trec")
 @task(ANSERINI_NS.search, TrecAdhocRun)
-def SearchCollection(
-    index: Index, topics: AdhocTopics, model: Model, path: Path
-):
+def SearchCollection(index: Index, topics: AdhocTopics, model: Model, path: Path):
     command = javacommand()
     command.append("io.anserini.search.SearchCollection")
     command.extend(("-index", index.path, "-output", path))

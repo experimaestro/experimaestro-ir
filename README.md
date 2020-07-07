@@ -18,4 +18,3 @@ pip install experimaestro_ir
 ## Sub-projects
 
 - [OpenNIR adapted to experimaestro](https://github.com/bpiwowar/OpenNIR-xpm) for neural IR experiments
-

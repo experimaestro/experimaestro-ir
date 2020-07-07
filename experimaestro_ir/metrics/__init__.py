@@ -9,13 +9,15 @@ from experimaestro_ir.metrics.pytreceval import PyTrecEvalMetrics
 from experimaestro_ir.metrics.treceval import TrecEvalMetrics
 
 
-primary = FallbackMetrics([
-    MsMarcoMetrics(),
-    PyTrecEvalMetrics(),
-    TrecEvalMetrics(),
-    JudgedMetrics(),
-    GdevalMetrics()
-])
+primary = FallbackMetrics(
+    [
+        MsMarcoMetrics(),
+        PyTrecEvalMetrics(),
+        TrecEvalMetrics(),
+        JudgedMetrics(),
+        GdevalMetrics(),
+    ]
+)
 calc = primary.calc_metrics
 
 
