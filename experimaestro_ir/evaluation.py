@@ -8,7 +8,7 @@ from datamaestro_text.data.ir.trec import (
 )
 
 import logging
-import pytrec_eval
+import experimaestro_ir.metrics as metrics
 
 
 @param("assessments", TrecAdhocAssessments)
@@ -25,24 +25,18 @@ class TrecEval:
 
     def execute(self):
         """Evaluate an IR ad-hoc run with trec-eval"""
-        logging.info("Reading assessments %s", self.assessments.path)
-        with self.assessments.path.open("r") as f_qrel:
-            qrel = pytrec_eval.parse_qrel(f_qrel)
 
-        logging.info("Reading results %s", self.run.path)
-        with self.run.path.open("r") as f_run:
-            run = pytrec_eval.parse_run(f_run)
-
-        evaluator = pytrec_eval.RelevanceEvaluator(qrel, pytrec_eval.supported_measures)
-        results = evaluator.evaluate(run)
+        detailed =  metrics.calc(str(self.assessments.path), str(self.run.path), self.metrics)
+        means = metrics.mean(detailed)
+        print(means)
 
         def print_line(fp, measure, scope, value):
             fp.write("{:25s}{:8s}{:.4f}\n".format(measure, scope, value))
 
         with self.detailed.open("w") as fp:
-            for query_id, query_measures in sorted(results.items()):
-                for measure, value in sorted(query_measures.items()):
-                    print_line(fp, measure, query_id, value)
+            for measure, values in detailed.items():
+                for query_id, value in sorted(values.items()):
+                        print_line(fp, measure, query_id, value)
 
         # Scope hack: use query_measures of last item in previous loop to
         # figure out all unique measure names.
@@ -50,16 +44,10 @@ class TrecEval:
         # TODO(cvangysel): add member to RelevanceEvaluator
         #                  with a list of measure names.
         with self.aggregated.open("w") as fp:
-            for measure in sorted(query_measures.keys()):
+            for measure, value in sorted(means.items()):
                 print_line(
                     fp,
                     measure,
                     "all",
-                    pytrec_eval.compute_aggregated_measure(
-                        measure,
-                        [
-                            query_measures[measure]
-                            for query_measures in results.values()
-                        ],
-                    ),
+                    value
                 )

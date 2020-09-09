@@ -26,7 +26,6 @@ from experimaestro_ir.models import Model, BM25
 from experimaestro_ir.utils import Handler
 from experimaestro_ir.evaluation import TrecAdhocRun
 import experimaestro_ir as ir
-import experimaestro_ir.trec as trec
 
 ANSERINI_NS = ir.NS.anserini
 
