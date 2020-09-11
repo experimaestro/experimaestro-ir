@@ -6,6 +6,7 @@ import asyncio
 import subprocess
 import logging
 
+import datamaestro_text.data.ir.csv as ir_csv
 from datamaestro_text.data.ir.trec import (
     TipsterCollection,
     AdhocDocuments,
@@ -138,6 +139,10 @@ def SearchCollection(index: Index, topics: AdhocTopics, model: Model, path: Path
     @topicshandler()
     def trectopics(topics: TrecAdhocTopics):
         return ("-topicreader", "Trec", "-topics", topics.path)
+
+    @topicshandler()
+    def tsvtopics(topics: ir_csv.AdhocTopics):
+        return ("-topicreader", "TsvInt", "-topics", topics.path)
 
     command.extend(topicshandler[topics])
 
