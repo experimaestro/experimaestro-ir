@@ -2,8 +2,10 @@
 # -*- coding: utf-8 -*-
 """Setup experimaestro IR."""
 
-from setuptools import setup, find_packages
+from pathlib import Path
 import os
+import re
+from setuptools import setup, find_packages
 
 
 def get_description():
@@ -12,6 +14,13 @@ def get_description():
     with open("README.md", "r") as f:
         desc = f.read()
     return desc
+
+
+basepath = Path(__file__).parent
+install_requires = (basepath / "requirements.txt").read_text()
+install_requires = re.sub(
+    r"^(git\+https.*)egg=([_\w-]+)$", r"\2@\1", install_requires, 0, re.MULTILINE
+)
 
 
 setup(
@@ -37,12 +46,7 @@ setup(
         "Programming Language :: Python :: 3.8",
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
-    install_requires=[
-        "experimaestro>=0.7.2",
-        "datamaestro_text>=2020.5.27",
-        "pyserini>=0.9.0",
-        "pytrec_eval@git+https://github.com/cvangysel/pytrec_eval.git#egg=pytrec_eval",
-    ],
+    install_requires=install_requires,
     extras_require={},
     setup_requires=["setuptools_scm", "setuptools >=30.3.0"],
     entry_points={"datamaestro.repositories": {"ir = experimaestro_ir:Repository"}},
