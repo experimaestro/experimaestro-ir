@@ -39,7 +39,7 @@ jobs:
             echo -e "username = $PYPI_USERNAME" >> ~/.pypirc
             echo -e "password = $PYPI_PASSWORD" >> ~/.pypirc
             python setup.py bdist_wheel
-            twine upload dist/experimaestro-*-none-any.whl
+            twine upload dist/experimaestro_ir-*-none-any.whl
           fi
 workflows:
   build_and_deploy:
