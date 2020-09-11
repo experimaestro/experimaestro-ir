@@ -36,7 +36,7 @@ setup(
     use_scm_version=True,
     license="GPL 3.0",
     classifiers=[
-        "Development Status :: alpha",
+        "Development Status :: beta",
         "Environment :: Console",
         "Intended Audience :: Developers",
         "License :: OSI Approved :: MIT License",
