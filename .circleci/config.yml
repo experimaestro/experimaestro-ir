@@ -8,16 +8,16 @@ jobs:
     - run:
         name: Setup basic environment
         command: |
-          echo "export PATH=/opt/python/cp37-cp37m/bin:/opt/python/cp38-cp38m/bin:$PATH" >> $BASH_ENV
+          echo "export PATH=/opt/python/cp37-cp37m/bin:/opt/python/cp38-cp38/bin:$PATH" >> $BASH_ENV
           /opt/python/cp37-cp37m/bin/pip install tox twine
-  - restore_cache:
-        key: v1-dependency-cache-{{ checksum "requirements.txt" }}-{{ checksum "tox.ini" }}
+    - restore_cache:
+        key: v1-dependency-cache-{{ checksum "setup.cfg" }}-{{ checksum "tox.ini" }}-{{ checksum "requirements.txt"}}
     - run:
         name: install python dependencies
         command: |
           tox --notest -e ALL
     - save_cache:
-        key: v1-dependency-cache-{{ checksum "requirements.txt" }}-{{ checksum "tox.ini" }}
+        key: v1-dependency-cache-{{ checksum "setup.cfg" }}-{{ checksum "tox.ini" }}-{{ checksum "requirements.txt"}}
         paths:
         - .tox/py37
         - .tox/py38
@@ -32,13 +32,14 @@ jobs:
     - run:
         name: Upload
         command: |
-          if [ "v$(python setup.py --version)" = "$CIRCLE_TAG" ]; then
-            echo "Uploading using twine"
+          echo "Checking version $(python setup.py --version) vs $CIRCLE_TAG"
+          if [ "$(python setup.py --version)" = "$CIRCLE_TAG" ]; then
+            echo "Uploading using twine ($CIRCLE_TAG)"
             echo -e "[pypi]" >> ~/.pypirc
             echo -e "username = $PYPI_USERNAME" >> ~/.pypirc
             echo -e "password = $PYPI_PASSWORD" >> ~/.pypirc
             python setup.py bdist_wheel
-            twine upload dist/datamaestro-*-none-any.whl
+            twine upload dist/experimaestro-*-none-any.whl
           fi
 workflows:
   build_and_deploy:
