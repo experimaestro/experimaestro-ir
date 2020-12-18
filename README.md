@@ -12,7 +12,7 @@ The full documentation can be read at [IR@experimaestro](https://experimaestro-i
 Install with
 
 ```
-pip install experimaestro_ir
+pip install xpmir
 ```
 
 ## Sub-projects

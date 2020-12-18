@@ -11,18 +11,19 @@ CPU_COUNT = multiprocessing.cpu_count()
 
 
 from experimaestro import experiment
-from experimaestro_ir.evaluation import TrecEval
-from experimaestro_ir.models import BM25
-from experimaestro_ir.anserini import IndexCollection, SearchCollection
+from xpmir.evaluation import TrecEval
+from xpmir.rankers.standard import BM25
+from xpmir.rankers.anserini import IndexCollection, SearchCollection
 
 # --- Defines the experiment
 
 
 @click.option("--debug", is_flag=True, help="Print debug information")
 @click.option("--port", type=int, default=12345, help="Port for monitoring")
+@click.option("--dataset", default="gov.nist.trec.adhoc.1")
 @click.argument("workdir", type=Path)
 @click.command()
-def cli(port, workdir, debug):
+def cli(port, workdir, dataset, debug):
     """Runs an experiment"""
     logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
 
@@ -32,9 +33,9 @@ def cli(port, workdir, debug):
     with experiment(workdir, "index", port=port) as xp:
         # Index the collection
         xp.setenv("JAVA_HOME", os.environ["JAVA_HOME"])
-        trec1 = prepare_dataset("gov.nist.trec.adhoc.1")
+        ds = prepare_dataset(dataset)
 
-        documents = trec1.documents
+        documents = ds.documents
         index = IndexCollection(
             documents=documents,
             storePositions=True,
@@ -45,11 +46,14 @@ def cli(port, workdir, debug):
 
         # Search with BM25
         bm25_search = (
-            SearchCollection(index=index, topics=trec1.topics, model=bm25)
+            SearchCollection(index=index, topics=ds.topics, model=bm25)
             .tag("model", "bm25")
             .submit()
         )
-        bm25_eval = TrecEval(assessments=trec1.assessments, run=bm25_search).submit()
+        bm25_eval = TrecEval(assessments=ds.assessments, run=bm25_search).submit()
+
+    print("BM25 results on TREC 1")
+    print(bm25_eval.results.read_text())
 
 
 if __name__ == "__main__":

@@ -24,7 +24,7 @@ install_requires = re.sub(
 
 
 setup(
-    name="experimaestro_ir",
+    name="xpmir",
     python_requires=">=3.7",
     description="Experimaestro common module for IR experiments",
     long_description=get_description(),
@@ -49,5 +49,5 @@ setup(
     install_requires=install_requires,
     extras_require={},
     setup_requires=["setuptools_scm", "setuptools >=30.3.0"],
-    entry_points={"datamaestro.repositories": {"ir = experimaestro_ir:Repository"}},
+    entry_points={"datamaestro.repositories": {"ir = xpmir:Repository"}},
 )
