@@ -38,7 +38,7 @@ class Handler:
         return self.handlers[key.__class__](key)
 
 
-def logger():
+def easylog():
     """
     Returns a logger with the caller's __name__
     """

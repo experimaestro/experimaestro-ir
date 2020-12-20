@@ -5,10 +5,11 @@ from experimaestro import task, param, progress, pathoption
 from xpmir.letor import Random
 from xpmir.letor.samplers import Sampler
 from xpmir.letor.trainers import Trainer
-from xpmir.rankers import Retriever
-from xpmir.utils import logger
+from xpmir.rankers import LearnableScorer, Retriever, Scorer
+from xpmir.utils import easylog
 
 
+# Training
 @param("max_epoch", default=1000, help="Maximum training epoch")
 @param(
     "early_stop", default=20, help="Maximum number of epochs without improvement (val)"
@@ -16,33 +17,35 @@ from xpmir.utils import logger
 @param("warmup", default=-1, help="Number of warmup epochs")
 @param("purge_weights", default=True)
 @param("initial_eval", default=False)
-@param("only_cached", default=False)
+@param("trainer", type=Trainer)
+@param("scorer", type=LearnableScorer)
+
+# Validation
 @param("val_metric", default="map")
 @param("val_dataset", type=Adhoc)
-@param("ranker", type=Retriever)
-@param("sampler", type=Sampler, help="Training data sampler")
-@param("ranker", type=Retriever)
-@param("trainer", type=Trainer)
+@param("val_retriever", type=Retriever)
 @param("random", type=Random)
 @pathoption("predictor_path", "predictor")
 @pathoption("valtest_path", "val_test.jsonl")
 @task()
-class Learner:
+class Learner(Scorer):
     """Learns a ranker"""
 
     def execute(self):
-        self.logger = logger()
-        self.ranker.initialize(self.random.state)
-        self.trainer.initialize(self.random.state, self.ranker, self.sampler)
+        self.logger = easylog()
+
+        # Initialize the scorer and trainer
+        self.scorer.initialize(self.random.state)
+        self.trainer.initialize(self.random.state, self.scorer)
         self.valid_pred.initialize(
             self.predictor_path,
             [self.val_metric],
             self.random.state,
-            self.ranker,
+            self.scorer,
             self.val_dataset,
         )
-        self.sampler.initialize(self.ranker.vocab)
-        self.val_dataset.initialize(self.ranker.vocab)
+        # self.sampler.initialize(self.scorer.vocab)
+        # self.val_dataset.initialize(self.scorer.vocab)
 
         validator = self.valid_pred.pred_ctxt()
 

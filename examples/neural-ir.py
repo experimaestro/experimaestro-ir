@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from datamaestro_text.data.ir import Adhoc
 from xpmir.letor import Device, Random
+from xpmir.letor.samplers import ModelBasedSampler
 from xpmir.letor.trainers.pointwise import PointwiseTrainer
 
 from xpmir.rankers import TwoStageRetriever
@@ -32,7 +33,7 @@ logging.basicConfig(level=logging.INFO)
 @click.option("--debug", is_flag=True, help="Print debug information")
 @click.option("--gpu", is_flag=True, help="Use GPU")
 @click.option(
-    "--grad-acc-batch", type=int, default=64, help="Batch size for accumulating"
+    "--grad-acc-batch", type=int, default=0, help="Batch size for accumulating"
 )
 @click.option(
     "--batch-size", type=int, default=64, help="Batch size (validation and test)"
@@ -51,7 +52,7 @@ class Information:
     _indexes = {}
 
     datasets = []
-    models = []
+    scorers = []
 
     def index(self, ds):
         """Returns the anserini index"""
@@ -146,17 +147,17 @@ def bertencoder(info, trainable):
     return bv.BertVocab(train=trainable)
 
 
-# ---- Models
+# ---- scorers
 
 
 def model(method):
-    return register(method, lambda info, model: info.models.append(model))
+    return register(method, lambda info, model: info.scorers.append(model))
 
 
 @model
 def drmm(info):
     """Use the DRMM model"""
-    from xpmir.rankers.neural.drmm import Drmm
+    from xpmir.neural.drmm import Drmm
 
     assert info.vocab is not None, "No embeddings are defined yet for DRMM"
     return Drmm(vocab=info.vocab).tag("model", "drmm")
@@ -165,7 +166,7 @@ def drmm(info):
 @model
 def vanilla_transformer(info):
     """Use the Vanilla BERT model"""
-    from xpmir.rankers.neural.vanilla_transformer import VanillaTransformer
+    from xpmir.neural.vanilla_transformer import VanillaTransformer
 
     return VanillaTransformer(vocab=info.vocab).tag("model", "vanilla-transformer")
 
@@ -199,7 +200,7 @@ def process(
             processor(info)
 
         assert info.datasets, "No dataset was selected"
-        assert info.models, "No model was selected"
+        assert info.scorers, "No model was selected"
 
         basemodel = BM25()
 
@@ -216,25 +217,38 @@ def process(
             bm25_eval = Evaluate(dataset=test, retriever=bm25_retriever).submit()
 
             # Train and evaluate with each model
-            # for model in info.models:
-            #     # Train with OpenNIR DRMM model
-            #     # predictor = Reranker(device=device, batch_size=batch_size)
-            #     trainer = PointwiseTrainer(device=device, grad_acc_batch=grad_acc_batch)
-            #     reranker = TwoStageRetriever(base=basemodel, reranker=model)
-            #     learner = Learner(
-            #         sampler=sampler, random=random, model=model,
-            #         ranker=reranker,
-            #         train_dataset=train, val_dataset=val, max_epoch=tag(max_epoch)
-            #     )
-            #     model = learner.submit()
+            for scorer in info.scorers:
+                # Train with OpenNIR DRMM model
+                # predictor = Reranker(device=device, batch_size=batch_size)
 
-            #     # Evaluate the neural model
-            #     evaluate = Evaluate(dataset=test, ranker=reranker).submit()
+                def get_retriever(index, scorer):
+                    base_retriever = AnseriniRetriever(index=index, model=basemodel)
+                    return TwoStageRetriever(retriever=base_retriever, scorer=scorer)
+
+                sampler = ModelBasedSampler()
+                trainer = PointwiseTrainer(
+                    device=device, sampler=sampler, grad_acc_batch=grad_acc_batch
+                )
+
+                learner = Learner(
+                    trainer=trainer,
+                    random=info.random,
+                    scorer=scorer,
+                    val_dataset=val,
+                    val_retriever=get_retriever(val_index, scorer),
+                    max_epoch=tag(max_epoch),
+                )
+                model = learner.submit()
+
+                # Evaluate the neural model
+                evaluate = Evaluate(
+                    dataset=test, retriever=get_retriever(test_index, model)
+                ).submit()
 
         xpm.wait()
 
         print(f"Results for BM25\n{bm25_eval.results.read_text()}\n")
-        # print(f"Results for DRMM\n{evaluate.results.read_text()}\n")
+        print(f"Results for DRMM\n{evaluate.results.read_text()}\n")
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 from experimaestro import option, param, pathoption, config
-from xpmir.utils import logger
+from xpmir.letor.samplers import Sampler
+from xpmir.utils import easylog
 from .. import Device, DEFAULT_DEVICE
 
 
@@ -22,6 +23,7 @@ class TrainerContext:
         self.epoch = epoch
 
 
+@param("sampler", type=Sampler, help="Training data sampler")
 @param("batch_size", default=16)
 @param("batches_per_epoch", default=32)
 @option(
@@ -39,12 +41,11 @@ class TrainerContext:
 @pathoption("modelpath", "model")
 @config()
 class Trainer:
-    def initialize(self, random, ranker, dataset):
-        self.dataset = dataset
+    def initialize(self, random, ranker):
         self.random = random
         self.ranker = ranker
 
-        self.logger = logger()
+        self.logger = easylog()
         if self.grad_acc_batch > 0:
             assert (
                 self.batch_size % self.grad_acc_batch == 0

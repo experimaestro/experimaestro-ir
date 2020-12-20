@@ -1,8 +1,6 @@
-from typing import List
-from datamaestro_text.data.ir import Adhoc, AdhocAssessments, AdhocTopics
-from datamaestro_text.interfaces.trec import AssessedTopic
-from experimaestro import config, param, cache
+from datamaestro_text.data.ir import Adhoc
 from datamaestro import prepare_dataset
+from xpmir.datasets.adapters import AdhocTopicFold, AdhocAssessmentFold
 
 # from <https://github.com/faneshion/DRMM/blob/9d348640ef8a56a8c1f2fa0754fe87d8bb5785bd/NN4IR.cpp>
 FOLDS = {
@@ -274,35 +272,6 @@ for i in range(len(FOLDS)):
     FOLDS["tr" + _FOLD_IDS[i]] = _ALL - FOLDS[_FOLD_IDS[i]] - FOLDS[_FOLD_IDS[i - 1]]
     FOLDS["va" + _FOLD_IDS[i]] = FOLDS[_FOLD_IDS[i - 1]]
 FOLDS["all"] = _ALL
-
-
-@param("ids", type=List[str])
-@param("topics", type=AdhocTopics)
-@config()
-class AdhocTopicFold(AdhocTopics):
-    def iter(self):
-        ids = set(self.ids)
-        for topic in self.topics.iter():
-            if topic.num in ids:
-                # FIXME: default is to return the title
-                yield topic.num, topic.title
-
-
-@param("ids", type=List[str])
-@param("qrels", type=AdhocAssessments)
-@config()
-class AdhocAssessmentFold(AdhocAssessments):
-    @cache("assessements.qrels")
-    def trecpath(self, path):
-        ids = set(self.ids)
-        if not path.is_file():
-            with path.open("wt") as fp:
-                for qrels in self.qrels.iter():
-                    if qrels.qid in ids:
-                        for qrel in qrels.assessments:
-                            fp.write(f"""{qrels.qid} 0 {qrel.docno} {qrel.rel}\n""")
-
-        return path
 
 
 def fold(name: str) -> Adhoc:

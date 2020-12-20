@@ -1,6 +1,7 @@
 import re
 from torch import nn
 from experimaestro import config, param, configmethod
+from xpmir.utils import easylog
 
 
 class VocabEncoder(nn.Module):
@@ -84,7 +85,7 @@ class Vocab:
     __has_clstoken__ = False
 
     def __init__(self):
-        self.logger = log.easy()
+        self.logger = easylog()
 
     def initialize(self):
         pass

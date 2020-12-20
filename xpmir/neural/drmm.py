@@ -2,6 +2,7 @@ from experimaestro import param, config, Choices
 import torch
 from torch import nn
 from . import EmbeddingScorer
+import xpmir.neural.modules as modules
 
 
 @param("nbins", default=29, help="number of bins in matching histogram")
@@ -57,9 +58,7 @@ class LogCountHistogram(CountHistogram):
 @param(
     "hidden", default=5, help="hidden layer dimension for feed forward matching network"
 )
-@param(
-    "histType", type=CountHistogram, default=LogCountHistogram(), help="histogram type"
-)
+@param("hist", type=CountHistogram, default=LogCountHistogram(), help="Histogram")
 @param("combine", default="idf", checker=Choices(["idf", "sum"]), help="term gate type")
 @config()
 class Drmm(EmbeddingScorer):
@@ -80,7 +79,7 @@ class Drmm(EmbeddingScorer):
             )
         self.simmat = modules.InteractionMatrix()
         channels = self.encoder.emb_views()
-        self.hidden_1 = nn.Linear(self.nbins * channels, self.hidden)
+        self.hidden_1 = nn.Linear(self.hist.nbins * channels, self.hidden)
         self.hidden_2 = nn.Linear(self.hidden, 1)
         self.combine = {"idf": IdfCombination, "sum": SumCombination}[self.combine]()
 

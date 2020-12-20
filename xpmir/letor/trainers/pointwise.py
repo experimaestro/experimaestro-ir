@@ -9,23 +9,25 @@ from xpmir.letor.trainers import Trainer
 
 @param("source", default="run")
 @param("lossfn", default="mse")
-@param("minrel", default=-999)
+@param("minrel", required=False)
 @config()
 class PointwiseTrainer(Trainer):
-    def initialize(self, random, ranker, dataset):
-        super().initialize(random, ranker, dataset)
+    def initialize(self, random, ranker):
+        super().initialize(random, ranker)
+
         self.random = random
         self.input_spec = self.ranker.input_spec()
         self.iter_fields = self.input_spec["fields"] | {"relscore"}
-        self.train_iter_core = datasets.record_iter(
-            self.dataset,
-            fields=self.iter_fields,
-            source=self.source,
-            minrel=None if self.minrel == -999 else self.minrel,
-            shuf=True,
-            random=self.random,
-            inf=True,
-        )
+        self.train_iter_core = self.sampler.record_iter(self.random)
+        # datasets.record_iter(
+        #     self.dataset,
+        #     fields=self.iter_fields,
+        #     source=self.source,
+        #     minrel=None if self.minrel == -999 else self.minrel,
+        #     shuf=True,
+        #     random=self.random,
+        #     inf=True,
+        # )
         self.train_iter = self.iter_batches(self.train_iter_core)
 
     def iter_batches(self, it):

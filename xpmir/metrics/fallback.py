@@ -4,7 +4,7 @@ from xpmir.metrics import BaseMetrics, Metric
 import xpmir.utils as utils
 from xpmir.interfaces import trec
 
-logger = utils.logger()
+logger = utils.easylog()
 
 
 class FallbackMetrics(BaseMetrics):

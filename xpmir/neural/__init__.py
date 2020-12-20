@@ -1,5 +1,9 @@
+import torch
+import torch.nn as nn
+
 from experimaestro import config, param
-from xpmir.rankers import Scorer
+from xpmir.rankers import LearnableScorer
+from xpmir.utils import easylog
 from xpmir.vocab import Vocab
 
 
@@ -12,11 +16,11 @@ from xpmir.vocab import Vocab
 )
 @param("vocab", type=Vocab)
 @config()
-class EmbeddingScorer(Scorer):
+class EmbeddingScorer(LearnableScorer):
     def initialize(self, random):
         nn.Module.__init__(self)
         self.random = random
-        self.logger = log.easy()
+        self.logger = easylog()
         seed = self.random.randint((2 ** 32) - 1)
         torch.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
