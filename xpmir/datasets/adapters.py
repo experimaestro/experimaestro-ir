@@ -10,9 +10,8 @@ class AdhocTopicFold(AdhocTopics):
     def iter(self):
         ids = set(self.ids)
         for topic in self.topics.iter():
-            if topic.num in ids:
-                # FIXME: default is to return the title
-                yield topic.num, topic.title
+            if topic.qid in ids:
+                yield topic
 
 
 @param("ids", type=List[str])
@@ -24,9 +23,14 @@ class AdhocAssessmentFold(AdhocAssessments):
         ids = set(self.ids)
         if not path.is_file():
             with path.open("wt") as fp:
-                for qrels in self.qrels.iter():
-                    if qrels.qid in ids:
-                        for qrel in qrels.assessments:
-                            fp.write(f"""{qrels.qid} 0 {qrel.docno} {qrel.rel}\n""")
+                for qrels in self.iter():
+                    for qrel in qrels.assessments:
+                        fp.write(f"""{qrels.qid} 0 {qrel.docno} {qrel.rel}\n""")
 
         return path
+
+    def iter(self):
+        ids = set(self.ids)
+        for qrels in self.qrels.iter():
+            if qrels.qid in ids:
+                yield qrels

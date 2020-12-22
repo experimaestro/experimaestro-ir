@@ -92,14 +92,14 @@ class Drmm(EmbeddingScorer):
         result["dlen_mode"] = "max"
         return result
 
-    def _forward(self, **inputs):
-        simmat = self.simmat.encode_query_doc(self.encoder, **inputs)
+    def _forward(self, inputs):
+        simmat = self.simmat.encode_query_doc(self.encoder, inputs)
         qterm_features = self.histogram_pool(simmat, inputs)
         BAT, QLEN, _ = qterm_features.shape
         qterm_scores = self.hidden_2(torch.relu(self.hidden_1(qterm_features))).reshape(
             BAT, QLEN
         )
-        return self.combine(qterm_scores, inputs["query_idf"])
+        return self.combine(qterm_scores, inputs.query_idf)
 
     def histogram_pool(self, simmat, inputs):
         histogram = self.histogram(

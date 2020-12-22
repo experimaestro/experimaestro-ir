@@ -55,6 +55,6 @@ class InteractionMatrix(nn.Module):
                 simmats.append(cos_simmat(a_emb, b_emb, a_mask, b_mask))
         return torch.stack(simmats, dim=1)
 
-    def encode_query_doc(self, encoder, **inputs):
-        enc = encoder.enc_query_doc(**inputs)
-        return self(enc["query"], enc["doc"], inputs["query_tok"], inputs["doc_tok"])
+    def encode_query_doc(self, encoder, inputs):
+        enc = encoder.enc_query_doc(inputs)
+        return self(enc["query"], enc["doc"], inputs.query_tok, inputs.doc_tok)

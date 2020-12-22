@@ -21,7 +21,7 @@ class VocabEncoder(nn.Module):
         """
         raise NotImplementedError
 
-    def enc_query_doc(self, **inputs):
+    def enc_query_doc(self, inputs):
         """
         Returns encoded versions of the query and document from general **inputs dict
         Requires query_tok, doc_tok, query_len, and doc_len.
@@ -29,8 +29,8 @@ class VocabEncoder(nn.Module):
         joinly modeling query and document representations in BERT.
         """
         return {
-            "query": self(inputs["query_tok"], inputs["query_len"]),
-            "doc": self(inputs["doc_tok"], inputs["doc_len"]),
+            "query": self(inputs.query_tok, inputs.query_len),
+            "doc": self(inputs.doc_tok, inputs.doc_len),
         }
 
     def enc_spec(self) -> dict:
@@ -84,7 +84,7 @@ class Vocab:
     name = None
     __has_clstoken__ = False
 
-    def __init__(self):
+    def __postinit__(self):
         self.logger = easylog()
 
     def initialize(self):
@@ -108,19 +108,6 @@ class Vocab:
     def id2tok(self, idx: int) -> str:
         """
         Converts an integer id to a token
-        """
-        raise NotImplementedError
-
-    def path_segment(self) -> str:
-        """
-        Human-readable and FS-safe path segment for storing stuff related to this vocab on disk
-        """
-        raise NotImplementedError
-
-    def lexicon_path_segment(self) -> str:
-        """
-        Human-readable and FS-safe path segment for storing stuff related only to model inputs
-        (i.e., lexicon, but not weights).
         """
         raise NotImplementedError
 

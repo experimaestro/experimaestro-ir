@@ -14,7 +14,7 @@ from experimaestro import experiment, tag
 
 # from onir.predictors.reranker import Device
 # from onir.random import Random
-from xpmir.letor.learner import Learner
+from xpmir.letor.learner import Learner, Validation
 
 # from onir.tasks.evaluate import Evaluate
 # from onir.trainers.pointwise import PointwiseTrainer
@@ -225,18 +225,23 @@ def process(
                     base_retriever = AnseriniRetriever(index=index, model=basemodel)
                     return TwoStageRetriever(retriever=base_retriever, scorer=scorer)
 
-                sampler = ModelBasedSampler()
+                sampler = ModelBasedSampler(
+                    retriever=AnseriniRetriever(index=train_index, model=basemodel),
+                    dataset=train,
+                )
                 trainer = PointwiseTrainer(
                     device=device, sampler=sampler, grad_acc_batch=grad_acc_batch
+                )
+                validation = Validation(
+                    dataset=val, retriever=get_retriever(val_index, scorer)
                 )
 
                 learner = Learner(
                     trainer=trainer,
                     random=info.random,
                     scorer=scorer,
-                    val_dataset=val,
-                    val_retriever=get_retriever(val_index, scorer),
                     max_epoch=tag(max_epoch),
+                    validation=validation,
                 )
                 model = learner.submit()
 

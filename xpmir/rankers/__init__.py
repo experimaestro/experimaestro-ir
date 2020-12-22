@@ -8,8 +8,8 @@ from experimaestro import config, param
 class Scorer:
     """A model able to give a score to a document given a query"""
 
-    def rsv(query, documents) -> Tuple[List[str], List[float]]:
-        pass
+    def rsv(self, query, documents) -> Tuple[List[str], List[float]]:
+        raise NotImplementedError()
 
 
 @config()
@@ -31,6 +31,9 @@ class ScoredDocument:
 class Retriever:
     """A retriever is a model able to retrieve"""
 
+    def initialize(self):
+        pass
+
     def retrieve(query: str) -> List[ScoredDocument]:
         raise NotImplementedError()
 
@@ -39,8 +42,11 @@ class Retriever:
 @param("scorer", type=Scorer, help="The scorer used to re-rank the documents")
 @config()
 class TwoStageRetriever(Retriever):
+    def initialize(self):
+        self.retriever.initialize()
+
     def retrieve(self, query: str):
         scoredDocuments = self.retriever.retrieve(query)
-        scoredDocuments = self.rsv(query, [sd.docid for sd in scoredDocuments])
+        scoredDocuments = self.scorer.rsv(query, [sd.docid for sd in scoredDocuments])
         scoredDocuments.sort(reverse=True)
         return scoredDocuments[: self.topk]

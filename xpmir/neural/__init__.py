@@ -16,9 +16,8 @@ from xpmir.vocab import Vocab
 )
 @param("vocab", type=Vocab)
 @config()
-class EmbeddingScorer(LearnableScorer):
+class EmbeddingScorer(LearnableScorer, nn.Module):
     def initialize(self, random):
-        nn.Module.__init__(self)
         self.random = random
         self.logger = easylog()
         seed = self.random.randint((2 ** 32) - 1)
@@ -45,13 +44,16 @@ class EmbeddingScorer(LearnableScorer):
             result["fields"].add("runscore")
         return result
 
-    def forward(self, **inputs):
-        result = self._forward(**inputs)
+    def forward(self, inputs):
+        result = self._forward(inputs)
+
         if len(result.shape) == 2 and result.shape[1] == 1:
             result = result.reshape(result.shape[0])
+
+        # Add run score if needed
         if self.add_runscore:
             alpha = torch.sigmoid(self.runscore_alpha)
-            result = alpha * result + (1 - alpha) * inputs["runscore"]
+            result = alpha * result + (1 - alpha) * inputs.runscore
         return result
 
     def _forward(self, **inputs):

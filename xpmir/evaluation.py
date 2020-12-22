@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import List
 from datamaestro_text.data.ir import Adhoc
 from experimaestro import param, task, pathoption, config
@@ -52,6 +53,20 @@ class TrecEval:
                 print_line(fp, measure, "all", value)
 
 
+def evaluate(run_path: Path, retriever: Retriever, dataset: Adhoc, metrics: List[str]):
+    """Evaluate a retriever on a dataset"""
+    with run_path.open("w") as fp:
+        for query in dataset.topics.iter():
+            for rank, sd in enumerate(retriever.retrieve(query.title)):
+                fp.write(f"""{query.qid} Q0 {sd.docid} {rank+1} {sd.score} run\n""")
+
+    qrels_path = str(dataset.assessments.trecpath())
+    metrics_by_query = metrics.calc(qrels_path, str(run_path), metrics)
+    mean_metrics = metrics_by_query.mean(metrics_by_query)
+
+    return mean_metrics, metrics_by_query
+
+
 @param("dataset", type=Adhoc)
 @param("retriever", type=Retriever)
 @param("metrics", type=List[str], default=["map", "p@20", "ndcg", "ndcg@20", "mrr"])
@@ -66,29 +81,11 @@ class Evaluate:
         )
 
     def execute(self):
-
-        # retriever.initialize(random)
-        # retriever.load(state_path)
-        # self.dataset.initialize(retriever.vocab)
-        # self.retriever.initialize(self.retriever_path, self.metrics, random, retriever, self.dataset)
-
-        # with self.logger.duration('testing'):
-        #     test_ctxt = self.retriever.run({
-        #         "epoch": data["valid_epoch"],
-        #         "retriever": lambda: retriever
-        #     })
-
         # Run the model
         self.retriever.initialize()
-        with self.run_path.open("w") as fp:
-            for qid, query in self.dataset.topics.iter():
-                for rank, sd in enumerate(self.retriever.retrieve(query)):
-                    fp.write(f"""{qid} Q0 {sd.docid} {rank+1} {sd.score} run\n""")
-
-        qrels_path = str(self.dataset.assessments.trecpath())
-        calculated_metrics = metrics.calc(qrels_path, str(self.run_path), self.metrics)
-        metrics_by_query = calculated_metrics
-        mean_metrics = metrics.mean(calculated_metrics)
+        mean_metrics, metrics_by_query = evaluate(
+            self.run_path, self.retriever, self.dataset, self.metrics
+        )
 
         def print_line(fp, measure, scope, value):
             fp.write("{:25s}{:8s}{:.4f}\n".format(measure, scope, value))

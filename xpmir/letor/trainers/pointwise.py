@@ -1,54 +1,68 @@
 import sys
+from typing import List
+import numpy as np
 import torch
 import torch.nn.functional as F
 from experimaestro import param, config
-
-# from onir import trainers, spec, datasets, log
+from xpmir.letor.samplers import SamplerRecord
 from xpmir.letor.trainers import Trainer
 
 
-@param("source", default="run")
+class Inputs:
+    queries: List[str]
+    docids: List[str]
+    scores: List[float]
+    relevances: List[float]
+
+    def __init__(self):
+        self.queries = []
+        self.docids = []
+        self.scores = []
+        self.relevances = []
+
+    def add(self, record: SamplerRecord):
+        self.queries.append(record.query)
+        self.docids.append(record.docid)
+        self.relevances.append(record.relevance)
+        self.scores.append(record.score)
+
+
 @param("lossfn", default="mse")
-@param("minrel", required=False)
 @config()
 class PointwiseTrainer(Trainer):
-    def initialize(self, random, ranker):
+    def initialize(self, random: np.random.RandomState, ranker):
         super().initialize(random, ranker)
+
+        self.sampler.initialize(self.random)
 
         self.random = random
         self.input_spec = self.ranker.input_spec()
-        self.iter_fields = self.input_spec["fields"] | {"relscore"}
-        self.train_iter_core = self.sampler.record_iter(self.random)
-        # datasets.record_iter(
-        #     self.dataset,
-        #     fields=self.iter_fields,
-        #     source=self.source,
-        #     minrel=None if self.minrel == -999 else self.minrel,
-        #     shuf=True,
-        #     random=self.random,
-        #     inf=True,
-        # )
+        self.train_iter_core = self.sampler.record_iter()
         self.train_iter = self.iter_batches(self.train_iter_core)
 
     def iter_batches(self, it):
         while True:  # breaks on StopIteration
-            input_data = {}
+            batch = Inputs()
             for _, record in zip(range(self.batch_size), it):
-                for k, seq in record.items():
-                    input_data.setdefault(k, []).append(seq)
-            input_data = spec.apply_spec_batch(input_data, self.input_spec, self.device)
-            yield input_data
+                batch.add(record)
+
+            yield batch
 
     def train_batch(self):
-        input_data = next(self.train_iter)
-        rel_scores = self.ranker(**input_data)
+        # Get the next batch
+        batch = next(self.train_iter)
+
+        rel_scores = self.ranker(batch)
         if torch.isnan(rel_scores).any() or torch.isinf(rel_scores).any():
             self.logger.error("nan or inf relevance score detected. Aborting.")
             sys.exit(1)
+
         target_relscores = input_data["relscore"].float()
         target_relscores[
             target_relscores == -999.0
         ] = 0.0  # replace -999 with non-relevant score
+
+        # Apply the loss
         if self.lossfn == "mse":
             loss = F.mse_loss(rel_scores.flatten(), target_relscores)
         elif self.lossfn == "mse-nil":
@@ -88,6 +102,7 @@ class PointwiseTrainer(Trainer):
             loss = rel_scores.mean()
         else:
             raise ValueError(f"unknown lossfn `{self.lossfn}`")
+
         losses = {"data": loss}
         loss_weights = {"data": 1.0}
         return {
