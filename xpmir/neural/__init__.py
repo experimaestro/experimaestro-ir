@@ -31,16 +31,26 @@ class EmbeddingScorer(LearnableScorer, nn.Module):
             self.runscore_alpha = torch.nn.Parameter(torch.full((1,), -1.0))
         self.vocab.initialize()
 
+    def _pad(self, sequences):
+        return (
+            self.vocab.pad_sequence(sequences, batch_first=True),
+            torch.LongTensor([len(s) for s in sequences]),
+        )
+
     def forward(self, inputs: Records):
         # Prepare inputs
-        inputs.query_tok = [
-            [self.vocab.tok2id(t) for t in query] for query in inputs.queries
-        ]
+        inputs.query_tok, inputs.query_len = self._pad(
+            [[self.vocab.tok2id(t) for t in query] for query in inputs.queries]
+        )
+
         documents = [self.collection.document_text(docid) for docid in inputs.docids]
-        inputs.doc_tok = [
-            [self.vocab.tok2id(t) for _, t in zip(range(self.dlen), document)]
-            for document in documents
-        ]
+
+        inputs.doc_tok, inputs.doc_len = self._pad(
+            [
+                [self.vocab.tok2id(t) for _, t in zip(range(self.dlen), document)]
+                for document in documents
+            ]
+        )
 
         # Forward to model
         result = self._forward(inputs)

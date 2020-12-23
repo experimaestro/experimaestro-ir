@@ -12,7 +12,7 @@ class CountHistogram(nn.Module):
         BATCH, CHANNELS, QLEN, DLEN = simmat.shape
 
         # +1e-5 to nudge scores of 1 to above threshold
-        bins = ((simmat + 1.00001) / 2.0 * (self.bins - 1)).int()
+        bins = ((simmat + 1.00001) / 2.0 * (self.nbins - 1)).int()
         weights = (
             (dtoks != -1).reshape(BATCH, 1, DLEN).expand(BATCH, QLEN, DLEN)
             * (qtoks != -1).reshape(BATCH, QLEN, 1).expand(BATCH, QLEN, DLEN)
@@ -28,7 +28,7 @@ class CountHistogram(nn.Module):
             for b in superbins:
                 result.append(
                     torch.stack(
-                        [torch.bincount(q, x, self.bins) for q, x in zip(b, w)], dim=0
+                        [torch.bincount(q, x, self.nbins) for q, x in zip(b, w)], dim=0
                     )
                 )
             result = torch.stack(result, dim=0)
@@ -81,10 +81,16 @@ class Drmm(EmbeddingScorer):
         channels = self.encoder.emb_views()
         self.hidden_1 = nn.Linear(self.hist.nbins * channels, self.hidden)
         self.hidden_2 = nn.Linear(self.hidden, 1)
+        self.needs_idf = self.combine == "idf"
         self.combine = {"idf": IdfCombination, "sum": SumCombination}[self.combine]()
 
     def _forward(self, inputs):
         simmat = self.simmat.encode_query_doc(self.encoder, inputs)
+
+        if self.needs_idf:
+            inputs.query_idf = torch.full_like(inputs.query_tok, float(-inf))
+            raise NotImplementedError()
+
         qterm_features = self.histogram_pool(simmat, inputs)
         BAT, QLEN, _ = qterm_features.shape
         qterm_scores = self.hidden_2(torch.relu(self.hidden_1(qterm_features))).reshape(
@@ -93,9 +99,7 @@ class Drmm(EmbeddingScorer):
         return self.combine(qterm_scores, inputs.query_idf)
 
     def histogram_pool(self, simmat, inputs):
-        histogram = self.histogram(
-            simmat, inputs["doc_len"], inputs["doc_tok"], inputs["query_tok"]
-        )
+        histogram = self.hist(simmat, inputs.doc_len, inputs.doc_tok, inputs.query_tok)
         BATCH, CHANNELS, QLEN, BINS = histogram.shape
         histogram = histogram.permute(0, 2, 3, 1)
         histogram = histogram.reshape(BATCH, QLEN, BINS * CHANNELS)

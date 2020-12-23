@@ -1,6 +1,7 @@
 import os
 import pickle
 import hashlib
+from typing import List
 import numpy as np
 import torch
 from pathlib import Path
@@ -107,6 +108,25 @@ class WordvecUnkVocab(WordvecVocab):
     def lexicon_size(self) -> int:
         return len(self._terms) + 1
 
+    def pad_sequence(self, tokensList: List[List[int]], batch_first=True):
+        padding_value = 0
+        max_len = max([len(s) for s in tokensList])
+
+        if batch_first:
+            out_tensor = torch.full(
+                (len(tokensList), max_len), padding_value, dtype=torch.long
+            )
+            for i, tokens in enumerate(tokensList):
+                out_tensor[i, : len(tokens), ...] = torch.LongTensor(tokens)
+        else:
+            out_tensor = torch.full(
+                (max_len, len(tokensList)), padding_value, dtype=torch.long
+            )
+            for i, tokens in enumerate(tokensList):
+                out_tensor[: len(tokens), i, ...] = tokens
+
+        return out_tensor
+
 
 @param("hashspace", default=1000)
 @param("init_stddev", default=0.5)
@@ -156,5 +176,4 @@ class WordvecEncoder(VocabEncoder):
 
     def forward(self, toks, lens=None):
         # lens ignored
-        print(toks)
         return self.embed(toks + 1)  # +1 to handle padding at position -1
