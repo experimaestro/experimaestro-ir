@@ -83,15 +83,6 @@ class Drmm(EmbeddingScorer):
         self.hidden_2 = nn.Linear(self.hidden, 1)
         self.combine = {"idf": IdfCombination, "sum": SumCombination}[self.combine]()
 
-    def input_spec(self):
-        result = super().input_spec()
-        result["fields"].update(
-            {"query_tok", "doc_tok", "query_len", "doc_len", "query_idf"}
-        )
-        result["qlen_mode"] = "max"
-        result["dlen_mode"] = "max"
-        return result
-
     def _forward(self, inputs):
         simmat = self.simmat.encode_query_doc(self.encoder, inputs)
         qterm_features = self.histogram_pool(simmat, inputs)

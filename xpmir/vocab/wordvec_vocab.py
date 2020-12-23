@@ -151,14 +151,10 @@ class WordvecEncoder(VocabEncoder):
             torch.from_numpy(matrix.astype(np.float32)), freeze=not vocabulary.train
         )
 
-    def _enc_spec(self) -> dict:
-        return {
-            "dim": self.size,
-            "views": 1,
-            "static": True,
-            "vocab_size": self.embed.weight.shape[0],
-        }
+    def dim(self):
+        return self.embed.weight.shape[0]
 
     def forward(self, toks, lens=None):
         # lens ignored
+        print(toks)
         return self.embed(toks + 1)  # +1 to handle padding at position -1

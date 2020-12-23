@@ -4,27 +4,8 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from experimaestro import param, config
-from xpmir.letor.samplers import SamplerRecord
+from xpmir.letor.samplers import Records
 from xpmir.letor.trainers import Trainer
-
-
-class Inputs:
-    queries: List[str]
-    docids: List[str]
-    scores: List[float]
-    relevances: List[float]
-
-    def __init__(self):
-        self.queries = []
-        self.docids = []
-        self.scores = []
-        self.relevances = []
-
-    def add(self, record: SamplerRecord):
-        self.queries.append(record.query)
-        self.docids.append(record.docid)
-        self.relevances.append(record.relevance)
-        self.scores.append(record.score)
 
 
 @param("lossfn", default="mse")
@@ -36,13 +17,12 @@ class PointwiseTrainer(Trainer):
         self.sampler.initialize(self.random)
 
         self.random = random
-        self.input_spec = self.ranker.input_spec()
         self.train_iter_core = self.sampler.record_iter()
         self.train_iter = self.iter_batches(self.train_iter_core)
 
     def iter_batches(self, it):
         while True:  # breaks on StopIteration
-            batch = Inputs()
+            batch = Records()
             for _, record in zip(range(self.batch_size), it):
                 batch.add(record)
 
@@ -57,7 +37,7 @@ class PointwiseTrainer(Trainer):
             self.logger.error("nan or inf relevance score detected. Aborting.")
             sys.exit(1)
 
-        target_relscores = input_data["relscore"].float()
+        target_relscores = batch.relevances.float()
         target_relscores[
             target_relscores == -999.0
         ] = 0.0  # replace -999 with non-relevant score

@@ -1,9 +1,7 @@
-import logging
-from typing import Iterator, NamedTuple, Optional
+from typing import Iterator, List, NamedTuple, Optional
 from datamaestro_text.data.ir import Adhoc
-from experimaestro import config, param, cache
+from experimaestro import config, param
 import numpy as np
-from xpmir.letor import Random
 from xpmir.rankers import Retriever
 
 
@@ -12,6 +10,39 @@ class SamplerRecord(NamedTuple):
     docid: str
     score: float
     relevance: Optional[float]
+
+
+class Records:
+    queries: List[str]
+    docids: List[str]
+    scores: List[float]
+    relevances: List[float]
+
+    # Full text documents
+    documents: Optional[List[str]]
+
+    # Tokenized
+    queries_tok: any
+    documents_tok: any
+
+    def __init__(self):
+        self.queries = []
+        self.docids = []
+        self.scores = []
+        self.relevances = []
+
+    def add(self, record: SamplerRecord):
+        self.queries.append(record.query)
+        self.docids.append(record.docid)
+        self.relevances.append(record.relevance)
+        self.scores.append(record.score)
+
+
+@config()
+class Collection:
+    """Access to a document collection"""
+
+    pass
 
 
 @config()

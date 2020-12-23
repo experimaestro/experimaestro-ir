@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 
 from experimaestro import config, param
+from xpmir.letor.samplers import Records, Collection
 from xpmir.rankers import LearnableScorer
 from xpmir.utils import easylog
 from xpmir.vocab import Vocab
@@ -15,6 +16,7 @@ from xpmir.vocab import Vocab
     help="Whether the base predictor score should be added to the model score",
 )
 @param("vocab", type=Vocab)
+@param("collection", type=Collection, help="Collection access")
 @config()
 class EmbeddingScorer(LearnableScorer, nn.Module):
     def initialize(self, random):
@@ -29,22 +31,18 @@ class EmbeddingScorer(LearnableScorer, nn.Module):
             self.runscore_alpha = torch.nn.Parameter(torch.full((1,), -1.0))
         self.vocab.initialize()
 
-    def input_spec(self):
-        # qlen_mode and dlen_mode possible values:
-        # 'strict': query/document must be exactly this length
-        # 'max': query/document can be at most this length
-        result = {
-            "fields": set(),
-            "qlen": self.qlen,
-            "qlen_mode": "strict",
-            "dlen": self.dlen,
-            "dlen_mode": "strict",
-        }
-        if self.add_runscore:
-            result["fields"].add("runscore")
-        return result
+    def forward(self, inputs: Records):
+        # Prepare inputs
+        inputs.query_tok = [
+            [self.vocab.tok2id(t) for t in query] for query in inputs.queries
+        ]
+        documents = [self.collection.document_text(docid) for docid in inputs.docids]
+        inputs.doc_tok = [
+            [self.vocab.tok2id(t) for _, t in zip(range(self.dlen), document)]
+            for document in documents
+        ]
 
-    def forward(self, inputs):
+        # Forward to model
         result = self._forward(inputs)
 
         if len(result.shape) == 2 and result.shape[1] == 1:

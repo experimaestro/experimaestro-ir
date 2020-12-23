@@ -19,7 +19,12 @@ from xpmir.letor.learner import Learner, Validation
 # from onir.tasks.evaluate import Evaluate
 # from onir.trainers.pointwise import PointwiseTrainer
 from xpmir.rankers.standard import BM25
-from xpmir.rankers.anserini import AnseriniRetriever, IndexCollection, SearchCollection
+from xpmir.interfaces.anserini import (
+    AnseriniCollection,
+    AnseriniRetriever,
+    IndexCollection,
+    SearchCollection,
+)
 from xpmir.evaluation import Evaluate, TrecEval
 from typing import List, Callable, NamedTuple
 
@@ -209,6 +214,7 @@ def process(
             train_index, val_index, test_index = [
                 info.index(c.documents) for c in (train, val, test)
             ]
+            collection = AnseriniCollection(index=train_index)
 
             # Search and evaluate with BM25
             bm25_retriever = AnseriniRetriever(index=test_index, model=basemodel).tag(
@@ -224,6 +230,8 @@ def process(
                 def get_retriever(index, scorer):
                     base_retriever = AnseriniRetriever(index=index, model=basemodel)
                     return TwoStageRetriever(retriever=base_retriever, scorer=scorer)
+
+                scorer.collection = collection
 
                 sampler = ModelBasedSampler(
                     retriever=AnseriniRetriever(index=train_index, model=basemodel),

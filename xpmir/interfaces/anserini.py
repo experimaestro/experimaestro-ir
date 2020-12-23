@@ -15,13 +15,12 @@ from datamaestro_text.data.ir.trec import (
 )
 from experimaestro import (
     task,
-    argument,
-    Identifier,
+    param,
     pathoption,
-    parse_commandline,
     progress,
     config,
 )
+from xpmir.letor.samplers import Collection
 from xpmir.dm.data.anserini import Index
 from xpmir.rankers import Retriever
 from xpmir.rankers.standard import Model, BM25
@@ -43,8 +42,8 @@ def javacommand():
     return command
 
 
-@argument("documents", type=AdhocDocuments)
-@argument("threads", default=8, ignored=True)
+@param("documents", type=AdhocDocuments)
+@param("threads", default=8, ignored=True)
 @pathoption("path", "index")
 @task(description="Index a documents")
 class IndexCollection(Index):
@@ -121,9 +120,9 @@ class IndexCollection(Index):
         asyncio.run(run([str(s) for s in command]))
 
 
-@argument("index", Index)
-@argument("topics", AdhocTopics)
-@argument("model", Model)
+@param("index", Index)
+@param("topics", AdhocTopics)
+@param("model", Model)
 @pathoption("path", "results.trec")
 @task(parents=TrecAdhocRun)
 def SearchCollection(index: Index, topics: AdhocTopics, model: Model, path: Path):
@@ -161,8 +160,8 @@ def SearchCollection(index: Index, topics: AdhocTopics, model: Model, path: Path
     sys.exit(p.returncode)
 
 
-@argument("index", Index)
-@argument("model", Model)
+@param("index", Index)
+@param("model", Model)
 @config()
 class AnseriniRetriever(Retriever):
     def initialize(self):
@@ -173,3 +172,16 @@ class AnseriniRetriever(Retriever):
 
     def retrieve(self, query: str):
         return [hit for hit in self.searcher.search(query)]
+
+
+@param("index", type=Index, help="The anserini index")
+@config()
+class AnseriniCollection(Collection):
+    def __postinit__(self):
+        from pyserini.index import IndexReader
+
+        self.index_reader = IndexReader(str(self.index.path))
+
+    def document_text(self, docid):
+        doc = self.index_reader.doc(docid)
+        return doc.contents()

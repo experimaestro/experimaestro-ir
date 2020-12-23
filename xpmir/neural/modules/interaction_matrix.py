@@ -56,5 +56,5 @@ class InteractionMatrix(nn.Module):
         return torch.stack(simmats, dim=1)
 
     def encode_query_doc(self, encoder, inputs):
-        enc = encoder.enc_query_doc(inputs)
+        enc = encoder.enc_query_doc(inputs.query_tok, inputs.doc_tok)
         return self(enc["query"], enc["doc"], inputs.query_tok, inputs.doc_tok)

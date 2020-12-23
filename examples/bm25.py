@@ -13,7 +13,7 @@ CPU_COUNT = multiprocessing.cpu_count()
 from experimaestro import experiment
 from xpmir.evaluation import TrecEval
 from xpmir.rankers.standard import BM25
-from xpmir.rankers.anserini import IndexCollection, SearchCollection
+from xpmir.interfaces.anserini import IndexCollection, SearchCollection
 
 # --- Defines the experiment
 
