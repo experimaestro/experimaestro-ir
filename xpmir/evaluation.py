@@ -53,7 +53,7 @@ class TrecEval:
                 print_line(fp, measure, "all", value)
 
 
-def evaluate(run_path: Path, retriever: Retriever, dataset: Adhoc, metrics: List[str]):
+def evaluate(run_path: Path, retriever: Retriever, dataset: Adhoc, measures: List[str]):
     """Evaluate a retriever on a dataset"""
     with run_path.open("w") as fp:
         for query in dataset.topics.iter():
@@ -61,8 +61,8 @@ def evaluate(run_path: Path, retriever: Retriever, dataset: Adhoc, metrics: List
                 fp.write(f"""{query.qid} Q0 {sd.docid} {rank+1} {sd.score} run\n""")
 
     qrels_path = str(dataset.assessments.trecpath())
-    metrics_by_query = metrics.calc(qrels_path, str(run_path), metrics)
-    mean_metrics = metrics_by_query.mean(metrics_by_query)
+    metrics_by_query = metrics.calc(qrels_path, str(run_path), measures)
+    mean_metrics = metrics.mean(metrics_by_query)
 
     return mean_metrics, metrics_by_query
 
