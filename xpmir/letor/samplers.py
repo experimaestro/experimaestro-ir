@@ -26,8 +26,16 @@ class Records:
     documents: Optional[List[str]]
 
     # Tokenized
-    queries_tok: any
-    documents_tok: any
+    queries_toks: any
+    docs_toks: any
+
+    # Lengths (in tokens)
+    queries_len: any
+    docs_len: any
+
+    # IDs of tokenized version
+    queries_tokids: any
+    docs_tokids: any
 
     def __init__(self):
         self.queries = []

@@ -1,3 +1,4 @@
+import math
 from experimaestro import param, config, Choices
 import torch
 from torch import nn
@@ -88,8 +89,15 @@ class Drmm(EmbeddingScorer):
         simmat = self.simmat.encode_query_doc(self.encoder, inputs)
 
         if self.needs_idf:
-            inputs.query_idf = torch.full_like(inputs.query_tok, float("-inf"))
-            raise NotImplementedError()
+            inputs.query_idf = torch.full_like(
+                inputs.queries_tokids, float("-inf"), dtype=torch.float
+            )
+            log_nd = math.log(self.collection.documentcount() + 1)
+            for i, tok in enumerate(inputs.queries_toks):
+                for j, t in enumerate(tok):
+                    inputs.query_idf[i, j] = log_nd - math.log(
+                        self.collection.term_df(t) + 1
+                    )
 
         qterm_features = self.histogram_pool(simmat, inputs)
         BAT, QLEN, _ = qterm_features.shape
@@ -99,7 +107,9 @@ class Drmm(EmbeddingScorer):
         return self.combine(qterm_scores, inputs.query_idf)
 
     def histogram_pool(self, simmat, inputs):
-        histogram = self.hist(simmat, inputs.doc_len, inputs.doc_tok, inputs.query_tok)
+        histogram = self.hist(
+            simmat, inputs.docs_len, inputs.docs_tokids, inputs.queries_tokids
+        )
         BATCH, CHANNELS, QLEN, BINS = histogram.shape
         histogram = histogram.permute(0, 2, 3, 1)
         histogram = histogram.reshape(BATCH, QLEN, BINS * CHANNELS)

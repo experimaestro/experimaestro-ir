@@ -39,16 +39,19 @@ class EmbeddingScorer(LearnableScorer, nn.Module):
 
     def forward(self, inputs: Records):
         # Prepare inputs
-        inputs.query_tok, inputs.query_len = self._pad(
-            [[self.vocab.tok2id(t) for t in query] for query in inputs.queries]
+        inputs.queries_toks = [self.vocab.tokenize(query) for query in inputs.queries]
+        inputs.queries_tokids, inputs.query_len = self._pad(
+            [[self.vocab.tok2id(t) for t in tok] for tok in inputs.queries_toks]
         )
-        raise NotImplementedError("Text is not tokenized!!!")
 
         documents = [self.collection.document_text(docid) for docid in inputs.docids]
 
-        inputs.doc_tok, inputs.doc_len = self._pad(
+        inputs.docs_tokids, inputs.docs_len = self._pad(
             [
-                [self.vocab.tok2id(t) for _, t in zip(range(self.dlen), document)]
+                [
+                    self.vocab.tok2id(t)
+                    for _, t in zip(range(self.dlen), self.vocab.tokenize(document))
+                ]
                 for document in documents
             ]
         )

@@ -181,7 +181,20 @@ class AnseriniCollection(Collection):
         from pyserini.index import IndexReader
 
         self.index_reader = IndexReader(str(self.index.path))
+        self.stats = self.index_reader.stats()
+
+    def documentcount(self):
+        return self.stats["documents"]
+
+    def termcount(self):
+        return self.stats["total_terms"]
 
     def document_text(self, docid):
         doc = self.index_reader.doc(docid)
         return doc.contents()
+
+    def term_df(self, term: str):
+        x = self.index_reader.analyze(term)
+        if x:
+            return self.index_reader.get_term_counts(x[0])[0]
+        return 0

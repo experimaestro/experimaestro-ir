@@ -37,7 +37,7 @@ class PointwiseTrainer(Trainer):
             self.logger.error("nan or inf relevance score detected. Aborting.")
             sys.exit(1)
 
-        target_relscores = batch.relevances.float()
+        target_relscores = torch.FloatTensor(batch.relevances)
         target_relscores[
             target_relscores == -999.0
         ] = 0.0  # replace -999 with non-relevant score
@@ -83,12 +83,7 @@ class PointwiseTrainer(Trainer):
         else:
             raise ValueError(f"unknown lossfn `{self.lossfn}`")
 
-        losses = {"data": loss}
-        loss_weights = {"data": 1.0}
-        return {
-            "losses": losses,
-            "loss_weights": loss_weights,
-        }
+        return loss
 
     def fast_forward(self, record_count):
         self._fast_forward(self.train_iter_core, self.iter_fields, record_count)

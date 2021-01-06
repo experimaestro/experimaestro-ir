@@ -6,7 +6,7 @@ from experimaestro import config, param
 
 @config()
 class Scorer:
-    """A model able to give a score to a document given a query"""
+    """A model able to give a score to a list of documents given a query"""
 
     def rsv(self, query, documents) -> Tuple[List[str], List[float]]:
         raise NotImplementedError()
