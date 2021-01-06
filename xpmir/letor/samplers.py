@@ -13,7 +13,11 @@ class SamplerRecord(NamedTuple):
 
 
 class Records:
+    """Records are the objects passed to the module forwards"""
+
+    # The queries
     queries: List[str]
+
     docids: List[str]
     scores: List[float]
     relevances: List[float]

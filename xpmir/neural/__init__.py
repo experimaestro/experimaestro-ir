@@ -42,6 +42,7 @@ class EmbeddingScorer(LearnableScorer, nn.Module):
         inputs.query_tok, inputs.query_len = self._pad(
             [[self.vocab.tok2id(t) for t in query] for query in inputs.queries]
         )
+        raise NotImplementedError("Text is not tokenized!!!")
 
         documents = [self.collection.document_text(docid) for docid in inputs.docids]
 

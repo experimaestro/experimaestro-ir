@@ -88,7 +88,7 @@ class Drmm(EmbeddingScorer):
         simmat = self.simmat.encode_query_doc(self.encoder, inputs)
 
         if self.needs_idf:
-            inputs.query_idf = torch.full_like(inputs.query_tok, float(-inf))
+            inputs.query_idf = torch.full_like(inputs.query_tok, float("-inf"))
             raise NotImplementedError()
 
         qterm_features = self.histogram_pool(simmat, inputs)
