@@ -29,7 +29,7 @@ class Scorer(EasyLogger):
 @param("random", type=Random, help="Random state")
 @config()
 class RandomScorer(Scorer):
-    """A model able to give a score to a list of documents given a query"""
+    """A random scorer"""
 
     def rsv(
         self, query: str, docids: List[str], scores: List[float]
