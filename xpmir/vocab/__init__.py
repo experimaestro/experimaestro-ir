@@ -1,7 +1,7 @@
 import re
 from torch import nn
 from experimaestro import config, param, configmethod
-from xpmir.utils import easylog
+from xpmir.utils import EasyLogger, easylog
 
 
 class VocabEncoder(nn.Module):
@@ -52,7 +52,7 @@ class VocabEncoder(nn.Module):
 
 
 @config()
-class Vocab:
+class Vocab(EasyLogger):
     """
     Represents a vocabulary and corresponding neural encoding technique (e.g., embedding)
     """
@@ -61,7 +61,7 @@ class Vocab:
     __has_clstoken__ = False
 
     def __postinit__(self):
-        self.logger = easylog()
+        pass
 
     def initialize(self):
         pass

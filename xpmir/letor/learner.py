@@ -1,34 +1,55 @@
+import logging
+import tempfile
 import json
+import os
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List
 from datamaestro_text.data.ir import Adhoc
 from experimaestro import task, config, param, progress, pathoption
+from experimaestro.annotations import option
+from experimaestro.utils import cleanupdir
 from xpmir.evaluation import evaluate
 from xpmir.letor import Random
-from xpmir.letor.samplers import Sampler
-from xpmir.letor.trainers import TrainContext, Trainer
-from xpmir.rankers import LearnableScorer, Retriever, Scorer
-from xpmir.utils import easylog
+from xpmir.letor.trainers import TrainContext, TrainState, Trainer
+from xpmir.rankers import LearnableScorer, Retriever, ScoredDocument, Scorer
 
 
-class ValidationContext:
-    # Train context
-    train_ctxt: TrainContext
-
+class ValidationState(TrainState):
     # All metrics
     metrics: Dict[str, float]
 
     # Validation value
     value: float
 
-    @property
-    def epoch(self):
-        return self.train_ctxt.epoch
+    def __init__(self, state: TrainState = None):
+        super().__init__(state)
+        self.metrics = None
+        self.value = None
 
-    def __init__(self, train_ctxt, metrics, value):
-        self.train_ctxt = train_ctxt
-        self.metrics = metrics
-        self.value = value
+    def __getstate__(self):
+        dict = super().__getstate__()
+        dict.update({"value": self.value, "metrics": self.metrics})
+        return dict
+
+
+class ValidationContext(TrainContext):
+    STATETYPE = ValidationState
+
+    def copy(self, path: Path):
+        """Copy the state into another folder"""
+        if self.state.path is None:
+            self.save_checkpoint()
+
+        trainpath = self.state.path
+
+        if path:
+            cleanupdir(path)
+            for f in trainpath.rglob("*"):
+                relpath = f.relative_to(trainpath)
+                if f.is_dir():
+                    (path / relpath).mkdir(exist_ok=True)
+                else:
+                    os.link(f, path / relpath)
 
 
 @param("metric", default="map")
@@ -36,17 +57,16 @@ class ValidationContext:
 @param("retriever", type=Retriever)
 @config()
 class Validation:
-    def initialize(self, path: Path):
-        self.path = path
+    def initialize(self):
         self.retriever.initialize()
         self.metrics = [self.metric]
 
-    def __call__(self, train_ctxt: TrainContext) -> ValidationContext:
+    def compute(self, state: ValidationState):
         # Evaluate
-        mean, by_query = evaluate(
-            self.path / "run.trec", self.retriever, self.dataset, self.metrics
-        )
-        return ValidationContext(train_ctxt, mean, mean[self.metric])
+        mean, _ = evaluate(None, self.retriever, self.dataset, self.metrics)
+
+        state.value = mean[self.metric]
+        state.metrics = mean
 
 
 # Training
@@ -57,18 +77,21 @@ class Validation:
     help="Maximum number of epochs without improvement on validation",
 )
 @param("warmup", default=-1, help="Number of warmup epochs")
-@param("purge_weights", default=True)
 @param("random", type=Random, help="Random generator")
-@param("initial_eval", default=False)
 @param("trainer", type=Trainer, help="The trainer used to learn the parameters")
 @param("scorer", type=LearnableScorer, help="The scorer to learn")
-
 # Validation
 @param("validation", type=Validation, help="How to compute the validation metric")
-@pathoption("modelpath", "model")
+# Checkpoints
+@option(
+    "checkpoint_interval", default=1, help="Number of epochs between each checkpoint"
+)
+@pathoption("checkpointspath", "checkpoints")
+@pathoption("bestpath", "best")
 @task()
 class Learner(Scorer):
     trainer: Trainer
+    validation: Validation
 
     """The learner task is generic, and takes two main arguments:
     (1) the scorer defines the model (e.g. DRMM), and
@@ -76,59 +99,66 @@ class Learner(Scorer):
     """
 
     def execute(self):
-        self.logger = easylog()
-
+        logging.getLogger().setLevel(logging.INFO)
         self.only_cached = False
-        self.modelpath.mkdir(exist_ok=True, parents=True)
+        self.bestpath.mkdir(exist_ok=True, parents=True)
 
         # Initialize the scorer and trainer
         self.scorer.initialize(self.random.state)
-        self.trainer.initialize(self.random.state, self.scorer)
-        self.validation.initialize(self.modelpath)
+        self.validation.initialize()
+
+        context = ValidationContext(self.checkpointspath)
+        self.trainer.initialize(self.random.state, self.scorer, context)
 
         # Top validation context
-        top = None
+        try:
+            top = context.newstate()
+            top.load(self.bestpath, onlyinfo=True)
+        except Exception as e:
+            top = None
 
-        # Previous train context
-        prev_train_ctxt = None
-
-        for train_ctxt in self.trainer.iter_train():
+        for state in self.trainer.iter_train(self.max_epoch):
             # Report progress
-            progress(train_ctxt.epoch / self.max_epoch)
+            progress(state.epoch / self.max_epoch)
 
-            if train_ctxt.epoch >= 0 and not self.only_cached:
-                message = f"epoch {train_ctxt.epoch}"
-                if train_ctxt.cached:
+            if state.epoch >= 0 and not self.only_cached:
+                message = f"epoch {state.epoch}"
+                if state.cached:
                     self.logger.debug(f"[train] [cached] {message}")
                 else:
                     self.logger.debug(f"[train] {message}")
 
-            if train_ctxt.epoch == -1 and not self.initial_eval:
+            if state.epoch == -1 and not self.initial_eval:
                 continue
 
             # Compute validation metrics
-            valid_ctxt = self.validation(train_ctxt)
+            if not state.cached:
+                self.validation.compute(state)
 
-            # Update the top validation
-            if valid_ctxt.epoch >= self.warmup:
-                if top is None or valid_ctxt.value > top.value:
-                    top = valid_ctxt
-                    valid_ctxt.save()
+                # Save checkpoint if needed
+                if state.epoch % self.checkpoint_interval == 0:
+                    context.save_checkpoint()
+
+                # Update the top validation
+                if state.epoch >= self.warmup:
+                    if top is None or state.value > top.value:
+                        top = state
+                        context.copy(self.bestpath)
 
             # Early stopping
             if top is not None:
-                epochs_since_imp = valid_ctxt.epoch - top.epoch
+                epochs_since_imp = context.epoch - top.epoch
                 if self.early_stop > 0 and epochs_since_imp >= self.early_stop:
                     self.logger.warn(
                         "stopping after epoch {epoch} ({early_stop} epochs with no "
-                        "improvement to {val_metric})".format(
-                            **valid_ctxt, **self.__dict__
+                        "improvement to validation metric)".format(
+                            **state.__dict__, **self.__dict__
                         )
                     )
                     break
 
             # Early stopping
-            if train_ctxt.epoch >= self.max_epoch:
+            if context.epoch >= self.max_epoch:
                 self.logger.warn(
                     "stopping after epoch {max_epoch} (max_epoch)".format(
                         **self.__dict__
@@ -137,3 +167,20 @@ class Learner(Scorer):
                 break
 
         self.logger.info("top validation epoch={} {}".format(top.epoch, top.value))
+
+    _bestmodel = None
+
+    @property
+    def bestmodel(self):
+        if self._bestmodel is None:
+            context = ValidationContext(self.checkpointspath)
+            top = context.newstate()
+            top.load(self.bestpath, onlyinfo=False)
+            self._bestmodel = top.ranker
+
+        return self._bestmodel
+
+    def rsv(
+        self, query: str, docids: List[str], scores: List[float]
+    ) -> List[ScoredDocument]:
+        return self.bestmodel.rsv(query, docids, scores)

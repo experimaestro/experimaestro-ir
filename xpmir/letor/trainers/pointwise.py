@@ -11,8 +11,8 @@ from xpmir.letor.trainers import Trainer
 @param("lossfn", default="mse")
 @config()
 class PointwiseTrainer(Trainer):
-    def initialize(self, random: np.random.RandomState, ranker):
-        super().initialize(random, ranker)
+    def initialize(self, random: np.random.RandomState, ranker, context):
+        super().initialize(random, ranker, context)
 
         self.sampler.initialize(self.random)
 

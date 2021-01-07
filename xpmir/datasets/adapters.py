@@ -24,8 +24,9 @@ class AdhocAssessmentFold(AdhocAssessments):
         if not path.is_file():
             with path.open("wt") as fp:
                 for qrels in self.iter():
-                    for qrel in qrels.assessments:
-                        fp.write(f"""{qrels.qid} 0 {qrel.docno} {qrel.rel}\n""")
+                    if qrels.qid in ids:
+                        for qrel in qrels.assessments:
+                            fp.write(f"""{qrels.qid} 0 {qrel.docno} {qrel.rel}\n""")
 
         return path
 

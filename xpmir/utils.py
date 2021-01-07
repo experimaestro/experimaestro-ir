@@ -50,3 +50,16 @@ def easylog():
         return Logger(module.__name__)
     except IndexError:
         return Logger("UNKNOWN")
+
+
+class EasyLogger:
+    @property
+    def logger(self):
+        clsdict = self.__class__.__dict__
+
+        logger = clsdict.get("LOGGER", None)
+        if logger is None:
+            logger = Logger(self.__class__.__qualname__)
+            self.__class__.LOGGER = logger
+
+        return logger

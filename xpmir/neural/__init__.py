@@ -1,10 +1,10 @@
+from typing import List, Tuple
 import torch
 import torch.nn as nn
 
 from experimaestro import config, param
-from xpmir.letor.samplers import Records, Collection
-from xpmir.rankers import LearnableScorer
-from xpmir.utils import easylog
+from xpmir.letor.samplers import Records, Collection, SamplerRecord
+from xpmir.rankers import LearnableScorer, ScoredDocument
 from xpmir.vocab import Vocab
 
 
@@ -21,7 +21,6 @@ from xpmir.vocab import Vocab
 class EmbeddingScorer(LearnableScorer, nn.Module):
     def initialize(self, random):
         self.random = random
-        self.logger = easylog()
         seed = self.random.randint((2 ** 32) - 1)
         torch.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
@@ -36,6 +35,21 @@ class EmbeddingScorer(LearnableScorer, nn.Module):
             self.vocab.pad_sequence(sequences, batch_first=True),
             torch.LongTensor([len(s) for s in sequences]),
         )
+
+    def rsv(
+        self, query: str, docids: List[str], scores: List[float]
+    ) -> List[ScoredDocument]:
+        inputs = Records()
+        for i in range(len(docids)):
+            inputs.add(SamplerRecord(query, docids[i], scores[i], None))
+
+        with torch.no_grad():
+            scores = self(inputs).cpu().numpy()
+        scoredDocuments = []
+        for i in range(len(docids)):
+            scoredDocuments.append(ScoredDocument(docids[i], scores[i]))
+
+        return scoredDocuments
 
     def forward(self, inputs: Records):
         # Prepare inputs
@@ -65,7 +79,8 @@ class EmbeddingScorer(LearnableScorer, nn.Module):
         # Add run score if needed
         if self.add_runscore:
             alpha = torch.sigmoid(self.runscore_alpha)
-            result = alpha * result + (1 - alpha) * inputs.runscore
+            result = alpha * result + (1 - alpha) * inputs.scores
+
         return result
 
     def _forward(self, **inputs):

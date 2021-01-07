@@ -6,7 +6,7 @@ from xpmir.letor import Device, Random
 from xpmir.letor.samplers import ModelBasedSampler
 from xpmir.letor.trainers.pointwise import PointwiseTrainer
 
-from xpmir.rankers import TwoStageRetriever
+from xpmir.rankers import RandomScorer, TwoStageRetriever
 
 from datamaestro import prepare_dataset
 from experimaestro.click import click, forwardoption
@@ -208,6 +208,11 @@ def process(
         assert info.scorers, "No model was selected"
 
         basemodel = BM25()
+        random_scorer = RandomScorer(random=info.random)
+
+        def get_retriever(index, scorer):
+            base_retriever = AnseriniRetriever(index=index, model=basemodel)
+            return TwoStageRetriever(retriever=base_retriever, scorer=scorer)
 
         for train, val, test in info.datasets:
 
@@ -221,15 +226,14 @@ def process(
                 "model", "bm25"
             )
             bm25_eval = Evaluate(dataset=test, retriever=bm25_retriever).submit()
+            random_eval = Evaluate(
+                dataset=test, retriever=get_retriever(test_index, random_scorer)
+            ).submit()
 
             # Train and evaluate with each model
             for scorer in info.scorers:
                 # Train with OpenNIR DRMM model
                 # predictor = Reranker(device=device, batch_size=batch_size)
-
-                def get_retriever(index, scorer):
-                    base_retriever = AnseriniRetriever(index=index, model=basemodel)
-                    return TwoStageRetriever(retriever=base_retriever, scorer=scorer)
 
                 scorer.collection = collection
 
@@ -258,10 +262,11 @@ def process(
                     dataset=test, retriever=get_retriever(test_index, model)
                 ).submit()
 
-        xpm.wait()
+            xpm.wait()
 
-        print(f"Results for BM25\n{bm25_eval.results.read_text()}\n")
-        print(f"Results for DRMM\n{evaluate.results.read_text()}\n")
+            print(f"Results for BM25\n{bm25_eval.results.read_text()}\n")
+            print(f"Results for DRMM\n{evaluate.results.read_text()}\n")
+            print(f"Results for random\n{random_eval.results.read_text()}\n")
 
 
 if __name__ == "__main__":

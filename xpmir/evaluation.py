@@ -1,4 +1,5 @@
 from pathlib import Path
+import tempfile
 from typing import List
 from datamaestro_text.data.ir import Adhoc
 from experimaestro import param, task, pathoption, config
@@ -53,18 +54,27 @@ class TrecEval:
                 print_line(fp, measure, "all", value)
 
 
-def evaluate(run_path: Path, retriever: Retriever, dataset: Adhoc, measures: List[str]):
+def _evaluate(fp, retriever: Retriever, dataset: Adhoc, measures: List[str]):
     """Evaluate a retriever on a dataset"""
-    with run_path.open("w") as fp:
-        for query in dataset.topics.iter():
-            for rank, sd in enumerate(retriever.retrieve(query.title)):
-                fp.write(f"""{query.qid} Q0 {sd.docid} {rank+1} {sd.score} run\n""")
+    for query in dataset.topics.iter():
+        for rank, sd in enumerate(retriever.retrieve(query.title)):
+            fp.write(f"""{query.qid} Q0 {sd.docid} {rank+1} {sd.score} run\n""")
+    fp.flush()
 
     qrels_path = str(dataset.assessments.trecpath())
-    metrics_by_query = metrics.calc(qrels_path, str(run_path), measures)
+    metrics_by_query = metrics.calc(qrels_path, str(fp.name), measures)
     mean_metrics = metrics.mean(metrics_by_query)
 
     return mean_metrics, metrics_by_query
+
+
+def evaluate(run_path: Path, retriever: Retriever, dataset: Adhoc, measures: List[str]):
+    if run_path:
+        with run_path.open("wt") as fp:
+            return _evaluate(fp, retriever, dataset, measures)
+
+    with tempfile.NamedTemporaryFile("wt") as fp:
+        return _evaluate(fp, retriever, dataset, measures)
 
 
 @param("dataset", type=Adhoc)

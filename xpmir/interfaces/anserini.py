@@ -183,6 +183,13 @@ class AnseriniCollection(Collection):
         self.index_reader = IndexReader(str(self.index.path))
         self.stats = self.index_reader.stats()
 
+    def __getstate__(self):
+        return {"index": self.index}
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self.__postinit__()
+
     def documentcount(self):
         return self.stats["documents"]
 
