@@ -210,8 +210,11 @@ def process(
         basemodel = BM25()
         random_scorer = RandomScorer(random=info.random)
 
+        # Retrieve the top 1000
+        topK = 1000
+
         def get_retriever(index, scorer):
-            base_retriever = AnseriniRetriever(index=index, model=basemodel)
+            base_retriever = AnseriniRetriever(k=topK, index=index, model=basemodel)
             return TwoStageRetriever(retriever=base_retriever, scorer=scorer)
 
         for train, val, test in info.datasets:
@@ -222,9 +225,9 @@ def process(
             collection = AnseriniCollection(index=train_index)
 
             # Search and evaluate with BM25
-            bm25_retriever = AnseriniRetriever(index=test_index, model=basemodel).tag(
-                "model", "bm25"
-            )
+            bm25_retriever = AnseriniRetriever(
+                k=topK, index=test_index, model=basemodel
+            ).tag("model", "bm25")
             bm25_eval = Evaluate(dataset=test, retriever=bm25_retriever).submit()
             random_eval = Evaluate(
                 dataset=test, retriever=get_retriever(test_index, random_scorer)
@@ -238,7 +241,9 @@ def process(
                 scorer.collection = collection
 
                 sampler = ModelBasedSampler(
-                    retriever=AnseriniRetriever(index=train_index, model=basemodel),
+                    retriever=AnseriniRetriever(
+                        k=topK, index=train_index, model=basemodel
+                    ),
                     dataset=train,
                 )
                 trainer = PointwiseTrainer(

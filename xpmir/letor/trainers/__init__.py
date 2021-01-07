@@ -6,6 +6,7 @@ from experimaestro import option, param, pathoption, config
 from experimaestro.tqdm import tqdm
 from experimaestro.utils import cleanupdir
 import torch
+from torch.utils.tensorboard import SummaryWriter
 from xpmir.letor.samplers import Sampler
 from xpmir.utils import EasyLogger, easylog
 from xpmir.letor.optim import Adam, Optimizer
@@ -68,9 +69,21 @@ class TrainContext(EasyLogger):
     PREFIX = "epoch-"
     STATETYPE = TrainState
 
-    def __init__(self, path: Path):
+    def __init__(self, logpath: Path, path: Path):
         self.path = path
         self.state = self.newstate()
+        self.logpath = logpath
+        self._writer = None
+
+    @property
+    def writer(self):
+        """Returns a tensorboard writer
+
+        by default, purges the entries beside the current epoch
+        """
+        if self._writer is None:
+            self._writer = SummaryWriter(self.logpath, purge_step=self.state.epoch)
+        return self._writer
 
     @classmethod
     def newstate(cls, state=None):
@@ -104,7 +117,7 @@ class TrainContext(EasyLogger):
                 self.state.load(path)
                 return True
 
-            except Exception as e:
+            except Exception:
                 rmtree(path)
                 self.logger.exception(f"Cannot load from epoch %d", epoch)
 
@@ -142,6 +155,7 @@ class Trainer:
         self.random = random
         self.ranker = ranker
         self.context = context
+        self.writer = None
 
         self.logger = easylog()
         if self.grad_acc_batch > 0:
@@ -176,14 +190,20 @@ class Trainer:
             with tqdm(
                 leave=False, total=b_count, ncols=100, desc=f"train {context.epoch}"
             ) as pbar:
+                total_loss = 0
                 for b in range(self.batches_per_epoch):
                     for _ in range(self.num_microbatches):
                         loss = self.train_batch()
                         loss.backward()
+                        total_loss += loss
                         pbar.update(self.batch_size)
 
                     context.state.optimizer.step()
                     context.state.optimizer.zero_grad()
+
+            self.context.writer.add_scalar(
+                "train/loss", total_loss / self.batches_per_epoch, self.context.epoch
+            )
 
             yield context.state
 

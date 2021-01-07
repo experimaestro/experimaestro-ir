@@ -168,6 +168,7 @@ def SearchCollection(index: Index, topics: AdhocTopics, model: Model, path: Path
 
 @param("index", Index)
 @param("model", Model)
+@param("k", default=1500, help="Number of results to retrieve")
 @config()
 class AnseriniRetriever(Retriever):
     def initialize(self):

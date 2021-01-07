@@ -88,6 +88,7 @@ class Validation:
 )
 @pathoption("checkpointspath", "checkpoints")
 @pathoption("bestpath", "best")
+@pathoption("logpath", "runs")
 @task()
 class Learner(Scorer):
     trainer: Trainer
@@ -107,7 +108,7 @@ class Learner(Scorer):
         self.scorer.initialize(self.random.state)
         self.validation.initialize()
 
-        context = ValidationContext(self.checkpointspath)
+        context = ValidationContext(self.logpath, self.checkpointspath)
         self.trainer.initialize(self.random.state, self.scorer, context)
 
         # Top validation context
@@ -133,7 +134,12 @@ class Learner(Scorer):
 
             # Compute validation metrics
             if not state.cached:
+                # Compute validation metrics
                 self.validation.compute(state)
+                for metric in self.validation.metrics:
+                    context.writer.add_scalar(
+                        f"val/{metric}", state.metrics[metric], state.epoch
+                    )
 
                 # Save checkpoint if needed
                 if state.epoch % self.checkpoint_interval == 0:
@@ -166,6 +172,10 @@ class Learner(Scorer):
                 )
                 break
 
+        if not state.cached:
+            # Set the hyper-parameters
+            context.writer.add_hparams(self.__tags__, state.metrics)
+
         self.logger.info("top validation epoch={} {}".format(top.epoch, top.value))
 
     _bestmodel = None
@@ -173,7 +183,7 @@ class Learner(Scorer):
     @property
     def bestmodel(self):
         if self._bestmodel is None:
-            context = ValidationContext(self.checkpointspath)
+            context = ValidationContext(self.logpath, self.checkpointspath)
             top = context.newstate()
             top.load(self.bestpath, onlyinfo=False)
             self._bestmodel = top.ranker
