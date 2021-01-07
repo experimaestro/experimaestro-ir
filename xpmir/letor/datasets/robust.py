@@ -352,8 +352,7 @@ class RobustDatasetGenerator:
         self.index = Reindex(index=self.index_stem).submit()
 
     def __call__(self, fold: str, **kwargs):
-        """Returns dataset with a specific query fold
-        """
+        """Returns dataset with a specific query fold"""
 
         topics = RobustAssessedTopics(
             topics=self.topics, assessments=self.qrels, fold=fold

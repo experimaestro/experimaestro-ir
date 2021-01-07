@@ -56,7 +56,9 @@ class BertVocab(vocab.Vocab):
         return self.tokenizer.id_to_token(idx)
 
     def encoder(self):
-        return {"joint": JointBertEncoder, "sep": SepBertEncoder,}[self.encoding](self)
+        return {"joint": JointBertEncoder, "sep": SepBertEncoder,}[
+            self.encoding
+        ](self)
 
     def lexicon_size(self) -> int:
         return self.tokenizer._tokenizer.get_vocab_size()

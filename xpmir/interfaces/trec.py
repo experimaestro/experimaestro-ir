@@ -73,7 +73,11 @@ class Qrels:
         return self._data["df"]
 
     def get(self, fmt):
-        return {"trec": self.trec, "dict": self.dict, "df": self.df,}[fmt]()
+        return {
+            "trec": self.trec,
+            "dict": self.dict,
+            "df": self.df,
+        }[fmt]()
 
     def _iter_file(self, file, sep=None):
         for qid, _, docid, score in plaintext.read_sv(file, sep=(sep or self._sep)):

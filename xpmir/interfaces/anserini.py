@@ -47,8 +47,7 @@ def javacommand():
 @pathoption("path", "index")
 @task(description="Index a documents")
 class IndexCollection(Index):
-    """An [Anserini](https://github.com/castorini/anserini) index
-    """
+    """An [Anserini](https://github.com/castorini/anserini) index"""
 
     CLASSPATH = "io.anserini.index.IndexCollection"
 
@@ -59,7 +58,12 @@ class IndexCollection(Index):
 
         if isinstance(self.documents, TipsterCollection):
             command.extend(
-                ["-collection", "TrecCollection", "-input", self.documents.path,]
+                [
+                    "-collection",
+                    "TrecCollection",
+                    "-input",
+                    self.documents.path,
+                ]
             )
 
         if self.storePositions:
@@ -107,7 +111,9 @@ class IndexCollection(Index):
                     indexedfiles += 1
                     progress(indexedfiles / nfiles)
                 else:
-                    sys.stdout.write(data.decode("utf-8"),)
+                    sys.stdout.write(
+                        data.decode("utf-8"),
+                    )
 
             await proc.wait()
             if proc.returncode == 0 and not complete:

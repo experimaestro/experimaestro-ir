@@ -24,9 +24,9 @@ https://trec.nist.gov/data/cd45/index.html"""
 def robust04(index):
     """Robust 2014 index
 
-  Pre-computed Anserini index of the Robust 2014 collection; used parameters can be found
-  at https://git.uwaterloo.ca/jimmylin/anserini-indexes/-/blob/master/index-robust04-20191213-readme.txt
-  """
+    Pre-computed Anserini index of the Robust 2014 collection; used parameters can be found
+    at https://git.uwaterloo.ca/jimmylin/anserini-indexes/-/blob/master/index-robust04-20191213-readme.txt
+    """
     return {
         "path": index,
         "storePositions": True,

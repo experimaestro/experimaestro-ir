@@ -65,8 +65,7 @@ class Sampler:
         self.random = random
 
     def record_iter(self) -> Iterator[SamplerRecord]:
-        """Returns an iterator over records (query, document, relevance)
-        """
+        """Returns an iterator over records (query, document, relevance)"""
         raise NotImplementedError()
 
 
