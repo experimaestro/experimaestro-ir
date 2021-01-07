@@ -178,7 +178,7 @@ class AnseriniRetriever(Retriever):
         self.searcher.set_bm25(0.9, 0.4)
 
     def retrieve(self, query: str):
-        return [hit for hit in self.searcher.search(query)]
+        return [hit for hit in self.searcher.search(query, k=self.k)]
 
 
 @param("index", type=Index, help="The anserini index")
