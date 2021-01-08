@@ -140,8 +140,8 @@ class TrainContext(EasyLogger):
 
 
 @param("sampler", type=Sampler, help="Training data sampler")
-@param("batch_size", default=16)
-@param("batches_per_epoch", default=32)
+@param("batch_size", default=16, help="Number of samples in each batch")
+@param("batches_per_epoch", default=32, help="Number of batches per epoch")
 @option(
     "grad_acc_batch",
     default=0,

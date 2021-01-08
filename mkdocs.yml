@@ -7,7 +7,9 @@ repo_url: https://github.com/bpiwowar/experimaestro-ir
 # Main pages
 nav:
   - Home: index.md
-  - Tasks and Configs: xpm.md
+  - Learning to rank: letor.md
+  - Neural models: neural.md
+  - Experimaestro: xpm.md
 
 markdown_extensions:
   - pymdownx.details
@@ -21,10 +23,10 @@ markdown_extensions:
 
 plugins:
   - experimaestro:
-        path: xpm.md
+        path: xpm
         name: Tasks and configurations
         modules:
-            - Experimaestro IR: xpmir
+            - Learning to rank: xpmir.letor
 
 # Theme
 theme:

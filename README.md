@@ -9,12 +9,8 @@ The full documentation can be read at [IR@experimaestro](https://experimaestro-i
 
 ## Install
 
-Install with
+Base experimaestro-IR can be installed with `pip install xpmir`.
+Functionalities can be added by installing optional dependencies:
 
-```
-pip install xpmir
-```
-
-## Sub-projects
-
-- [OpenNIR adapted to experimaestro](https://github.com/bpiwowar/OpenNIR-xpm) for neural IR experiments
+- `pip install xpmir[neural]` to install neural-IR packages
+- `pip install xpmir[anserini]` to install Anserini related packages

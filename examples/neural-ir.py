@@ -12,21 +12,15 @@ from datamaestro import prepare_dataset
 from experimaestro.click import click, forwardoption
 from experimaestro import experiment, tag
 
-# from onir.predictors.reranker import Device
-# from onir.random import Random
 from xpmir.letor.learner import Learner, Validation
 
-# from onir.tasks.evaluate import Evaluate
-# from onir.trainers.pointwise import PointwiseTrainer
 from xpmir.rankers.standard import BM25
 from xpmir.interfaces.anserini import (
     AnseriniCollection,
     AnseriniRetriever,
     IndexCollection,
-    SearchCollection,
 )
-from xpmir.evaluation import Evaluate, TrecEval
-from typing import List, Callable, NamedTuple
+from xpmir.evaluation import Evaluate
 
 logging.basicConfig(level=logging.INFO)
 
@@ -269,6 +263,7 @@ def process(
 
             xpm.wait()
 
+            print(f"===")
             print(f"Results for BM25\n{bm25_eval.results.read_text()}\n")
             print(f"Results for DRMM\n{evaluate.results.read_text()}\n")
             print(f"Results for random\n{random_eval.results.read_text()}\n")

@@ -277,7 +277,7 @@ FOLDS["all"] = _ALL
 def fold(name: str) -> Adhoc:
     """Return topics and assessments for a given fold
 
-    Folds are trf1 to trf5 (test), v1f1 to vaf5 (validation) and f1 to f5 (test)
+    Folds are trf1 to trf5 (test), vaf1 to vaf5 (validation) and f1 to f5 (test)
     """
     topics = prepare_dataset("gov.nist.trec.adhoc.robust.2004.topics")
     qrels = prepare_dataset("gov.nist.trec.adhoc.robust.2004.qrels")
