@@ -14,3 +14,11 @@ Functionalities can be added by installing optional dependencies:
 
 - `pip install xpmir[neural]` to install neural-IR packages
 - `pip install xpmir[anserini]` to install Anserini related packages
+
+
+## What's inside?
+
+- Collection management (using datamaestro)
+- Indexing and retrieval with anserini
+- Neural IR:
+    - DRMM
