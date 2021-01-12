@@ -212,7 +212,7 @@ def process(
         assert info.scorers, "No model was selected"
 
         basemodel = BM25()
-        random_scorer = RandomScorer(random=info.random)
+        random_scorer = RandomScorer(random=info.random).tag("model", "random")
 
         # Retrieve the top 1000
         topK = 1000
