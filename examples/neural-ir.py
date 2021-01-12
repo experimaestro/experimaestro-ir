@@ -99,10 +99,20 @@ def dataset(method):
 def msmarco(info):
     """Use the MS Marco dataset"""
     logging.info("Adding MS Marco dataset")
-    from xpmir.datasets.msmarco import MsmarcoDataset
+    # from xpmir.datasets.msmarco import MsmarcoDataset
 
-    ds = MsmarcoDataset.prepare()
-    return ds("train"), ds("dev"), ds("trec2019.test")
+    documents = prepare_dataset("com.microsoft.msmarco.passage.collection")
+
+    l = []
+    for p in ["train", "dev", "trec2019.test"]:
+        l.append(
+            Adhoc(
+                documents=documents,
+                topics=prepare_dataset(f"com.microsoft.msmarco.passage.{p}.queries"),
+                assessments=prepare_dataset(f"com.microsoft.msmarco.passage.{p}.qrels"),
+            )
+        )
+    return l
 
 
 @dataset
