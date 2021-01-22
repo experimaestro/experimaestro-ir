@@ -16,7 +16,6 @@ from xpmir.letor.learner import Learner, Validation
 
 from xpmir.rankers.standard import BM25
 from xpmir.interfaces.anserini import (
-    AnseriniCollection,
     AnseriniRetriever,
     IndexCollection,
 )
@@ -99,7 +98,6 @@ def dataset(method):
 def msmarco(info):
     """Use the MS Marco dataset"""
     logging.info("Adding MS Marco dataset")
-    # from xpmir.datasets.msmarco import MsmarcoDataset
 
     documents = prepare_dataset("com.microsoft.msmarco.passage.collection")
 
@@ -226,7 +224,6 @@ def process(
             train_index, val_index, test_index = [
                 info.index(c.documents) for c in (train, val, test)
             ]
-            collection = AnseriniCollection(index=train_index)
 
             # Search and evaluate with BM25
             bm25_retriever = AnseriniRetriever(
@@ -242,8 +239,7 @@ def process(
                 # Train with OpenNIR DRMM model
                 # predictor = Reranker(device=device, batch_size=batch_size)
 
-                scorer.collection = collection
-
+                scorer.index = train_index
                 sampler = ModelBasedSampler(
                     retriever=AnseriniRetriever(
                         k=topK, index=train_index, model=basemodel

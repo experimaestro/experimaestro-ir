@@ -2,11 +2,12 @@ import json
 from pathlib import Path
 from shutil import rmtree
 from typing import Dict
-from experimaestro import option, param, pathoption, config
-from experimaestro.tqdm import tqdm
+from experimaestro import option, param, pathoption, config, help, Param
+from experimaestro import tqdm
 from experimaestro.utils import cleanupdir
 import torch
 from torch.utils.tensorboard import SummaryWriter
+from typing_extensions import Annotated
 from xpmir.letor.samplers import Sampler
 from xpmir.utils import EasyLogger, easylog
 from xpmir.letor.optim import Adam, Optimizer
@@ -139,25 +140,32 @@ class TrainContext(EasyLogger):
             self.oldstate = None
 
 
-@param("sampler", type=Sampler, help="Training data sampler")
-@param("batch_size", default=16, help="Number of samples in each batch")
-@param("batches_per_epoch", default=32, help="Number of batches per epoch")
-@option(
-    "grad_acc_batch",
-    default=0,
-    help="With memory issues, this parameter can be used to give the size of a micro-batch",
-)
-@param("optimizer", type=Optimizer, default=Adam())
-@option("device", type=Device, default=DEFAULT_DEVICE)
+# @param("sampler", type=Sampler, help="Training data sampler")
+# @param("batch_size", default=16, help="Number of samples in each batch")
+# @param("batches_per_epoch", default=32, help="Number of batches per epoch")
+# @option(
+#     "grad_acc_batch",
+#     default=0,
+#     help="With memory issues, this parameter can be used to give the size of a micro-batch",
+# )
+# @param("optimizer", type=Optimizer, default=Adam())
+# @option("device", type=Device, default=DEFAULT_DEVICE)
 @config()
-class Trainer:
+class Trainer(EasyLogger):
+    sampler: Annotated[Sampler, help("Training data sampler")]
+    optimizer: Param[Optimizer] = Adam()
+    device: Param[Device] = DEFAULT_DEVICE
+    batch_size: Param[int] = 16
+    batches_per_epoch: Param[int] = 32
+    grad_acc_batch: Param[int] = 0
+
     def initialize(self, random, ranker, context: TrainContext):
         self.random = random
         self.ranker = ranker
         self.context = context
         self.writer = None
+        self.sampler
 
-        self.logger = easylog()
         if self.grad_acc_batch > 0:
             assert (
                 self.batch_size % self.grad_acc_batch == 0
@@ -167,6 +175,12 @@ class Trainer:
         else:
             self.num_microbatches = 1
 
+        self.logger.info(
+            "Trainer: batch %d x %d (micro-batches), %d batches/epoch",
+            self.batch_size,
+            self.num_microbatches,
+            self.batches_per_epoch,
+        )
         self.device = self.device(self.logger)
 
     def iter_train(self, loadepoch: int):

@@ -1,9 +1,9 @@
-from typing import List, Tuple
+from typing import Iterator, List, Tuple
 import torch
 import torch.nn as nn
 
 from experimaestro import config, param
-from xpmir.letor.samplers import Records, Collection, SamplerRecord
+from xpmir.letor.samplers import Records, SamplerRecord
 from xpmir.rankers import LearnableScorer, ScoredDocument
 from xpmir.vocab import Vocab
 
@@ -16,7 +16,6 @@ from xpmir.vocab import Vocab
     help="Whether the base predictor score should be added to the model score",
 )
 @param("vocab", type=Vocab)
-@param("collection", type=Collection, help="Collection access")
 @config()
 class EmbeddingScorer(LearnableScorer, nn.Module):
     def initialize(self, random):
@@ -37,17 +36,21 @@ class EmbeddingScorer(LearnableScorer, nn.Module):
         )
 
     def rsv(
-        self, query: str, docids: List[str], scores: List[float]
+        self, query: str, documents: Iterator[ScoredDocument]
     ) -> List[ScoredDocument]:
+        # Prepare the inputs and call the model
         inputs = Records()
-        for i in range(len(docids)):
-            inputs.add(SamplerRecord(query, docids[i], scores[i], None))
+        for doc in documents:
+            assert doc.content is not None
+            inputs.add(SamplerRecord(query, doc.docid, doc.content, doc.score, None))
 
         with torch.no_grad():
             scores = self(inputs).cpu().numpy()
+
+        # Returns the scored documents
         scoredDocuments = []
-        for i in range(len(docids)):
-            scoredDocuments.append(ScoredDocument(docids[i], scores[i]))
+        for i in range(len(documents)):
+            scoredDocuments.append(ScoredDocument(documents[i], scores[i]))
 
         return scoredDocuments
 
@@ -58,15 +61,13 @@ class EmbeddingScorer(LearnableScorer, nn.Module):
             [[self.vocab.tok2id(t) for t in tok] for tok in inputs.queries_toks]
         )
 
-        documents = [self.collection.document_text(docid) for docid in inputs.docids]
-
         inputs.docs_tokids, inputs.docs_len = self._pad(
             [
                 [
                     self.vocab.tok2id(t)
                     for _, t in zip(range(self.dlen), self.vocab.tokenize(document))
                 ]
-                for document in documents
+                for document in inputs.documents
             ]
         )
 

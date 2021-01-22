@@ -1,62 +1,44 @@
+import asyncio
 import contextlib
 import json
-from pathlib import Path
-import os
-import sys
-import re
-import asyncio
-import subprocess
 import logging
-from threading import Thread
+import os
+import re
+import subprocess
+import sys
+import tempfile
 import threading
 import time
+from contextlib import contextmanager
+from pathlib import Path
+from threading import Thread
+from typing import List
 
 import datamaestro_text.data.ir.csv as ir_csv
 from datamaestro_text.data.ir.trec import (
-    TipsterCollection,
     AdhocDocuments,
     AdhocTopics,
+    TipsterCollection,
     TrecAdhocTopics,
 )
-from experimaestro import (
-    task,
-    param,
-    pathoption,
-    progress,
-    config,
-)
-from xpmir.letor.samplers import Collection
-from xpmir.dm.data.anserini import Index
-from xpmir.rankers import Retriever
-from xpmir.rankers.standard import Model, BM25
-from xpmir.utils import Handler
-from xpmir.evaluation import TrecAdhocRun
+from experimaestro import config, param, pathoption, progress, task
 from tqdm import tqdm
+from xpmir.dm.data.anserini import Index
+from xpmir.evaluation import TrecAdhocRun
+from xpmir.rankers import Retriever, ScoredDocument
+from xpmir.rankers.standard import BM25, Model
+from xpmir.utils import Handler
 
 
 def javacommand():
     """Returns the start of the java command including the Anserini class path"""
-    from pyserini.pyclass import configure_classpath
     from jnius_config import get_classpath
+    from pyserini.pyclass import configure_classpath
 
     command = ["{}/bin/java".format(os.environ["JAVA_HOME"]), "-cp"]
     command.append(":".join(get_classpath()))
 
     return command
-
-
-def _iter_collection(path):
-    logger = log.easy()
-    with path.open("rt") as collection_stream:
-        for did, text in logger.pbar(
-            plaintext.read_tsv(collection_stream), desc="documents"
-        ):
-            yield indices.RawDoc(did, text)
-
-
-import os
-import tempfile
-from contextlib import contextmanager
 
 
 class StreamGenerator(Thread):
@@ -252,40 +234,15 @@ class AnseriniRetriever(Retriever):
         from pyserini.search import SimpleSearcher
 
         self.searcher = SimpleSearcher(str(self.index.path))
-        self.searcher.set_bm25(0.9, 0.4)
 
-    def retrieve(self, query: str):
-        return [hit for hit in self.searcher.search(query, k=self.k)]
+        modelhandler = Handler()
 
+        @modelhandler()
+        def handle(bm25: BM25):
+            self.searcher.set_bm25(bm25.k1, bm25.b)
 
-@param("index", type=Index, help="The anserini index")
-@config()
-class AnseriniCollection(Collection):
-    def __postinit__(self):
-        from pyserini.index import IndexReader
+        modelhandler[self.model]
 
-        self.index_reader = IndexReader(str(self.index.path))
-        self.stats = self.index_reader.stats()
-
-    def __getstate__(self):
-        return {"index": self.index}
-
-    def __setstate__(self, state):
-        self.__dict__.update(state)
-        self.__postinit__()
-
-    def documentcount(self):
-        return self.stats["documents"]
-
-    def termcount(self):
-        return self.stats["total_terms"]
-
-    def document_text(self, docid):
-        doc = self.index_reader.doc(docid)
-        return doc.contents()
-
-    def term_df(self, term: str):
-        x = self.index_reader.analyze(term)
-        if x:
-            return self.index_reader.get_term_counts(x[0])[0]
-        return 0
+    def retrieve(self, query: str) -> List[ScoredDocument]:
+        hits = self.searcher.search(query, k=self.k)
+        return [ScoredDocument(hit.docid, hit.score, hit.contents) for hit in hits]

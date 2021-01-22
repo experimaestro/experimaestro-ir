@@ -1,16 +1,18 @@
 # This package contains all rankers
 
 from logging import Logger
-from typing import List, Tuple
+from typing import Iterator, List, Tuple
 from experimaestro import config, param
+from xpmir.dm.data import Index
 from xpmir.letor import Random
 from xpmir.utils import EasyLogger
 
 
 class ScoredDocument:
-    def __init__(self, docid: str, score: float):
+    def __init__(self, docid: str, score: float, content: str = None):
         self.docid = docid
         self.score = score
+        self.content = content
 
     def __lt__(self, other):
         return other.score < self.score
@@ -21,7 +23,7 @@ class Scorer(EasyLogger):
     """A model able to give a score to a list of documents given a query"""
 
     def rsv(
-        self, query: str, docids: List[str], scores: List[float]
+        self, query: str, documents: Iterator[ScoredDocument], keepcontent=False
     ) -> List[ScoredDocument]:
         raise NotImplementedError()
 
@@ -32,13 +34,13 @@ class RandomScorer(Scorer):
     """A random scorer"""
 
     def rsv(
-        self, query: str, docids: List[str], scores: List[float]
+        self, query: str, documents: Iterator[ScoredDocument], keepcontent=False
     ) -> List[ScoredDocument]:
-        l = []
+        scoredDocuments = []
         random = self.random.state
-        for docid in docids:
-            l.append(ScoredDocument(docid, random.random()))
-        return l
+        for doc in documents:
+            scoredDocuments.append(ScoredDocument(doc.docid, random.random()))
+        return scoredDocuments
 
 
 @config()
@@ -57,6 +59,9 @@ class Retriever:
     def retrieve(query: str) -> List[ScoredDocument]:
         raise NotImplementedError()
 
+    def index(self) -> Index:
+        raise NotImplementedError()
+
 
 @param("retriever", type=Retriever, help="The base retriever")
 @param("scorer", type=Scorer, help="The scorer used to re-rank the documents")
@@ -68,10 +73,6 @@ class TwoStageRetriever(Retriever):
     def retrieve(self, query: str):
         scoredDocuments = self.retriever.retrieve(query)
 
-        scoredDocuments = self.scorer.rsv(
-            query,
-            [sd.docid for sd in scoredDocuments],
-            [sd.score for sd in scoredDocuments],
-        )
+        scoredDocuments = self.scorer.rsv(query, scoredDocuments)
         scoredDocuments.sort(reverse=True)
         return scoredDocuments[: self.topk]

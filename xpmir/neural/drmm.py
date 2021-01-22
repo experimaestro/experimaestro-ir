@@ -2,6 +2,7 @@ import math
 from experimaestro import param, config, Choices
 import torch
 from torch import nn
+from xpmir.dm.data.base import Index
 from . import EmbeddingScorer
 import xpmir.neural.modules as modules
 
@@ -61,6 +62,9 @@ class LogCountHistogram(CountHistogram):
 )
 @param("hist", type=CountHistogram, default=LogCountHistogram(), help="Histogram")
 @param("combine", default="idf", checker=Choices(["idf", "sum"]), help="term gate type")
+@param(
+    "index", type=Index, required=False, help="The index when computing the with IDF"
+)
 @config()
 class Drmm(EmbeddingScorer):
     """
@@ -68,6 +72,11 @@ class Drmm(EmbeddingScorer):
       > Jiafeng Guo, Yixing Fan, Qingyao Ai, and William Bruce Croft. 2016. A Deep Relevance
       > Matching Model for Ad-hoc Retrieval. In CIKM.
     """
+
+    def __validate__(self):
+        assert (self.combine != "idf") or (
+            self.index is not None
+        ), "index must be provided if using IDF"
 
     def initialize(self, random):
         super().initialize(random)
@@ -92,11 +101,11 @@ class Drmm(EmbeddingScorer):
             inputs.query_idf = torch.full_like(
                 inputs.queries_tokids, float("-inf"), dtype=torch.float
             )
-            log_nd = math.log(self.collection.documentcount() + 1)
+            log_nd = math.log(self.index.documentcount + 1)
             for i, tok in enumerate(inputs.queries_toks):
                 for j, t in enumerate(tok):
                     inputs.query_idf[i, j] = log_nd - math.log(
-                        self.collection.term_df(t) + 1
+                        self.index.term_df(t) + 1
                     )
 
         qterm_features = self.histogram_pool(simmat, inputs)

@@ -1,5 +1,6 @@
 from logging import Logger
 import inspect
+import logging
 
 
 class Handler:
@@ -57,9 +58,9 @@ class EasyLogger:
     def logger(self):
         clsdict = self.__class__.__dict__
 
-        logger = clsdict.get("LOGGER", None)
+        logger = clsdict.get("__LOGGER__", None)
         if logger is None:
-            logger = Logger(self.__class__.__qualname__)
-            self.__class__.LOGGER = logger
+            logger = logging.getLogger(self.__class__.__qualname__)
+            self.__class__.__LOGGER__ = logger
 
         return logger

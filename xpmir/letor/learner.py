@@ -100,14 +100,20 @@ class Learner(Scorer):
     """
 
     def execute(self):
-        logging.getLogger().setLevel(logging.INFO)
+        logger = logging.getLogger()
+        logger.setLevel(logging.INFO)
+        for handler in logger.handlers:
+            handler.setLevel(logging.INFO)
+
         self.only_cached = False
         self.bestpath.mkdir(exist_ok=True, parents=True)
 
         # Initialize the scorer and trainer
+        self.logger.info("Scorer initialization")
         self.scorer.initialize(self.random.state)
         self.validation.initialize()
 
+        self.logger.info("Trainer initialization")
         context = ValidationContext(self.logpath, self.checkpointspath)
         self.trainer.initialize(self.random.state, self.scorer, context)
 
@@ -118,6 +124,7 @@ class Learner(Scorer):
         except Exception as e:
             top = None
 
+        self.logger.info("Starting to train")
         for state in self.trainer.iter_train(self.max_epoch):
             # Report progress
             progress(state.epoch / self.max_epoch)
