@@ -57,7 +57,8 @@ class TrecEval:
 def _evaluate(fp, retriever: Retriever, dataset: Adhoc, measures: List[str]):
     """Evaluate a retriever on a dataset"""
     for query in dataset.topics.iter():
-        for rank, sd in enumerate(retriever.retrieve(query.title)):
+        retrieved = retriever.retrieve(query.title)
+        for rank, sd in enumerate(retrieved):
             fp.write(f"""{query.qid} Q0 {sd.docid} {rank+1} {sd.score} run\n""")
     fp.flush()
 

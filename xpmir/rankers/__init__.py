@@ -2,7 +2,7 @@
 
 from logging import Logger
 from typing import Iterator, List, Tuple
-from experimaestro import config, param
+from experimaestro import config, param, Param
 from xpmir.dm.data import Index
 from xpmir.letor import Random
 from xpmir.utils import EasyLogger
@@ -15,7 +15,7 @@ class ScoredDocument:
         self.content = content
 
     def __lt__(self, other):
-        return other.score < self.score
+        return self.score < other.score
 
 
 @config()
@@ -48,15 +48,17 @@ class LearnableScorer(Scorer):
     pass
 
 
-@param("topk", type=int, default=1500, help="Number of documents to retrieve")
-@config()
+@config(help={"topk": "Number of documents to retrieve"})
 class Retriever:
     """A retriever is a model able to retrieve"""
+
+    topk: Param[int] = 1500
 
     def initialize(self):
         pass
 
     def retrieve(query: str) -> List[ScoredDocument]:
+        """Retrieves a documents, returning a list sorted by decreasing score"""
         raise NotImplementedError()
 
     def index(self) -> Index:

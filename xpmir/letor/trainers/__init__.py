@@ -140,23 +140,14 @@ class TrainContext(EasyLogger):
             self.oldstate = None
 
 
-# @param("sampler", type=Sampler, help="Training data sampler")
-# @param("batch_size", default=16, help="Number of samples in each batch")
-# @param("batches_per_epoch", default=32, help="Number of batches per epoch")
-# @option(
-#     "grad_acc_batch",
-#     default=0,
-#     help="With memory issues, this parameter can be used to give the size of a micro-batch",
-# )
-# @param("optimizer", type=Optimizer, default=Adam())
-# @option("device", type=Device, default=DEFAULT_DEVICE)
 @config()
 class Trainer(EasyLogger):
     sampler: Annotated[Sampler, help("Training data sampler")]
     optimizer: Param[Optimizer] = Adam()
     device: Param[Device] = DEFAULT_DEVICE
     batch_size: Param[int] = 16
-    batches_per_epoch: Param[int] = 32
+    batches_per_epoch: Param[int] = 128
+    # How to split batches if memory issues
     grad_acc_batch: Param[int] = 0
 
     def initialize(self, random, ranker, context: TrainContext):

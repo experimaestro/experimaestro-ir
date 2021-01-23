@@ -247,7 +247,10 @@ def process(
                     dataset=train,
                 )
                 trainer = PointwiseTrainer(
-                    device=device, sampler=sampler, grad_acc_batch=grad_acc_batch
+                    device=device,
+                    sampler=sampler,
+                    grad_acc_batch=grad_acc_batch,
+                    batch_size=batch_size,
                 )
                 validation = Validation(
                     dataset=val, retriever=get_retriever(val_index, scorer)

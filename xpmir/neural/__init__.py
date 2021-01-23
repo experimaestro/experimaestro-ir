@@ -2,22 +2,26 @@ from typing import Iterator, List, Tuple
 import torch
 import torch.nn as nn
 
-from experimaestro import config, param
+from experimaestro import config, param, Param, Annotated, help
 from xpmir.letor.samplers import Records, SamplerRecord
 from xpmir.rankers import LearnableScorer, ScoredDocument
 from xpmir.vocab import Vocab
 
 
-@param("qlen", default=20)
-@param("dlen", default=2000)
-@param(
-    "add_runscore",
-    default=False,
-    help="Whether the base predictor score should be added to the model score",
+@config(
+    help={
+        "vocab": "The embedding model",
+        "qlen": "Maximum query length",
+        "dlen": "Maximum document length",
+        "add_runscore": "Whether the base predictor score should be added to the model score",
+    }
 )
-@param("vocab", type=Vocab)
-@config()
 class EmbeddingScorer(LearnableScorer, nn.Module):
+    vocab: Param[Vocab]
+    qlen: Param[int] = 20
+    dlen: Param[int] = 2000
+    add_runscore: Param[bool] = False
+
     def initialize(self, random):
         self.random = random
         seed = self.random.randint((2 ** 32) - 1)
@@ -50,7 +54,7 @@ class EmbeddingScorer(LearnableScorer, nn.Module):
         # Returns the scored documents
         scoredDocuments = []
         for i in range(len(documents)):
-            scoredDocuments.append(ScoredDocument(documents[i], scores[i]))
+            scoredDocuments.append(ScoredDocument(documents[i].docid, scores[i]))
 
         return scoredDocuments
 
