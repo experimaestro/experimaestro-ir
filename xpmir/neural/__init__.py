@@ -2,21 +2,25 @@ from typing import Iterator, List, Tuple
 import torch
 import torch.nn as nn
 
-from experimaestro import config, param, Param, Annotated, help
+from experimaestro import config, Param
 from xpmir.letor.samplers import Records, SamplerRecord
 from xpmir.rankers import LearnableScorer, ScoredDocument
 from xpmir.vocab import Vocab
 
 
-@config(
-    help={
-        "vocab": "The embedding model",
-        "qlen": "Maximum query length",
-        "dlen": "Maximum document length",
-        "add_runscore": "Whether the base predictor score should be added to the model score",
-    }
-)
+@config()
 class EmbeddingScorer(LearnableScorer, nn.Module):
+    """A scorer based on token embeddings
+
+    Attributes:
+        vocab: The embedding model -- the vocab also defines how to tokenize text
+        qlen: Maximum query length
+        dlen: Maximum document length
+        add_runscore:
+            Whether the base predictor score should be added to the
+            model score
+    """
+
     vocab: Param[Vocab]
     qlen: Param[int] = 20
     dlen: Param[int] = 2000
@@ -39,9 +43,7 @@ class EmbeddingScorer(LearnableScorer, nn.Module):
             torch.LongTensor([len(s) for s in sequences]),
         )
 
-    def rsv(
-        self, query: str, documents: Iterator[ScoredDocument]
-    ) -> List[ScoredDocument]:
+    def rsv(self, query: str, documents: List[ScoredDocument]) -> List[ScoredDocument]:
         # Prepare the inputs and call the model
         inputs = Records()
         for doc in documents:

@@ -2,7 +2,7 @@ from pathlib import Path
 import tempfile
 from typing import List
 from datamaestro_text.data.ir import Adhoc
-from experimaestro import param, task, pathoption, config
+from experimaestro import param, task, pathoption, tqdm
 import xpmir as ir
 from datamaestro_text.data.ir.trec import (
     TrecAdhocAssessments,
@@ -56,7 +56,8 @@ class TrecEval:
 
 def _evaluate(fp, retriever: Retriever, dataset: Adhoc, measures: List[str]):
     """Evaluate a retriever on a dataset"""
-    for query in dataset.topics.iter():
+    topics = list(dataset.topics.iter())
+    for query in tqdm(topics):
         retrieved = retriever.retrieve(query.title)
         for rank, sd in enumerate(retrieved):
             fp.write(f"""{query.qid} Q0 {sd.docid} {rank+1} {sd.score} run\n""")

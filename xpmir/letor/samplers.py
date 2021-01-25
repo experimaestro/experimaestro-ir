@@ -91,17 +91,22 @@ class Sampler(EasyLogger):
         raise NotImplementedError()
 
 
-@param("dataset", type=Adhoc, help="The topics and assessments")
-@param("retriever", type=Retriever, help="The retriever")
+# @param("dataset", type=Adhoc, help="The topics and assessments")
+# @param("retriever", type=Retriever, help="The retriever")
 @config()
 class ModelBasedSampler(Sampler):
-    """Sampler based on a retriever"""
+    """Sampler based on a retriever
 
-    relevant_ratio: Annotated[
-        int, help("The sampling ratio of relevant to non relevant")
-    ] = 0.5
-    dataset: Annotated[Adhoc, help("The topics and assessments")]
-    retriever: Annotated[Retriever, help("The retriever")]
+    Args:
+
+    relevant_ratio: The sampling ratio of relevant to non relevant
+    dataset: The topics and assessments
+    retriever: The document retriever
+    """
+
+    relevant_ratio: Param[float] = 0.5
+    dataset: Param[Adhoc]
+    retriever: Param[Retriever]
 
     def initialize(self, random):
         super().initialize(random)
@@ -191,7 +196,7 @@ class ModelBasedSampler(Sampler):
     def record_iter(self) -> Iterator[SamplerRecord]:
         npos = len(self.pos_records)
         nneg = len(self.neg_records)
-        for i in range(npos + nneg):
+        while True:
             if self.random.random() < self.relevant_ratio:
                 yield self.prepare(self.pos_records[self.random.randint(0, npos)])
             else:

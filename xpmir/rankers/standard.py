@@ -1,4 +1,4 @@
-from experimaestro import argument, config
+from experimaestro import Param, config
 
 
 @config()
@@ -8,8 +8,7 @@ class Model:
     pass
 
 
-@argument("k1", default=0.9)
-@argument("b", default=0.4)
 @config()
 class BM25(Model):
-    pass
+    k1: Param[float] = 0.9
+    b: Param[float] = 0.4

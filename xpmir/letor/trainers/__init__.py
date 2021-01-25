@@ -200,14 +200,16 @@ class Trainer(EasyLogger):
                     for _ in range(self.num_microbatches):
                         loss = self.train_batch()
                         loss.backward()
-                        total_loss += loss
+                        total_loss += loss.item()
                         pbar.update(self.batch_size)
 
                     context.state.optimizer.step()
                     context.state.optimizer.zero_grad()
 
             self.context.writer.add_scalar(
-                "train/loss", total_loss / self.batches_per_epoch, self.context.epoch
+                "train/loss",
+                total_loss / (self.num_microbatches * self.batches_per_epoch),
+                self.context.epoch,
             )
 
             yield context.state

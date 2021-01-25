@@ -48,9 +48,13 @@ class LearnableScorer(Scorer):
     pass
 
 
-@config(help={"topk": "Number of documents to retrieve"})
+@config()
 class Retriever:
-    """A retriever is a model able to retrieve"""
+    """A retriever is a model able to retrieve
+
+    Attributes:
+        topk: Number of documents to retrieve
+    """
 
     topk: Param[int] = 1500
 
@@ -65,10 +69,18 @@ class Retriever:
         raise NotImplementedError()
 
 
-@param("retriever", type=Retriever, help="The base retriever")
-@param("scorer", type=Scorer, help="The scorer used to re-rank the documents")
 @config()
 class TwoStageRetriever(Retriever):
+    """[summary]
+
+    Args:
+        retriever: The base retriever
+        scorer: The scorer used to re-rank the documents
+    """
+
+    retriever: Param[Retriever]
+    scorer: Param[Scorer]
+
     def initialize(self):
         self.retriever.initialize()
 

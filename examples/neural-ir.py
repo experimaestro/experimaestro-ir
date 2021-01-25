@@ -214,9 +214,10 @@ def process(
 
         # Retrieve the top 1000
         topK = 1000
+        valtopK = 100
 
-        def get_retriever(index, scorer):
-            base_retriever = AnseriniRetriever(k=topK, index=index, model=basemodel)
+        def get_retriever(index, scorer, topk=topK):
+            base_retriever = AnseriniRetriever(k=topk, index=index, model=basemodel)
             return TwoStageRetriever(retriever=base_retriever, scorer=scorer)
 
         for train, val, test in info.datasets:
@@ -253,7 +254,7 @@ def process(
                     batch_size=batch_size,
                 )
                 validation = Validation(
-                    dataset=val, retriever=get_retriever(val_index, scorer)
+                    dataset=val, retriever=get_retriever(val_index, scorer, valtopK)
                 )
 
                 learner = Learner(

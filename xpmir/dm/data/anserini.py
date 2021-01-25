@@ -31,6 +31,11 @@ class Index(BaseIndex):
 
         return IndexReader(str(self.path))
 
+    def __getstate__(self):
+        return {
+            key: value for key, value in self.__dict__.items() if key != "index_reader"
+        }
+
     @cached_property
     def documentcount(self):
         return self.index_reader.stats()["documents"]

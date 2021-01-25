@@ -189,40 +189,41 @@ class IndexCollection(Index):
 @param("topics", AdhocTopics)
 @param("model", Model)
 @pathoption("path", "results.trec")
-@task(parents=TrecAdhocRun)
-def SearchCollection(index: Index, topics: AdhocTopics, model: Model, path: Path):
-    command = javacommand()
-    command.append("io.anserini.search.SearchCollection")
-    command.extend(("-index", index.path, "-output", path))
+@task()
+class SearchCollection:
+    def execute(self):
+        command = javacommand()
+        command.append("io.anserini.search.SearchCollection")
+        command.extend(("-index", self.index.path, "-output", self.path))
 
-    # Topics
+        # Topics
 
-    topicshandler = Handler()
+        topicshandler = Handler()
 
-    @topicshandler()
-    def trectopics(topics: TrecAdhocTopics):
-        return ("-topicreader", "Trec", "-topics", topics.path)
+        @topicshandler()
+        def trectopics(topics: TrecAdhocTopics):
+            return ("-topicreader", "Trec", "-topics", topics.path)
 
-    @topicshandler()
-    def tsvtopics(topics: ir_csv.AdhocTopics):
-        return ("-topicreader", "TsvInt", "-topics", topics.path)
+        @topicshandler()
+        def tsvtopics(topics: ir_csv.AdhocTopics):
+            return ("-topicreader", "TsvInt", "-topics", topics.path)
 
-    command.extend(topicshandler[topics])
+        command.extend(topicshandler[self.topics])
 
-    # Model
+        # Model
 
-    modelhandler = Handler()
+        modelhandler = Handler()
 
-    @modelhandler()
-    def handle(bm25: BM25):
-        return ("-bm25", "-bm25.k1", str(model.k1), "-bm25.b", str(model.b))
+        @modelhandler()
+        def handle(bm25: BM25):
+            return ("-bm25", "-bm25.k1", str(bm25.k1), "-bm25.b", str(bm25.b))
 
-    command.extend(modelhandler[model])
+        command.extend(modelhandler[self.model])
 
-    # Start
-    logging.info("Starting command %s", command)
-    p = subprocess.run(command)
-    sys.exit(p.returncode)
+        # Start
+        logging.info("Starting command %s", command)
+        p = subprocess.run(command)
+        sys.exit(p.returncode)
 
 
 @param("index", Index, help="Anserini index")

@@ -315,7 +315,6 @@ class MsmarcoDataset(Dataset):
             )
         )
 
-    @configmethod
     @staticmethod
     def prepare():
         """Index the MS-Marco collection"""

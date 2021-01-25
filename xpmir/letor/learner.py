@@ -121,7 +121,7 @@ class Learner(Scorer):
         try:
             top = context.newstate()
             top.load(self.bestpath, onlyinfo=True)
-        except Exception as e:
+        except Exception:
             top = None
 
         self.logger.info("Starting to train")
@@ -197,7 +197,5 @@ class Learner(Scorer):
 
         return self._bestmodel
 
-    def rsv(
-        self, query: str, docids: List[str], scores: List[float]
-    ) -> List[ScoredDocument]:
-        return self.bestmodel.rsv(query, docids, scores)
+    def rsv(self, query: str, documents: List[ScoredDocument]) -> List[ScoredDocument]:
+        return self.bestmodel.rsv(query, documents)

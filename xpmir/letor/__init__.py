@@ -10,23 +10,28 @@ from xpmir.interfaces import apex
 # from onir.log import Logger
 
 
-from experimaestro import config, param
+from experimaestro import config, Param
 from cached_property import cached_property
 import numpy as np
 
 
-@param("seed", default=0)
 @config()
 class Random:
+    seed: Param[int] = 0
+
     @cached_property
     def state(self):
         return np.random.RandomState(self.seed)
 
+    def __getstate__(self):
+        return {"seed": self.seed}
 
-@param("gpu", default=False)
-@param("gpu_determ", default=False)
+
 @config()
 class Device:
+    gpu: Param[bool] = False
+    gpu_determ: Param[bool] = False
+
     def __call__(self, logger):
         """Called by experimaestro to substitute object at run time"""
         device = torch.device("cpu")
