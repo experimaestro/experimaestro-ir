@@ -1,47 +1,54 @@
+from enum import Enum
 import os
-import tempfile
 import torch
 from pytorch_transformers import BertTokenizer
-from onir.interfaces import bert_models
-from onir import vocab, util, config
-from onir.modules import CustomBertModelWrapper
 import tokenizers as tk
-from experimaestro import param, config, Choices
+from experimaestro import param, config, Choices, Param
+
+try:
+    from transformers import AutoModel, AutoTokenizer
+except Exception:
+    logging.error("Install huggingface transformers to use these configurations")
+    raise
+
+from xpmir.interfaces import bert_models
+from xpmir.neural.modules import CustomBertModelWrapper
+import xpmir.vocab as vocab
 
 
-# TODO: merge bert_base and bert_weights somehow, better integrate fine-tuning BERT into pipeline
-
-
-@param("bert_base", default="bert-base-uncased")
-@param("bert_weights", default="")
-@param("layer", default=-1, help="Layer to use, or -1 for all")
-@param("last_layer", default=False)
-@param("train", default=False, help="Whether BERT parameters should be trained")
-@param(
-    "encoding",
-    default="joint",
-    checker=Choices(["joint", "sep"]),
-    help="Type of BERT encoding",
-)
 @config()
-class BertVocab(vocab.Vocab):
-    __has_clstoken__ = True
+class TransformerVocab(vocab.Vocab):
+    """
+    Args:
+
+    model_id: Model ID from huggingface
+    train: Whether BERT parameters should be trained
+    layer: Layer to use (0 is the last, -1 to use them all)
+    """
+
+    model_id: Param[str] = "bert-base-uncased"
+    train: Param[bool] = False
+    layer: Param[int] = 0
+
+    CLS: int
+    SEP: int
 
     def initialize(self):
         super().initialize()
-        bert_model = bert_models.get_model(self.bert_base, self.logger)
-        self.tokenizer = BertTokenizer.from_pretrained(bert_model)
-        # TODO: HACK! Until the transformers library adopts tokenizers, save and re-load vocab
-        with tempfile.TemporaryDirectory() as d:
-            self.tokenizer.save_vocabulary(d)
-            # this tokenizer is ~4x faster as the BertTokenizer, per my measurements
-            self.tokenizer = tk.BertWordPieceTokenizer(os.path.join(d, "vocab.txt"))
+        self.model = AutoModel.from_pretrained(self.model_id)
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
+
+        layer = self.layer
+        if layer == -1:
+            layer = None
+        self.CLS = self.tok2id("[CLS]")
+        self.SEP = self.tok2id("[SEP]")
+        if self.train:
+            self.model.train()
 
     def tokenize(self, text):
         # return self.tokenizer.tokenize(text)
-        return self.tokenizer.encode(text).tokens[
-            1:-1
-        ]  # removes leading [CLS] and trailing [SEP]
+        return self.tokenizer(text, add_special_tokens=False)
 
     def tok2id(self, tok):
         # return self.tokenizer.vocab[tok]
@@ -55,49 +62,13 @@ class BertVocab(vocab.Vocab):
         # return self.tokenizer.ids_to_tokens[idx]
         return self.tokenizer.id_to_token(idx)
 
-    def encoder(self):
-        return {"joint": JointBertEncoder, "sep": SepBertEncoder,}[
-            self.encoding
-        ](self)
-
     def lexicon_size(self) -> int:
         return self.tokenizer._tokenizer.get_vocab_size()
 
 
-class BaseBertEncoder(vocab.VocabEncoder):
-    __has_clstoken__ = True
-
-    def __init__(self, vocabulary):
-        super().__init__(vocabulary)
-        layer = vocabulary.layer
-        if layer == -1:
-            layer = None
-        bert_model = bert_models.get_model(vocabulary.bert_base, vocabulary.logger)
-        self.bert = CustomBertModelWrapper.from_pretrained(bert_model, depth=layer)
-        if vocabulary.bert_weights:
-            weight_path = os.path.join(
-                util.path_vocab(vocabulary), vocabulary.bert_weights
-            )
-            with vocabulary.logger.duration(
-                "loading BERT weights from {}".format(weight_path)
-            ):
-                self.bert.load_state_dict(torch.load(weight_path), strict=False)
-        self.CLS = vocabulary.tok2id("[CLS]")
-        self.SEP = vocabulary.tok2id("[SEP]")
-        self.bert.set_trainable(vocabulary.train)
-
-    def _enc_spec(self) -> dict:
-        return {
-            "dim": self.bert.config.hidden_size,
-            "views": 1 if self.vocab.last_layer else self.bert.depth + 1,
-            "static": not self.vocab.train,
-        }
-
-
-class SepBertEncoder(BaseBertEncoder):
-    def forward(self, in_toks, lens):
-        results, _ = self._forward(in_toks, lens)
-        return results
+@config()
+class IndependentTransformerVocab(TransformerVocab):
+    """Encodes as [CLS] QUERY [SEP]"""
 
     def _forward(self, in_toks, lens=None, seg_id=0):
         if lens is None:
@@ -132,6 +103,10 @@ class SepBertEncoder(BaseBertEncoder):
             result = util.un_subbatch(result, in_toks, MAX_TOK_LEN)
         return result, cls_result
 
+    def forward(self, in_toks, lens):
+        results, _ = self._forward(in_toks, lens)
+        return results
+
     def enc_query_doc(self, **inputs):
         result = {}
         if "query_tok" in inputs and "query_len" in inputs:
@@ -146,13 +121,11 @@ class SepBertEncoder(BaseBertEncoder):
             result.update({"doc": doc_results, "doc_cls": doc_cls})
         return result
 
-    def _enc_spec(self) -> dict:
-        result = super()._enc_spec()
-        result.update({"joint_fields": ["query", "doc", "cls_query", "cls_doc"]})
-        return result
 
+@config()
+class JointTransformer(TransformerVocab):
+    """Encodes as [CLS] QUERY [SEP] DOCUMENT"""
 
-class JointBertEncoder(BaseBertEncoder):
     def enc_query_doc(self, **inputs):
         query_tok, query_len = inputs["query_tok"], inputs["query_len"]
         doc_tok, doc_len = inputs["doc_tok"], inputs["doc_len"]
@@ -205,10 +178,3 @@ class JointBertEncoder(BaseBertEncoder):
             cls_results = cls_results[-1]
 
         return {"query": query_results, "doc": doc_results, "cls": cls_results}
-
-    def _enc_spec(self) -> dict:
-        result = super()._enc_spec()
-        result.update(
-            {"supports_forward": False, "joint_fields": ["query", "doc", "cls"]}
-        )
-        return result

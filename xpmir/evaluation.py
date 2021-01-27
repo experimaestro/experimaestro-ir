@@ -88,7 +88,7 @@ def evaluate(run_path: Path, retriever: Retriever, dataset: Adhoc, measures: Lis
 @task()
 class Evaluate:
     def config(self):
-        return TrecAdhocResults(
+        return TrecAdhocResults._(
             results=self.measures, detailed=self.detailed, metrics=self.metrics
         )
 

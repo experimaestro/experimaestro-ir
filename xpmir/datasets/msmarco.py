@@ -4,7 +4,7 @@ from onir.datasets.utils import TrecAssessedTopics
 from onir import util, datasets, indices, log
 from onir.interfaces import trec, plaintext
 from onir.indices.sqlite import DocStore
-from experimaestro import param, pathoption, config, task, configmethod
+from experimaestro import param, pathoption, config, task
 from datamaestro_text.data.ir.csv import AdhocDocuments as TSVAdhocDocuments
 from datamaestro import prepare_dataset
 from xpmir.anserini import Index as AnseriniIndex

@@ -143,7 +143,7 @@ class TrainContext(EasyLogger):
 @config()
 class Trainer(EasyLogger):
     sampler: Annotated[Sampler, help("Training data sampler")]
-    optimizer: Param[Optimizer] = Adam()
+    optimizer: Param[Optimizer] = Adam._()
     device: Param[Device] = DEFAULT_DEVICE
     batch_size: Param[int] = 16
     batches_per_epoch: Param[int] = 128

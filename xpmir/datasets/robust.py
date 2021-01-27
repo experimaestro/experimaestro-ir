@@ -274,7 +274,7 @@ for i in range(len(FOLDS)):
 FOLDS["all"] = _ALL
 
 
-def fold(name: str) -> Adhoc:
+def fold(name: str):
     """Return topics and assessments for a given fold
 
     Folds are trf1 to trf5 (test), vaf1 to vaf5 (validation) and f1 to f5 (test)
@@ -282,7 +282,7 @@ def fold(name: str) -> Adhoc:
     topics = prepare_dataset("gov.nist.trec.adhoc.robust.2004.topics")
     qrels = prepare_dataset("gov.nist.trec.adhoc.robust.2004.qrels")
 
-    train_topics = AdhocTopicFold(topics=topics, ids=sorted(list(FOLDS[name])))
-    train_qrels = AdhocAssessmentFold(qrels=qrels, ids=sorted(list(FOLDS[name])))
+    train_topics = AdhocTopicFold._(topics=topics, ids=sorted(list(FOLDS[name])))
+    train_qrels = AdhocAssessmentFold._(qrels=qrels, ids=sorted(list(FOLDS[name])))
 
     return train_topics, train_qrels

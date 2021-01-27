@@ -60,7 +60,7 @@ class Information:
 
             CPU_COUNT = multiprocessing.cpu_count()
 
-            index = IndexCollection(
+            index = IndexCollection._(
                 documents=ds,
                 storePositions=True,
                 storeDocvectors=True,
@@ -73,7 +73,7 @@ class Information:
     @property
     def random(self):
         if not self._random:
-            self._random = Random()
+            self._random = Random._()
 
         return self._random
 
@@ -104,7 +104,7 @@ def msmarco(info):
     l = []
     for p in ["train", "dev", "trec2019.test"]:
         l.append(
-            Adhoc(
+            Adhoc._(
                 documents=documents,
                 topics=prepare_dataset(f"com.microsoft.msmarco.passage.{p}.queries"),
                 assessments=prepare_dataset(f"com.microsoft.msmarco.passage.{p}.qrels"),
@@ -124,7 +124,7 @@ def robust(info):
     documents = prepare_dataset("gov.nist.trec.adhoc.robust.2004").documents
 
     return [
-        Adhoc(topics=topics, assessments=qrels, documents=documents)
+        Adhoc._(topics=topics, assessments=qrels, documents=documents)
         for topics, qrels in pairs
     ]
 
@@ -141,7 +141,7 @@ def glove(info):
     from xpmir.vocab.wordvec_vocab import WordvecUnkVocab
 
     wordembs = prepare_dataset("edu.stanford.glove.6b.50")
-    return WordvecUnkVocab(data=wordembs, random=info.random)
+    return WordvecUnkVocab._(data=wordembs, random=info.random)
 
 
 @click.option(
@@ -149,9 +149,9 @@ def glove(info):
 )
 @vocab
 def bertencoder(info, trainable):
-    import xpmir.vocab.bert_vocab as bv
+    import xpmir.vocab.huggingface as bv
 
-    return bv.BertVocab(train=trainable)
+    return bv.BertVocab._(train=trainable)
 
 
 # ---- scorers
@@ -167,7 +167,7 @@ def drmm(info):
     from xpmir.neural.drmm import Drmm
 
     assert info.vocab is not None, "No embeddings are defined yet for DRMM"
-    return Drmm(vocab=info.vocab).tag("model", "drmm")
+    return Drmm._(vocab=info.vocab).tag("model", "drmm")
 
 
 @model
@@ -175,7 +175,7 @@ def vanilla_transformer(info):
     """Use the Vanilla BERT model"""
     from xpmir.neural.vanilla_transformer import VanillaTransformer
 
-    return VanillaTransformer(vocab=info.vocab).tag("model", "vanilla-transformer")
+    return VanillaTransformer._(vocab=info.vocab).tag("model", "vanilla-transformer")
 
 
 # --- Run the experiment
@@ -190,7 +190,7 @@ def process(
 
     logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
     info = Information()
-    info.device = device = Device(gpu=gpu)
+    info.device = device = Device._(gpu=gpu)
 
     # Sets the working directory and the name of the xp
     with experiment(workdir, "neural-ir", port=port) as xpm:
@@ -209,16 +209,16 @@ def process(
         assert info.datasets, "No dataset was selected"
         assert info.scorers, "No model was selected"
 
-        basemodel = BM25()
-        random_scorer = RandomScorer(random=info.random).tag("model", "random")
+        basemodel = BM25._()
+        random_scorer = RandomScorer._(random=info.random).tag("model", "random")
 
         # Retrieve the top 1000
         topK = 1000
         valtopK = 100
 
         def get_retriever(index, scorer, topk=topK):
-            base_retriever = AnseriniRetriever(k=topk, index=index, model=basemodel)
-            return TwoStageRetriever(retriever=base_retriever, scorer=scorer)
+            base_retriever = AnseriniRetriever._(k=topk, index=index, model=basemodel)
+            return TwoStageRetriever._(retriever=base_retriever, scorer=scorer)
 
         for train, val, test in info.datasets:
 
@@ -227,11 +227,11 @@ def process(
             ]
 
             # Search and evaluate with BM25
-            bm25_retriever = AnseriniRetriever(
+            bm25_retriever = AnseriniRetriever._(
                 k=topK, index=test_index, model=basemodel
             ).tag("model", "bm25")
-            bm25_eval = Evaluate(dataset=test, retriever=bm25_retriever).submit()
-            random_eval = Evaluate(
+            bm25_eval = Evaluate._(dataset=test, retriever=bm25_retriever).submit()
+            random_eval = Evaluate._(
                 dataset=test, retriever=get_retriever(test_index, random_scorer)
             ).submit()
 
@@ -241,23 +241,23 @@ def process(
                 # predictor = Reranker(device=device, batch_size=batch_size)
 
                 scorer.index = train_index
-                sampler = ModelBasedSampler(
-                    retriever=AnseriniRetriever(
+                sampler = ModelBasedSampler._(
+                    retriever=AnseriniRetriever._(
                         k=topK, index=train_index, model=basemodel
                     ),
                     dataset=train,
                 )
-                trainer = PointwiseTrainer(
+                trainer = PointwiseTrainer._(
                     device=device,
                     sampler=sampler,
                     grad_acc_batch=grad_acc_batch,
                     batch_size=batch_size,
                 )
-                validation = Validation(
+                validation = Validation._(
                     dataset=val, retriever=get_retriever(val_index, scorer, valtopK)
                 )
 
-                learner = Learner(
+                learner = Learner._(
                     trainer=trainer,
                     random=info.random,
                     scorer=scorer,
@@ -267,7 +267,7 @@ def process(
                 model = learner.submit()
 
                 # Evaluate the neural model
-                evaluate = Evaluate(
+                evaluate = Evaluate._(
                     dataset=test, retriever=get_retriever(test_index, model)
                 ).submit()
 

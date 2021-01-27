@@ -1,18 +1,18 @@
 import os
 import pickle
 import hashlib
-from typing import List
+from typing import List, Optional
 import numpy as np
 import torch
 from pathlib import Path
 from torch import nn
-from experimaestro import config, param, cache
+from experimaestro import config, param, cache, Param
 
 # from onir import vocab, util
 from xpmir.letor import Random
 
 # from onir.interfaces import wordvec
-from xpmir.vocab import Vocab, VocabEncoder
+from xpmir.vocab import Vocab
 from datamaestro_text.data.embeddings import WordEmbeddings
 
 # TODO: add sources to datamaestro
@@ -38,11 +38,18 @@ from datamaestro_text.data.embeddings import WordEmbeddings
 # }
 
 
-@param("data", type=WordEmbeddings)
-@param("train", default=False, help="Should the word embeddings be re-retrained?")
-@param("random", type=Random, required=False)
 @config()
-class WordvecVocab(Vocab):
+class WordvecVocab(Vocab, nn.Module):
+    """
+    Args:
+
+    train: Should the word embeddings be re-retrained?
+    """
+
+    data: Param[WordEmbeddings]
+    learn: Param[bool] = False
+    random: Param[Optional[Random]]
+
     """
     A word vector vocabulary that supports standard pre-trained word vectors
     """
@@ -51,10 +58,18 @@ class WordvecVocab(Vocab):
         super().__postinit__()
         self._terms, self._weights = self.load()
         self._term2idx = {t: i for i, t in enumerate(self._terms)}
+        matrix = self._weights
+        self.size = matrix.shape[1]
+        matrix = np.concatenate(
+            [np.zeros((1, self.size)), matrix]
+        )  # add padding record (-1)
+        self.embed = nn.Embedding.from_pretrained(
+            torch.from_numpy(matrix.astype(np.float32)), freeze=not self.learn
+        )
 
     def __validate__(self):
         """Check that values are coherent"""
-        if self.train:
+        if self.learn:
             assert self.random is not None
 
     @cache("terms.npy")
@@ -76,11 +91,15 @@ class WordvecVocab(Vocab):
     def id2tok(self, idx):
         return self._terms[idx]
 
-    def encoder(self):
-        return WordvecEncoder(self)
-
     def lexicon_size(self) -> int:
         return len(self._terms)
+
+    def dim(self):
+        return self.embed.weight.shape[0]
+
+    def forward(self, toks, lens=None):
+        # lens ignored
+        return self.embed(toks + 1)  # +1 to handle padding at position -1
 
 
 @config()
@@ -157,23 +176,3 @@ class WordvecHashVocab(WordvecVocab):
 
     def lexicon_size(self) -> int:
         return len(self._terms) + self.hashspace
-
-
-class WordvecEncoder(VocabEncoder):
-    def __init__(self, vocabulary):
-        super().__init__(vocabulary)
-        matrix = vocabulary._weights
-        self.size = matrix.shape[1]
-        matrix = np.concatenate(
-            [np.zeros((1, self.size)), matrix]
-        )  # add padding record (-1)
-        self.embed = nn.Embedding.from_pretrained(
-            torch.from_numpy(matrix.astype(np.float32)), freeze=not vocabulary.train
-        )
-
-    def dim(self):
-        return self.embed.weight.shape[0]
-
-    def forward(self, toks, lens=None):
-        # lens ignored
-        return self.embed(toks + 1)  # +1 to handle padding at position -1

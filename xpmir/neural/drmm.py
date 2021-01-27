@@ -60,7 +60,7 @@ class LogCountHistogram(CountHistogram):
 @param(
     "hidden", default=5, help="hidden layer dimension for feed forward matching network"
 )
-@param("hist", type=CountHistogram, default=LogCountHistogram(), help="Histogram")
+@param("hist", type=CountHistogram, default=LogCountHistogram._(), help="Histogram")
 @param("combine", default="idf", checker=Choices(["idf", "sum"]), help="term gate type")
 @param(
     "index", type=Index, required=False, help="The index when computing the with IDF"
@@ -80,22 +80,22 @@ class Drmm(EmbeddingScorer):
 
     def initialize(self, random):
         super().initialize(random)
-        self.encoder = self.vocab.encoder()
-        if not self.encoder.static():
+
+        if not self.vocab.static():
             self.logger.warn(
                 "In most cases, using vocab.train=True will not have an effect on DRMM "
                 "because the histogram is not differentiable. An exception might be if "
                 "the gradient is proped back by another means, e.g. BERT [CLS] token."
             )
         self.simmat = modules.InteractionMatrix()
-        channels = self.encoder.emb_views()
+        channels = self.vocab.emb_views()
         self.hidden_1 = nn.Linear(self.hist.nbins * channels, self.hidden)
         self.hidden_2 = nn.Linear(self.hidden, 1)
         self.needs_idf = self.combine == "idf"
         self.combine = {"idf": IdfCombination, "sum": SumCombination}[self.combine]()
 
     def _forward(self, inputs):
-        simmat = self.simmat.encode_query_doc(self.encoder, inputs)
+        simmat = self.simmat.encode_query_doc(self.vocab, inputs)
 
         if self.needs_idf:
             inputs.query_idf = torch.full_like(
