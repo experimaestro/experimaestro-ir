@@ -1,8 +1,4 @@
-from enum import Enum
-import os
 import torch
-from pytorch_transformers import BertTokenizer
-import tokenizers as tk
 from experimaestro import param, config, Choices, Param
 
 try:
@@ -11,7 +7,6 @@ except Exception:
     logging.error("Install huggingface transformers to use these configurations")
     raise
 
-from xpmir.interfaces import bert_models
 from xpmir.neural.modules import CustomBertModelWrapper
 import xpmir.vocab as vocab
 
@@ -22,12 +17,12 @@ class TransformerVocab(vocab.Vocab):
     Args:
 
     model_id: Model ID from huggingface
-    train: Whether BERT parameters should be trained
+    trainable: Whether BERT parameters should be trained
     layer: Layer to use (0 is the last, -1 to use them all)
     """
 
     model_id: Param[str] = "bert-base-uncased"
-    train: Param[bool] = False
+    trainable: Param[bool] = False
     layer: Param[int] = 0
 
     CLS: int
@@ -43,16 +38,14 @@ class TransformerVocab(vocab.Vocab):
             layer = None
         self.CLS = self.tok2id("[CLS]")
         self.SEP = self.tok2id("[SEP]")
-        if self.train:
+        if self.trainable:
             self.model.train()
 
     def tokenize(self, text):
-        # return self.tokenizer.tokenize(text)
-        return self.tokenizer(text, add_special_tokens=False)
+        return self.tokenizer.tokenize(text)
 
     def tok2id(self, tok):
-        # return self.tokenizer.vocab[tok]
-        return self.tokenizer.token_to_id(tok)
+        return self.tokenizer.vocab[tok]
 
     def id2tok(self, idx):
         if torch.is_tensor(idx):
@@ -64,6 +57,9 @@ class TransformerVocab(vocab.Vocab):
 
     def lexicon_size(self) -> int:
         return self.tokenizer._tokenizer.get_vocab_size()
+
+    def maxtokens(self) -> int:
+        return 512
 
 
 @config()

@@ -25,8 +25,11 @@ plugins:
   - experimaestro:
         path: xpm
         name: Tasks and configurations
+        init:
+            - xpmir.mkdocs_init
         modules:
             - Learning to rank: xpmir.letor
+            - Neural: xpmir.neural
 
 # Theme
 theme:

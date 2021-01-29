@@ -3,6 +3,4 @@ title: Neural models
 ---
 
 
-<xpm>
-modules: [xpmir.neural]
-</xpm>
+::xpm::xpmir.rankers.Scorer

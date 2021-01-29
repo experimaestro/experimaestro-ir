@@ -3,7 +3,7 @@ from experimaestro import param, config, Choices
 import torch
 from torch import nn
 from xpmir.dm.data.base import Index
-from . import EmbeddingScorer
+from . import InteractionScorer
 import xpmir.neural.modules as modules
 
 
@@ -60,13 +60,13 @@ class LogCountHistogram(CountHistogram):
 @param(
     "hidden", default=5, help="hidden layer dimension for feed forward matching network"
 )
-@param("hist", type=CountHistogram, default=LogCountHistogram._(), help="Histogram")
+@param("hist", type=CountHistogram, default=LogCountHistogram(), help="Histogram")
 @param("combine", default="idf", checker=Choices(["idf", "sum"]), help="term gate type")
 @param(
     "index", type=Index, required=False, help="The index when computing the with IDF"
 )
 @config()
-class Drmm(EmbeddingScorer):
+class Drmm(InteractionScorer):
     """
     Implementation of the DRMM model from:
       > Jiafeng Guo, Yixing Fan, Qingyao Ai, and William Bruce Croft. 2016. A Deep Relevance
@@ -74,6 +74,7 @@ class Drmm(EmbeddingScorer):
     """
 
     def __validate__(self):
+        super().__validate__()
         assert (self.combine != "idf") or (
             self.index is not None
         ), "index must be provided if using IDF"

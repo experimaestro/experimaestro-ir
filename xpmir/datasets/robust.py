@@ -282,7 +282,7 @@ def fold(name: str):
     topics = prepare_dataset("gov.nist.trec.adhoc.robust.2004.topics")
     qrels = prepare_dataset("gov.nist.trec.adhoc.robust.2004.qrels")
 
-    train_topics = AdhocTopicFold._(topics=topics, ids=sorted(list(FOLDS[name])))
-    train_qrels = AdhocAssessmentFold._(qrels=qrels, ids=sorted(list(FOLDS[name])))
+    train_topics = AdhocTopicFold(topics=topics, ids=sorted(list(FOLDS[name])))
+    train_qrels = AdhocAssessmentFold(qrels=qrels, ids=sorted(list(FOLDS[name])))
 
     return train_topics, train_qrels

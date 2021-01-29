@@ -1,4 +1,4 @@
-from typing import Iterator, List, NamedTuple, Optional
+from typing import Any, Iterator, List, NamedTuple, Optional
 
 import numpy as np
 from datamaestro_text.data.ir import Adhoc
@@ -53,16 +53,16 @@ class Records:
     relevances: List[float]
 
     # Tokenized
-    queries_toks: any
-    docs_toks: any
+    queries_toks: Any
+    docs_toks: Any
 
     # Lengths (in tokens)
-    queries_len: any
-    docs_len: any
+    queries_len: Any
+    docs_len: Any
 
     # IDs of tokenized version
-    queries_tokids: any
-    docs_tokids: any
+    queries_tokids: Any
+    docs_tokids: Any
 
     def __init__(self):
         self.queries = []

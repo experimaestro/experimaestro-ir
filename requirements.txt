@@ -1,4 +1,7 @@
-experimaestro>=0.7.11
-datamaestro_text>=2020.12.15
+experimaestro>=0.8.2
+datamaestro_text>=2021.1.26
+
+# --- SKIP_DOCBUILD ---
+
 pyserini>=0.9.0
 pytrec_eval>=0.5

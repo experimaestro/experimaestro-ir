@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from shutil import rmtree
 from typing import Dict
-from experimaestro import option, param, pathoption, config, help, Param
+from experimaestro import Option, config, help, Param
 from experimaestro import tqdm
 from experimaestro.utils import cleanupdir
 import torch
@@ -143,8 +143,8 @@ class TrainContext(EasyLogger):
 @config()
 class Trainer(EasyLogger):
     sampler: Annotated[Sampler, help("Training data sampler")]
-    optimizer: Param[Optimizer] = Adam._()
-    device: Param[Device] = DEFAULT_DEVICE
+    optimizer: Param[Optimizer] = Adam()
+    device: Option[Device] = DEFAULT_DEVICE
     batch_size: Param[int] = 16
     batches_per_epoch: Param[int] = 128
     # How to split batches if memory issues

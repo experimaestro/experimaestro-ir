@@ -17,6 +17,13 @@ Trainers are responsible for defining the loss (given a learnable scorer)
 
 ::xpm::xpmir.rankers.Trainer
 
+## Sampler
+
+How to sample learning batches.
+
+::xpm::xpmir.rankers.Sampler
+
+
 
 ## Tasks
 

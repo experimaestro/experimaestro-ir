@@ -9,13 +9,13 @@ from xpmir.vocab import Vocab
 
 
 @config()
-class EmbeddingScorer(LearnableScorer, nn.Module):
+class InteractionScorer(LearnableScorer, nn.Module):
     """A scorer based on token embeddings
 
     Attributes:
         vocab: The embedding model -- the vocab also defines how to tokenize text
-        qlen: Maximum query length
-        dlen: Maximum document length
+        qlen: Maximum query length (this can be even shortened by the model)
+        dlen: Maximum document length (this can be even shortened by the model)
         add_runscore:
             Whether the base predictor score should be added to the
             model score
@@ -37,12 +37,6 @@ class EmbeddingScorer(LearnableScorer, nn.Module):
             self.runscore_alpha = torch.nn.Parameter(torch.full((1,), -1.0))
         self.vocab.initialize()
 
-    def _pad(self, sequences):
-        return (
-            self.vocab.pad_sequence(sequences, batch_first=True),
-            torch.LongTensor([len(s) for s in sequences]),
-        )
-
     def rsv(self, query: str, documents: List[ScoredDocument]) -> List[ScoredDocument]:
         # Prepare the inputs and call the model
         inputs = Records()
@@ -60,23 +54,15 @@ class EmbeddingScorer(LearnableScorer, nn.Module):
 
         return scoredDocuments
 
+    def __validate__(self):
+        assert (
+            self.dlen < self.vocab.maxtokens()
+        ), f"The maximum document length ({self.dlen}) should be less that what the vocab can process ({self.vocab.maxtokens})"
+        assert (
+            self.qlen < self.vocab.maxtokens()
+        ), f"The maximum query length ({self.qlen}) should be less that what the vocab can process ({self.vocab.maxtokens})"
+
     def forward(self, inputs: Records):
-        # Prepare inputs
-        inputs.queries_toks = [self.vocab.tokenize(query) for query in inputs.queries]
-        inputs.queries_tokids, inputs.query_len = self._pad(
-            [[self.vocab.tok2id(t) for t in tok] for tok in inputs.queries_toks]
-        )
-
-        inputs.docs_tokids, inputs.docs_len = self._pad(
-            [
-                [
-                    self.vocab.tok2id(t)
-                    for _, t in zip(range(self.dlen), self.vocab.tokenize(document))
-                ]
-                for document in inputs.documents
-            ]
-        )
-
         # Forward to model
         result = self._forward(inputs)
 
@@ -90,7 +76,7 @@ class EmbeddingScorer(LearnableScorer, nn.Module):
 
         return result
 
-    def _forward(self, **inputs):
+    def _forward(self, inputs: Records):
         raise NotImplementedError
 
     def save(self, path):

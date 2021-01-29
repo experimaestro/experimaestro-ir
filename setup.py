@@ -22,6 +22,13 @@ install_requires = re.sub(
     r"^(git\+https.*)egg=([_\w-]+)$", r"\2@\1", install_requires, 0, re.MULTILINE
 )
 
+assert os.environ.get("__DOCBUILD__", 0) == "1", os.environ.get("__DOCBUILD__", 0)
+
+if os.environ.get("__DOCBUILD__", 0) == "1":
+    install_requires = re.sub(r"SKIP_DOCBUILD.*", r"", install_requires, 0, re.DOTALL)
+else:
+    install_requires = (basepath / "requirements.txt").read_text()
+
 
 setup(
     name="xpmir",
