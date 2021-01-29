@@ -33,12 +33,5 @@ plugins:
 
 # Theme
 theme:
-    name: material
-    feature:
-        tabs: true
-    palette:
-        primary: 'indigo'
-        accent: 'indigo'
-    font:
-        text: 'Roboto'
-        code: 'Roboto Mono'
+    name: readthedocs
+    highlightjs: true
