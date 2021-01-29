@@ -183,6 +183,7 @@ class Trainer(EasyLogger):
         else:
             yield context.state
 
+        self.logger.info("Transfering model to device %s", self.device)
         context.state.ranker.to(self.device)
         b_count = self.batches_per_epoch * self.num_microbatches * self.batch_size
 

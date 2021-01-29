@@ -5,6 +5,8 @@ from datamaestro_text.data.ir import Adhoc
 from xpmir.letor import Device, Random
 from xpmir.letor.samplers import ModelBasedSampler
 from xpmir.letor.trainers.pointwise import PointwiseTrainer
+from xpmir.neural import InteractionScorer
+from xpmir.neural.drmm import Drmm
 
 from xpmir.rankers import RandomScorer, TwoStageRetriever
 
@@ -20,6 +22,7 @@ from xpmir.interfaces.anserini import (
     IndexCollection,
 )
 from xpmir.evaluation import Evaluate
+from xpmir.vocab.huggingface import TransformerVocab
 
 logging.basicConfig(level=logging.INFO)
 
@@ -144,14 +147,15 @@ def glove(info):
     return WordvecUnkVocab(data=wordembs, random=info.random)
 
 
+@forwardoption.model_id(TransformerVocab)
 @click.option(
     "--trainable", is_flag=True, help="Make the BERT encoder parameters trainable"
 )
 @vocab
-def bertencoder(info, trainable):
+def bertencoder(info, trainable, model_id):
     import xpmir.vocab.huggingface as bv
 
-    return bv.IndependentTransformerVocab(trainable=trainable)
+    return bv.IndependentTransformerVocab(trainable=trainable, model_id=model_id)
 
 
 # ---- scorers
@@ -161,13 +165,16 @@ def model(method):
     return register(method, lambda info, model: info.scorers.append(model))
 
 
+@forwardoption.dlen(InteractionScorer)
+@forwardoption.qlen(InteractionScorer)
+@forwardoption.combine(Drmm)
 @model
-def drmm(info):
+def drmm(info, dlen, qlen, combine):
     """Use the DRMM model"""
-    from xpmir.neural.drmm import Drmm
-
     assert info.vocab is not None, "No embeddings are defined yet for DRMM"
-    return Drmm(vocab=info.vocab).tag("model", "drmm")
+    return Drmm(vocab=info.vocab, dlen=dlen, qlen=qlen, combine=combine).tag(
+        "model", "drmm"
+    )
 
 
 @model

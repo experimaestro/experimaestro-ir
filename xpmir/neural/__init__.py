@@ -56,11 +56,11 @@ class InteractionScorer(LearnableScorer, nn.Module):
 
     def __validate__(self):
         assert (
-            self.dlen < self.vocab.maxtokens()
-        ), f"The maximum document length ({self.dlen}) should be less that what the vocab can process ({self.vocab.maxtokens})"
+            self.dlen <= self.vocab.maxtokens()
+        ), f"The maximum document length ({self.dlen}) should be less that what the vocab can process ({self.vocab.maxtokens()})"
         assert (
-            self.qlen < self.vocab.maxtokens()
-        ), f"The maximum query length ({self.qlen}) should be less that what the vocab can process ({self.vocab.maxtokens})"
+            self.qlen <= self.vocab.maxtokens()
+        ), f"The maximum query length ({self.qlen}) should be less that what the vocab can process ({self.vocab.maxtokens()})"
 
     def forward(self, inputs: Records):
         # Forward to model

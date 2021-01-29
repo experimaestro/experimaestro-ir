@@ -96,30 +96,27 @@ class Drmm(InteractionScorer):
         self.combine = {"idf": IdfCombination, "sum": SumCombination}[self.combine]()
 
     def _forward(self, inputs):
-        simmat = self.simmat.encode_query_doc(self.vocab, inputs)
+        simmat, tokq, tokd = self.simmat.encode_query_doc(
+            self.vocab, inputs, d_maxlen=self.dlen, q_maxlen=self.qlen
+        )
 
+        query_idf = None
         if self.needs_idf:
-            inputs.query_idf = torch.full_like(
-                inputs.queries_tokids, float("-inf"), dtype=torch.float
-            )
+            query_idf = torch.full_like(tokq.ids, float("-inf"), dtype=torch.float)
             log_nd = math.log(self.index.documentcount + 1)
-            for i, tok in enumerate(inputs.queries_toks):
+            for i, tok in enumerate(tokq.tokens):
                 for j, t in enumerate(tok):
-                    inputs.query_idf[i, j] = log_nd - math.log(
-                        self.index.term_df(t) + 1
-                    )
+                    query_idf[i, j] = log_nd - math.log(self.index.term_df(t) + 1)
 
-        qterm_features = self.histogram_pool(simmat, inputs)
+        qterm_features = self.histogram_pool(simmat, tokq, tokd)
         BAT, QLEN, _ = qterm_features.shape
         qterm_scores = self.hidden_2(torch.relu(self.hidden_1(qterm_features))).reshape(
             BAT, QLEN
         )
-        return self.combine(qterm_scores, inputs.query_idf)
+        return self.combine(qterm_scores, query_idf)
 
-    def histogram_pool(self, simmat, inputs):
-        histogram = self.hist(
-            simmat, inputs.docs_len, inputs.docs_tokids, inputs.queries_tokids
-        )
+    def histogram_pool(self, simmat, tokq, tokd):
+        histogram = self.hist(simmat, tokd.lens, tokd.ids, tokq.ids)
         BATCH, CHANNELS, QLEN, BINS = histogram.shape
         histogram = histogram.permute(0, 2, 3, 1)
         histogram = histogram.reshape(BATCH, QLEN, BINS * CHANNELS)

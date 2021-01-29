@@ -11,9 +11,9 @@ CPU_COUNT = multiprocessing.cpu_count()
 
 
 from experimaestro import experiment
-from xpmir.evaluation import TrecEval
+from xpmir.evaluation import Evaluate
 from xpmir.rankers.standard import BM25
-from xpmir.interfaces.anserini import IndexCollection, SearchCollection
+from xpmir.interfaces.anserini import AnseriniRetriever, IndexCollection
 
 # --- Defines the experiment
 
@@ -30,7 +30,7 @@ def cli(port, workdir, dataset, debug):
     bm25 = BM25()
 
     # Sets the working directory and the name of the xp
-    with experiment(workdir, "index", port=port) as xp:
+    with experiment(workdir, "bm25", port=port) as xp:
         # Index the collection
         xp.setenv("JAVA_HOME", os.environ["JAVA_HOME"])
         ds = prepare_dataset(dataset)
@@ -45,12 +45,11 @@ def cli(port, workdir, dataset, debug):
         ).submit()
 
         # Search with BM25
-        bm25_search = (
-            SearchCollection(index=index, topics=ds.topics, model=bm25)
-            .tag("model", "bm25")
-            .submit()
+        bm25_retriever = AnseriniRetriever(k=1500, index=index, model=BM25()).tag(
+            "model", "bm25"
         )
-        bm25_eval = TrecEval(assessments=ds.assessments, run=bm25_search).submit()
+
+        bm25_eval = Evaluate(dataset=ds, retriever=bm25_retriever).submit()
 
     print("BM25 results on TREC 1")
     print(bm25_eval.results.read_text())

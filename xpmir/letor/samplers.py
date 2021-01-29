@@ -1,5 +1,5 @@
 from typing import Any, Iterator, List, NamedTuple, Optional
-
+import torch
 import numpy as np
 from datamaestro_text.data.ir import Adhoc
 from experimaestro import Annotated, Param, config, help, param, tqdm
@@ -34,6 +34,13 @@ class SamplerRecord:
         self.relevance = relevance
 
 
+class TokenizedTexts:
+    def __init__(self, tokens: List[List[str]], ids: torch.LongTensor, lens: List[int]):
+        self.tokens = tokens
+        self.ids = ids
+        self.lens = lens
+
+
 class Records:
     """Records are the objects passed to the module forwards"""
 
@@ -51,18 +58,6 @@ class Records:
 
     # The relevances
     relevances: List[float]
-
-    # Tokenized
-    queries_toks: Any
-    docs_toks: Any
-
-    # Lengths (in tokens)
-    queries_len: Any
-    docs_len: Any
-
-    # IDs of tokenized version
-    queries_tokids: Any
-    docs_tokids: Any
 
     def __init__(self):
         self.queries = []

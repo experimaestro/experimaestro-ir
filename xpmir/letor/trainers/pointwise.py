@@ -37,7 +37,7 @@ class PointwiseTrainer(Trainer):
             self.logger.error("nan or inf relevance score detected. Aborting.")
             sys.exit(1)
 
-        target_relscores = torch.FloatTensor(batch.relevances)
+        target_relscores = torch.FloatTensor(batch.relevances).to(self.device)
         target_relscores[
             target_relscores == -999.0
         ] = 0.0  # replace -999 with non-relevant score

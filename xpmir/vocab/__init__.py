@@ -1,14 +1,15 @@
 import sys
 import re
-from typing import List, Tuple
 import torch
-from experimaestro import config, param
-from xpmir.letor.samplers import Records
+from typing import List
+import torch.nn as nn
+from experimaestro import config
+from xpmir.letor.samplers import TokenizedTexts
 from xpmir.utils import EasyLogger
 
 
 @config()
-class Vocab(EasyLogger):
+class Vocab(EasyLogger, nn.Module):
     """
     Represents a vocabulary and corresponding neural encoding technique
     (e.g., embedding). This class can also handle the case of a cross-encoding of the
@@ -18,11 +19,13 @@ class Vocab(EasyLogger):
     name = None
     __has_clstoken__ = False
 
-    def __postinit__(self):
-        pass
-
     def initialize(self):
-        pass
+        # Easy and hacky way to get the device
+        self._dummy_params = nn.Parameter(torch.Tensor())
+
+    @property
+    def device(self):
+        return self._dummy_params.device
 
     def tokenize(self, text):
         """
@@ -36,7 +39,7 @@ class Vocab(EasyLogger):
     def pad_sequences(self, tokensList: List[List[int]], batch_first=True, maxlen=0):
         padding_value = 0
         lens = [len(s) for s in tokensList]
-        maxlen = min(maxlen, max(lens)) if maxlen > 0 else max(lens)
+        maxlen = min(maxlen or 0, max(lens))
 
         if batch_first:
             out_tensor = torch.full(
@@ -51,28 +54,38 @@ class Vocab(EasyLogger):
             for i, tokens in enumerate(tokensList):
                 out_tensor[: lens[i], i, ...] = tokens[:maxlen]
 
-        return out_tensor, lens
+        return out_tensor.to(self._dummy_params.device), lens
 
     def batch_tokenize(
-        self, texts: List[str], batch_first=True, maxlen=0
-    ) -> Tuple[List[List[str]], torch.Tensor, List[int]]:
+        self, texts: List[str], batch_first=True, maxlen=None
+    ) -> TokenizedTexts:
         toks = [self.tokenize(text) for text in texts]
         tokids, lens = self.pad_sequences(
             [[self.tok2id(t) for t in tok] for tok in toks],
             batch_first=batch_first,
             maxlen=maxlen,
         )
-        return toks, tokids, lens
+        return TokenizedTexts(toks, tokids, lens)
 
-    def enc_query_doc(self, queries_tok, documents_tok):
+    def enc_query_doc(
+        self, queries: List[str], documents: List[str], d_maxlen=None, q_maxlen=None
+    ):
         """
-        Returns encoded versions of the query and document from general **inputs dict
-        Requires query_tok, doc_tok, query_len, and doc_len.
+        Returns encoded versions of the query and document from two
+        list (same size) of queries and documents
 
         May be overwritten in subclass to provide contextualized representation, e.g.
         joinly modeling query and document representations in BERT.
         """
-        return {"query": self(queries_tok), "doc": self(documents_tok)}
+
+        tokenized_queries = self.batch_tokenize(queries, maxlen=q_maxlen)
+        tokenized_documents = self.batch_tokenize(documents, maxlen=d_maxlen)
+        return (
+            tokenized_queries,
+            self(tokenized_queries.ids),
+            tokenized_documents,
+            self(tokenized_documents.ids),
+        )
 
     def tok2id(self, tok: str) -> int:
         """

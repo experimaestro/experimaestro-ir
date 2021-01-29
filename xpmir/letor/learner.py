@@ -5,8 +5,9 @@ import os
 from pathlib import Path
 from typing import Dict, List
 from datamaestro_text.data.ir import Adhoc
-from experimaestro import task, config, param, progress, pathoption
+from experimaestro import task, config, param, Param, pathoption
 from experimaestro.annotations import option
+from experimaestro.notifications import tqdm
 from experimaestro.utils import cleanupdir
 from xpmir.evaluation import evaluate
 from xpmir.letor import Random
@@ -70,22 +71,10 @@ class Validation:
 
 
 # Training
-@param("max_epoch", default=1000, help="Maximum training epoch")
-@param(
-    "early_stop",
-    default=20,
-    help="Maximum number of epochs without improvement on validation",
-)
-@param("warmup", default=-1, help="Number of warmup epochs")
 @param("random", type=Random, help="Random generator")
-@param("trainer", type=Trainer, help="The trainer used to learn the parameters")
-@param("scorer", type=LearnableScorer, help="The scorer to learn")
 # Validation
 @param("validation", type=Validation, help="How to compute the validation metric")
 # Checkpoints
-@option(
-    "checkpoint_interval", default=1, help="Number of epochs between each checkpoint"
-)
 @pathoption("checkpointspath", "checkpoints")
 @pathoption("bestpath", "best")
 @pathoption("logpath", "runs")
@@ -97,7 +86,25 @@ class Learner(Scorer):
     """The learner task is generic, and takes two main arguments:
     (1) the scorer defines the model (e.g. DRMM), and
     (2) the trainer defines the loss (e.g. pointwise, pairwise, etc.)
+
+    Arguments:
+
+    max_epoch: Maximum training epoch
+    early_stop: Maximum number of epochs without improvement on validation
+    warmup: Number of warmup epochs
+    checkpoint_interval: Number of epochs between each checkpoint
+    scorer: The scorer to learn
+    trainer: The trainer used to learn the parameters of the scorer
     """
+    # Training
+    max_epoch: Param[int] = 1000
+    early_stop: Param[int] = 20
+    warmup: Param[int] = -1
+    trainer: Param[Trainer]
+    scorer: Param[LearnableScorer]
+
+    # Checkpoints
+    checkpoint_interval: Param[int] = 1
 
     def execute(self):
         logger = logging.getLogger()
@@ -125,65 +132,70 @@ class Learner(Scorer):
             top = None
 
         self.logger.info("Starting to train")
-        for state in self.trainer.iter_train(self.max_epoch):
-            # Report progress
-            progress(state.epoch / self.max_epoch)
 
-            if state.epoch >= 0 and not self.only_cached:
-                message = f"epoch {state.epoch}"
-                if state.cached:
-                    self.logger.debug(f"[train] [cached] {message}")
-                else:
-                    self.logger.debug(f"[train] {message}")
+        current = 0
+        with tqdm(
+            self.trainer.iter_train(self.max_epoch), total=self.max_epoch
+        ) as states:
+            for state in states:
+                # Report progress
+                states.update(state.epoch - current)
 
-            if state.epoch == -1 and not self.initial_eval:
-                continue
+                if state.epoch >= 0 and not self.only_cached:
+                    message = f"epoch {state.epoch}"
+                    if state.cached:
+                        self.logger.debug(f"[train] [cached] {message}")
+                    else:
+                        self.logger.debug(f"[train] {message}")
 
-            # Compute validation metrics
-            if not state.cached:
+                if state.epoch == -1 and not self.initial_eval:
+                    continue
+
                 # Compute validation metrics
-                self.validation.compute(state)
-                for metric in self.validation.metrics:
-                    context.writer.add_scalar(
-                        f"val/{metric}", state.metrics[metric], state.epoch
-                    )
+                if not state.cached:
+                    # Compute validation metrics
+                    self.validation.compute(state)
+                    for metric in self.validation.metrics:
+                        context.writer.add_scalar(
+                            f"val/{metric}", state.metrics[metric], state.epoch
+                        )
 
-                # Save checkpoint if needed
-                if state.epoch % self.checkpoint_interval == 0:
-                    context.save_checkpoint()
+                    # Save checkpoint if needed
+                    if state.epoch % self.checkpoint_interval == 0:
+                        context.save_checkpoint()
 
-                # Update the top validation
-                if state.epoch >= self.warmup:
-                    if top is None or state.value > top.value:
-                        top = state
-                        context.copy(self.bestpath)
+                    # Update the top validation
+                    if state.epoch >= self.warmup:
+                        if top is None or state.value > top.value:
+                            top = state
+                            context.copy(self.bestpath)
 
-            # Early stopping
-            if top is not None:
-                epochs_since_imp = context.epoch - top.epoch
-                if self.early_stop > 0 and epochs_since_imp >= self.early_stop:
+                # Early stopping
+                if top is not None:
+                    epochs_since_imp = context.epoch - top.epoch
+                    if self.early_stop > 0 and epochs_since_imp >= self.early_stop:
+                        self.logger.warn(
+                            "stopping after epoch {epoch} ({early_stop} epochs with no "
+                            "improvement to validation metric)".format(
+                                **state.__dict__, **self.__dict__
+                            )
+                        )
+                        break
+
+                # Early stopping
+                if context.epoch >= self.max_epoch:
                     self.logger.warn(
-                        "stopping after epoch {epoch} ({early_stop} epochs with no "
-                        "improvement to validation metric)".format(
-                            **state.__dict__, **self.__dict__
+                        "stopping after epoch {max_epoch} (max_epoch)".format(
+                            **self.__dict__
                         )
                     )
                     break
 
-            # Early stopping
-            if context.epoch >= self.max_epoch:
-                self.logger.warn(
-                    "stopping after epoch {max_epoch} (max_epoch)".format(
-                        **self.__dict__
-                    )
-                )
-                break
+            if not state.cached:
+                # Set the hyper-parameters
+                context.writer.add_hparams(self.__tags__, state.metrics)
 
-        if not state.cached:
-            # Set the hyper-parameters
-            context.writer.add_hparams(self.__tags__, state.metrics)
-
-        self.logger.info("top validation epoch={} {}".format(top.epoch, top.value))
+            self.logger.info("top validation epoch={} {}".format(top.epoch, top.value))
 
     _bestmodel = None
 
