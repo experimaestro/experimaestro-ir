@@ -76,10 +76,12 @@ class TwoStageRetriever(Retriever):
     Args:
         retriever: The base retriever
         scorer: The scorer used to re-rank the documents
+        batchsize: The batch size for the re-ranker
     """
 
     retriever: Param[Retriever]
     scorer: Param[Scorer]
+    batchsize: Param[int] = 0
 
     def initialize(self):
         self.retriever.initialize()
@@ -87,6 +89,14 @@ class TwoStageRetriever(Retriever):
     def retrieve(self, query: str):
         scoredDocuments = self.retriever.retrieve(query)
 
-        scoredDocuments = self.scorer.rsv(query, scoredDocuments)
-        scoredDocuments.sort(reverse=True)
-        return scoredDocuments[: self.topk]
+        if self.batchsize > 0:
+            _scoredDocuments = []
+            for i in range(0, len(scoredDocuments), self.batchsize):
+                _scoredDocuments.extend(
+                    self.scorer.rsv(query, scoredDocuments[i : (i + self.batchsize)])
+                )
+        else:
+            _scoredDocuments = self.scorer.rsv(query, scoredDocuments)
+
+        _scoredDocuments.sort(reverse=True)
+        return _scoredDocuments[: self.topk]

@@ -225,7 +225,9 @@ def process(
 
         def get_retriever(index, scorer, topk=topK):
             base_retriever = AnseriniRetriever(k=topk, index=index, model=basemodel)
-            return TwoStageRetriever(retriever=base_retriever, scorer=scorer)
+            return TwoStageRetriever(
+                retriever=base_retriever, scorer=scorer, batchsize=batch_size
+            )
 
         for train, val, test in info.datasets:
 

@@ -1,7 +1,9 @@
 import math
-from experimaestro import param, config, Choices
+from typing import Optional
+from experimaestro import param, config, Choices, Param, default
 import torch
 from torch import nn
+from typing_extensions import Annotated
 from xpmir.dm.data.base import Index
 from . import InteractionScorer
 import xpmir.neural.modules as modules
@@ -57,21 +59,24 @@ class LogCountHistogram(CountHistogram):
         return (result.float() + 1e-5).log()
 
 
-@param(
-    "hidden", default=5, help="hidden layer dimension for feed forward matching network"
-)
-@param("hist", type=CountHistogram, default=LogCountHistogram(), help="Histogram")
 @param("combine", default="idf", checker=Choices(["idf", "sum"]), help="term gate type")
-@param(
-    "index", type=Index, required=False, help="The index when computing the with IDF"
-)
 @config()
 class Drmm(InteractionScorer):
     """
     Implementation of the DRMM model from:
       > Jiafeng Guo, Yixing Fan, Qingyao Ai, and William Bruce Croft. 2016. A Deep Relevance
       > Matching Model for Ad-hoc Retrieval. In CIKM.
+
+    Attributes:
+
+    hist: The histogram type
+    hidden: Hidden layer dimension for the feed forward matching network
+    index: the index (only used when using IDF to combine)
     """
+
+    hist: Annotated[CountHistogram, default(LogCountHistogram())]
+    hidden: Param[int] = 5
+    index: Param[Optional[Index]]
 
     def __validate__(self):
         super().__validate__()

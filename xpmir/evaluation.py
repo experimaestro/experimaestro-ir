@@ -2,7 +2,8 @@ from pathlib import Path
 import tempfile
 from typing import List
 from datamaestro_text.data.ir import Adhoc
-from experimaestro import param, task, pathoption, tqdm
+from experimaestro import param, task, pathoption, tqdm, Param, pathgenerator
+from typing_extensions import Annotated
 import xpmir as ir
 from datamaestro_text.data.ir.trec import (
     TrecAdhocAssessments,
@@ -10,7 +11,6 @@ from datamaestro_text.data.ir.trec import (
     TrecAdhocResults,
 )
 
-import logging
 import xpmir.metrics as metrics
 from xpmir.rankers import Retriever
 
@@ -79,14 +79,21 @@ def evaluate(run_path: Path, retriever: Retriever, dataset: Adhoc, measures: Lis
         return _evaluate(fp, retriever, dataset, measures)
 
 
-@param("dataset", type=Adhoc)
-@param("retriever", type=Retriever)
-@param("metrics", type=List[str], default=["map", "p@20", "ndcg", "ndcg@20", "mrr"])
-@pathoption("detailed", "detailed.txt")
-@pathoption("measures", "measures.txt")
-@pathoption("run_path", "retrieved.trecrun")
 @task()
 class Evaluate:
+    """
+    Attributes:
+
+    """
+
+    metrics: Param[List[str]] = ["map", "p@20", "ndcg", "ndcg@20", "mrr"]
+    dataset: Param[Adhoc]
+    retriever: Param[Retriever]
+
+    run_path: Annotated[Path, pathgenerator("retrieved.trecrun")]
+    detailed: Annotated[Path, pathgenerator("detailed.txt")]
+    measures: Annotated[Path, pathgenerator("measures.txt")]
+
     def config(self):
         return TrecAdhocResults(
             results=self.measures, detailed=self.detailed, metrics=self.metrics
