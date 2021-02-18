@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 
 from experimaestro import config, Param
-from xpmir.letor.samplers import Records, SamplerRecord
+from xpmir.letor.samplers import Records, PointwiseRecord
 from xpmir.rankers import LearnableScorer, ScoredDocument
 from xpmir.vocab import Vocab
 
@@ -42,7 +42,7 @@ class InteractionScorer(LearnableScorer, nn.Module):
         inputs = Records()
         for doc in documents:
             assert doc.content is not None
-            inputs.add(SamplerRecord(query, doc.docid, doc.content, doc.score, None))
+            inputs.add(PointwiseRecord(query, doc.docid, doc.content, doc.score, None))
 
         with torch.no_grad():
             scores = self(inputs).cpu().numpy()

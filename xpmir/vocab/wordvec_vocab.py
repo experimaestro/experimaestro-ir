@@ -55,7 +55,7 @@ class WordvecVocab(Vocab, nn.Module):
     """
 
     def __postinit__(self):
-        super().__postinit__()
+        # super().__postinit__()
         self._terms, self._weights = self.load()
         self._term2idx = {t: i for i, t in enumerate(self._terms)}
         matrix = self._weights

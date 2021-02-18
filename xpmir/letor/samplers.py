@@ -1,36 +1,41 @@
+import itertools
 from typing import Any, Iterator, List, NamedTuple, Optional
 import torch
 import numpy as np
-from datamaestro_text.data.ir import Adhoc
+from datamaestro_text.data.ir import Adhoc, TrainingTriplets
 from experimaestro import Annotated, Param, config, help, param, tqdm
 from experimaestro.annotations import cache
 from xpmir.rankers import Retriever, ScoredDocument
 from xpmir.utils import EasyLogger
+from xpmir.dm.data import Index
 
 
-class SamplerRecord:
+class Document:
+    docid: str
+    text: str
+    score: float
+
+    def __init__(self, docid, text, score):
+        self.docid = docid
+        self.text = text
+        self.score = score
+
+
+class PointwiseRecord:
     """A record from a pointwise sampler"""
 
     # The query
     query: str
 
-    # The document ID
-    docid: str
-
-    # Context of the document
-    document: str
-
-    # Score
-    score: float
+    # The document
+    document: Document
 
     # The relevance
     relevance: Optional[float]
 
     def __init__(self, query, docid, document, score, relevance):
         self.query = query
-        self.docid = docid
-        self.document = document
-        self.score = score
+        self.document = Document(docid, document, score)
         self.relevance = relevance
 
 
@@ -47,31 +52,63 @@ class Records:
     # The queries
     queries: List[str]
 
-    # The document IDs
-    docids: List[str]
-
     # Text of the documents
-    documents: List[str]
-
-    # The scores of the retriever
-    scores: List[float]
+    documents: List[Document]
 
     # The relevances
     relevances: List[float]
 
     def __init__(self):
         self.queries = []
-        self.docids = []
-        self.scores = []
         self.documents = []
         self.relevances = []
 
-    def add(self, record: SamplerRecord):
+    def add(self, record: PointwiseRecord):
         self.queries.append(record.query)
-        self.docids.append(record.docid)
         self.relevances.append(record.relevance)
         self.documents.append(record.document)
-        self.scores.append(record.score)
+
+
+class PairwiseRecord:
+    query: str
+    positive: Document
+    negative: Document
+
+    def __init__(self, query, positive, negative):
+        self.query = query
+        self.positive = positive
+        self.negative = negative
+
+
+class PairwiseRecords:
+    """"""
+
+    # The queries
+    _queries: List[str]
+
+    # The document IDs (positive)
+    positives: List[Document]
+
+    # The scores of the retriever
+    negatives: List[Document]
+
+    def __init__(self):
+        self._queries = []
+        self.positives = []
+        self.negatives = []
+
+    def add(self, record: PairwiseRecord):
+        self._queries.append(record.query)
+        self.positives.append(record.positive)
+        self.negatives.append(record.negative)
+
+    @property
+    def queries(self):
+        return itertools.chain(self._queries, self._queries)
+
+    @property
+    def documents(self):
+        return itertools.chain(self.positives, self.negatives)
 
 
 @config()
@@ -81,13 +118,17 @@ class Sampler(EasyLogger):
     def initialize(self, random: np.random.RandomState):
         self.random = random
 
-    def record_iter(self) -> Iterator[SamplerRecord]:
+    def record_iter(self) -> Iterator[PointwiseRecord]:
         """Returns an iterator over records (query, document, relevance)"""
-        raise NotImplementedError()
+        raise NotImplementedError(f"{self.__class__} does not implement record_iter()")
+
+    def pairwiserecord_iter(self) -> Iterator[PairwiseRecord]:
+        """Returns an iterator over records (query, document, relevance)"""
+        raise NotImplementedError(
+            f"{self.__class__} does not implement pairwiserecord_iter()"
+        )
 
 
-# @param("dataset", type=Adhoc, help="The topics and assessments")
-# @param("retriever", type=Retriever, help="The retriever")
 @config()
 class ModelBasedSampler(Sampler):
     """Sampler based on a retriever
@@ -158,7 +199,7 @@ class ModelBasedSampler(Sampler):
                         # Get the assessment (assumes not relevant)
                         rel = qassessments.get(sd.docid, 0)
                         (pos_records if rel > 0 else neg_records).append(
-                            SamplerRecord(query.title, sd.docid, None, sd.score, rel)
+                            PointwiseRecord(query.title, sd.docid, None, sd.score, rel)
                         )
                         fp.write(
                             f"{query.title if rank == 0 else ''}\t{sd.docid}\t{sd.score}\t{rel}\n"
@@ -177,18 +218,18 @@ class ModelBasedSampler(Sampler):
                     rel = int(rel)
 
                     (pos_records if rel > 0 else neg_records).append(
-                        SamplerRecord(title, docno, None, float(score), rel)
+                        PointwiseRecord(title, docno, None, float(score), rel)
                     )
                     oldtitle = title
 
         return pos_records, neg_records
 
-    def prepare(self, record: SamplerRecord):
-        if record.document is None:
-            record.document = self.index.document_text(record.docid)
+    def prepare(self, record: PointwiseRecord):
+        if record.document.text is None:
+            record.document.text = self.index.document_text(record.document.docid)
         return record
 
-    def record_iter(self) -> Iterator[SamplerRecord]:
+    def record_iter(self) -> Iterator[PointwiseRecord]:
         npos = len(self.pos_records)
         nneg = len(self.neg_records)
         while True:
@@ -197,7 +238,39 @@ class ModelBasedSampler(Sampler):
             else:
                 yield self.prepare(self.neg_records[self.random.randint(0, nneg)])
 
+    def pairwiserecord_iter(self) -> Iterator[PairwiseRecord]:
+        raise NotImplementedError()
+
 
 @config()
 class TripletBasedSampler(Sampler):
-    """Sampler based on a triplet file"""
+    """Sampler based on a triplet file
+
+    Attributes:
+
+    source: the source of the triplets
+    index: the index (if the source is only)
+    """
+
+    source: Param[TrainingTriplets]
+    index: Param[Index] = None
+
+    def __validate__(self):
+        assert (
+            not self.source.ids or self.index is not None
+        ), "An index should be provided if source is IDs only"
+
+    def _fromid(self, docid: str):
+        return Document(docid, self.index.document_text(docid), None)
+
+    @staticmethod
+    def _fromtext(text: str):
+        return Document(None, text, None)
+
+    def pairwiserecord_iter(self) -> Iterator[PairwiseRecord]:
+        # Nature of the documents
+        getdoc = self._fromid if self.source.ids else self._fromtext
+
+        while True:
+            for query, pos, neg in self.source.iter():
+                yield PairwiseRecord(query, getdoc(pos), getdoc(neg))

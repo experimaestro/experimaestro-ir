@@ -1,10 +1,12 @@
+import functools
 import logging
-import os
 from pathlib import Path
+from typing import Any, Optional
 from datamaestro_text.data.ir import Adhoc
 from xpmir.letor import Device, Random
-from xpmir.letor.samplers import ModelBasedSampler
+from xpmir.letor.samplers import Sampler, ModelBasedSampler, TripletBasedSampler
 from xpmir.letor.trainers.pointwise import PointwiseTrainer
+from xpmir.letor.trainers.pairwise import PairwiseTrainer
 from xpmir.neural import InteractionScorer
 from xpmir.neural.drmm import Drmm
 
@@ -34,12 +36,9 @@ logging.basicConfig(level=logging.INFO)
 @click.option("--debug", is_flag=True, help="Print debug information")
 @click.option("--gpu", is_flag=True, help="Use GPU")
 @click.option(
-    "--grad-acc-batch", type=int, default=0, help="Batch size for accumulating"
-)
-@click.option(
     "--batch-size", type=int, default=64, help="Batch size (validation and test)"
 )
-@click.option("--port", type=int, default=12345, help="Port for monitoring")
+@click.option("--port", type=int, default=12345, help="Port for mo77777nitoring")
 @click.argument("workdir", type=Path)
 @click.group(chain=True, invoke_without_command=False)
 def cli(**kwargs):
@@ -54,6 +53,11 @@ class Information:
 
     datasets = []
     scorers = []
+    basemodel = BM25()
+
+    train_sampler: Optional[Sampler] = None
+    dev: Any = None
+    test: Any = None
 
     def index(self, ds):
         """Returns the anserini index"""
@@ -81,62 +85,134 @@ class Information:
         return self._random
 
 
-def register(method, add):
+def _register(method, add):
     def m(**kwargs):
-        return lambda info: add(info, method(info, **kwargs))
+        def _m(info: Information):
+            r = method(info, **kwargs)
+            if add is not None:
+                add(info, r)
+
+        return _m
 
     m.__name__ = method.__name__
     m.__doc__ = method.__doc__
     return cli.command()(m)
 
 
+def register(method):
+    return _register(method, None)
+
+
+# --- Trainers
+
+
+@click.option("--batch-size", type=int, default=64, help="Batch size for training")
+@click.option(
+    "--grad-acc-batch", type=int, default=0, help="Batch size for accumulating"
+)
+@register
+def pointwise(info: Information, batch_size, grad_acc_batch):
+    info.trainer = PointwiseTrainer(
+        device=info.device,
+        sampler=info.train_sampler,
+        grad_acc_batch=grad_acc_batch,
+        batch_size=batch_size,
+    )
+
+
+@click.option("--batch-size", type=int, default=64, help="Batch size for training")
+@click.option(
+    "--grad-acc-batch", type=int, default=0, help="Batch size for accumulating"
+)
+@register
+def pairwise(info: Information, batch_size, grad_acc_batch):
+    info.trainer = PairwiseTrainer(
+        device=info.device,
+        sampler=info.train_sampler,
+        grad_acc_batch=grad_acc_batch,
+        batch_size=batch_size,
+    )
+
+
 # ---- Datasets
 
 
 def dataset(method):
-    return register(method, lambda info, ds: info.datasets.append(ds))
+    return _register(method, None)
 
 
+@functools.lru_cache()
+def _msmarco_docs():
+    return prepare_dataset("com.microsoft.msmarco.passage.collection")
+
+
+def _msmarco(part: str):
+    return Adhoc(
+        documents=_msmarco_docs(),
+        topics=prepare_dataset(f"com.microsoft.msmarco.passage.{part}.queries"),
+        assessments=prepare_dataset(f"com.microsoft.msmarco.passage.{part}.qrels"),
+    )
+
+
+@click.option("--top-k", type=int, default=1000, help="Top-k for model-based sampler")
 @dataset
-def msmarco(info):
+def msmarco(info: Information, top_k: int):
     """Use the MS Marco dataset"""
     logging.info("Adding MS Marco dataset")
 
-    documents = prepare_dataset("com.microsoft.msmarco.passage.collection")
+    info.train_sampler = ModelBasedSampler(
+        retriever=AnseriniRetriever(
+            k=top_k, index=info.index(_msmarco_docs()), model=info.basemodel
+        ),
+        dataset=_msmarco("train"),
+    )
 
-    l = []
-    for p in ["train", "dev", "trec2019.test"]:
-        l.append(
-            Adhoc(
-                documents=documents,
-                topics=prepare_dataset(f"com.microsoft.msmarco.passage.{p}.queries"),
-                assessments=prepare_dataset(f"com.microsoft.msmarco.passage.{p}.qrels"),
-            )
-        )
-    return l
+    info.dev = _msmarco("dev")
 
 
 @dataset
-def robust(info):
+def msmarco_train_triplets(info: Information):
+    """Use MS-Marco triplets"""
+    info.train_sampler = TripletBasedSampler(
+        source=prepare_dataset("com.microsoft.msmarco.passage.train.idtriples"),
+        index=info.index(_msmarco_docs()),
+    )
+
+
+@dataset
+def msmarco_test2019(info: Information):
+    info.test = _msmarco("trec2019.test")
+
+
+@click.option("--top-k", type=int, default=1000, help="Top-k for model-based sampler")
+@dataset
+def robust(info: Information, top_k: int):
     """Use the TREC Robust dataset"""
     from xpmir.datasets.robust import fold
 
     # Return pairs topic/qrels
-    pairs = [fold("trf1"), fold("vaf1"), fold("f1")]
-
     documents = prepare_dataset("gov.nist.trec.adhoc.robust.2004").documents
 
-    return [
-        Adhoc(topics=topics, assessments=qrels, documents=documents)
-        for topics, qrels in pairs
-    ]
+    def get(p: str):
+        topics, qrels = fold(p)
+        return Adhoc(topics=topics, assessments=qrels, documents=documents)
+
+    info.train_sampler = ModelBasedSampler(
+        retriever=AnseriniRetriever(
+            k=top_k, index=info.index(documents), model=info.basemodel
+        ),
+        dataset=get("trf1"),
+    )
+
+    info.dev = get("trf1")
+    info.test = get("f1")
 
 
 # ---- Vocabulary
 
 
 def vocab(method):
-    return register(method, lambda info, vocab: setattr(info, "vocab", vocab))
+    return _register(method, lambda info, vocab: setattr(info, "vocab", vocab))
 
 
 @vocab
@@ -162,7 +238,7 @@ def bertencoder(info, trainable, model_id):
 
 
 def model(method):
-    return register(method, lambda info, model: info.scorers.append(model))
+    return _register(method, lambda info, model: info.scorers.append(model))
 
 
 @forwardoption.dlen(InteractionScorer)
@@ -189,9 +265,7 @@ def vanilla_transformer(info):
 
 
 @cli.resultcallback()
-def process(
-    processors, debug, gpu, port, workdir, max_epoch, batch_size, grad_acc_batch
-):
+def process(processors, debug, gpu, port, workdir, max_epoch, batch_size):
     """Runs an experiment"""
     logging.info("Running pipeline")
 
@@ -201,91 +275,76 @@ def process(
 
     # Sets the working directory and the name of the xp
     with experiment(workdir, "neural-ir", port=port) as xpm:
-        # Misc settings
-        assert (
-            "JAVA_HOME" in os.environ
-        ), "JAVA_HOME should be defined (to call anserini)"
-        xpm.setenv("JAVA_HOME", os.environ["JAVA_HOME"])
-
+        # Misc settings__xpm__
         # Prepare the embeddings
         info.device = device
 
         for processor in processors:
             processor(info)
 
-        assert info.datasets, "No dataset was selected"
-        assert info.scorers, "No model was selected"
+        assert info.trainer, "No trainer was selected"
+        assert info.train_sampler, "No train sampler was selected"
+        assert info.dev, "No dev dataset was selected"
+        assert info.test, "No test dataset was selected"
 
-        basemodel = BM25()
         random_scorer = RandomScorer(random=info.random).tag("model", "random")
 
         # Retrieve the top 1000
         topK = 1000
+        # 1000 documents used for cross-validation
         valtopK = 100
 
         def get_retriever(index, scorer, topk=topK):
-            base_retriever = AnseriniRetriever(k=topk, index=index, model=basemodel)
+            base_retriever = AnseriniRetriever(
+                k=topk, index=index, model=info.basemodel
+            )
             return TwoStageRetriever(
                 retriever=base_retriever, scorer=scorer, batchsize=batch_size
             )
 
-        for train, val, test in info.datasets:
+        val_index, test_index = [info.index(c.documents) for c in (info.dev, info.test)]
 
-            train_index, val_index, test_index = [
-                info.index(c.documents) for c in (train, val, test)
-            ]
+        # Search and evaluate with BM25
+        bm25_retriever = AnseriniRetriever(
+            k=topK, index=test_index, model=info.basemodel
+        ).tag("model", "bm25")
+        bm25_eval = Evaluate(dataset=info.test, retriever=bm25_retriever).submit()
 
-            # Search and evaluate with BM25
-            bm25_retriever = AnseriniRetriever(
-                k=topK, index=test_index, model=basemodel
-            ).tag("model", "bm25")
-            bm25_eval = Evaluate(dataset=test, retriever=bm25_retriever).submit()
-            random_eval = Evaluate(
-                dataset=test, retriever=get_retriever(test_index, random_scorer)
+        # Performance of random
+        random_eval = Evaluate(
+            dataset=info.test, retriever=get_retriever(test_index, random_scorer)
+        ).submit()
+
+        # Train and evaluate with each model
+        for scorer in info.scorers:
+            # Train with OpenNIR DRMM model
+            # predictor = Reranker(device=device, batch_size=batch_size)
+
+            trainer = info.trainer
+            validation = Validation(
+                dataset=info.dev, retriever=get_retriever(val_index, scorer, valtopK)
+            )
+
+            learner = Learner(
+                trainer=trainer,
+                random=info.random,
+                scorer=scorer,
+                max_epoch=tag(max_epoch),
+                validation=validation,
+            )
+            model = learner.submit()
+
+            # Evaluate the neural model
+            evaluate = Evaluate(
+                dataset=info.test, retriever=get_retriever(test_index, model)
             ).submit()
 
-            # Train and evaluate with each model
-            for scorer in info.scorers:
-                # Train with OpenNIR DRMM model
-                # predictor = Reranker(device=device, batch_size=batch_size)
+        xpm.wait()
 
-                scorer.index = train_index
-                sampler = ModelBasedSampler(
-                    retriever=AnseriniRetriever(
-                        k=topK, index=train_index, model=basemodel
-                    ),
-                    dataset=train,
-                )
-                trainer = PointwiseTrainer(
-                    device=device,
-                    sampler=sampler,
-                    grad_acc_batch=grad_acc_batch,
-                    batch_size=batch_size,
-                )
-                validation = Validation(
-                    dataset=val, retriever=get_retriever(val_index, scorer, valtopK)
-                )
-
-                learner = Learner(
-                    trainer=trainer,
-                    random=info.random,
-                    scorer=scorer,
-                    max_epoch=tag(max_epoch),
-                    validation=validation,
-                )
-                model = learner.submit()
-
-                # Evaluate the neural model
-                evaluate = Evaluate(
-                    dataset=test, retriever=get_retriever(test_index, model)
-                ).submit()
-
-            xpm.wait()
-
-            print(f"===")
-            print(f"Results for BM25\n{bm25_eval.results.read_text()}\n")
-            print(f"Results for DRMM\n{evaluate.results.read_text()}\n")
-            print(f"Results for random\n{random_eval.results.read_text()}\n")
+        print(f"===")
+        print(f"Results for BM25\n{bm25_eval.results.read_text()}\n")
+        print(f"Results for DRMM\n{evaluate.results.read_text()}\n")
+        print(f"Results for random\n{random_eval.results.read_text()}\n")
 
 
 if __name__ == "__main__":

@@ -58,6 +58,9 @@ class InteractionMatrix(nn.Module):
 
     def encode_query_doc(self, encoder: Vocab, inputs, d_maxlen=None, q_maxlen=None):
         tokq, q, tokd, d = encoder.enc_query_doc(
-            inputs.queries, inputs.documents, d_maxlen=d_maxlen, q_maxlen=q_maxlen
+            inputs.queries,
+            [d.text for d in inputs.documents],
+            d_maxlen=d_maxlen,
+            q_maxlen=q_maxlen,
         )
         return self(q, d, tokq.ids, tokd.ids), tokq, tokd

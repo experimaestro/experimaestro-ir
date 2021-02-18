@@ -21,7 +21,7 @@ class PointwiseTrainer(Trainer):
         self.train_iter = self.iter_batches(self.train_iter_core)
 
     def iter_batches(self, it):
-        while True:  # breaks on StopIteration
+        while True:
             batch = Records()
             for _, record in zip(range(self.batch_size), it):
                 batch.add(record)

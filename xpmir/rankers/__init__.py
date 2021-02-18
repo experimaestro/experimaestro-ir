@@ -2,7 +2,7 @@
 
 from logging import Logger
 from typing import Iterator, List, Tuple
-from experimaestro import config, param, Param
+from experimaestro import config, param, Param, Config
 from xpmir.dm.data import Index
 from xpmir.letor import Random
 from xpmir.utils import EasyLogger
@@ -48,9 +48,8 @@ class LearnableScorer(Scorer):
     pass
 
 
-@config()
-class Retriever:
-    """A retriever is a model able to retrieve
+class Retriever(Config):
+    """A retriever is a model to return top-scored documents given a query
 
     Attributes:
         topk: Number of documents to retrieve
@@ -69,9 +68,8 @@ class Retriever:
         raise NotImplementedError()
 
 
-@config()
 class TwoStageRetriever(Retriever):
-    """[summary]
+    """Use on retriever to select the top-K documents which are the re-ranked given a scorer
 
     Args:
         retriever: The base retriever
