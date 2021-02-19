@@ -33,19 +33,6 @@ logging.basicConfig(level=logging.INFO)
 # --- Experiment
 
 
-@forwardoption.max_epoch(Learner)
-@click.option("--debug", is_flag=True, help="Print debug information")
-@click.option("--gpu", is_flag=True, help="Use GPU")
-@click.option(
-    "--batch-size", type=int, default=64, help="Batch size (validation and test)"
-)
-@click.option("--port", type=int, default=12345, help="Port for monitoring")
-@click.argument("workdir", type=Path)
-@click.group(chain=True, invoke_without_command=False)
-def cli(**kwargs):
-    pass
-
-
 class Information:
     vocab = None
     device = None
@@ -266,10 +253,17 @@ def vanilla_transformer(info):
 # --- Run the experiment
 
 
-@cli.resultcallback()
+@forwardoption.max_epoch(Learner)
+@click.option("--debug", is_flag=True, help="Print debug information")
+@click.option("--gpu", is_flag=True, help="Use GPU")
+@click.option(
+    "--batch-size", type=int, default=64, help="Batch size (validation and test)"
+)
+@click.option("--port", type=int, default=12345, help="Port for monitoring")
+@click.argument("workdir", type=Path)
+@click.command()
 def process(processors, debug, gpu, port, workdir, max_epoch, batch_size):
     """Runs an experiment"""
-    logging.info("Running pipeline")
 
     logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
     info = Information()

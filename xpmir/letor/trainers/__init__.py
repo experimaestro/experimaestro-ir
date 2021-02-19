@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from shutil import rmtree
 from typing import Dict
-from experimaestro import Option, config, help, Param
+from experimaestro import Option, Config, help, Param
 from experimaestro import tqdm
 from experimaestro.utils import cleanupdir
 import torch
@@ -140,8 +140,7 @@ class TrainContext(EasyLogger):
             self.oldstate = None
 
 
-@config()
-class Trainer(EasyLogger):
+class Trainer(Config, EasyLogger):
     sampler: Annotated[Sampler, help("Training data sampler")]
     optimizer: Param[Optimizer] = Adam()
     device: Option[Device] = DEFAULT_DEVICE

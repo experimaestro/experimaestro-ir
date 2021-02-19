@@ -2,7 +2,7 @@
 
 from logging import Logger
 from typing import Iterator, List, Tuple
-from experimaestro import config, param, Param, Config
+from experimaestro import Param, Config
 from xpmir.dm.data import Index
 from xpmir.letor import Random
 from xpmir.utils import EasyLogger
@@ -18,8 +18,7 @@ class ScoredDocument:
         return self.score < other.score
 
 
-@config()
-class Scorer(EasyLogger):
+class Scorer(Config, EasyLogger):
     """A model able to give a score to a list of documents given a query"""
 
     def rsv(
@@ -28,10 +27,15 @@ class Scorer(EasyLogger):
         raise NotImplementedError()
 
 
-@param("random", type=Random, help="Random state")
-@config()
 class RandomScorer(Scorer):
-    """A random scorer"""
+    """A random scorer
+
+    Attributes:
+
+    random: The random state
+    """
+
+    random: Param[Random]
 
     def rsv(
         self, query: str, documents: Iterator[ScoredDocument], keepcontent=False
@@ -43,8 +47,9 @@ class RandomScorer(Scorer):
         return scoredDocuments
 
 
-@config()
 class LearnableScorer(Scorer):
+    """A scorer with parameters that can be learnt"""
+
     pass
 
 
@@ -52,7 +57,8 @@ class Retriever(Config):
     """A retriever is a model to return top-scored documents given a query
 
     Attributes:
-        topk: Number of documents to retrieve
+
+    topk: Number of documents to retrieve (used after re-reranking by the second stage retriever)
     """
 
     topk: Param[int] = 1500
@@ -60,7 +66,7 @@ class Retriever(Config):
     def initialize(self):
         pass
 
-    def retrieve(query: str) -> List[ScoredDocument]:
+    def retrieve(self, query: str) -> List[ScoredDocument]:
         """Retrieves a documents, returning a list sorted by decreasing score"""
         raise NotImplementedError()
 
@@ -71,10 +77,11 @@ class Retriever(Config):
 class TwoStageRetriever(Retriever):
     """Use on retriever to select the top-K documents which are the re-ranked given a scorer
 
-    Args:
-        retriever: The base retriever
-        scorer: The scorer used to re-rank the documents
-        batchsize: The batch size for the re-ranker
+    Attributes:
+
+    retriever: The base retriever
+    scorer: The scorer used to re-rank the documents
+    batchsize: The batch size for the re-ranker
     """
 
     retriever: Param[Retriever]
@@ -88,12 +95,14 @@ class TwoStageRetriever(Retriever):
         scoredDocuments = self.retriever.retrieve(query)
 
         if self.batchsize > 0:
+            # Work per batch
             _scoredDocuments = []
             for i in range(0, len(scoredDocuments), self.batchsize):
                 _scoredDocuments.extend(
                     self.scorer.rsv(query, scoredDocuments[i : (i + self.batchsize)])
                 )
         else:
+            # Score everything at once
             _scoredDocuments = self.scorer.rsv(query, scoredDocuments)
 
         _scoredDocuments.sort(reverse=True)

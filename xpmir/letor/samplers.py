@@ -3,7 +3,7 @@ from typing import Any, Iterator, List, NamedTuple, Optional
 import torch
 import numpy as np
 from datamaestro_text.data.ir import Adhoc, TrainingTriplets
-from experimaestro import Annotated, Param, config, help, param, tqdm
+from experimaestro import Config, Param, config, help, param, tqdm
 from experimaestro.annotations import cache
 from xpmir.rankers import Retriever, ScoredDocument
 from xpmir.utils import EasyLogger
@@ -111,8 +111,7 @@ class PairwiseRecords:
         return itertools.chain(self.positives, self.negatives)
 
 
-@config()
-class Sampler(EasyLogger):
+class Sampler(Config, EasyLogger):
     """"Abtract data sampler"""
 
     def initialize(self, random: np.random.RandomState):
@@ -242,7 +241,6 @@ class ModelBasedSampler(Sampler):
         raise NotImplementedError()
 
 
-@config()
 class TripletBasedSampler(Sampler):
     """Sampler based on a triplet file
 
