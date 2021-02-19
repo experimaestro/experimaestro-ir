@@ -23,7 +23,6 @@ markdown_extensions:
 
 plugins:
   - experimaestro:
-        name: Tasks and configurations
         init:
             # Allows to cope with uninstalled modules when generating documentation
             - xpmir.mkdocs_init
