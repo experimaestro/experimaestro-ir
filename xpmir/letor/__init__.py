@@ -1,22 +1,10 @@
-from tqdm import tqdm
 import torch
-from experimaestro import param, option, config, pathoption
-
-# from onir import util, trainers
-from xpmir.interfaces import apex
-
-# from onir.rankers import Ranker
-# from onir.vocab import Vocab
-# from onir.log import Logger
-
-
-from experimaestro import config, Param
+from experimaestro import Config, Param
 from cached_property import cached_property
 import numpy as np
 
 
-@config()
-class Random:
+class Random(Config):
     seed: Param[int] = 0
 
     @cached_property
@@ -27,8 +15,7 @@ class Random:
         return {"seed": self.seed}
 
 
-@config()
-class Device:
+class Device(Config):
     gpu: Param[bool] = False
     gpu_determ: Param[bool] = False
 

@@ -9,7 +9,7 @@ nav:
   - Home: index.md
   - Learning to rank: letor.md
   - Neural models: neural.md
-  - Experimaestro: xpm.md
+  - Misc: misc.md
 
 markdown_extensions:
   - pymdownx.details
@@ -23,13 +23,14 @@ markdown_extensions:
 
 plugins:
   - experimaestro:
-        path: xpm
         name: Tasks and configurations
         init:
+            # Allows to cope with uninstalled modules when generating documentation
             - xpmir.mkdocs_init
         modules:
-            - Learning to rank: xpmir.letor
-            - Neural: xpmir.neural
+            - xpmir.letor: letor.md
+            - xpmir.neural: neural.md
+            - xpmir: misc.md
 
 # Theme
 theme:

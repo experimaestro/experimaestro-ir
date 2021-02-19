@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from typing import Dict, List
 from datamaestro_text.data.ir import Adhoc
-from experimaestro import task, config, param, Param, pathoption
+from experimaestro import task, Config, param, Param, pathoption
 from experimaestro.annotations import option
 from experimaestro.notifications import tqdm
 from experimaestro.utils import cleanupdir
@@ -56,8 +56,7 @@ class ValidationContext(TrainContext):
 @param("metric", default="map")
 @param("dataset", type=Adhoc)
 @param("retriever", type=Retriever)
-@config()
-class Validation:
+class Validation(Config):
     def initialize(self):
         self.retriever.initialize()
         self.metrics = [self.metric]
