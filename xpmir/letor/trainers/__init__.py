@@ -41,21 +41,15 @@ class TrainState:
         with (path / "info.json").open("wt") as fp:
             json.dump(self.__getstate__(), fp)
 
-        with (path / "ranker.pth").open("wb") as fp:
-            torch.save(self.ranker, fp)
-
-        with (path / "optimizer.pth").open("wb") as fp:
-            torch.save(self.optimizer, fp)
+        with (path / "checkpoint.pth").open("wb") as fp:
+            torch.save((self.ranker, self.optimizer), fp)
 
         self.path = path
 
     def load(self, path, onlyinfo=False):
         if not onlyinfo:
-            with (path / "ranker.pth").open("rb") as fp:
-                self.ranker = torch.load(fp)
-
-            with (path / "optimizer.pth").open("rb") as fp:
-                self.optimizer = torch.load(fp)
+            with (path / "checkpoint.pth").open("rb") as fp:
+                self.ranker, self.optimizer = torch.load(fp)
 
         with (path / "info.json").open("rt") as fp:
             self.__dict__.update(json.load(fp))
@@ -141,7 +135,13 @@ class TrainContext(EasyLogger):
 
 
 class Trainer(Config, EasyLogger):
-    sampler: Annotated[Sampler, help("Training data sampler")]
+    """
+    Attributes:
+
+    sampler: The data sampler
+    """
+
+    sampler: Param[Sampler]
     optimizer: Param[Optimizer] = Adam()
     device: Option[Device] = DEFAULT_DEVICE
     batch_size: Param[int] = 16
@@ -195,22 +195,26 @@ class Trainer(Config, EasyLogger):
             with tqdm(
                 leave=False, total=b_count, ncols=100, desc=f"train {context.epoch}"
             ) as pbar:
-                total_loss = 0
+                total_metrics = {}
                 for b in range(self.batches_per_epoch):
                     for _ in range(self.num_microbatches):
-                        loss = self.train_batch()
+                        loss, metrics = self.train_batch()
                         loss.backward()
-                        total_loss += loss.item()
+                        total_metrics = {
+                            key: value + total_metrics.get(key, 0.0)
+                            for key, value in metrics.items()
+                        }
                         pbar.update(self.batch_size)
 
                     context.state.optimizer.step()
                     context.state.optimizer.zero_grad()
 
-            self.context.writer.add_scalar(
-                "train/loss",
-                total_loss / (self.num_microbatches * self.batches_per_epoch),
-                self.context.epoch,
-            )
+            for key, value in total_metrics.items():
+                self.context.writer.add_scalar(
+                    f"train/{key}",
+                    value / (self.num_microbatches * self.batches_per_epoch),
+                    self.context.epoch,
+                )
 
             yield context.state
 

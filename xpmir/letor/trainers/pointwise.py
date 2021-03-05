@@ -1,5 +1,5 @@
 import sys
-from typing import List
+from typing import Dict, List
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -83,7 +83,7 @@ class PointwiseTrainer(Trainer):
         else:
             raise ValueError(f"unknown lossfn `{self.lossfn}`")
 
-        return loss
+        return loss, {"loss": loss.item()}
 
     def fast_forward(self, record_count):
         self._fast_forward(self.train_iter_core, self.iter_fields, record_count)

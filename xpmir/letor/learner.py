@@ -5,10 +5,11 @@ import os
 from pathlib import Path
 from typing import Dict, List
 from datamaestro_text.data.ir import Adhoc
-from experimaestro import task, Config, param, Param, pathoption
+from experimaestro import task, Config, param, Param, pathoption, pathgenerator
 from experimaestro.annotations import option
 from experimaestro.notifications import tqdm
 from experimaestro.utils import cleanupdir
+from typing_extensions import Annotated
 from xpmir.evaluation import evaluate
 from xpmir.letor import Random
 from xpmir.letor.trainers import TrainContext, TrainState, Trainer
@@ -69,14 +70,7 @@ class Validation(Config):
         state.metrics = mean
 
 
-# Training
-@param("random", type=Random, help="Random generator")
-# Validation
-@param("validation", type=Validation, help="How to compute the validation metric")
 # Checkpoints
-@pathoption("checkpointspath", "checkpoints")
-@pathoption("bestpath", "best")
-@pathoption("logpath", "runs")
 @task()
 class Learner(Scorer):
     trainer: Trainer
@@ -86,24 +80,36 @@ class Learner(Scorer):
     (1) the scorer defines the model (e.g. DRMM), and
     (2) the trainer defines the loss (e.g. pointwise, pairwise, etc.)
 
-    Arguments:
+    Attributes:
 
-    max_epoch: Maximum training epoch
-    early_stop: Maximum number of epochs without improvement on validation
-    warmup: Number of warmup epochs
-    checkpoint_interval: Number of epochs between each checkpoint
-    scorer: The scorer to learn
-    trainer: The trainer used to learn the parameters of the scorer
+        max_epoch: Maximum training epoch
+        early_stop: Maximum number of epochs without improvement on validation
+        warmup: Number of warmup epochs
+        checkpoint_interval: Number of epochs between each checkpoint
+        scorer: The scorer to learn
+        trainer: The trainer used to learn the parameters of the scorer
+        validation: How to compute the validation metric
+        validation_interval: interval for computing validation metrics
+        random: Random generator
     """
     # Training
+    random: Param[Random]
+
     max_epoch: Param[int] = 1000
     early_stop: Param[int] = 20
     warmup: Param[int] = -1
     trainer: Param[Trainer]
     scorer: Param[LearnableScorer]
+    validation: Param[Validation]
+    validation_interval: Param[int] = 1
 
     # Checkpoints
     checkpoint_interval: Param[int] = 1
+
+    # Paths
+    logpath: Annotated[Path, pathgenerator("runs")]
+    bestpath: Annotated[Path, pathgenerator("best")]
+    checkpointspath: Annotated[Path, pathgenerator("checkpoints")]
 
     def execute(self):
         logger = logging.getLogger()
@@ -147,17 +153,18 @@ class Learner(Scorer):
                     else:
                         self.logger.debug(f"[train] {message}")
 
-                if state.epoch == -1 and not self.initial_eval:
+                if state.epoch == -1:
                     continue
 
                 # Compute validation metrics
                 if not state.cached:
-                    # Compute validation metrics
-                    self.validation.compute(state)
-                    for metric in self.validation.metrics:
-                        context.writer.add_scalar(
-                            f"val/{metric}", state.metrics[metric], state.epoch
-                        )
+                    if state.epoch % self.validation_interval == 0:
+                        # Compute validation metrics
+                        self.validation.compute(state)
+                        for metric in self.validation.metrics:
+                            context.writer.add_scalar(
+                                f"val/{metric}", state.metrics[metric], state.epoch
+                            )
 
                     # Save checkpoint if needed
                     if state.epoch % self.checkpoint_interval == 0:
@@ -165,9 +172,10 @@ class Learner(Scorer):
 
                     # Update the top validation
                     if state.epoch >= self.warmup:
-                        if top is None or state.value > top.value:
-                            top = state
-                            context.copy(self.bestpath)
+                        if state.epoch % self.validation_interval == 0:
+                            if top is None or state.value > top.value:
+                                top = state
+                                context.copy(self.bestpath)
 
                 # Early stopping
                 if top is not None:
@@ -190,8 +198,10 @@ class Learner(Scorer):
                     )
                     break
 
+            # End of the learning process
             if not state.cached:
                 # Set the hyper-parameters
+                print(self.__tags__, state.metrics)
                 context.writer.add_hparams(self.__tags__, state.metrics)
 
             self.logger.info("top validation epoch={} {}".format(top.epoch, top.value))

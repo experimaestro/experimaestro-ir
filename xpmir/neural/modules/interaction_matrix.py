@@ -57,6 +57,7 @@ class InteractionMatrix(nn.Module):
         return torch.stack(simmats, dim=1)
 
     def encode_query_doc(self, encoder: Vocab, inputs, d_maxlen=None, q_maxlen=None):
+        """Returns a (batch x ... x #q x #d) tensor"""
         tokq, q, tokd, d = encoder.enc_query_doc(
             inputs.queries,
             [d.text for d in inputs.documents],

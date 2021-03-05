@@ -1,52 +1,34 @@
-import functools
 import logging
 from pathlib import Path
-from typing import Any, Optional
-from datamaestro_text.data.ir import Adhoc
-from xpmir.letor import Device, Random
-from xpmir.letor.samplers import Sampler, ModelBasedSampler, TripletBasedSampler
-from xpmir.letor.trainers import Trainer
-from xpmir.letor.trainers.pointwise import PointwiseTrainer
-from xpmir.letor.trainers.pairwise import PairwiseTrainer
-from xpmir.neural import InteractionScorer
-from xpmir.neural.drmm import Drmm
-
-from xpmir.rankers import RandomScorer, TwoStageRetriever
+from functools import lru_cache
 
 from datamaestro import prepare_dataset
+from datamaestro_text.transforms.ir import ShuffledTrainingTripletsLines
+from experimaestro import experiment, tag, tagspath
 from experimaestro.click import click, forwardoption
-from experimaestro import experiment, tag
-
-from xpmir.letor.learner import Learner, Validation
-
-from xpmir.rankers.standard import BM25
-from xpmir.interfaces.anserini import (
-    AnseriniRetriever,
-    IndexCollection,
-)
+from experimaestro.utils import cleanupdir
+from xpmir.datasets.adapters import RandomFold
 from xpmir.evaluation import Evaluate
+from xpmir.interfaces.anserini import AnseriniRetriever, IndexCollection
+from xpmir.letor import Device, Random
+from xpmir.letor.learner import Learner, Validation
+from xpmir.letor.optim import Adam
+from xpmir.letor.samplers import ModelBasedSampler, Sampler, TripletBasedSampler
+from xpmir.letor.trainers import Trainer
+from xpmir.letor.trainers.pairwise import PairwiseTrainer
+from xpmir.neural.drmm import Drmm
+from xpmir.neural.colbert import Colbert
+from xpmir.rankers import RandomScorer, TwoStageRetriever
+from xpmir.rankers.standard import BM25
 from xpmir.vocab.huggingface import TransformerVocab
+from xpmir.vocab.wordvec_vocab import WordvecUnkVocab
 
 logging.basicConfig(level=logging.INFO)
 
 
-# --- Experiment
-
-
 class Information:
-    vocab = None
-    device = None
-    _random = None
-    _indexes = {}
-
-    datasets = []
-    scorers = []
-    basemodel = BM25()
-
-    train_sampler: Optional[Sampler] = None
-    dev: Any = None
-    test: Any = None
-    trainer: Trainer
+    def __init__(self):
+        self._indexes = {}
 
     def index(self, ds):
         """Returns the anserini index"""
@@ -66,281 +48,134 @@ class Information:
             self._indexes[ds.id] = index
         return index
 
-    @property
-    def random(self):
-        if not self._random:
-            self._random = Random()
 
-        return self._random
-
-
-def _register(method, add):
-    def m(**kwargs):
-        def _m(info: Information):
-            r = method(info, **kwargs)
-            if add is not None:
-                add(info, r)
-
-        return _m
-
-    m.__name__ = method.__name__
-    m.__doc__ = method.__doc__
-    return cli.command()(m)
-
-
-def register(method):
-    return _register(method, None)
-
-
-# --- Trainers
-
-
-@click.option("--batch-size", type=int, default=64, help="Batch size for training")
-@click.option(
-    "--grad-acc-batch", type=int, default=0, help="Batch size for accumulating"
-)
-@register
-def pointwise(info: Information, batch_size, grad_acc_batch):
-    info.trainer = PointwiseTrainer(
-        device=info.device,
-        sampler=info.train_sampler,
-        grad_acc_batch=grad_acc_batch,
-        batch_size=batch_size,
-    )
-
-
-@click.option("--batch-size", type=int, default=64, help="Batch size for training")
-@click.option(
-    "--grad-acc-batch", type=int, default=0, help="Batch size for accumulating"
-)
-@register
-def pairwise(info: Information, batch_size, grad_acc_batch):
-    info.trainer = PairwiseTrainer(
-        device=info.device,
-        sampler=info.train_sampler,
-        grad_acc_batch=grad_acc_batch,
-        batch_size=batch_size,
-    )
-
-
-# ---- Datasets
-
-
-def dataset(method):
-    return _register(method, None)
-
-
-@functools.lru_cache()
-def _msmarco_docs():
-    return prepare_dataset("com.microsoft.msmarco.passage.collection")
-
-
-def _msmarco(part: str):
-    return Adhoc(
-        documents=_msmarco_docs(),
-        topics=prepare_dataset(f"com.microsoft.msmarco.passage.{part}.queries"),
-        assessments=prepare_dataset(f"com.microsoft.msmarco.passage.{part}.qrels"),
-    )
-
-
-@click.option("--top-k", type=int, default=1000, help="Top-k for model-based sampler")
-@dataset
-def msmarco(info: Information, top_k: int):
-    """Use the MS Marco dataset"""
-    logging.info("Adding MS Marco dataset")
-
-    info.train_sampler = ModelBasedSampler(
-        retriever=AnseriniRetriever(
-            k=top_k, index=info.index(_msmarco_docs()), model=info.basemodel
-        ),
-        dataset=_msmarco("train"),
-    )
-
-    info.dev = _msmarco("dev")
-
-
-@dataset
-def msmarco_train_triplets(info: Information):
-    """Use MS-Marco triplets"""
-    info.train_sampler = TripletBasedSampler(
-        source=prepare_dataset("com.microsoft.msmarco.passage.train.idtriples"),
-        index=info.index(_msmarco_docs()),
-    )
-
-
-@dataset
-def msmarco_test2019(info: Information):
-    info.test = _msmarco("trec2019.test")
-
-
-@click.option("--top-k", type=int, default=1000, help="Top-k for model-based sampler")
-@dataset
-def robust(info: Information, top_k: int):
-    """Use the TREC Robust dataset"""
-    from xpmir.datasets.robust import fold
-
-    # Return pairs topic/qrels
-    documents = prepare_dataset("gov.nist.trec.adhoc.robust.2004").documents
-
-    def get(p: str):
-        topics, qrels = fold(p)
-        return Adhoc(topics=topics, assessments=qrels, documents=documents)
-
-    info.train_sampler = ModelBasedSampler(
-        retriever=AnseriniRetriever(
-            k=top_k, index=info.index(documents), model=info.basemodel
-        ),
-        dataset=get("trf1"),
-    )
-
-    info.dev = get("trf1")
-    info.test = get("f1")
-
-
-# ---- Vocabulary
-
-
-def vocab(method):
-    return _register(method, lambda info, vocab: setattr(info, "vocab", vocab))
-
-
-@vocab
-def glove(info):
-    from xpmir.vocab.wordvec_vocab import WordvecUnkVocab
-
-    wordembs = prepare_dataset("edu.stanford.glove.6b.50")
-    return WordvecUnkVocab(data=wordembs, random=info.random)
-
-
-@forwardoption.model_id(TransformerVocab)
-@click.option(
-    "--trainable", is_flag=True, help="Make the BERT encoder parameters trainable"
-)
-@vocab
-def bertencoder(info, trainable, model_id):
-    import xpmir.vocab.huggingface as bv
-
-    return bv.IndependentTransformerVocab(trainable=trainable, model_id=model_id)
-
-
-# ---- scorers
-
-
-def model(method):
-    return _register(method, lambda info, model: info.scorers.append(model))
-
-
-@forwardoption.dlen(InteractionScorer)
-@forwardoption.qlen(InteractionScorer)
-@forwardoption.combine(Drmm)
-@model
-def drmm(info, dlen, qlen, combine):
-    """Use the DRMM model"""
-    assert info.vocab is not None, "No embeddings are defined yet for DRMM"
-    return Drmm(vocab=info.vocab, dlen=dlen, qlen=qlen, combine=combine).tag(
-        "model", "drmm"
-    )
-
-
-@model
-def vanilla_transformer(info):
-    """Use the Vanilla BERT model"""
-    from xpmir.neural.vanilla_transformer import VanillaTransformer
-
-    return VanillaTransformer(vocab=info.vocab).tag("model", "vanilla-transformer")
-
-
-# --- Run the experiment
-
-
+# --- Experiment
 @forwardoption.max_epoch(Learner)
 @click.option("--debug", is_flag=True, help="Print debug information")
 @click.option("--gpu", is_flag=True, help="Use GPU")
 @click.option(
-    "--batch-size", type=int, default=64, help="Batch size (validation and test)"
+    "--batch-size", type=int, default=256, help="Batch size (validation and test)"
 )
 @click.option("--port", type=int, default=12345, help="Port for monitoring")
 @click.argument("workdir", type=Path)
 @click.command()
-def process(processors, debug, gpu, port, workdir, max_epoch, batch_size):
+def cli(debug, gpu, port, workdir, max_epoch, batch_size):
     """Runs an experiment"""
 
+    BATCHES_PER_EPOCH = 32
+
     logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
+    device = Device(gpu=gpu)
     info = Information()
-    info.device = device = Device(gpu=gpu)
 
     # Sets the working directory and the name of the xp
-    with experiment(workdir, "neural-ir", port=port) as xpm:
-        # Misc settings__xpm__
-        # Prepare the embeddings
-        info.device = device
+    with experiment(workdir, "msmarco", port=port) as xp:
+        # Train / validation / test
+        train_triples = prepare_dataset("com.microsoft.msmarco.passage.train.idtriples")
+        dev = prepare_dataset("com.microsoft.msmarco.passage.dev")
+        test = prepare_dataset("com.microsoft.msmarco.passage.trec2019.test")
+        index = info.index(train_triples.documents)
+        test_index = index
 
-        for processor in processors:
-            processor(info)
+        # Base models
+        random = Random(seed=0)
+        basemodel = BM25()
+        random_scorer = RandomScorer(random=random).tag("model", "random")
 
-        assert info.trainer, "No trainer was selected"
-        assert info.train_sampler, "No train sampler was selected"
-        assert info.dev, "No dev dataset was selected"
-        assert info.test, "No test dataset was selected"
+        # Get a random subset of 500 queries for validation
+        ds_val = RandomFold(dataset=dev, seed=102, size=500).submit()
 
-        random_scorer = RandomScorer(random=info.random).tag("model", "random")
+        triplesid = ShuffledTrainingTripletsLines(
+            seed=123,
+            data=prepare_dataset("com.microsoft.msmarco.passage.train.idtriples"),
+        ).submit()
+        train_sampler = TripletBasedSampler(source=triplesid, index=index)
 
         # Retrieve the top 1000
         topK = 1000
         # 1000 documents used for cross-validation
         valtopK = 100
 
-        def get_retriever(index, scorer, topk=topK):
-            base_retriever = AnseriniRetriever(
-                k=topk, index=index, model=info.basemodel
-            )
+        # @lru_cache
+        def get_reranker(index, scorer, topk=topK):
+            base_retriever = AnseriniRetriever(k=topk, index=index, model=basemodel)
             return TwoStageRetriever(
                 retriever=base_retriever, scorer=scorer, batchsize=batch_size
             )
 
-        val_index, test_index = [info.index(c.documents) for c in (info.dev, info.test)]
-
         # Search and evaluate with BM25
         bm25_retriever = AnseriniRetriever(
-            k=topK, index=test_index, model=info.basemodel
+            k=topK, index=test_index, model=basemodel
         ).tag("model", "bm25")
-        bm25_eval = Evaluate(dataset=info.test, retriever=bm25_retriever).submit()
+        bm25_eval = Evaluate(dataset=test, retriever=bm25_retriever).submit()
 
         # Performance of random
         random_eval = Evaluate(
-            dataset=info.test, retriever=get_retriever(test_index, random_scorer)
+            dataset=test, retriever=get_reranker(test_index, random_scorer)
         ).submit()
 
-        # Train and evaluate with each model
-        for scorer in info.scorers:
-            # Train with OpenNIR DRMM model
-            # predictor = Reranker(device=device, batch_size=batch_size)
+        wordembs = prepare_dataset("edu.stanford.glove.6b.50")
+        glove = WordvecUnkVocab(data=wordembs, random=random)
 
-            trainer = info.trainer
+        @lru_cache
+        def trainer(lr=1e-3, grad_acc_batch=0):
+            return PairwiseTrainer(
+                optimizer=Adam(lr=lr),
+                device=device,
+                batches_per_epoch=BATCHES_PER_EPOCH,
+                sampler=train_sampler,
+                grad_acc_batch=grad_acc_batch,
+                batch_size=batch_size,
+            )
+
+        # Train and evaluate with each model
+        evaluations = []
+        runspath = xp.resultspath / "runs"
+        cleanupdir(runspath)
+        runspath.mkdir(exist_ok=True, parents=True)
+
+        token = xp.token("main", 1)
+
+        def run(scorer, trainer: Trainer):
             validation = Validation(
-                dataset=info.dev, retriever=get_retriever(val_index, scorer, valtopK)
+                dataset=ds_val, retriever=get_reranker(index, scorer, valtopK)
             )
 
             learner = Learner(
                 trainer=trainer,
-                random=info.random,
+                random=random,
                 scorer=scorer,
+                validation_interval=16,
                 max_epoch=tag(max_epoch),
                 validation=validation,
             )
-            model = learner.submit()
+            model = token(1, learner).submit()
+            (runspath / tagspath(model)).symlink_to(model.logpath)
 
             # Evaluate the neural model
-            evaluate = Evaluate(
-                dataset=info.test, retriever=get_retriever(test_index, model)
-            ).submit()
+            evaluations.append(
+                token(
+                    1, Evaluate(dataset=test, retriever=get_reranker(index, model))
+                ).submit()
+            )
 
-        xpm.wait()
+        # DRMM
+        drmm = Drmm(vocab=glove, index=index).tag("model", "drmm")
+        run(drmm, trainer(lr=tag(1e-3)))
 
-        print(f"===")
+        # We use micro-batches of size 8 for BERT-based models
+        colbert = Colbert(vocab=TransformerVocab(trainable=True), dlen=512).tag(
+            "model", "colbert"
+        )
+        run(colbert, trainer(lr=tag(1e-3), grad_acc_batch=4))
+
+        # Wait that experiments complete
+        xp.wait()
+
         print(f"Results for BM25\n{bm25_eval.results.read_text()}\n")
-        print(f"Results for DRMM\n{evaluate.results.read_text()}\n")
         print(f"Results for random\n{random_eval.results.read_text()}\n")
+        for evaluate in evaluations:
+            print(f"Results for {evaluate.tags()}\n{evaluate.results.read_text()}\n")
 
 
 if __name__ == "__main__":

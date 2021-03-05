@@ -22,3 +22,8 @@ Functionalities can be added by installing optional dependencies:
 - Indexing and retrieval with anserini
 - Neural IR:
     - DRMM
+
+
+## Thanks
+
+Some parts of the code have been adapted from [OpenNIR](https://github.com/Georgetown-IR-Lab/OpenNIR)

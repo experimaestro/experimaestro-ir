@@ -1,27 +1,32 @@
 from pathlib import Path
+from typing import List
 from cached_property import cached_property
-from experimaestro import Choices
-from datamaestro.definitions import data, argument
+from experimaestro import Choices, Param, Annotated
+from datamaestro.definitions import data
 from .base import Index as BaseIndex
 
 
-@argument("path", type=Path, help="Path to the index")
-@argument("storePositions", default=False, help="Store term position within documents")
-@argument("storeDocvectors", default=False, help="Store document term vectors")
-@argument("storeRaw", default=False, help="Store raw document")
-@argument(
-    "storeContents",
-    default=False,
-    help="Store processed documents (e.g. with HTML tags)",
-)
-@argument(
-    "stemmer",
-    default="porter",
-    checker=Choices(["porter", "krovetz", "none"]),
-    help="The stemmer to use",
-)
 @data()
 class Index(BaseIndex):
+    """Anserini-backed index
+
+    Attributes:
+
+        path: Path to the index
+        storePositions: Store term positions
+        storeDocvectors: Store document term vectors
+        storeRaw: Store raw document
+        storeContents: Store processed documents (e.g. with HTML tags)
+        stemmer: The stemmer to use
+    """
+
+    path: Param[Path]
+    storePositions: Param[bool] = False
+    storeDocvectors: Param[bool] = False
+    storeRaw: Param[bool] = False
+    storeContents: Param[bool] = False
+    stemmer: Annotated[str, Choices(["porter", "krovetz", "none"])] = "porter"
+
     _index_reader = None
     _stats = None
 
@@ -48,8 +53,13 @@ class Index(BaseIndex):
         doc = self.index_reader.doc(docid)
         return doc.contents()
 
+    @cached_property
+    def terms(self):
+        """Returns a map"""
+        return {entry.term: (entry.df, entry.cf) for entry in self.index_reader.terms()}
+
     def term_df(self, term: str):
-        x = self.index_reader.analyze(term)
+        x: List[str] = self.index_reader.analyze(term)
         if x:
-            return self.index_reader.get_term_counts(x[0])[0]
+            return self.terms.get(x[0], (0, 0))[0]
         return 0

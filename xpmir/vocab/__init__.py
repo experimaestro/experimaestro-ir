@@ -3,13 +3,12 @@ import re
 import torch
 from typing import List
 import torch.nn as nn
-from experimaestro import config
+from experimaestro import Config
 from xpmir.letor.samplers import TokenizedTexts
 from xpmir.utils import EasyLogger
 
 
-@config()
-class Vocab(EasyLogger, nn.Module):
+class Vocab(Config, EasyLogger, nn.Module):
     """
     Represents a vocabulary and corresponding neural encoding technique
     (e.g., embedding). This class can also handle the case of a cross-encoding of the
@@ -86,6 +85,10 @@ class Vocab(EasyLogger, nn.Module):
             tokenized_documents,
             self(tokenized_documents.ids),
         )
+
+    @property
+    def pad_tokenid(self) -> int:
+        raise NotImplementedError()
 
     def tok2id(self, tok: str) -> int:
         """

@@ -128,7 +128,6 @@ class Sampler(Config, EasyLogger):
         )
 
 
-@config()
 class ModelBasedSampler(Sampler):
     """Sampler based on a retriever
 

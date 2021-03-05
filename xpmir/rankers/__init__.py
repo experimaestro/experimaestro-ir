@@ -1,7 +1,7 @@
 # This package contains all rankers
 
 from logging import Logger
-from typing import Iterator, List, Tuple
+from typing import Iterable, List, Tuple
 from experimaestro import Param, Config
 from xpmir.dm.data import Index
 from xpmir.letor import Random
@@ -22,8 +22,9 @@ class Scorer(Config, EasyLogger):
     """A model able to give a score to a list of documents given a query"""
 
     def rsv(
-        self, query: str, documents: Iterator[ScoredDocument], keepcontent=False
+        self, query: str, documents: Iterable[ScoredDocument], keepcontent=False
     ) -> List[ScoredDocument]:
+        """Score all the documents (inference mode, no training)"""
         raise NotImplementedError()
 
 
@@ -38,7 +39,7 @@ class RandomScorer(Scorer):
     random: Param[Random]
 
     def rsv(
-        self, query: str, documents: Iterator[ScoredDocument], keepcontent=False
+        self, query: str, documents: Iterable[ScoredDocument], keepcontent=False
     ) -> List[ScoredDocument]:
         scoredDocuments = []
         random = self.random.state
@@ -70,7 +71,8 @@ class Retriever(Config):
         """Retrieves a documents, returning a list sorted by decreasing score"""
         raise NotImplementedError()
 
-    def index(self) -> Index:
+    def getindex(self) -> Index:
+        """Returns the associated index (if any)"""
         raise NotImplementedError()
 
 

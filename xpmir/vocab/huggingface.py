@@ -35,6 +35,10 @@ class TransformerVocab(vocab.Vocab):
     def tokenizer(self):
         return AutoTokenizer.from_pretrained(self.model_id, use_fast=True)
 
+    @property
+    def pad_tokenid(self) -> int:
+        raise self.tokenizer.pad_token_id
+
     def initialize(self):
         super().initialize()
         self.model = AutoModel.from_pretrained(self.model_id)
@@ -45,6 +49,7 @@ class TransformerVocab(vocab.Vocab):
             layer = None
         self.CLS = self.tokenizer.cls_token_id
         self.SEP = self.tokenizer.sep_token_id
+
         if self.trainable:
             self.model.train()
         else:
@@ -64,12 +69,15 @@ class TransformerVocab(vocab.Vocab):
     def tok2id(self, tok):
         return self.tokenizer.vocab[tok]
 
+    def static(self):
+        return not self.trainable
+
     def batch_tokenize(
         self, texts: List[str], batch_first=True, maxlen=None
     ) -> TokenizedTexts:
         maxlen = max(maxlen, self.tokenizer.model_max_length)
         r = self.tokenizer(
-            texts,
+            list(texts),
             max_length=maxlen,
             truncation=True,
             padding=True,
@@ -91,6 +99,9 @@ class TransformerVocab(vocab.Vocab):
 
     def maxtokens(self) -> int:
         return self.tokenizer.model_max_length
+
+    def forward(self, toks, lens=None):
+        return self.model(toks).last_hidden_state
 
 
 @config()

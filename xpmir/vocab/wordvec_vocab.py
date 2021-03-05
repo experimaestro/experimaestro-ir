@@ -67,6 +67,13 @@ class WordvecVocab(Vocab, nn.Module):
             torch.from_numpy(matrix.astype(np.float32)), freeze=not self.learn
         )
 
+    @property
+    def pad_tokenid(self):
+        return 0
+
+    def learnable(self):
+        return self.learn
+
     def __validate__(self):
         """Check that values are coherent"""
         if self.learn:

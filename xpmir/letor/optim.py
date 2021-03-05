@@ -1,14 +1,13 @@
-from experimaestro import config, param
+from experimaestro import Config, Param
 
 
-@config()
-class Optimizer:
+class Optimizer(Config):
     pass
 
 
-@param("lr", default=1e-3)
-@config()
 class Adam(Optimizer):
+    lr: Param[float] = 1e-3
+
     def __call__(self, parameters):
         from torch.optim import Adam
 

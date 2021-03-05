@@ -93,14 +93,14 @@ class PairwiseTrainer(Trainer):
             sys.exit(1)
 
         # Reshape to get the pairs and compute the loss
-        pairwise_scores = rel_scores.reshape(self.batch_size, -1, 2)
+        pairwise_scores = rel_scores.reshape(self.batch_size, 2)
         loss = self.lossfn.compute(pairwise_scores)
 
-        self.context.writer.add_scalar(
-            "train/acc", self.acc(pairwise_scores), self.context.epoch
-        )
-        return loss
+        return loss, {"loss": loss.item(), "acc": self.acc(pairwise_scores).item()}
 
     def acc(self, scores_by_record):
-        count = scores_by_record.shape[0] * (scores_by_record.shape[1] - 1)
-        return (scores_by_record[:, :1] > scores_by_record[:, 1:]).sum().float() / count
+        with torch.no_grad():
+            count = scores_by_record.shape[0] * (scores_by_record.shape[1] - 1)
+            return (
+                scores_by_record[:, :1] > scores_by_record[:, 1:]
+            ).sum().float() / count

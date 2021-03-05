@@ -7,12 +7,10 @@ import re
 import subprocess
 import sys
 import tempfile
-import threading
-import time
-from contextlib import contextmanager
 from pathlib import Path
 from threading import Thread
 from typing import List
+
 
 import datamaestro_text.data.ir.csv as ir_csv
 from datamaestro_text.data.ir.trec import (
@@ -21,7 +19,7 @@ from datamaestro_text.data.ir.trec import (
     TipsterCollection,
     TrecAdhocTopics,
 )
-from experimaestro import config, param, pathoption, progress, task
+from experimaestro import Param, param, pathoption, progress, task
 from tqdm import tqdm
 from xpmir.dm.data.anserini import Index
 from xpmir.evaluation import TrecAdhocRun
@@ -48,9 +46,7 @@ class StreamGenerator(Thread):
         self.mode = mode
         self.filepath = Path(os.path.join(tmpdir, "fifo.json"))
         os.mkfifo(self.filepath)
-        subprocess.run(["find", tmpdir])
         self.generator = generator
-        self.thread = None
 
     def run(self):
         with self.filepath.open(self.mode) as out:
@@ -226,11 +222,19 @@ class SearchCollection:
         sys.exit(p.returncode)
 
 
-@param("index", Index, help="Anserini index")
-@param("model", Model, help="Model used to search")
-@param("k", default=1500, help="Number of results to retrieve")
-@config()
 class AnseriniRetriever(Retriever):
+    """An Anserini-based retriever
+
+    Attributes:
+        index: The Anserini index
+        model: the model used to search. Only suupports BM25 so far.
+        k: Number of results to retrieve
+    """
+
+    index: Param[Index]
+    model: Param[Model]
+    k: Param[int] = 1500
+
     def initialize(self):
         from pyserini.search import SimpleSearcher
 
@@ -243,6 +247,10 @@ class AnseriniRetriever(Retriever):
             self.searcher.set_bm25(bm25.k1, bm25.b)
 
         modelhandler[self.model]
+
+    def getindex(self) -> Index:
+        """Returns the associated index (if any)"""
+        return self.index
 
     def retrieve(self, query: str) -> List[ScoredDocument]:
         hits = self.searcher.search(query, k=self.k)
