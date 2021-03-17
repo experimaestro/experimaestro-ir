@@ -17,11 +17,27 @@ class Colbert(InteractionScorer):
         > SIGIR 2020, Xi'An, China
 
     For the standard Colbert model, use BERT as the vocab(ulary)
+
+    Attributes:
+
+        compression_size: Projection layer for the last layer (or 0 if None)
     """
+
+    masktoken: Param[bool] = True
+    querytoken: Param[bool] = True
+    doctoken: Param[bool] = True
+
+    compression_size: Param[int] = 128
 
     def __validate__(self):
         super().__validate__()
         assert not self.vocab.static(), "The vocabulary should be learnable"
+
+        assert self.compression_size >= 0, "Last layer size should be 0 or above"
+
+        assert not self.masktoken, "Not implemented"
+        assert not self.querytoken, "Not implemented"
+        assert not self.doctoken, "Not implemented"
 
     def initialize(self, random):
         super().initialize(random)

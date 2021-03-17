@@ -55,11 +55,14 @@ class RandomFold(Task):
         seed: Random seed used to compute the fold
         size: Number of topics to keep
         dataset: The Adhoc dataset from which a fold is extracted
+        inverse: Takes the complement subset
     """
 
     seed: Param[int]
     size: Param[int]
     dataset: Param[Adhoc]
+    complement: Param[bool] = False
+    exclude: Param[AdhocTopics]
 
     assessments: Annotated[Path, pathgenerator("assessments.tsv")]
     topics: Annotated[Path, pathgenerator("topics.tsv")]
@@ -74,17 +77,23 @@ class RandomFold(Task):
     def execute(self):
         import numpy as np
 
-        topics = [topic for topic in self.dataset.topics.iter()]
+        badids = (
+            set(topic.qid for topic in self.exclude.iter()) if self.exclude else set()
+        )
+        topics = [
+            topic for topic in self.dataset.topics.iter() if topic.qid not in badids
+        ]
         random = np.random.RandomState(self.seed)
-        ix = random.choice(len(topics), self.size, replace=False)
+        random.shuffle(topics)
+        topics = topics[self.size :] if self.complement else topics[: self.size]
 
         ids = set()
         self.topics.parent.mkdir(parents=True, exist_ok=True)
         with self.topics.open("wt") as fp:
-            for i in ix:
-                ids.add(topics[i].qid)
-                # FIXME: hardcoded...
-                fp.write(f"""{topics[i].qid}\t{topics[i].title}\n""")
+            for topic in topics:
+                ids.add(topic.qid)
+                # FIXME: hardcoded title...
+                fp.write(f"""{topic.qid}\t{topic.title}\n""")
 
         with self.assessments.open("wt") as fp:
             for qrels in self.dataset.assessments.iter():

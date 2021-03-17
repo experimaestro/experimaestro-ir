@@ -11,7 +11,7 @@ from xpmir.datasets.adapters import RandomFold
 from xpmir.evaluation import Evaluate
 from xpmir.interfaces.anserini import AnseriniRetriever, IndexCollection
 from xpmir.letor import Device, Random
-from xpmir.letor.learner import Learner, Validation
+from xpmir.letor.learner import Learner, ValidationListener
 from xpmir.letor.optim import Adam
 from xpmir.letor.samplers import ModelBasedSampler, Sampler, TripletBasedSampler
 from xpmir.letor.trainers import Trainer
@@ -70,20 +70,32 @@ def cli(debug, gpu, port, workdir, max_epoch, batch_size):
 
     # Sets the working directory and the name of the xp
     with experiment(workdir, "msmarco", port=port) as xp:
+        # Misc
+        random = Random(seed=0)
+        wordembs = prepare_dataset("edu.stanford.glove.6b.50")
+        glove = WordvecUnkVocab(data=wordembs, random=random)
+
         # Train / validation / test
         train_triples = prepare_dataset("com.microsoft.msmarco.passage.train.idtriples")
-        dev = prepare_dataset("com.microsoft.msmarco.passage.dev")
-        test = prepare_dataset("com.microsoft.msmarco.passage.trec2019.test")
         index = info.index(train_triples.documents)
         test_index = index
 
         # Base models
-        random = Random(seed=0)
         basemodel = BM25()
         random_scorer = RandomScorer(random=random).tag("model", "random")
 
-        # Get a random subset of 500 queries for validation
-        ds_val = RandomFold(dataset=dev, seed=102, size=500).submit()
+        # Creates the validation dataset
+        devsmall = prepare_dataset("com.microsoft.msmarco.passage.dev.small")
+        dev = prepare_dataset("com.microsoft.msmarco.passage.dev")
+        ds_val = RandomFold(
+            dataset=dev, seed=123, size=500, exclude=devsmall.topics
+        ).submit()
+
+        tests = {
+            "trec2019": prepare_dataset("com.microsoft.msmarco.passage.trec2019.test"),
+            "msmarco-dev": devsmall,
+        }
+        test = prepare_dataset("com.microsoft.msmarco.passage.trec2019.test")
 
         triplesid = ShuffledTrainingTripletsLines(
             seed=123,
@@ -107,15 +119,15 @@ def cli(debug, gpu, port, workdir, max_epoch, batch_size):
         bm25_retriever = AnseriniRetriever(
             k=topK, index=test_index, model=basemodel
         ).tag("model", "bm25")
-        bm25_eval = Evaluate(dataset=test, retriever=bm25_retriever).submit()
 
-        # Performance of random
-        random_eval = Evaluate(
-            dataset=test, retriever=get_reranker(test_index, random_scorer)
-        ).submit()
-
-        wordembs = prepare_dataset("edu.stanford.glove.6b.50")
-        glove = WordvecUnkVocab(data=wordembs, random=random)
+        evaluations = {}
+        for key, test in tests.items():
+            evaluations[key] = [
+                Evaluate(dataset=test, retriever=bm25_retriever).submit(),
+                Evaluate(
+                    dataset=test, retriever=get_reranker(test_index, random_scorer)
+                ).submit(),
+            ]
 
         @lru_cache
         def trainer(lr=1e-3, grad_acc_batch=0):
@@ -129,7 +141,6 @@ def cli(debug, gpu, port, workdir, max_epoch, batch_size):
             )
 
         # Train and evaluate with each model
-        evaluations = []
         runspath = xp.resultspath / "runs"
         cleanupdir(runspath)
         runspath.mkdir(exist_ok=True, parents=True)
@@ -137,45 +148,60 @@ def cli(debug, gpu, port, workdir, max_epoch, batch_size):
         token = xp.token("main", 1)
 
         def run(scorer, trainer: Trainer):
-            validation = Validation(
-                dataset=ds_val, retriever=get_reranker(index, scorer, valtopK)
+            validation = ValidationListener(
+                dataset=ds_val,
+                retriever=get_reranker(index, scorer, valtopK),
+                validation_interval=16,
             )
 
             learner = Learner(
                 trainer=trainer,
                 random=random,
                 scorer=scorer,
-                validation_interval=16,
                 max_epoch=tag(max_epoch),
-                validation=validation,
+                listeners={"bestval": validation},
             )
             model = token(1, learner).submit()
             (runspath / tagspath(model)).symlink_to(model.logpath)
 
             # Evaluate the neural model
-            evaluations.append(
-                token(
-                    1, Evaluate(dataset=test, retriever=get_reranker(index, model))
-                ).submit()
-            )
+            for key, test in tests.items():
+                evaluations[key].append(
+                    token(
+                        1,
+                        Evaluate(
+                            dataset=test, retriever=get_reranker(index, validation)
+                        ),
+                    ).submit()
+                )
 
         # DRMM
         drmm = Drmm(vocab=glove, index=index).tag("model", "drmm")
         run(drmm, trainer(lr=tag(1e-3)))
 
         # We use micro-batches of size 8 for BERT-based models
-        colbert = Colbert(vocab=TransformerVocab(trainable=True), dlen=512).tag(
-            "model", "colbert"
-        )
-        run(colbert, trainer(lr=tag(1e-3), grad_acc_batch=4))
+        # colbert = Colbert(vocab=TransformerVocab(trainable=True), dlen=512).tag(
+        #     "model", "colbert"
+        # )
+        # run(colbert, trainer(lr=tag(1e-3), grad_acc_batch=2))
+
+        colbert = Colbert(
+            vocab=TransformerVocab(trainable=True),
+            masktoken=False,
+            doctoken=False,
+            querytoken=False,
+            dlen=512,
+        ).tag("model", "colbert")
+        run(colbert, trainer(lr=tag(1e-3), grad_acc_batch=2))
 
         # Wait that experiments complete
         xp.wait()
 
-        print(f"Results for BM25\n{bm25_eval.results.read_text()}\n")
-        print(f"Results for random\n{random_eval.results.read_text()}\n")
-        for evaluate in evaluations:
-            print(f"Results for {evaluate.tags()}\n{evaluate.results.read_text()}\n")
+        for key, dsevaluations in evaluations.items():
+            for evaluation in dsevaluations:
+                print(
+                    f"Results for {evaluation.tags()}\n{evaluation.results.read_text()}\n"
+                )
 
 
 if __name__ == "__main__":

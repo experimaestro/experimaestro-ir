@@ -37,7 +37,7 @@ class TransformerVocab(vocab.Vocab):
 
     @property
     def pad_tokenid(self) -> int:
-        raise self.tokenizer.pad_token_id
+        return self.tokenizer.pad_token_id
 
     def initialize(self):
         super().initialize()

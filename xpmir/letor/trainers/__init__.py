@@ -1,7 +1,8 @@
 import json
+import os
 from pathlib import Path
 from shutil import rmtree
-from typing import Dict
+from typing import Dict, Iterator
 from experimaestro import Option, Config, help, Param
 from experimaestro import tqdm
 from experimaestro.utils import cleanupdir
@@ -133,6 +134,22 @@ class TrainContext(EasyLogger):
             rmtree(self.oldstate.path)
             self.oldstate = None
 
+    def copy(self, path: Path):
+        """Copy the state into another folder"""
+        if self.state.path is None:
+            self.save_checkpoint()
+
+        trainpath = self.state.path
+
+        if path:
+            cleanupdir(path)
+            for f in trainpath.rglob("*"):
+                relpath = f.relative_to(trainpath)
+                if f.is_dir():
+                    (path / relpath).mkdir(exist_ok=True)
+                else:
+                    os.link(f, path / relpath)
+
 
 class Trainer(Config, EasyLogger):
     """
@@ -173,7 +190,7 @@ class Trainer(Config, EasyLogger):
         )
         self.device = self.device(self.logger)
 
-    def iter_train(self, loadepoch: int):
+    def iter_train(self, loadepoch: int) -> Iterator[TrainState]:
         context = self.context
 
         if not self.context.load_bestcheckpoint(loadepoch):

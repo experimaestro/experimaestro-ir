@@ -1,6 +1,6 @@
 from pathlib import Path
 import tempfile
-from typing import List
+from typing import List, Optional
 from datamaestro_text.data.ir import Adhoc
 from experimaestro import param, task, pathoption, tqdm, Param, pathgenerator
 from typing_extensions import Annotated
@@ -70,7 +70,9 @@ def _evaluate(fp, retriever: Retriever, dataset: Adhoc, measures: List[str]):
     return mean_metrics, metrics_by_query
 
 
-def evaluate(run_path: Path, retriever: Retriever, dataset: Adhoc, measures: List[str]):
+def evaluate(
+    run_path: Optional[Path], retriever: Retriever, dataset: Adhoc, measures: List[str]
+):
     if run_path:
         with run_path.open("wt") as fp:
             return _evaluate(fp, retriever, dataset, measures)

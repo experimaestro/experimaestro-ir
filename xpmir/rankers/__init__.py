@@ -51,7 +51,8 @@ class RandomScorer(Scorer):
 class LearnableScorer(Scorer):
     """A scorer with parameters that can be learnt"""
 
-    pass
+    def initialize(self, random):
+        self.random = random
 
 
 class Retriever(Config):
