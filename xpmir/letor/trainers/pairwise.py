@@ -23,6 +23,8 @@ class PairwiseLoss(Config):
 
 
 class CrossEntropyLoss(PairwiseLoss):
+    NAME = "cross-entropy"
+
     def compute(self, rel_scores_by_record):
         target = (
             torch.zeros(rel_scores_by_record.shape[0])
@@ -33,6 +35,8 @@ class CrossEntropyLoss(PairwiseLoss):
 
 
 class NogueiraCrossEntropyLoss(PairwiseLoss):
+    NAME = "nogueira-cross-entropy"
+
     def compute(self, rel_scores_by_record):
         """
         cross entropy loss formulation for BERT from:
@@ -49,6 +53,8 @@ class SoftmaxLoss(PairwiseLoss):
 
 
 class HingeLoss(PairwiseLoss):
+    NAME = "hinge"
+
     margin: Param[float] = 1.0
 
     def compute(self, rel_scores_by_record):
@@ -58,11 +64,13 @@ class HingeLoss(PairwiseLoss):
 
 
 class PointwiseCrossEntropyLoss(PairwiseLoss):
+    """The score of a document is sigmoid(...)"""
+
+    NAME = "pointwise-cross-entropy"
+
     def __init__(self):
         super().__init__()
         self.loss = nn.BCEWithLogitsLoss()
-
-    """The score of a document is sigmoid(...)"""
 
     def compute(self, rel_scores_by_record):
         device = rel_scores_by_record.device
@@ -109,7 +117,10 @@ class PairwiseTrainer(Trainer):
         pairwise_scores = rel_scores.reshape(2, self.batch_size).T
         loss = self.lossfn.compute(pairwise_scores)
 
-        return loss, {"loss": loss.item(), "acc": self.acc(pairwise_scores).item()}
+        return loss, {
+            f"pairwise-{self.lossfn.NAME}": loss.item(),
+            "acc": self.acc(pairwise_scores).item(),
+        }
 
     def acc(self, scores_by_record):
         with torch.no_grad():
