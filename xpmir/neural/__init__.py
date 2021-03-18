@@ -10,7 +10,10 @@ from xpmir.vocab import Vocab
 
 @config()
 class InteractionScorer(LearnableScorer, nn.Module):
-    """A scorer based on token embeddings
+    """Interaction-based neural scorer
+
+    This is the base class for all scorers that depend on a map
+    of cosine/inner products between query and document tokens.
 
     Attributes:
         vocab: The embedding model -- the vocab also defines how to tokenize text

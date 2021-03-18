@@ -40,19 +40,16 @@ from datamaestro_text.data.embeddings import WordEmbeddings
 
 @config()
 class WordvecVocab(Vocab, nn.Module):
-    """
+    """Word-based pre-trained embeddings
+
     Args:
 
-    train: Should the word embeddings be re-retrained?
+        train: Should the word embeddings be re-retrained?
     """
 
     data: Param[WordEmbeddings]
     learn: Param[bool] = False
     random: Param[Optional[Random]]
-
-    """
-    A word vector vocabulary that supports standard pre-trained word vectors
-    """
 
     def __postinit__(self):
         # super().__postinit__()
@@ -111,8 +108,10 @@ class WordvecVocab(Vocab, nn.Module):
 
 @config()
 class WordvecUnkVocab(WordvecVocab):
-    """
-    A vocabulary in which all unknown terns are given the same token (UNK; 0), with random weights
+    """Word-based embeddings with OOV
+
+    A vocabulary in which all unknown terns are given the same token (UNK; 0)
+    with random weights
     """
 
     def __postinit__(self):
@@ -139,7 +138,8 @@ class WordvecUnkVocab(WordvecVocab):
 @param("init_stddev", default=0.5)
 @param("log_miss", default=False)
 class WordvecHashVocab(WordvecVocab):
-    """
+    """Word-based embeddings with hash-based OOV
+
     A vocabulary in which all unknown terms are assigned a position in a flexible cache based on
     their hash value. Each position is assigned its own random weight.
     """

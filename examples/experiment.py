@@ -50,7 +50,7 @@ class Information:
 
 
 # --- Experiment
-@forwardoption.max_epoch(Learner)
+@forwardoption.max_epoch(Learner, default=64)
 @click.option("--debug", is_flag=True, help="Print debug information")
 @click.option("--gpu", is_flag=True, help="Use GPU")
 @click.option(
@@ -63,12 +63,17 @@ class Information:
 def cli(debug, small, gpu, port, workdir, max_epoch, batch_size):
     """Runs an experiment"""
 
-    BATCHES_PER_EPOCH = 32
     VAL_SIZE = 500
 
-    # Retrieve the top 1000
-    topK = 1000
-    # 1000 documents used for cross-validation
+    # Number of batches per epoch (# samples = BATCHES_PER_EPOCH * batch_size)
+    BATCHES_PER_EPOCH = 32
+
+    # Validation interval (in epochs)
+    validation_interval = 16
+
+    # How many document to re-rank
+    topK = 100
+    # How many documents to use for cross-validation
     valtopK = 100
 
     logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
@@ -131,12 +136,12 @@ def cli(debug, small, gpu, port, workdir, max_epoch, batch_size):
                 ).submit(),
             ]
 
-        @lru_cache
-        def trainer(lr=1e-3, grad_acc_batch=0):
+        # @lru_cache
+        def trainer(lr=1e-3, grad_acc_batch=0, lossfn=None):
             return pairwise.PairwiseTrainer(
                 optimizer=Adam(lr=lr),
                 device=device,
-                lossfn=pairwise.PointwiseCrossEntropyLoss(),
+                lossfn=lossfn or pairwise.PointwiseCrossEntropyLoss(),
                 batches_per_epoch=BATCHES_PER_EPOCH,
                 sampler=train_sampler,
                 grad_acc_batch=grad_acc_batch,
@@ -154,7 +159,7 @@ def cli(debug, small, gpu, port, workdir, max_epoch, batch_size):
             validation = ValidationListener(
                 dataset=ds_val,
                 retriever=get_reranker(index, scorer, valtopK),
-                validation_interval=16,
+                validation_interval=validation_interval,
             )
 
             learner = Learner(
@@ -178,24 +183,32 @@ def cli(debug, small, gpu, port, workdir, max_epoch, batch_size):
                     ).submit()
                 )
 
-        # DRMM
-        drmm = Drmm(vocab=glove, add_runscore=False, index=index).tag("model", "drmm")
-        run(drmm, trainer(lr=tag(1e-2)))
+        for lossfn in (
+            pairwise.PointwiseCrossEntropyLoss().tag("loss", "pce"),
+            pairwise.SoftmaxLoss().tag("loss", "ce"),
+        ):
 
-        # We use micro-batches of size 8 for BERT-based models
-        # colbert = Colbert(vocab=TransformerVocab(trainable=True), dlen=512).tag(
-        #     "model", "colbert"
-        # )
-        # run(colbert, trainer(lr=tag(1e-3), grad_acc_batch=2))
+            # DRMM
+            drmm = Drmm(vocab=glove, add_runscore=False, index=index).tag(
+                "model", "drmm"
+            )
+            run(drmm, trainer(lr=tag(1e-2), lossfn=lossfn))
 
-        colbert = Colbert(
-            vocab=TransformerVocab(trainable=True),
-            masktoken=False,
-            doctoken=False,
-            querytoken=False,
-            dlen=512,
-        ).tag("model", "colbert")
-        run(colbert, trainer(lr=tag(1e-6), grad_acc_batch=2))
+            # We use micro-batches of size 8 for BERT-based models
+            # colbert = Colbert(vocab=TransformerVocab(trainable=True), dlen=512).tag(
+            #     "model", "colbert"
+            # )
+            # run(colbert, trainer(lr=tag(1e-3), grad_acc_batch=2))
+
+            colbert = Colbert(
+                vocab=TransformerVocab(trainable=True),
+                masktoken=False,
+                doctoken=False,
+                querytoken=False,
+                dlen=512,
+            ).tag("model", "colbert")
+            for lr in 1e-6, 1e-4:
+                run(colbert, trainer(lr=tag(lr), grad_acc_batch=2, lossfn=lossfn))
 
         # Wait that experiments complete
         xp.wait()
