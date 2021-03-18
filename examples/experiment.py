@@ -15,7 +15,7 @@ from xpmir.letor.learner import Learner, ValidationListener
 from xpmir.letor.optim import Adam
 from xpmir.letor.samplers import ModelBasedSampler, Sampler, TripletBasedSampler
 from xpmir.letor.trainers import Trainer
-from xpmir.letor.trainers.pairwise import PairwiseTrainer
+import xpmir.letor.trainers.pairwise as pairwise
 from xpmir.neural.drmm import Drmm
 from xpmir.neural.colbert import Colbert
 from xpmir.rankers import RandomScorer, TwoStageRetriever
@@ -56,13 +56,20 @@ class Information:
 @click.option(
     "--batch-size", type=int, default=256, help="Batch size (validation and test)"
 )
+@click.option("--small", is_flag=True, help="Use small datasets")
 @click.option("--port", type=int, default=12345, help="Port for monitoring")
 @click.argument("workdir", type=Path)
 @click.command()
-def cli(debug, gpu, port, workdir, max_epoch, batch_size):
+def cli(debug, small, gpu, port, workdir, max_epoch, batch_size):
     """Runs an experiment"""
 
     BATCHES_PER_EPOCH = 32
+    VAL_SIZE = 500
+
+    # Retrieve the top 1000
+    topK = 1000
+    # 1000 documents used for cross-validation
+    valtopK = 100
 
     logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
     device = Device(gpu=gpu)
@@ -88,7 +95,7 @@ def cli(debug, gpu, port, workdir, max_epoch, batch_size):
         devsmall = prepare_dataset("com.microsoft.msmarco.passage.dev.small")
         dev = prepare_dataset("com.microsoft.msmarco.passage.dev")
         ds_val = RandomFold(
-            dataset=dev, seed=123, size=500, exclude=devsmall.topics
+            dataset=dev, seed=123, size=VAL_SIZE, exclude=devsmall.topics
         ).submit()
 
         tests = {
@@ -102,11 +109,6 @@ def cli(debug, gpu, port, workdir, max_epoch, batch_size):
             data=prepare_dataset("com.microsoft.msmarco.passage.train.idtriples"),
         ).submit()
         train_sampler = TripletBasedSampler(source=triplesid, index=index)
-
-        # Retrieve the top 1000
-        topK = 1000
-        # 1000 documents used for cross-validation
-        valtopK = 100
 
         # @lru_cache
         def get_reranker(index, scorer, topk=topK):
@@ -131,9 +133,10 @@ def cli(debug, gpu, port, workdir, max_epoch, batch_size):
 
         @lru_cache
         def trainer(lr=1e-3, grad_acc_batch=0):
-            return PairwiseTrainer(
+            return pairwise.PairwiseTrainer(
                 optimizer=Adam(lr=lr),
                 device=device,
+                lossfn=pairwise.PointwiseCrossEntropyLoss(),
                 batches_per_epoch=BATCHES_PER_EPOCH,
                 sampler=train_sampler,
                 grad_acc_batch=grad_acc_batch,
@@ -176,8 +179,8 @@ def cli(debug, gpu, port, workdir, max_epoch, batch_size):
                 )
 
         # DRMM
-        drmm = Drmm(vocab=glove, index=index).tag("model", "drmm")
-        run(drmm, trainer(lr=tag(1e-3)))
+        drmm = Drmm(vocab=glove, add_runscore=False, index=index).tag("model", "drmm")
+        run(drmm, trainer(lr=tag(1e-2)))
 
         # We use micro-batches of size 8 for BERT-based models
         # colbert = Colbert(vocab=TransformerVocab(trainable=True), dlen=512).tag(
@@ -192,7 +195,7 @@ def cli(debug, gpu, port, workdir, max_epoch, batch_size):
             querytoken=False,
             dlen=512,
         ).tag("model", "colbert")
-        run(colbert, trainer(lr=tag(1e-3), grad_acc_batch=2))
+        run(colbert, trainer(lr=tag(1e-6), grad_acc_batch=2))
 
         # Wait that experiments complete
         xp.wait()

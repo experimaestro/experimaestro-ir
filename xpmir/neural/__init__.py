@@ -72,7 +72,8 @@ class InteractionScorer(LearnableScorer, nn.Module):
         # Add run score if needed
         if self.add_runscore:
             alpha = torch.sigmoid(self.runscore_alpha)
-            result = alpha * result + (1 - alpha) * inputs.scores
+            scores = torch.Tensor([d.score for d in inputs.documents])
+            result = alpha * result + (1 - alpha) * scores
 
         return result
 

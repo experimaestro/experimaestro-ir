@@ -29,6 +29,10 @@ class LearnerListener(Config):
         """Process and returns whether the training process should stop"""
         return False
 
+    def update_metrics(self, metrics: Dict[str, float]):
+        """Add metrics"""
+        pass
+
 
 class ValidationListener(Scorer, LearnerListener):
     """Computes a validation metric and stores the best result
@@ -62,6 +66,10 @@ class ValidationListener(Scorer, LearnerListener):
                 self.top = json.load(fp)
         except Exception:
             self.top = None
+
+    def update_metrics(self, metrics: Dict[str, float]):
+        if self.top:
+            metrics[f"{self.key}/{self.metric}"] = self.top["value"]
 
     def __call__(self, state):
         if state.epoch % self.validation_interval == 0:
@@ -213,4 +221,7 @@ class Learner(EasyLogger):
             # End of the learning process
             if state is not None and not state.cached:
                 # Set the hyper-parameters
-                context.writer.add_hparams(self.__tags__, state.metrics)
+                metrics = {}
+                for listener in self.listeners.values():
+                    listener.update_metrics(metrics)
+                context.writer.add_hparams(self.__tags__, metrics)

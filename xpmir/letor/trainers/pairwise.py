@@ -1,19 +1,27 @@
 import sys
 from typing import Iterator
 import torch
+from torch import nn
+from torch.functional import Tensor
 import torch.nn.functional as F
-from experimaestro import config, default, Annotated, Param
+from experimaestro import Config, default, Annotated, Param
 from xpmir.letor.samplers import PairwiseRecord, PairwiseRecords
 from xpmir.letor.trainers import Trainer
 import numpy as np
 
 
-@config()
-class PairwiseLoss:
-    pass
+class PairwiseLoss(Config):
+    def compute(self, rel_scores_by_record: Tensor) -> float:
+        """
+        Compute the loss
+
+        Arguments:
+
+        - rel_scores_by_record: A (batch x 2) tensor (positive/negative)
+        """
+        raise NotImplementedError()
 
 
-@config()
 class CrossEntropyLoss(PairwiseLoss):
     def compute(self, rel_scores_by_record):
         target = (
@@ -24,7 +32,6 @@ class CrossEntropyLoss(PairwiseLoss):
         return F.cross_entropy(rel_scores_by_record, target, reduction="mean")
 
 
-@config()
 class NogueiraCrossEntropyLoss(PairwiseLoss):
     def compute(self, rel_scores_by_record):
         """
@@ -36,13 +43,11 @@ class NogueiraCrossEntropyLoss(PairwiseLoss):
         return (log_probs[:, 0, 0] + log_probs[:, 1, 1]).mean()
 
 
-@config()
 class SoftmaxLoss(PairwiseLoss):
     def compute(self, rel_scores_by_record):
         return torch.mean(1.0 - F.softmax(rel_scores_by_record, dim=1)[:, 0])
 
 
-@config()
 class HingeLoss(PairwiseLoss):
     margin: Param[float] = 1.0
 
@@ -52,14 +57,22 @@ class HingeLoss(PairwiseLoss):
         ).mean()
 
 
-@config()
-class pointwise(PairwiseLoss):
+class PointwiseCrossEntropyLoss(PairwiseLoss):
+    def __init__(self):
+        super().__init__()
+        self.loss = nn.BCEWithLogitsLoss()
+
+    """The score of a document is sigmoid(...)"""
+
     def compute(self, rel_scores_by_record):
-        log_probs = -rel_scores_by_record.log_softmax(dim=2)
-        return (log_probs[:, 0, 0] + log_probs[:, 1, 1]).mean()
+        device = rel_scores_by_record.device
+        dim = rel_scores_by_record.shape[0]
+        target = torch.cat(
+            (torch.ones(dim, device=device), torch.zeros(dim, device=device))
+        )
+        return self.loss(rel_scores_by_record.T.flatten(), target)
 
 
-@config()
 class PairwiseTrainer(Trainer):
     """Pairwse trainer
 
@@ -93,7 +106,7 @@ class PairwiseTrainer(Trainer):
             sys.exit(1)
 
         # Reshape to get the pairs and compute the loss
-        pairwise_scores = rel_scores.reshape(self.batch_size, 2)
+        pairwise_scores = rel_scores.reshape(2, self.batch_size).T
         loss = self.lossfn.compute(pairwise_scores)
 
         return loss, {"loss": loss.item(), "acc": self.acc(pairwise_scores).item()}
