@@ -24,6 +24,11 @@ Functionalities can be added by installing optional dependencies:
     - DRMM
 
 
+## Examples
+
+- [BM25 retrieval](./examples/bm25.py)
+- [MS Marco (DRMM and ColBERT)](./examples/msmarco.py)
+
 ## Thanks
 
 Some parts of the code have been adapted from [OpenNIR](https://github.com/Georgetown-IR-Lab/OpenNIR)

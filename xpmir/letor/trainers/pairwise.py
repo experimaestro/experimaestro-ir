@@ -48,6 +48,8 @@ class NogueiraCrossEntropyLoss(PairwiseLoss):
 
 
 class SoftmaxLoss(PairwiseLoss):
+    NAME = "softmax"
+
     def compute(self, rel_scores_by_record):
         return torch.mean(1.0 - F.softmax(rel_scores_by_record, dim=1)[:, 0])
 

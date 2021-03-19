@@ -69,7 +69,8 @@ class ValidationListener(Scorer, LearnerListener):
 
     def update_metrics(self, metrics: Dict[str, float]):
         if self.top:
-            metrics[f"{self.key}/{self.metric}"] = self.top["value"]
+            # Just use another key
+            metrics[f"{self.metric}/{self.key}"] = self.top["value"]
 
     def __call__(self, state):
         if state.epoch % self.validation_interval == 0:

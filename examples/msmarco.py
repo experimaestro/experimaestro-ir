@@ -62,7 +62,9 @@ class Information:
 @click.command()
 def cli(debug, small, gpu, port, workdir, max_epoch, batch_size):
     """Runs an experiment"""
+    logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
 
+    # Number of topics in the validation set
     VAL_SIZE = 500
 
     # Number of batches per epoch (# samples = BATCHES_PER_EPOCH * batch_size)
@@ -76,19 +78,20 @@ def cli(debug, small, gpu, port, workdir, max_epoch, batch_size):
     # How many documents to use for cross-validation
     valtopK = 100
 
-    logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
-    device = Device(gpu=gpu)
     info = Information()
 
     # Sets the working directory and the name of the xp
     with experiment(workdir, "msmarco", port=port) as xp:
         # Misc
+        device = Device(gpu=gpu)
         random = Random(seed=0)
         wordembs = prepare_dataset("edu.stanford.glove.6b.50")
         glove = WordvecUnkVocab(data=wordembs, random=random)
 
         # Train / validation / test
         train_triples = prepare_dataset("com.microsoft.msmarco.passage.train.idtriples")
+
+        # MS Marco index
         index = info.index(train_triples.documents)
         test_index = index
 
@@ -185,7 +188,7 @@ def cli(debug, small, gpu, port, workdir, max_epoch, batch_size):
 
         for lossfn in (
             pairwise.PointwiseCrossEntropyLoss().tag("loss", "pce"),
-            pairwise.SoftmaxLoss().tag("loss", "ce"),
+            pairwise.SoftmaxLoss().tag("loss", "softmax"),
         ):
 
             # DRMM
