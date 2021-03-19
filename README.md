@@ -12,16 +12,18 @@ The full documentation can be read at [IR@experimaestro](https://experimaestro-i
 Base experimaestro-IR can be installed with `pip install xpmir`.
 Functionalities can be added by installing optional dependencies:
 
-- `pip install xpmir[neural]` to install neural-IR packages
+- `pip install xpmir[neural]` to install neural-IR packages (torch, etc.)
 - `pip install xpmir[anserini]` to install Anserini related packages
-
 
 ## What's inside?
 
 - Collection management (using datamaestro)
-- Indexing and retrieval with anserini
+- Subsampling topic/assessments
+- Indexing and retrieval
+    - Anserini
 - Neural IR:
     - DRMM
+    - ColBERT
 
 
 ## Examples
