@@ -16,6 +16,14 @@ class Random(Config):
 
 
 class Device(Config):
+    """Device to use
+
+    Attributes:
+
+        gpu: use CUDA if available
+        gpu_determ: Use deterministic CUDA (CuDNN)
+    """
+
     gpu: Param[bool] = False
     gpu_determ: Param[bool] = False
 

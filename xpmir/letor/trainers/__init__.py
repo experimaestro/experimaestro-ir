@@ -152,10 +152,11 @@ class TrainContext(EasyLogger):
 
 
 class Trainer(Config, EasyLogger):
-    """
+    """Generic trainer
+
     Attributes:
 
-    sampler: The data sampler
+        sampler: The data sampler
     """
 
     sampler: Param[Sampler]

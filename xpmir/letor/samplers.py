@@ -129,13 +129,12 @@ class Sampler(Config, EasyLogger):
 
 
 class ModelBasedSampler(Sampler):
-    """Sampler based on a retriever
+    """Retriever-based sampler
 
-    Args:
-
-    relevant_ratio: The sampling ratio of relevant to non relevant
-    dataset: The topics and assessments
-    retriever: The document retriever
+    Attributes:
+        relevant_ratio: The sampling ratio of relevant to non relevant
+        dataset: The topics and assessments
+        retriever: The document retriever
     """
 
     relevant_ratio: Param[float] = 0.5

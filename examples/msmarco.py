@@ -49,6 +49,13 @@ class Information:
         return index
 
 
+def evaluate(token=None, **kwargs):
+    v = Evaluate(metrics=["map", "p@20", "ndcg", "ndcg@20", "mrr", "mrr@10"], **kwargs)
+    if token is not None:
+        v = token(1, v)
+    return v.submit()
+
+
 # --- Experiment
 @forwardoption.max_epoch(Learner, default=64)
 @click.option("--debug", is_flag=True, help="Print debug information")
@@ -102,6 +109,8 @@ def cli(debug, small, gpu, port, workdir, max_epoch, batch_size):
         # Creates the validation dataset
         devsmall = prepare_dataset("com.microsoft.msmarco.passage.dev.small")
         dev = prepare_dataset("com.microsoft.msmarco.passage.dev")
+
+        # This part is used for validation
         ds_val = RandomFold(
             dataset=dev, seed=123, size=VAL_SIZE, exclude=devsmall.topics
         ).submit()
@@ -133,10 +142,10 @@ def cli(debug, small, gpu, port, workdir, max_epoch, batch_size):
         evaluations = {}
         for key, test in tests.items():
             evaluations[key] = [
-                Evaluate(dataset=test, retriever=bm25_retriever).submit(),
-                Evaluate(
+                evaluate(dataset=test, retriever=bm25_retriever),
+                evaluate(
                     dataset=test, retriever=get_reranker(test_index, random_scorer)
-                ).submit(),
+                ),
             ]
 
         # @lru_cache
@@ -163,6 +172,7 @@ def cli(debug, small, gpu, port, workdir, max_epoch, batch_size):
                 dataset=ds_val,
                 retriever=get_reranker(index, scorer, valtopK),
                 validation_interval=validation_interval,
+                metrics={"mrr@10": True, "map": False},
             )
 
             learner = Learner(
@@ -178,12 +188,11 @@ def cli(debug, small, gpu, port, workdir, max_epoch, batch_size):
             # Evaluate the neural model
             for key, test in tests.items():
                 evaluations[key].append(
-                    token(
-                        1,
-                        Evaluate(
-                            dataset=test, retriever=get_reranker(index, validation)
-                        ),
-                    ).submit()
+                    evaluate(
+                        token=token,
+                        dataset=test,
+                        retriever=get_reranker(index, validation.getscorer("mrr@10")),
+                    )
                 )
 
         for lossfn in (

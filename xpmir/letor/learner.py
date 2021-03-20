@@ -18,7 +18,9 @@ from xpmir.rankers import LearnableScorer, Retriever, ScoredDocument, Scorer
 
 
 class LearnerListener(Config):
-    """Performs some operations after a learning epoch"""
+    """Hook for learner
+
+    Performs some operations after a learning epoch"""
 
     def initialize(self, key: str, learner: "Learner", context: TrainContext):
         self.key = key
@@ -34,17 +36,42 @@ class LearnerListener(Config):
         pass
 
 
-class ValidationListener(Scorer, LearnerListener):
-    """Computes a validation metric and stores the best result
+class SavedScorer(Scorer):
+    path: Param[Path]
+    config: Param[Config]
+
+    # When using the best validation model
+    _model = None
+
+    @property
+    def model(self):
+        if self._model is None:
+            state = TrainState()
+            state.load(self.path)
+            self._model = state.ranker
+
+        return self._model
+
+    def rsv(self, query: str, documents: List[ScoredDocument]) -> List[ScoredDocument]:
+        return self.model.rsv(query, documents)
+
+
+class ValidationListener(LearnerListener):
+    """Learning validation early-stopping
+
+    Computes a validation metric and stores the best result
 
     Attributes:
         warmup: Number of warmup epochs
         early_stop: Maximum number of epochs without improvement on validation
         validation: How to compute the validation metric
         validation_interval: interval for computing validation metrics
+        metrics: Dictionary whose keys are the metrics to record, and boolean
+            values whether the best performance checkpoint should be kept for
+            the associated metric
     """
 
-    metric: Param[str] = "map"
+    metrics: Param[Dict[str, bool]] = {"map": True}
     dataset: Param[Adhoc]
     retriever: Param[Retriever]
     validation_interval: Param[int] = 1
@@ -57,71 +84,72 @@ class ValidationListener(Scorer, LearnerListener):
         super().initialize(key, learner, context)
 
         self.retriever.initialize()
-        self.metrics = [self.metric]
         self.bestpath.mkdir(exist_ok=True, parents=True)
 
         # Checkpoint start
         try:
             with self.info.open("rt") as fp:
-                self.top = json.load(fp)
+                self.top = json.load(fp)  # type: Dict[str, Dict[str, float]]
         except Exception:
-            self.top = None
+            self.top = {}
 
     def update_metrics(self, metrics: Dict[str, float]):
         if self.top:
             # Just use another key
-            metrics[f"{self.metric}/{self.key}"] = self.top["value"]
+            for metric in self.metrics.keys():
+                metrics[f"{metric}/{self.key}"] = self.top[self.key]
+
+    def getscorer(self, key: str) -> Scorer:
+        """Return a scorer corresponding to the best (validation-wise) one for the given metric"""
+        assert self.metrics.get(
+            key, False
+        ), f"Metric {key} is not part of recorded metrics"
+        return SavedScorer(path=self.bestpath / key, config=self)
 
     def __call__(self, state):
         if state.epoch % self.validation_interval == 0:
             # Compute validation metrics
-            mean, _ = evaluate(None, self.retriever, self.dataset, self.metrics)
+            means, _ = evaluate(
+                None, self.retriever, self.dataset, list(self.metrics.keys())
+            )
 
-            value = mean[self.metric]
-            state.metrics = mean
+            for metric, keep in self.metrics.items():
+                value = means[metric]
 
-            for metric in self.metrics:
                 self.context.writer.add_scalar(
-                    f"{self.key}/{metric}", state.metrics[metric], state.epoch
+                    f"{self.key}/{metric}", value, state.epoch
                 )
 
-            # Update the top validation
-            if state.epoch >= self.warmup:
-                if state.epoch % self.validation_interval == 0:
-                    if self.top is None or value > self.top["value"]:
-                        self.top = {"value": value, "epoch": self.context.epoch}
-                        self.context.copy(self.bestpath)
+                # Update the top validation
+                if keep and state.epoch >= self.warmup:
+                    topstate = self.top.get(metric, None)
+                    if topstate is None or value > topstate["value"]:
+                        # Save the new top JSON
+                        self.top[metric] = {"value": value, "epoch": self.context.epoch}
                         with self.info.open("wt") as fp:
                             json.dump(self.top, fp)
 
-        # Early stopping
-        if self.top is not None:
-            epochs_since_imp = self.context.epoch - self.top["epoch"]
-            if self.early_stop > 0 and epochs_since_imp >= self.early_stop:
+                        # Copy in corresponding directory
+                        self.context.copy(self.bestpath / metric)
+
+        # Early stopping?
+        if self.early_stop > 0 and self.top:
+            epochs_since_imp = self.context.epoch - max(
+                info["epoch"] for info in self.top.values()
+            )
+            if epochs_since_imp >= self.early_stop:
                 return False
 
+        # No, proceed...
         return True
-
-    # When using the best validation model
-    _bestmodel = None
-
-    @property
-    def bestmodel(self):
-        if self._bestmodel is None:
-            state = TrainState()
-            state.load(self.bestpath)
-            self._bestmodel = state.ranker
-
-        return self._bestmodel
-
-    def rsv(self, query: str, documents: List[ScoredDocument]) -> List[ScoredDocument]:
-        return self.bestmodel.rsv(query, documents)
 
 
 # Checkpoints
 @task()
 class Learner(EasyLogger):
-    """The learner task is generic, and takes two main arguments:
+    """Learns a model
+
+    The learner task is generic, and takes two main arguments:
     (1) the scorer defines the model (e.g. DRMM), and
     (2) the trainer defines the loss (e.g. pointwise, pairwise, etc.)
 

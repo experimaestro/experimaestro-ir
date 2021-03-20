@@ -3,14 +3,21 @@ from typing import Dict, List
 import numpy as np
 import torch
 import torch.nn.functional as F
-from experimaestro import param, config
+from experimaestro import Param, config
 from xpmir.letor.samplers import Records
 from xpmir.letor.trainers import Trainer
 
 
-@param("lossfn", default="mse")
-@config()
 class PointwiseTrainer(Trainer):
+    """Pointwise trainer
+
+    Attribute:
+
+        lossfn: Loss function to use (mse, mse-nil, l1, l1pos, smoothl1, cross_entropy, cross_entropy_logits, softmax, mean)
+    """
+
+    lossfn: Param[str] = "mse"
+
     def initialize(self, random: np.random.RandomState, ranker, context):
         super().initialize(random, ranker, context)
 
@@ -83,7 +90,7 @@ class PointwiseTrainer(Trainer):
         else:
             raise ValueError(f"unknown lossfn `{self.lossfn}`")
 
-        return loss, {"loss": loss.item()}
+        return loss, {f"{self.lossfn}": loss.item()}
 
     def fast_forward(self, record_count):
         self._fast_forward(self.train_iter_core, self.iter_fields, record_count)
