@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List
+from typing import List, Tuple
 from cached_property import cached_property
 from experimaestro import Choices, Param, Annotated
 from datamaestro.definitions import data
@@ -42,7 +42,7 @@ class Index(BaseIndex):
         }
 
     @cached_property
-    def documentcount(self):
+    def documentcount(self) -> int:
         return self.index_reader.stats()["documents"]
 
     @cached_property
@@ -57,6 +57,12 @@ class Index(BaseIndex):
     def terms(self):
         """Returns a map"""
         return {entry.term: (entry.df, entry.cf) for entry in self.index_reader.terms()}
+
+    def documents(self) -> List[Tuple[str, str]]:
+        """Returns the document contents"""
+        for i in range(self.documentcount):
+            docid = self.index_reader.convert_internal_docid_to_collection_docid(i)
+            yield self.document_text(docid)
 
     def term_df(self, term: str):
         x: List[str] = self.index_reader.analyze(term)

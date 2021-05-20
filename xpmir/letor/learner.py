@@ -97,7 +97,7 @@ class ValidationListener(LearnerListener):
         if self.top:
             # Just use another key
             for metric in self.metrics.keys():
-                metrics[f"{metric}/{self.key}"] = self.top[self.key]
+                metrics[f"{self.key}/final/{metric}"] = self.top[metric]["value"]
 
     def getscorer(self, key: str) -> Scorer:
         """Return a scorer corresponding to the best (validation-wise) one for the given metric"""
@@ -121,16 +121,19 @@ class ValidationListener(LearnerListener):
                 )
 
                 # Update the top validation
-                if keep and state.epoch >= self.warmup:
+                if state.epoch >= self.warmup:
                     topstate = self.top.get(metric, None)
                     if topstate is None or value > topstate["value"]:
                         # Save the new top JSON
                         self.top[metric] = {"value": value, "epoch": self.context.epoch}
-                        with self.info.open("wt") as fp:
-                            json.dump(self.top, fp)
 
                         # Copy in corresponding directory
-                        self.context.copy(self.bestpath / metric)
+                        if keep:
+                            self.context.copy(self.bestpath / metric)
+
+            # Update information
+            with self.info.open("wt") as fp:
+                json.dump(self.top, fp)
 
         # Early stopping?
         if self.early_stop > 0 and self.top:
@@ -222,21 +225,20 @@ class Learner(EasyLogger):
                 if state.epoch == -1:
                     continue
 
-                if not state.cached:
+                if not state.cached and state.epoch % self.checkpoint_interval == 0:
                     # Save checkpoint if needed
-                    if state.epoch % self.checkpoint_interval == 0:
-                        context.save_checkpoint()
+                    context.save_checkpoint()
 
-                    # Call listeners
-                    stop = False
-                    for listener in self.listeners.values():
-                        stop = listener(state) and stop
+                # Call listeners
+                stop = False
+                for listener in self.listeners.values():
+                    stop = listener(state) and stop
 
-                    if stop:
-                        self.logger.warn(
-                            "stopping after epoch {epoch} ({early_stop} epochs since "
-                            "all listeners asked for it"
-                        )
+                if stop:
+                    self.logger.warn(
+                        "stopping after epoch {epoch} ({early_stop} epochs since "
+                        "all listeners asked for it"
+                    )
 
                 # Stop if max epoch is reached
                 if context.epoch >= self.max_epoch:

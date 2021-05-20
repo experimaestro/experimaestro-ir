@@ -4,7 +4,6 @@ from typing import List, Optional
 from datamaestro_text.data.ir import Adhoc
 from experimaestro import param, task, pathoption, tqdm, Param, pathgenerator
 from typing_extensions import Annotated
-import xpmir as ir
 from datamaestro_text.data.ir.trec import (
     TrecAdhocAssessments,
     TrecAdhocRun,

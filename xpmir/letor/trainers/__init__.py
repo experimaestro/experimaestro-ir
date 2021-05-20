@@ -172,7 +172,7 @@ class Trainer(Config, EasyLogger):
         self.ranker = ranker
         self.context = context
         self.writer = None
-        self.sampler
+        self.sampler.initialize(random)
 
         if self.grad_acc_batch > 0:
             assert (

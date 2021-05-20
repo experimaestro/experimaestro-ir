@@ -1,8 +1,10 @@
 from functools import cached_property
 from typing import List
+import logging
 import torch
-
-from experimaestro import config, Param
+import torch.nn as nn
+from experimaestro import Param
+from xpmir.neural.siamese import TextEncoder
 
 try:
     from transformers import AutoModel, AutoTokenizer
@@ -14,9 +16,9 @@ from xpmir.letor.samplers import TokenizedTexts
 import xpmir.vocab as vocab
 
 
-@config()
 class TransformerVocab(vocab.Vocab):
-    """
+    """Transformer-based encoder
+
     Args:
 
     model_id: Model ID from huggingface
@@ -104,7 +106,6 @@ class TransformerVocab(vocab.Vocab):
         return self.model(toks).last_hidden_state
 
 
-@config()
 class IndependentTransformerVocab(TransformerVocab):
     """Encodes as [CLS] QUERY [SEP]"""
 
@@ -113,3 +114,15 @@ class IndependentTransformerVocab(TransformerVocab):
             y = self.model(tokids)
 
         return y.last_hidden_state
+
+
+class TransformerEncoder(TransformerVocab, TextEncoder, nn.Module):
+    """Encodes using the [CLS] token"""
+
+    def forward(self, texts: List[str]):
+        tokenized = self.batch_tokenize(texts)
+
+        with torch.set_grad_enabled(self.trainable):
+            y = self.model(tokenized.ids)
+
+        return y.last_hidden_state[:, -1]

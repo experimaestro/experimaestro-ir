@@ -1,9 +1,10 @@
-from typing import Iterable, List
+from typing import Iterable, List, Optional
 from pathlib import Path
 from experimaestro import Param, Task, cache, pathgenerator, Annotated
 from datamaestro_text.data.ir import Adhoc, AdhocAssessments, AdhocTopics
 from datamaestro_text.data.ir.trec import TrecAdhocAssessments
 from datamaestro_text.data.ir.csv import AdhocTopics as CSVAdhocTopics
+from numpy.core.fromnumeric import cumsum
 
 
 class AdhocTopicFold(AdhocTopics):
@@ -53,19 +54,48 @@ class RandomFold(Task):
 
     Attributes:
         seed: Random seed used to compute the fold
-        size: Number of topics to keep
+        sizes: Number of topics of each fold (or percentage)
         dataset: The Adhoc dataset from which a fold is extracted
-        inverse: Takes the complement subset
+        fold: Which fold to take
     """
 
     seed: Param[int]
-    size: Param[int]
+    sizes: Param[List[float]]
     dataset: Param[Adhoc]
-    complement: Param[bool] = False
-    exclude: Param[AdhocTopics]
+    fold: Param[int]
+    exclude: Param[Optional[AdhocTopics]]
 
     assessments: Annotated[Path, pathgenerator("assessments.tsv")]
     topics: Annotated[Path, pathgenerator("topics.tsv")]
+
+    def __validate__(self):
+        assert self.fold < len(self.sizes)
+
+    @staticmethod
+    def folds(
+        seed: int,
+        sizes: List[float],
+        dataset: Param[Adhoc],
+        exclude: Param[AdhocTopics] = None,
+        submit=True,
+    ):
+        """Creates folds
+
+        Parameters:
+
+        - submit: if true (default), submits the fold tasks to experimaestro
+        """
+
+        folds = []
+        for ix in range(len(sizes)):
+            fold = RandomFold(
+                seed=seed, sizes=sizes, dataset=dataset, exclude=exclude, fold=ix
+            )
+            if submit:
+                fold = fold.submit()
+            folds.append(fold)
+
+        return folds
 
     def config(self) -> Adhoc:
         return Adhoc(
@@ -77,6 +107,7 @@ class RandomFold(Task):
     def execute(self):
         import numpy as np
 
+        # Get topics
         badids = (
             set(topic.qid for topic in self.exclude.iter()) if self.exclude else set()
         )
@@ -85,8 +116,16 @@ class RandomFold(Task):
         ]
         random = np.random.RandomState(self.seed)
         random.shuffle(topics)
-        topics = topics[self.size :] if self.complement else topics[: self.size]
 
+        # Get the fold
+        sizes = np.array([0] + self.sizes)
+        sizes = np.round(len(topics) * sizes / sizes.sum())
+        assert sizes[self.fold + 1] > 0
+
+        indices = sizes.cumsum().astype(int)
+        topics = topics[indices[self.fold] : indices[self.fold + 1]]
+
+        # Write topics and assessments
         ids = set()
         self.topics.parent.mkdir(parents=True, exist_ok=True)
         with self.topics.open("wt") as fp:

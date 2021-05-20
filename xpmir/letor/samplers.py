@@ -1,8 +1,9 @@
 import itertools
-from typing import Any, Iterator, List, NamedTuple, Optional
+from pathlib import Path
+from typing import Any, Dict, Iterator, List, NamedTuple, Optional, Tuple
 import torch
 import numpy as np
-from datamaestro_text.data.ir import Adhoc, TrainingTriplets
+from datamaestro_text.data.ir import Adhoc, AdhocTopic, TrainingTriplets
 from experimaestro import Config, Param, config, help, param, tqdm
 from experimaestro.annotations import cache
 from xpmir.rankers import Retriever, ScoredDocument
@@ -74,7 +75,7 @@ class PairwiseRecord:
     positive: Document
     negative: Document
 
-    def __init__(self, query, positive, negative):
+    def __init__(self, query: str, positive: Document, negative: Document):
         self.query = query
         self.positive = positive
         self.negative = negative
@@ -137,9 +138,110 @@ class ModelBasedSampler(Sampler):
         retriever: The document retriever
     """
 
-    relevant_ratio: Param[float] = 0.5
     dataset: Param[Adhoc]
     retriever: Param[Retriever]
+
+    def getdocuments(self, docids: List[str]):
+        self._documents = [
+            self.retriever.collection().document_text(docid) for docid in docids
+        ]
+
+    @cache("run")
+    def _itertopics(
+        self, runpath: Path
+    ) -> Iterator[
+        Tuple[str, List[Tuple[str, int, float]], List[Tuple[str, int, float]]]
+    ]:
+        """Iterates over topics, returning retrieved positives and negatives documents"""
+        self.logger.info("Reading topics and retrieving documents")
+
+        if not runpath.is_file():
+            with runpath.open("wt") as fp:
+
+                # Read the assessments
+                self.logger.info("Reading assessments")
+                assessments = {}  # type: Dict[str, Dict[str, float]]
+                for qrels in self.dataset.assessments.iter():
+                    doc2rel = {}
+                    assessments[qrels.qid] = doc2rel
+                    for docid, rel in qrels.assessments:
+                        doc2rel[docid] = rel
+                self.logger.info("Read assessments for %d topics", len(assessments))
+
+                self.logger.info("Retrieving documents for each topic")
+                queries = []
+                for query in self.dataset.topics.iter():
+                    queries.append(query)
+
+                # Retrieve documents
+                skipped = 0
+                for query in tqdm(queries):
+                    qassessments = assessments.get(query.qid, None)
+                    if not qassessments:
+                        self.logger.warning(
+                            "Skipping topic %s (no assessments)", query.qid
+                        )
+                        continue
+
+                    totalrel = sum(rel for docno, rel in qassessments.items())
+                    if totalrel == 0:
+                        self.logger.debug(
+                            "Skipping topic %s (no relevant documents)", query.qid
+                        )
+                        skipped += 1
+                        continue
+
+                    scoreddocuments = self.retriever.retrieve(
+                        query.title
+                    )  # type: List[ScoredDocument]
+
+                    positives = []
+                    negatives = []
+                    for rank, sd in enumerate(scoreddocuments):
+                        # Get the assessment (assumes not relevant)
+                        rel = qassessments.get(sd.docid, 0)
+                        (positives if rel > 0 else negatives).append(
+                            (sd.docid, rel, sd.score)
+                        )
+                        fp.write(
+                            f"{query.title if rank == 0 else ''}\t{sd.docid}\t{sd.score}\t{rel}\n"
+                        )
+
+                    yield query, positives, negatives
+
+                # Finally...
+                self.logger.info(
+                    "Processed %d topics (%d skipped)", len(queries), skipped
+                )
+        else:
+            # Read from cache
+            self.logger.info("Reading records from file %s", runpath)
+            with runpath.open("rt") as fp:
+                positives = []
+                negatives = []
+                oldtitle = ""
+
+                for line in fp.readlines():
+                    title, docno, score, rel = line.rstrip().split("\t")
+                    if title:
+                        if oldtitle:
+                            yield oldtitle, positives, negatives
+                        positives = []
+                        negatives = []
+                    else:
+                        title = oldtitle
+                    title = title or oldtitle
+                    rel = int(rel)
+                    (positives if rel > 0 else negatives).append(
+                        (docno, rel, float(score))
+                    )
+                    oldtitle = title
+
+                yield oldtitle, positives, negatives
+
+
+class PointwiseModelBasedSampler(ModelBasedSampler):
+    relevant_ratio: Param[float] = 0.5
 
     def initialize(self, random):
         super().initialize(random)
@@ -151,80 +253,20 @@ class ModelBasedSampler(Sampler):
             "Loaded %d/%d pos/neg records", len(self.pos_records), len(self.neg_records)
         )
 
-    def getdocuments(self, docids: List[str]):
-        self._documents = [
-            self.retriever.collection().document_text(docid) for docid in docids
-        ]
-
-    @cache("run")
-    def readrecords(self, runpath):
-        pos_records, neg_records = [], []
-        if not runpath.is_file():
-            self.logger.info("Reading topics and retrieving documents")
-            self.logger.info("Caching in %s", runpath)
-
-            # Read the assessments
-            self.logger.info("Reading assessments")
-            assessments = {}
-            for qrels in self.dataset.assessments.iter():
-                doc2rel = {}
-                assessments[qrels.qid] = doc2rel
-                for docid, rel in qrels.assessments:
-                    doc2rel[docid] = rel
-            self.logger.info("Read assessments for %d topics", len(assessments))
-
-            with runpath.open("wt") as fp:
-                self.logger.info("Retrieving documents for each topic")
-                queries = []
-                for query in self.dataset.topics.iter():
-                    queries.append(query)
-
-                skipped = 0
-                for query in tqdm(queries):
-                    qassessments = assessments.get(query.qid, None) or {}
-                    totalrel = sum(rel for docno, rel in qassessments.items())
-                    if totalrel == 0:
-                        self.logger.debug(
-                            "Skipping topic %s (no relevant documents)", query.qid
-                        )
-                        skipped += 1
-                        continue
-                    scoredDocuments = self.retriever.retrieve(
-                        query.title
-                    )  # type: List[ScoredDocument]
-                    for rank, sd in enumerate(scoredDocuments):
-                        # Get the assessment (assumes not relevant)
-                        rel = qassessments.get(sd.docid, 0)
-                        (pos_records if rel > 0 else neg_records).append(
-                            PointwiseRecord(query.title, sd.docid, None, sd.score, rel)
-                        )
-                        fp.write(
-                            f"{query.title if rank == 0 else ''}\t{sd.docid}\t{sd.score}\t{rel}\n"
-                        )
-                self.logger.info(
-                    "Process %d topics (%d skipped)", len(queries), skipped
-                )
-        else:
-            # Read from file
-            self.logger.info("Reading records from file %s", runpath)
-            with runpath.open("rt") as fp:
-                oldtitle = ""
-                for line in fp.readlines():
-                    title, docno, score, rel = line.rstrip().split("\t")
-                    title = title or oldtitle
-                    rel = int(rel)
-
-                    (pos_records if rel > 0 else neg_records).append(
-                        PointwiseRecord(title, docno, None, float(score), rel)
-                    )
-                    oldtitle = title
-
-        return pos_records, neg_records
-
     def prepare(self, record: PointwiseRecord):
         if record.document.text is None:
             record.document.text = self.index.document_text(record.document.docid)
         return record
+
+    def readrecords(self, runpath):
+        pos_records, neg_records = [], []
+        for title, positives, negatives in self._itertopics():
+            for docno, rel, score in positives:
+                self.pos_records.append(PointwiseRecord(title, docno, None, score, rel))
+            for docno, rel, score in negatives:
+                self.neg_records.append(PointwiseRecord(title, docno, None, score, rel))
+
+        return pos_records, neg_records
 
     def record_iter(self) -> Iterator[PointwiseRecord]:
         npos = len(self.pos_records)
@@ -235,8 +277,34 @@ class ModelBasedSampler(Sampler):
             else:
                 yield self.prepare(self.neg_records[self.random.randint(0, nneg)])
 
+
+class PairwiseModelBasedSampler(ModelBasedSampler):
+    """A pairwise sampler based on a retrieval model"""
+
+    def initialize(self, random):
+        super().initialize(random)
+
+        self.retriever.initialize()
+        self.index = self.retriever.index
+        self.topics = self._readrecords()
+
+    def _readrecords(self):
+        topics = []
+        for title, positives, negatives in self._itertopics():
+            topics.append((title, positives, negatives))
+        return topics
+
+    def sample(self, samples: List[Tuple[str, int, float]]):
+        docid, rel, score = samples[self.random.randint(0, len(samples))]
+        text = self.index.document_text(docid)
+        return Document(docid, text, score)
+
     def pairwiserecord_iter(self) -> Iterator[PairwiseRecord]:
-        raise NotImplementedError()
+        while True:
+            title, positives, negatives = self.topics[
+                self.random.randint(0, len(self.topics))
+            ]
+            yield PairwiseRecord(title, self.sample(positives), self.sample(negatives))
 
 
 class TripletBasedSampler(Sampler):

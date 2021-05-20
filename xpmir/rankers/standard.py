@@ -1,14 +1,14 @@
-from experimaestro import Param, config
+from experimaestro import Param, Config
 
 
-@config()
-class Model:
+class Model(Config):
     """Base class for standard IR models"""
 
     pass
 
 
-@config()
 class BM25(Model):
+    """BM-25 model definition"""
+
     k1: Param[float] = 0.9
     b: Param[float] = 0.4

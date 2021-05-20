@@ -1,11 +1,12 @@
 import logging
 from pathlib import Path
-from functools import lru_cache
+import os
 
 from datamaestro import prepare_dataset
 from datamaestro_text.transforms.ir import ShuffledTrainingTripletsLines
 from experimaestro import experiment, tag, tagspath
 from experimaestro.click import click, forwardoption
+from experimaestro.launchers.slurm import SlurmLauncher, SlurmOptions
 from experimaestro.utils import cleanupdir
 from xpmir.datasets.adapters import RandomFold
 from xpmir.evaluation import Evaluate
@@ -49,25 +50,35 @@ class Information:
         return index
 
 
-def evaluate(token=None, **kwargs):
+def evaluate(token=None, launcher=None, **kwargs):
     v = Evaluate(metrics=["map", "p@20", "ndcg", "ndcg@20", "mrr", "mrr@10"], **kwargs)
     if token is not None:
         v = token(1, v)
-    return v.submit()
+    return v.submit(launcher=launcher)
 
 
 # --- Experiment
-@forwardoption.max_epoch(Learner, default=64)
+@forwardoption.max_epoch(Learner, default=None)
+@click.option(
+    "--scheduler", type=click.Choice(["slurm"]), help="Use a scheduler (slurm)"
+)
 @click.option("--debug", is_flag=True, help="Print debug information")
 @click.option("--gpu", is_flag=True, help="Use GPU")
 @click.option(
-    "--batch-size", type=int, default=256, help="Batch size (validation and test)"
+    "--batch-size", type=int, default=None, help="Batch size (validation and test)"
 )
 @click.option("--small", is_flag=True, help="Use small datasets")
+@click.option(
+    "--grad-acc-batch",
+    default=0,
+    help="Micro-batch size when training BERT-based models",
+)
 @click.option("--port", type=int, default=12345, help="Port for monitoring")
 @click.argument("workdir", type=Path)
 @click.command()
-def cli(debug, small, gpu, port, workdir, max_epoch, batch_size):
+def cli(
+    debug, small, scheduler, gpu, port, workdir, max_epoch, grad_acc_batch, batch_size
+):
     """Runs an experiment"""
     logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
 
@@ -85,10 +96,42 @@ def cli(debug, small, gpu, port, workdir, max_epoch, batch_size):
     # How many documents to use for cross-validation
     valtopK = 100
 
+    if small:
+        VAL_SIZE = 10
+        validation_interval = 1
+        topK = 20
+        valtopK = 20
+        batch_size = batch_size or 16
+        max_epoch = max_epoch or 4
+    else:
+        batch_size = batch_size or 256
+        max_epoch = max_epoch or 64
+
     info = Information()
 
     # Sets the working directory and the name of the xp
-    with experiment(workdir, "msmarco", port=port) as xp:
+    if scheduler == "slurm":
+        import socket
+
+        host = socket.getfqdn()
+        launcher = SlurmLauncher()
+        gpulauncher = launcher.config(gpus=1) if gpu else launcher
+    else:
+        host = None
+        launcher = None
+        gpulauncher = None
+
+    name = "msmarco-small" if small else "msmarco"
+    with experiment(workdir, name, host=host, port=port, launcher=launcher) as xp:
+        if scheduler is None:
+            token = xp.token("main", 1)
+        else:
+
+            def token(value, task):
+                return task
+
+        xp.setenv("JAVA_HOME", os.environ["JAVA_HOME"])
+
         # Misc
         device = Device(gpu=gpu)
         random = Random(seed=0)
@@ -165,8 +208,6 @@ def cli(debug, small, gpu, port, workdir, max_epoch, batch_size):
         cleanupdir(runspath)
         runspath.mkdir(exist_ok=True, parents=True)
 
-        token = xp.token("main", 1)
-
         def run(scorer, trainer: Trainer):
             validation = ValidationListener(
                 dataset=ds_val,
@@ -182,7 +223,7 @@ def cli(debug, small, gpu, port, workdir, max_epoch, batch_size):
                 max_epoch=tag(max_epoch),
                 listeners={"bestval": validation},
             )
-            model = token(1, learner).submit()
+            model = token(1, learner).submit(launcher=gpulauncher)
             (runspath / tagspath(model)).symlink_to(model.logpath)
 
             # Evaluate the neural model
@@ -192,6 +233,7 @@ def cli(debug, small, gpu, port, workdir, max_epoch, batch_size):
                         token=token,
                         dataset=test,
                         retriever=get_reranker(index, validation.getscorer("mrr@10")),
+                        launcher=gpulauncher,
                     )
                 )
 
@@ -220,12 +262,16 @@ def cli(debug, small, gpu, port, workdir, max_epoch, batch_size):
                 dlen=512,
             ).tag("model", "colbert")
             for lr in 1e-6, 1e-4:
-                run(colbert, trainer(lr=tag(lr), grad_acc_batch=2, lossfn=lossfn))
+                run(
+                    colbert,
+                    trainer(lr=tag(lr), grad_acc_batch=grad_acc_batch, lossfn=lossfn),
+                )
 
         # Wait that experiments complete
         xp.wait()
 
         for key, dsevaluations in evaluations.items():
+            print(f"=== {key}")
             for evaluation in dsevaluations:
                 print(
                     f"Results for {evaluation.tags()}\n{evaluation.results.read_text()}\n"

@@ -25,6 +25,16 @@ class Handler:
 
     def __init__(self):
         self.handlers = {}
+        self.defaulthandler = None
+
+    def default(self):
+        assert self.defaulthandler is None
+
+        def annotate(method):
+            self.defaulthandler = method
+            return method
+
+        return annotate
 
     def __call__(self):
         def annotate(method):
@@ -36,7 +46,15 @@ class Handler:
         return annotate
 
     def __getitem__(self, key):
-        return self.handlers[key.__class__](key)
+        handler = self.handlers.get(key.__class__, None)
+        if handler is None:
+            if self.default is None:
+                raise RuntimeError(
+                    f"No handler for {key.__class__} and no default handler"
+                )
+            handler = self.defaulthandler
+
+        return handler(key)
 
 
 def easylog():

@@ -1,3 +1,4 @@
+from typing import List, Tuple
 from datamaestro.definitions import data
 
 
@@ -6,7 +7,11 @@ class Index:
     """Represents an indexed document collection"""
 
     def document_text(self, docid: str) -> str:
-        """Returns the text of the document"""
+        """Returns the text of the document given its id"""
+        raise NotImplementedError()
+
+    def documents(self) -> List[Tuple[str, str]]:
+        """Iterates over (docid, content) couples"""
         raise NotImplementedError()
 
     def term_df(self, term: str):

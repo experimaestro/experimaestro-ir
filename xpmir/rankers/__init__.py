@@ -54,6 +54,9 @@ class LearnableScorer(Scorer):
     def initialize(self, random):
         self.random = random
 
+    def forward(self, inputs: "Records"):
+        raise NotImplementedError(f"forward in {self.__class__}")
+
 
 class Retriever(Config):
     """A retriever is a model to return top-scored documents given a query

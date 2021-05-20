@@ -10,6 +10,7 @@ import tempfile
 from pathlib import Path
 from threading import Thread
 from typing import List
+from experimaestro import tqdm as xpmtqdm
 
 
 import datamaestro_text.data.ir.csv as ir_csv
@@ -47,10 +48,15 @@ class StreamGenerator(Thread):
         self.filepath = Path(os.path.join(tmpdir, "fifo.json"))
         os.mkfifo(self.filepath)
         self.generator = generator
+        self.error = False
 
     def run(self):
-        with self.filepath.open(self.mode) as out:
-            self.generator(out)
+        try:
+            with self.filepath.open(self.mode) as out:
+                self.generator(out)
+        except:
+            self.error = True
+            raise
 
     def __enter__(self):
         self.start()
@@ -60,6 +66,8 @@ class StreamGenerator(Thread):
         self.join()
         self.filepath.unlink()
         self.filepath.parent.rmdir()
+        if self.error:
+            raise AssertionError("Error with the generator")
 
 
 @param("documents", type=AdhocDocuments)
@@ -116,6 +124,31 @@ class IndexCollection(Index):
                 generator.filepath.parent,
             ]
 
+        @chandler.default()
+        def generic_collection(documents: AdhocDocuments):
+            """Generic collection handler, supposes that we can iterate documents"""
+
+            def _generator(out):
+                size = os.path.getsize(documents.path)
+                with documents.path.open("rt", encoding="utf-8") as fp:
+                    for document in xpmtqdm(
+                        documents.iter(), unit="documents", total=documents.count
+                    ):
+                        # Generate document
+                        json.dump(
+                            {"id": document.docid, "contents": document.text}, out
+                        )
+                        out.write("\n")
+
+            generator = StreamGenerator(_generator, mode="wt")
+
+            return generator, [
+                "-collection",
+                "JsonCollection",
+                "-input",
+                generator.filepath.parent,
+            ]
+
         generator, args = chandler[self.documents]
         command.extend(args)
 
@@ -141,7 +174,7 @@ class IndexCollection(Index):
         )
 
         async def run(command):
-            with generator as yo:
+            with generator as _:
                 proc = await asyncio.create_subprocess_exec(
                     *command, stderr=None, stdout=asyncio.subprocess.PIPE
                 )
