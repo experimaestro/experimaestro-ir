@@ -12,7 +12,7 @@ except Exception:
     logging.error("Install huggingface transformers to use these configurations")
     raise
 
-from xpmir.letor.samplers import TokenizedTexts
+from xpmir.letor.records import TokenizedTexts
 import xpmir.vocab as vocab
 
 
@@ -77,7 +77,7 @@ class TransformerVocab(vocab.Vocab):
     def batch_tokenize(
         self, texts: List[str], batch_first=True, maxlen=None
     ) -> TokenizedTexts:
-        maxlen = max(maxlen, self.tokenizer.model_max_length)
+        maxlen = max(maxlen or 0, self.tokenizer.model_max_length)
         r = self.tokenizer(
             list(texts),
             max_length=maxlen,
@@ -116,7 +116,7 @@ class IndependentTransformerVocab(TransformerVocab):
         return y.last_hidden_state
 
 
-class TransformerEncoder(TransformerVocab, TextEncoder, nn.Module):
+class TransformerEncoder(TransformerVocab, TextEncoder):
     """Encodes using the [CLS] token"""
 
     def forward(self, texts: List[str]):

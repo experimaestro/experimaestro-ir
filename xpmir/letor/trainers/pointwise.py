@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from experimaestro import Param, config
-from xpmir.letor.samplers import Records
+from xpmir.letor.records import Records
 from xpmir.letor.trainers import Trainer
 
 

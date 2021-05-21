@@ -4,7 +4,7 @@ import torch
 from typing import List
 import torch.nn as nn
 from experimaestro import Config
-from xpmir.letor.samplers import TokenizedTexts
+from xpmir.letor.records import TokenizedTexts
 from xpmir.utils import EasyLogger
 
 

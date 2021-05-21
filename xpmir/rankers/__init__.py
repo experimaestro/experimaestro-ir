@@ -2,9 +2,11 @@
 
 from logging import Logger
 from typing import Iterable, List, Tuple
+import torch
 from experimaestro import Param, Config
 from xpmir.dm.data import Index
 from xpmir.letor import Random
+from xpmir.letor.records import PointwiseRecord, Records
 from xpmir.utils import EasyLogger
 
 
@@ -56,6 +58,23 @@ class LearnableScorer(Scorer):
 
     def forward(self, inputs: "Records"):
         raise NotImplementedError(f"forward in {self.__class__}")
+
+    def rsv(self, query: str, documents: List[ScoredDocument]) -> List[ScoredDocument]:
+        # Prepare the inputs and call the model
+        inputs = Records()
+        for doc in documents:
+            assert doc.content is not None
+            inputs.add(PointwiseRecord(query, doc.docid, doc.content, doc.score, None))
+
+        with torch.no_grad():
+            scores = self(inputs).cpu().numpy()
+
+        # Returns the scored documents
+        scoredDocuments = []
+        for i in range(len(documents)):
+            scoredDocuments.append(ScoredDocument(documents[i].docid, scores[i]))
+
+        return scoredDocuments
 
 
 class Retriever(Config):

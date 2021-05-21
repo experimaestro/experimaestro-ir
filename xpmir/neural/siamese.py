@@ -1,8 +1,10 @@
-from typing import List
+from typing import Iterable, List, Optional
 import itertools
+import torch
+import torch.nn as nn
 from experimaestro import Config, Param
-from xpmir.letor.samplers import Records
-from xpmir.rankers import LearnableScorer
+from xpmir.letor.records import PointwiseRecord, Records
+from xpmir.rankers import LearnableScorer, ScoredDocument
 
 
 class TextEncoder(Config):
@@ -10,40 +12,45 @@ class TextEncoder(Config):
     def dimension(self):
         raise NotImplementedError()
 
-    def __call__(self, texts: List[str]):
-        raise NotImplementedError()
 
-
-class CosineSiamese(LearnableScorer):
+class CosineSiamese(LearnableScorer, nn.Module):
     """Siamese model (cosine)
 
     Attributes:
-
-        compression_size: Projection layer for the last layer (or 0 if None)
+        encoder: Document (and query) encoder
+        query_encoder: Query encoder (or null)
     """
 
-    query_encoder: Param[TextEncoder]
-    document_encoder: Param[TextEncoder]
+    encoder: Param[TextEncoder]
+    query_encoder: Param[Optional[TextEncoder]]
 
     def __validate__(self):
         super().__validate__()
 
     def initialize(self, random):
         super().initialize(random)
+        self.encoder.initialize()
+        if self.query_encoder:
+            self.query_encoder.initialize()
 
     def parameters(self):
-        return itertools.chain(
-            self.query_encoder.parameters(), self.document_encoder.parameters()
-        )
+        if self.query_encoder:
+            return itertools.chain(
+                self.query_encoder.parameters(), self.encoder.parameters()
+            )
+        return self.encoder.parameters()
 
     def forward(self, inputs: Records):
         # Encode queries and documents
-        queries = self.query_encoder([d.text for d in inputs.documents])
-        documents = self.document_encoder(inputs.queries)
+        queries = (self.query_encoder or self.encoder)(
+            [d.text for d in inputs.documents]
+        )
+        documents = self.encoder(inputs.queries)
 
         # Normalize each document and query
         queries = queries / queries.norm(dim=1, keepdim=True)
         documents = documents / documents.norm(dim=1, keepdim=True)
 
         # Compute batch dot product and return it
-        return queries.unsqueeze(1) @ documents.unsqueeze(2)
+        scores = queries.unsqueeze(1) @ documents.unsqueeze(2)
+        return scores.squeeze()

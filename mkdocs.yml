@@ -24,12 +24,14 @@ markdown_extensions:
 plugins:
   - experimaestro:
         init:
-            # Allows to cope with uninstalled modules when generating documentation
-            - xpmir.mkdocs_init
+          # Allows to cope with uninstalled modules when generating documentation
+          - xpmir.mkdocs_init
         modules:
-            - xpmir.letor: letor.md
-            - xpmir.neural: neural.md
-            - xpmir: misc.md
+          - xpmir.letor: letor.md
+          - xpmir.neural: neural.md
+          - xpmir: misc.md
+        external:
+          - datamaestro_text: https://datamaestro-text.readthedocs.io/en/latest/experimaestro-mapping.json
 
 # Theme
 theme:

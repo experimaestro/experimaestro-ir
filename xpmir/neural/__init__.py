@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 
 from experimaestro import config, Param
-from xpmir.letor.samplers import Records, PointwiseRecord
+from xpmir.letor.records import Records, PointwiseRecord
 from xpmir.rankers import LearnableScorer, ScoredDocument
 from xpmir.vocab import Vocab
 
@@ -39,23 +39,6 @@ class InteractionScorer(LearnableScorer, nn.Module):
         if self.add_runscore:
             self.runscore_alpha = torch.nn.Parameter(torch.full((1,), -1.0))
         self.vocab.initialize()
-
-    def rsv(self, query: str, documents: List[ScoredDocument]) -> List[ScoredDocument]:
-        # Prepare the inputs and call the model
-        inputs = Records()
-        for doc in documents:
-            assert doc.content is not None
-            inputs.add(PointwiseRecord(query, doc.docid, doc.content, doc.score, None))
-
-        with torch.no_grad():
-            scores = self(inputs).cpu().numpy()
-
-        # Returns the scored documents
-        scoredDocuments = []
-        for i in range(len(documents)):
-            scoredDocuments.append(ScoredDocument(documents[i].docid, scores[i]))
-
-        return scoredDocuments
 
     def __validate__(self):
         assert (

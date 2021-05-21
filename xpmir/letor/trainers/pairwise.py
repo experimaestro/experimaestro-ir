@@ -5,7 +5,7 @@ from torch import nn
 from torch.functional import Tensor
 import torch.nn.functional as F
 from experimaestro import Config, default, Annotated, Param
-from xpmir.letor.samplers import PairwiseRecord, PairwiseRecords
+from xpmir.letor.records import PairwiseRecord, PairwiseRecords
 from xpmir.letor.trainers import Trainer
 import numpy as np
 
