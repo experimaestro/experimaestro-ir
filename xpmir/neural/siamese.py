@@ -18,7 +18,7 @@ class CosineSiamese(LearnableScorer, nn.Module):
 
     Attributes:
         encoder: Document (and query) encoder
-        query_encoder: Query encoder (or null)
+        query_encoder: Query encoder; if null, uses the document encoder
     """
 
     encoder: Param[TextEncoder]

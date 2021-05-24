@@ -1,20 +1,24 @@
 import logging
-import tempfile
 import json
-import os
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict
 from datamaestro_text.data.ir import Adhoc
-from experimaestro import task, Config, param, Param, pathoption, pathgenerator
-from experimaestro.annotations import option
+from experimaestro import (
+    Task,
+    Config,
+    Param,
+    pathoption,
+    pathgenerator,
+    SerializedConfig,
+    Serialized,
+)
 from experimaestro.notifications import tqdm
-from experimaestro.utils import cleanupdir
 from typing_extensions import Annotated
 from xpmir.utils import EasyLogger
 from xpmir.evaluation import evaluate
 from xpmir.letor import Random
 from xpmir.letor.trainers import TrainContext, TrainState, Trainer
-from xpmir.rankers import LearnableScorer, Retriever, ScoredDocument, Scorer
+from xpmir.rankers import LearnableScorer, Retriever
 
 
 class LearnerListener(Config):
@@ -35,25 +39,19 @@ class LearnerListener(Config):
         """Add metrics"""
         pass
 
+    def taskoutputs(self, learner: "Learner"):
+        """Outputs from this listeners"""
+        return None
 
-class SavedScorer(Scorer):
-    path: Param[Path]
-    config: Param[Config]
 
-    # When using the best validation model
-    _model = None
+class SavedScorer(Serialized):
+    """Generic scorer that has been saved"""
 
-    @property
-    def model(self):
-        if self._model is None:
-            state = TrainState()
-            state.load(self.path)
-            self._model = state.ranker
-
-        return self._model
-
-    def rsv(self, query: str, documents: List[ScoredDocument]) -> List[ScoredDocument]:
-        return self.model.rsv(query, documents)
+    @staticmethod
+    def fromJSON(path):
+        state = TrainState()
+        state.load(Path(path))
+        return state.ranker
 
 
 class ValidationListener(LearnerListener):
@@ -99,12 +97,13 @@ class ValidationListener(LearnerListener):
             for metric in self.metrics.keys():
                 metrics[f"{self.key}/final/{metric}"] = self.top[metric]["value"]
 
-    def getscorer(self, key: str) -> Scorer:
-        """Return a scorer corresponding to the best (validation-wise) one for the given metric"""
-        assert self.metrics.get(
-            key, False
-        ), f"Metric {key} is not part of recorded metrics"
-        return SavedScorer(path=self.bestpath / key, config=self)
+    def taskoutputs(self, learner: "Learner"):
+        """Experimaestro outputs"""
+        return {
+            key: SerializedConfig(learner.scorer, SavedScorer(str(self.bestpath / key)))
+            for key, store in self.metrics.items()
+            if store
+        }
 
     def __call__(self, state):
         if state.epoch % self.validation_interval == 0:
@@ -148,8 +147,7 @@ class ValidationListener(LearnerListener):
 
 
 # Checkpoints
-@task()
-class Learner(EasyLogger):
+class Learner(Task, EasyLogger):
     """Learns a model
 
     The learner task is generic, and takes two main arguments:
@@ -182,6 +180,14 @@ class Learner(EasyLogger):
     # Paths
     logpath: Annotated[Path, pathgenerator("runs")]
     checkpointspath: Annotated[Path, pathgenerator("checkpoints")]
+
+    def taskoutputs(self):
+        return {
+            "listeners": {
+                key: listener.taskoutputs(self)
+                for key, listener in self.listeners.items()
+            }
+        }
 
     # The Trainer
     def execute(self):

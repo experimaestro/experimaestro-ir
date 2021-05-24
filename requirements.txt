@@ -1,5 +1,5 @@
-experimaestro>=0.8.2
-datamaestro_text>=2021.1.26
+experimaestro>=0.9.0
+datamaestro_text>=2021.
 
 # --- SKIP_DOCBUILD ---
 

@@ -10,8 +10,11 @@ class Index:
         """Returns the text of the document given its id"""
         raise NotImplementedError()
 
-    def documents(self) -> List[Tuple[str, str]]:
-        """Iterates over (docid, content) couples"""
+    def iter_documents(self) -> List[Tuple[str, str]]:
+        """Iterates over (doid, content) couples"""
+        raise NotImplementedError()
+
+    def docid_internal2external(self, docid: int):
         raise NotImplementedError()
 
     def term_df(self, term: str):

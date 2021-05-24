@@ -58,11 +58,11 @@ class Index(BaseIndex):
         """Returns a map"""
         return {entry.term: (entry.df, entry.cf) for entry in self.index_reader.terms()}
 
-    def documents(self) -> List[Tuple[str, str]]:
+    def iter_documents(self) -> List[Tuple[str, str]]:
         """Returns the document contents"""
         for i in range(self.documentcount):
             docid = self.index_reader.convert_internal_docid_to_collection_docid(i)
-            yield self.document_text(docid)
+            yield docid, self.document_text(docid)
 
     def term_df(self, term: str):
         x: List[str] = self.index_reader.analyze(term)

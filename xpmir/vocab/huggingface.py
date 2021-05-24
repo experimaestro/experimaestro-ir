@@ -77,7 +77,11 @@ class TransformerVocab(vocab.Vocab):
     def batch_tokenize(
         self, texts: List[str], batch_first=True, maxlen=None
     ) -> TokenizedTexts:
-        maxlen = max(maxlen or 0, self.tokenizer.model_max_length)
+        if maxlen is None:
+            maxlen = self.tokenizer.model_max_length
+        else:
+            maxlen = min(maxlen, self.tokenizer.model_max_length)
+
         r = self.tokenizer(
             list(texts),
             max_length=maxlen,
@@ -122,7 +126,11 @@ class TransformerEncoder(TransformerVocab, TextEncoder):
     def forward(self, texts: List[str]):
         tokenized = self.batch_tokenize(texts)
 
-        with torch.set_grad_enabled(self.trainable):
+        with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
             y = self.model(tokenized.ids)
 
         return y.last_hidden_state[:, -1]
+
+    @property
+    def dimension(self):
+        return self.model.config.dim
