@@ -82,17 +82,20 @@ class FaissRetriever(Retriever):
     encoder: Param[TextEncoder]
     index: Param[FaissIndex]
 
-    def __init__(self):
-        self._index = faiss.read_index_binary(self.index.faiss_index)
+    def __postinit__(self):
+        self._index = faiss.read_index(str(self.index.faiss_index))
 
     def retrieve(self, query: str) -> List[ScoredDocument]:
         """Retrieves a documents, returning a list sorted by decreasing score"""
-        encoded_query = self.encoder(query)
-        if self.index.normalize:
-            encoded_query /= encoded_query.norm(2)
+        with torch.no_grad():
+            encoded_query = self.encoder([query])
+            if self.index.normalize:
+                encoded_query /= encoded_query.norm(2)
 
-        distances, indices = self._index.search(encoded_query.cpu().numpy(), self.topk)
-        return [
-            ScoredDocument(self.index.docid_internal2external(ix), -distance)
-            for ix, distance in zip(indices, distances)
-        ]
+            distances, indices = self._index.search(
+                encoded_query.cpu().numpy(), self.topk
+            )
+            return [
+                ScoredDocument(self.index.docid_internal2external(ix), -distance)
+                for ix, distance in zip(indices[0], distances[0])
+            ]

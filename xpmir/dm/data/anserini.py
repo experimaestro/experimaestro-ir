@@ -64,6 +64,9 @@ class Index(BaseIndex):
             docid = self.index_reader.convert_internal_docid_to_collection_docid(i)
             yield docid, self.document_text(docid)
 
+    def docid_internal2external(self, ix):
+        return self.index_reader.convert_internal_docid_to_collection_docid(ix)
+
     def term_df(self, term: str):
         x: List[str] = self.index_reader.analyze(term)
         if x:
