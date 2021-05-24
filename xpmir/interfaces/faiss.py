@@ -63,8 +63,8 @@ class IndexBackedFaiss(FaissIndex, Task):
                     x /= x.norm(2, keepdim=True, dim=1)
                 index.add(x.cpu().numpy())
 
-        logging.info("Writing FAISS index (%d documents)", indefx.ntotal)
-        faiss.write_index_binary(index, str(self.faiss_index))
+        logging.info("Writing FAISS index (%d documents)", index.ntotal)
+        faiss.write_index(index, str(self.faiss_index))
 
     def docid_internal2external(self, docid: int):
         return self.index.docid_internal2external(docid)
@@ -88,7 +88,7 @@ class FaissRetriever(Retriever):
     def retrieve(self, query: str) -> List[ScoredDocument]:
         """Retrieves a documents, returning a list sorted by decreasing score"""
         encoded_query = self.encoder(query)
-        if self.normalize:
+        if self.index.normalize:
             encoded_query /= encoded_query.norm(2)
 
         distances, indices = self._index.search(encoded_query.cpu().numpy(), self.topk)
