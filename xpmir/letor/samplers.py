@@ -106,7 +106,7 @@ class ModelBasedSampler(Sampler):
                             f"{query.title if rank == 0 else ''}\t{sd.docid}\t{sd.score}\t{rel}\n"
                         )
 
-                    yield query, positives, negatives
+                    yield query.title, positives, negatives
 
                 # Finally...
                 self.logger.info(
