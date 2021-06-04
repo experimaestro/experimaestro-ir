@@ -1,6 +1,42 @@
 from logging import Logger
 import inspect
 import logging
+import os
+from pathlib import Path
+import tempfile
+from threading import Thread
+
+
+class StreamGenerator(Thread):
+    """Create a FIFO pipe (*nix only) that is fed by the provider generator"""
+
+    def __init__(self, generator, mode="wb"):
+        super().__init__()
+        tmpdir = tempfile.mkdtemp()
+        self.mode = mode
+        self.filepath = Path(os.path.join(tmpdir, "fifo.json"))
+        os.mkfifo(self.filepath)
+        self.generator = generator
+        self.error = False
+
+    def run(self):
+        try:
+            with self.filepath.open(self.mode) as out:
+                self.generator(out)
+        except Exception:
+            self.error = True
+            raise
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, *args):
+        self.join()
+        self.filepath.unlink()
+        self.filepath.parent.rmdir()
+        if self.error:
+            raise AssertionError("Error with the generator")
 
 
 class Handler:

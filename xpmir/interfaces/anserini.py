@@ -26,7 +26,7 @@ from xpmir.dm.data.anserini import Index
 from xpmir.evaluation import TrecAdhocRun
 from xpmir.rankers import Retriever, ScoredDocument
 from xpmir.rankers.standard import BM25, Model
-from xpmir.utils import Handler
+from xpmir.utils import Handler, StreamGenerator
 
 
 def javacommand():
@@ -38,36 +38,6 @@ def javacommand():
     command.append(":".join(get_classpath()))
 
     return command
-
-
-class StreamGenerator(Thread):
-    def __init__(self, generator, mode="wb"):
-        super().__init__()
-        tmpdir = tempfile.mkdtemp()
-        self.mode = mode
-        self.filepath = Path(os.path.join(tmpdir, "fifo.json"))
-        os.mkfifo(self.filepath)
-        self.generator = generator
-        self.error = False
-
-    def run(self):
-        try:
-            with self.filepath.open(self.mode) as out:
-                self.generator(out)
-        except:
-            self.error = True
-            raise
-
-    def __enter__(self):
-        self.start()
-        return self
-
-    def __exit__(self, *args):
-        self.join()
-        self.filepath.unlink()
-        self.filepath.parent.rmdir()
-        if self.error:
-            raise AssertionError("Error with the generator")
 
 
 @param("documents", type=AdhocDocuments)
