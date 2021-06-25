@@ -33,10 +33,17 @@ class PointwiseRecord:
 
 
 class TokenizedTexts:
-    def __init__(self, tokens: List[List[str]], ids: torch.LongTensor, lens: List[int]):
+    def __init__(
+        self,
+        tokens: List[List[str]],
+        ids: torch.LongTensor,
+        lens: List[int],
+        mask: torch.LongTensor,
+    ):
         self.tokens = tokens
         self.ids = ids
         self.lens = lens
+        self.mask = mask
 
 
 class Records:

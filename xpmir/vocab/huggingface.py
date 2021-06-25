@@ -82,6 +82,8 @@ class TransformerVocab(vocab.Vocab):
         else:
             maxlen = min(maxlen, self.tokenizer.model_max_length)
 
+        assert batch_first, "Batch first is the only option"
+
         r = self.tokenizer(
             list(texts),
             max_length=maxlen,
@@ -90,7 +92,9 @@ class TransformerVocab(vocab.Vocab):
             return_tensors="pt",
             return_length=True,
         )
-        return TokenizedTexts(None, r["input_ids"].to(self.device), r["length"])
+        return TokenizedTexts(
+            None, r["input_ids"].to(self.device), r["length"], r["attention_mask"]
+        )
 
     def id2tok(self, idx):
         if torch.is_tensor(idx):
@@ -106,8 +110,14 @@ class TransformerVocab(vocab.Vocab):
     def maxtokens(self) -> int:
         return self.tokenizer.model_max_length
 
-    def forward(self, toks, lens=None):
-        return self.model(toks).last_hidden_state
+    def forward(self, toks: TokenizedTexts):
+        device = self._dummy_params.device
+        return self.model(
+            toks.ids.to(device), attention_mask=toks.mask.to(device)
+        ).last_hidden_state
+
+    def dim(self):
+        return self.model.config.hidden_size
 
 
 class IndependentTransformerVocab(TransformerVocab):
@@ -130,7 +140,3 @@ class TransformerEncoder(TransformerVocab, TextEncoder):
             y = self.model(tokenized.ids)
 
         return y.last_hidden_state[:, -1]
-
-    @property
-    def dimension(self):
-        return self.model.config.dim

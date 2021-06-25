@@ -9,9 +9,16 @@ from . import InteractionScorer
 import xpmir.neural.modules as modules
 
 
-@param("nbins", default=29, help="number of bins in matching histogram")
 @config()
 class CountHistogram(nn.Module):
+    """Base histogram class
+
+    Attributes:
+        nbins: number of bins in matching histogram
+    """
+
+    nbins: Param[int] = 29
+
     def forward(self, simmat, dlens, dtoks, qtoks):
         BATCH, CHANNELS, QLEN, DLEN = simmat.shape
 

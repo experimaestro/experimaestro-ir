@@ -4,7 +4,7 @@ from experimaestro import Param, Task, cache, pathgenerator, Annotated
 from datamaestro_text.data.ir import Adhoc, AdhocAssessments, AdhocTopics
 from datamaestro_text.data.ir.trec import TrecAdhocAssessments
 from datamaestro_text.data.ir.csv import AdhocTopics as CSVAdhocTopics
-from numpy.core.fromnumeric import cumsum
+import math
 
 
 class AdhocTopicFold(AdhocTopics):
@@ -54,7 +54,7 @@ class RandomFold(Task):
 
     Attributes:
         seed: Random seed used to compute the fold
-        sizes: Number of topics of each fold (or percentage)
+        sizes: Number of topics of each fold (or percentage if sums to 1)
         dataset: The Adhoc dataset from which a fold is extracted
         fold: Which fold to take
     """
@@ -118,8 +118,12 @@ class RandomFold(Task):
         random.shuffle(topics)
 
         # Get the fold
-        sizes = np.array([0] + self.sizes)
-        sizes = np.round(len(topics) * sizes / sizes.sum())
+        sizes = np.array([0.0] + self.sizes)
+        s = sizes.sum()
+        if abs(s - 1) < 1e-6:
+            sizes = np.round(len(topics) * sizes)
+            sizes = np.round(len(topics) * sizes / sizes.sum())
+
         assert sizes[self.fold + 1] > 0
 
         indices = sizes.cumsum().astype(int)

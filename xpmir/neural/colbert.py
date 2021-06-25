@@ -1,12 +1,35 @@
-import math
-from typing import Optional
-from experimaestro import param, config, Choices, Param, default
+# ColBERT implementation
+#
+# From https://github.com/stanford-futuredata/ColBERT/blob/v0.2/colbert/modeling/colbert.py
+
+from typing import List, Optional
+from experimaestro import param, Config, Constant, Param, default, Annotated
 import torch
 from torch import nn
-from typing_extensions import Annotated
+import torch.nn.functional as F
 from xpmir.dm.data.base import Index
+from xpmir.letor.records import Records
 from . import InteractionScorer
 import xpmir.neural.modules as modules
+
+
+class Similarity(Config):
+    def __call__(self, queries, documents) -> torch.Tensor:
+        raise NotImplementedError()
+
+
+class L2Distance(Similarity):
+    def __call__(self, queries, documents):
+        return (
+            (-1.0 * ((queries.unsqueeze(2) - documents.unsqueeze(1)) ** 2).sum(-1))
+            .max(-1)
+            .values.sum(-1)
+        )
+
+
+class CosineDistance(Similarity):
+    def __call__(self, queries, documents):
+        return (queries @ documents.permute(0, 2, 1)).max(2).values.sum(1)
 
 
 class Colbert(InteractionScorer):
@@ -23,11 +46,16 @@ class Colbert(InteractionScorer):
     Attributes:
 
         compression_size: Projection layer for the last layer (or 0 if None)
+        similarity: The similarity used to compute
+        linear_dim: Size of the linear layer
     """
 
+    version: Constant[int] = 2
     masktoken: Param[bool] = True
     querytoken: Param[bool] = True
     doctoken: Param[bool] = True
+    linear_dim: Param[int] = 128
+    similarity: Annotated[Similarity, default(CosineDistance())]
 
     compression_size: Param[int] = 128
 
@@ -43,12 +71,21 @@ class Colbert(InteractionScorer):
 
     def initialize(self, random):
         super().initialize(random)
-        self.simmat = modules.InteractionMatrix(self.vocab.pad_tokenid)
 
-    def _forward(self, inputs):
-        simmat, tokq, tokd = self.simmat.encode_query_doc(
-            self.vocab, inputs, d_maxlen=self.dlen, q_maxlen=self.qlen
-        )
+        self.linear = nn.Linear(self.vocab.dim(), self.linear_dim, bias=False)
 
-        maxperqtoken, _ = simmat.max(2)
-        return maxperqtoken.sum(2).squeeze()
+    def _encode(self, texts: List[str], maskoutput=False):
+        tokens = self.vocab.batch_tokenize(texts)
+        output = self.linear(self.vocab(tokens))
+
+        if maskoutput:
+            mask = tokens.mask.unsqueeze(2).float().to(output.device)
+            output = output * mask
+
+        return F.normalize(output, p=2, dim=2)
+
+    def _forward(self, inputs: Records):
+        queries = self._encode(inputs.queries, False)
+        documents = self._encode([d.text for d in inputs.documents], True)
+
+        return self.similarity(queries, documents)

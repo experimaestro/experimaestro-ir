@@ -10,6 +10,7 @@ from experimaestro import config, param, cache, Param
 
 # from onir import vocab, util
 from xpmir.letor import Random
+from xpmir.letor.records import TokenizedTexts
 
 # from onir.interfaces import wordvec
 from xpmir.vocab import Vocab
@@ -101,9 +102,9 @@ class WordvecVocab(Vocab, nn.Module):
     def dim(self):
         return self.embed.weight.shape[0]
 
-    def forward(self, toks, lens=None):
+    def forward(self, toks: TokenizedTexts):
         # lens ignored
-        return self.embed(toks + 1)  # +1 to handle padding at position -1
+        return self.embed(toks.ids + 1)  # +1 to handle padding at position -1
 
 
 @config()

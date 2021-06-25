@@ -114,6 +114,7 @@ class ValidationListener(LearnerListener):
 
             for metric, keep in self.metrics.items():
                 value = means[metric]
+                print("//////", metric, value, state.epoch)
 
                 self.context.writer.add_scalar(
                     f"{self.key}/{metric}", value, state.epoch
@@ -128,6 +129,9 @@ class ValidationListener(LearnerListener):
 
                         # Copy in corresponding directory
                         if keep:
+                            logging.info(
+                                f"Saving the checkpoint {state.epoch} for metric {metric}"
+                            )
                             self.context.copy(self.bestpath / metric)
 
             # Update information

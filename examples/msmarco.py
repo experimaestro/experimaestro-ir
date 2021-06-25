@@ -107,6 +107,10 @@ def cli(
         batch_size = batch_size or 256
         max_epoch = max_epoch or 64
 
+    assert (
+        max_epoch % validation_interval == 0
+    ), f"Number of epochs ({max_epoch}) is not a multiple of validation interval ({validation_interval})"
+
     info = Information()
 
     # Sets the working directory and the name of the xp
@@ -155,7 +159,7 @@ def cli(
 
         # This part is used for validation
         ds_val = RandomFold(
-            dataset=dev, seed=123, size=VAL_SIZE, exclude=devsmall.topics
+            dataset=dev, seed=123, fold=0, sizes=[VAL_SIZE], exclude=devsmall.topics
         ).submit()
 
         tests = {
@@ -223,16 +227,18 @@ def cli(
                 max_epoch=tag(max_epoch),
                 listeners={"bestval": validation},
             )
-            model = token(1, learner).submit(launcher=gpulauncher)
-            (runspath / tagspath(model)).symlink_to(model.logpath)
+            outputs = token(1, learner).submit(launcher=gpulauncher)
+            (runspath / tagspath(learner)).symlink_to(learner.logpath)
 
             # Evaluate the neural model
             for key, test in tests.items():
+                best = outputs["listeners"]["bestval"]["mrr@10"]
+
                 evaluations[key].append(
                     evaluate(
                         token=token,
                         dataset=test,
-                        retriever=get_reranker(index, validation.getscorer("mrr@10")),
+                        retriever=get_reranker(index, best),
                         launcher=gpulauncher,
                     )
                 )

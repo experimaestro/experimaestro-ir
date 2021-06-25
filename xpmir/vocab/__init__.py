@@ -64,7 +64,7 @@ class Vocab(Config, EasyLogger, nn.Module):
             batch_first=batch_first,
             maxlen=maxlen,
         )
-        return TokenizedTexts(toks, tokids, lens)
+        return TokenizedTexts(toks, tokids, lens, None)
 
     def enc_query_doc(
         self, queries: List[str], documents: List[str], d_maxlen=None, q_maxlen=None
@@ -81,9 +81,9 @@ class Vocab(Config, EasyLogger, nn.Module):
         tokenized_documents = self.batch_tokenize(documents, maxlen=d_maxlen)
         return (
             tokenized_queries,
-            self(tokenized_queries.ids),
+            self(tokenized_queries),
             tokenized_documents,
-            self(tokenized_documents.ids),
+            self(tokenized_documents),
         )
 
     @property
@@ -108,12 +108,11 @@ class Vocab(Config, EasyLogger, nn.Module):
         """
         raise NotImplementedError()
 
-    def forward(self, toks, lens=None):
+    def forward(self, tok_texts: TokenizedTexts):
         """
         Returns embeddings for the given toks.
 
-        toks: token IDs (shape: [batch, maxlen])
-        lens: lengths of each item (shape: [batch])
+        tok_texts: tokenized texts
         """
         raise NotImplementedError()
 
@@ -128,7 +127,7 @@ class Vocab(Config, EasyLogger, nn.Module):
         """
         Returns the number of dimensions of the embedding
         """
-        raise NotImplementedError()
+        raise NotImplementedError(f"for {self.__class__}")
 
     def static(self) -> bool:
         """

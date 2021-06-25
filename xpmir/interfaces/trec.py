@@ -5,9 +5,13 @@ import tempfile
 from typing import Iterator, Tuple, Dict
 from collections.abc import Iterable as IterableAbc
 from contextlib import contextmanager
-import pandas as pd
 from tqdm import tqdm
 from bs4 import BeautifulSoup
+
+try:
+    import pandas as pd
+except:
+    pass
 
 # from onir import indices
 import xpmir.interfaces.plaintext as plaintext
@@ -22,7 +26,7 @@ class Qrels:
             self._data["trec"] = data
         elif isinstance(data, dict):
             self._data["dict"] = data
-        elif isinstance(data, pd.DataFrame):
+        elif pd is not None and isinstance(data, pd.DataFrame):
             self._data["df"] = data
         elif isinstance(data, IterableAbc):
             if hasattr(data, "read"):
