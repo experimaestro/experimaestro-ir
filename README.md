@@ -19,15 +19,18 @@ Functionalities can be added by installing optional dependencies:
 
 - Collection management (using datamaestro)
 - Subsampling topic/assessments
+- Representation
+    - Word Embeddings
+    - HuggingFace transformers
 - Indexing and retrieval
     - Anserini
 - Learning to Rank
     - Pointwise
     - Pairwise
 - Neural IR:
+    - Dual/Cross-Encoder
     - DRMM
     - ColBERT
-
 
 ## Examples
 

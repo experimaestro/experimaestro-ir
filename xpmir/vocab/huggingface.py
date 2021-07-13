@@ -1,10 +1,10 @@
 from functools import cached_property
-from typing import List
+from typing import List, Tuple, Union
 import logging
 import torch
 import torch.nn as nn
 from experimaestro import Param
-from xpmir.neural.siamese import TextEncoder
+from xpmir.vocab.encoders import DualTextEncoder, TextEncoder
 
 try:
     from transformers import AutoModel, AutoTokenizer
@@ -75,7 +75,10 @@ class TransformerVocab(vocab.Vocab):
         return not self.trainable
 
     def batch_tokenize(
-        self, texts: List[str], batch_first=True, maxlen=None
+        self,
+        texts: Union[List[str], List[Tuple[str, str]]],
+        batch_first=True,
+        maxlen=None,
     ) -> TokenizedTexts:
         if maxlen is None:
             maxlen = self.tokenizer.model_max_length
@@ -140,3 +143,20 @@ class TransformerEncoder(TransformerVocab, TextEncoder):
             y = self.model(tokenized.ids)
 
         return y.last_hidden_state[:, -1]
+
+
+class DualTransformerEncoder(TransformerVocab, DualTextEncoder):
+    """Encodes using the [CLS] token"""
+
+    def forward(self, texts: List[Tuple[str, str]]):
+        device = self._dummy_params.device
+        tokenized = self.batch_tokenize(texts)
+
+        with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
+            y = self.model(tokenized.ids, attention_mask=tokenized.mask.to(device))
+
+        return y.last_hidden_state[:, -1]
+
+    @property
+    def dimension(self) -> int:
+        return self.model.config.hidden_size

@@ -45,6 +45,8 @@ class TrainState:
         with (path / "checkpoint.pth").open("wb") as fp:
             torch.save((self.ranker, self.optimizer), fp)
 
+        # FIXME: should try to serialize the sampler
+
         self.path = path
 
     def load(self, path, onlyinfo=False):
@@ -54,6 +56,8 @@ class TrainState:
 
         with (path / "info.json").open("rt") as fp:
             self.__dict__.update(json.load(fp))
+
+        # FIXME: should try to unserialize the sampler
 
         self.path = path
         self.cached = True

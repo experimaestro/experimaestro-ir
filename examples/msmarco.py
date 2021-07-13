@@ -19,9 +19,10 @@ from xpmir.letor.trainers import Trainer
 import xpmir.letor.trainers.pairwise as pairwise
 from xpmir.neural.drmm import Drmm
 from xpmir.neural.colbert import Colbert
+from xpmir.neural.jointclassifier import JointClassifier
 from xpmir.rankers import RandomScorer, TwoStageRetriever
 from xpmir.rankers.standard import BM25
-from xpmir.vocab.huggingface import TransformerVocab
+from xpmir.vocab.huggingface import DualTransformerEncoder, TransformerVocab
 from xpmir.vocab.wordvec_vocab import WordvecUnkVocab
 
 logging.basicConfig(level=logging.INFO)
@@ -127,6 +128,8 @@ def cli(
 
     name = "msmarco-small" if small else "msmarco"
     with experiment(workdir, name, host=host, port=port, launcher=launcher) as xp:
+        if gpulauncher:
+            gpulauncher.setNotificationURL(launcher.notificationURL)
         if scheduler is None:
             token = xp.token("main", 1)
         else:
@@ -273,6 +276,15 @@ def cli(
                     trainer(lr=tag(lr), grad_acc_batch=grad_acc_batch, lossfn=lossfn),
                 )
 
+            # Vanilla bert
+            dual = JointClassifier(encoder=DualTransformerEncoder(trainable=True)).tag(
+                "model", "dual"
+            )
+            run(
+                dual,
+                trainer(lr=tag(1e-4), grad_acc_batch=grad_acc_batch, lossfn=lossfn),
+            )
+
         # Wait that experiments complete
         xp.wait()
 
@@ -280,7 +292,7 @@ def cli(
             print(f"=== {key}")
             for evaluation in dsevaluations:
                 print(
-                    f"Results for {evaluation.tags()}\n{evaluation.results.read_text()}\n"
+                    f"Results for {evaluation.__xpm__.tags()}\n{evaluation.results.read_text()}\n"
                 )
 
 

@@ -2,15 +2,10 @@ from typing import Iterable, List, Optional
 import itertools
 import torch
 import torch.nn as nn
-from experimaestro import Config, Param
-from xpmir.letor.records import PointwiseRecord, Records
-from xpmir.rankers import LearnableScorer, ScoredDocument
-
-
-class TextEncoder(Config):
-    @property
-    def dimension(self):
-        raise NotImplementedError()
+from experimaestro import Param
+from xpmir.letor.records import Records
+from xpmir.rankers import LearnableScorer
+from xpmir.vocab.encoders import TextEncoder
 
 
 class CosineSiamese(LearnableScorer, nn.Module):
@@ -26,6 +21,7 @@ class CosineSiamese(LearnableScorer, nn.Module):
 
     def __validate__(self):
         super().__validate__()
+        assert not self.encoder.static(), "The vocabulary should be learnable"
 
     def initialize(self, random):
         super().initialize(random)
