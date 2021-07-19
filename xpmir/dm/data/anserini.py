@@ -2,11 +2,9 @@ from pathlib import Path
 from typing import List, Tuple
 from cached_property import cached_property
 from experimaestro import Choices, Param, Annotated
-from datamaestro.definitions import data
 from .base import Index as BaseIndex
 
 
-@data()
 class Index(BaseIndex):
     """Anserini-backed index
 

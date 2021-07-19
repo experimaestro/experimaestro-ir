@@ -2,7 +2,7 @@
 Pre-computed Anserini indices provided by Jimmy Lin (U. Waterloo)
 """
 
-from datamaestro.definitions import data, argument, datatasks, datatags, dataset
+from datamaestro.definitions import argument, datatasks, datatags, dataset
 from datamaestro.download.archive import tardownloader
 from datamaestro.annotations.agreement import useragreement
 from datamaestro.utils import HashCheck

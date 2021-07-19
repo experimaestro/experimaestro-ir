@@ -135,8 +135,7 @@ class RandomFold(Task):
         with self.topics.open("wt") as fp:
             for topic in topics:
                 ids.add(topic.qid)
-                # FIXME: hardcoded title...
-                fp.write(f"""{topic.qid}\t{topic.title}\n""")
+                fp.write(f"""{topic.qid}\t{topic.text}\n""")
 
         with self.assessments.open("wt") as fp:
             for qrels in self.dataset.assessments.iter():

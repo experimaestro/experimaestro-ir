@@ -146,10 +146,11 @@ def cli(
         glove = WordvecUnkVocab(data=wordembs, random=random)
 
         # Train / validation / test
-        train_triples = prepare_dataset("com.microsoft.msmarco.passage.train.idtriples")
+        documents = prepare_dataset("irds.msmarco-passage.documents")
+        train_triples = prepare_dataset("irds.msmarco-passage.train.docpairs")
 
         # MS Marco index
-        index = info.index(train_triples.documents)
+        index = info.index(documents)
         test_index = index
 
         # Base models
@@ -157,8 +158,8 @@ def cli(
         random_scorer = RandomScorer(random=random).tag("model", "random")
 
         # Creates the validation dataset
-        devsmall = prepare_dataset("com.microsoft.msmarco.passage.dev.small")
-        dev = prepare_dataset("com.microsoft.msmarco.passage.dev")
+        devsmall = prepare_dataset("irds.msmarco-passage.dev.small")
+        dev = prepare_dataset("irds.msmarco-passage.dev")
 
         # This part is used for validation
         ds_val = RandomFold(
@@ -166,14 +167,13 @@ def cli(
         ).submit()
 
         tests = {
-            "trec2019": prepare_dataset("com.microsoft.msmarco.passage.trec2019.test"),
+            "trec2019": prepare_dataset("irds.msmarco-passage.trec-dl-2019"),
             "msmarco-dev": devsmall,
         }
-        test = prepare_dataset("com.microsoft.msmarco.passage.trec2019.test")
 
         triplesid = ShuffledTrainingTripletsLines(
             seed=123,
-            data=prepare_dataset("com.microsoft.msmarco.passage.train.idtriples"),
+            data=train_triples,
         ).submit()
         train_sampler = TripletBasedSampler(source=triplesid, index=index)
 

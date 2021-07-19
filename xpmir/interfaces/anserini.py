@@ -99,16 +99,12 @@ class IndexCollection(Index):
             """Generic collection handler, supposes that we can iterate documents"""
 
             def _generator(out):
-                size = os.path.getsize(documents.path)
-                with documents.path.open("rt", encoding="utf-8") as fp:
-                    for document in xpmtqdm(
-                        documents.iter(), unit="documents", total=documents.count
-                    ):
-                        # Generate document
-                        json.dump(
-                            {"id": document.docid, "contents": document.text}, out
-                        )
-                        out.write("\n")
+                for document in xpmtqdm(
+                    documents.iter(), unit="documents", total=documents.count
+                ):
+                    # Generate document
+                    json.dump({"id": document.docid, "contents": document.text}, out)
+                    out.write("\n")
 
             generator = StreamGenerator(_generator, mode="wt")
 

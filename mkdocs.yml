@@ -22,6 +22,9 @@ markdown_extensions:
       baselevel: 1
 
 plugins:
+  - datamaestro:
+      repository: ir
+
   - experimaestro:
         init:
           # Allows to cope with uninstalled modules when generating documentation

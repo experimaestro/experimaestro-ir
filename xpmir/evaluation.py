@@ -2,7 +2,7 @@ from pathlib import Path
 import tempfile
 from typing import List, Optional
 from datamaestro_text.data.ir import Adhoc
-from experimaestro import param, task, pathoption, tqdm, Param, pathgenerator
+from experimaestro import task, pathoption, tqdm, Param, pathgenerator
 from typing_extensions import Annotated
 from datamaestro_text.data.ir.trec import (
     TrecAdhocAssessments,
@@ -10,17 +10,17 @@ from datamaestro_text.data.ir.trec import (
     TrecAdhocResults,
 )
 
-import xpmir.metrics as metrics
 from xpmir.rankers import Retriever
 
 
-@param("assessments", TrecAdhocAssessments)
-@param("run", TrecAdhocRun)
-@param("metrics", type=List[str], default=["map", "p@20", "ndcg", "ndcg@20", "mrr"])
 @pathoption("aggregated", "aggregated.dat")
 @pathoption("detailed", "detailed.dat")
 @task()
 class TrecEval:
+    assessments: Param[TrecAdhocAssessments]
+    run: Param[TrecAdhocRun]
+    metrics: Param[List[str]] = ["map", "p@20", "ndcg", "ndcg@20", "mrr"]
+
     def config(self):
         return TrecAdhocResults(
             results=self.aggregated, detailed=self.detailed, metrics=self.metrics

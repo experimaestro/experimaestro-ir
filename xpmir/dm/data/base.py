@@ -1,9 +1,9 @@
 from typing import List, Tuple
-from datamaestro.definitions import data
+
+from experimaestro import Config
 
 
-@data()
-class Index:
+class Index(Config):
     """Represents an indexed document collection"""
 
     def document_text(self, docid: str) -> str:
