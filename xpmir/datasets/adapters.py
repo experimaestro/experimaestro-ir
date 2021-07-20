@@ -99,8 +99,9 @@ class RandomFold(Task):
 
     def config(self) -> Adhoc:
         return Adhoc(
-            topics=CSVAdhocTopics(path=self.topics),
-            assessments=TrecAdhocAssessments(path=self.assessments),
+            id="",  # No need to have a more specific id since it is generated
+            topics=CSVAdhocTopics(id="", path=self.topics),
+            assessments=TrecAdhocAssessments(id="", path=self.assessments),
             documents=self.dataset.documents,
         )
 

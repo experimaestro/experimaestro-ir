@@ -108,9 +108,7 @@ class ValidationListener(LearnerListener):
     def __call__(self, state):
         if state.epoch % self.validation_interval == 0:
             # Compute validation metrics
-            means, _ = evaluate(
-                None, self.retriever, self.dataset, list(self.metrics.keys())
-            )
+            means = evaluate(self.retriever, self.dataset, list(self.metrics.keys()))
 
             for metric, keep in self.metrics.items():
                 value = means[metric]

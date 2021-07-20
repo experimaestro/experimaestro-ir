@@ -3,4 +3,5 @@ datamaestro_text>=2021.0.0
 
 # --- SKIP_DOCBUILD ---
 
-pytrec_eval>=0.5
+# TODO: switch to regular releases when stabilized
+git+git://github.com/terrierteam/ir_measures@main#egg=ir-measures

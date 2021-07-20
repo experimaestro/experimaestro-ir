@@ -52,7 +52,7 @@ class Information:
 
 
 def evaluate(token=None, launcher=None, **kwargs):
-    v = Evaluate(metrics=["map", "p@20", "ndcg", "ndcg@20", "mrr", "mrr@10"], **kwargs)
+    v = Evaluate(metrics=["MAP", "P@20", "NDCG", "NDCG@20", "MRR", "MRR@10"], **kwargs)
     if token is not None:
         v = token(1, v)
     return v.submit(launcher=launcher)
@@ -220,7 +220,7 @@ def cli(
                 dataset=ds_val,
                 retriever=get_reranker(index, scorer, valtopK),
                 validation_interval=validation_interval,
-                metrics={"mrr@10": True, "map": False},
+                metrics={"MRR@10": True, "MAP": False},
             )
 
             learner = Learner(
@@ -235,7 +235,7 @@ def cli(
 
             # Evaluate the neural model
             for key, test in tests.items():
-                best = outputs["listeners"]["bestval"]["mrr@10"]
+                best = outputs["listeners"]["bestval"]["MRR@10"]
 
                 evaluations[key].append(
                     evaluate(

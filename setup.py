@@ -58,6 +58,7 @@ setup(
     entry_points={
         "datamaestro.repositories": {
             "ir = xpmir:Repository",
+            "irds=xpmir.datasets.irds:Repository",
         }
     },
 )

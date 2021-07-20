@@ -91,7 +91,7 @@ class ModelBasedSampler(Sampler):
                         continue
 
                     scoreddocuments = self.retriever.retrieve(
-                        query.title
+                        query.text
                     )  # type: List[ScoredDocument]
 
                     positives = []
@@ -103,10 +103,10 @@ class ModelBasedSampler(Sampler):
                             (sd.docid, rel, sd.score)
                         )
                         fp.write(
-                            f"{query.title if rank == 0 else ''}\t{sd.docid}\t{sd.score}\t{rel}\n"
+                            f"{query.text if rank == 0 else ''}\t{sd.docid}\t{sd.score}\t{rel}\n"
                         )
 
-                    yield query.title, positives, negatives
+                    yield query.text, positives, negatives
 
                 # Finally...
                 self.logger.info(
