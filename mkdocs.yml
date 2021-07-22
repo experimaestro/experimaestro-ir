@@ -30,9 +30,9 @@ plugins:
           # Allows to cope with uninstalled modules when generating documentation
           - xpmir.mkdocs_init
         modules:
-          - xpmir.letor: letor.md
-          - xpmir.neural: neural.md
-          - xpmir: misc.md
+          - letor.md: [xpmir.letor, xpmir.rankers]
+          - neural.md: [xpmir.neural]
+          - misc.md: [xpmir]
         external:
           - datamaestro_text: https://datamaestro-text.readthedocs.io/en/latest/experimaestro-mapping.json
 

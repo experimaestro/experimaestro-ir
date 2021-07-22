@@ -4,7 +4,7 @@ title: Learning to rank
 
 # Learning to rank
 
-## Scores
+## Scorers
 
 Scorers are able to give a score to a (query, document) pair. Among the
 scorers, some are have learnable parameters.

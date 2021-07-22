@@ -21,7 +21,9 @@ class ScoredDocument:
 
 
 class Scorer(Config, EasyLogger):
-    """A model able to give a score to a list of documents given a query"""
+    """Query-document scorer
+
+    A model able to give a score to a list of documents given a query"""
 
     def rsv(
         self, query: str, documents: Iterable[ScoredDocument], keepcontent=False
@@ -51,12 +53,14 @@ class RandomScorer(Scorer):
 
 
 class LearnableScorer(Scorer):
-    """A scorer with parameters that can be learnt"""
+    """Learnable scorer
+
+    A scorer with parameters that can be learnt"""
 
     def initialize(self, random):
         self.random = random
 
-    def forward(self, inputs: "Records"):
+    def __call__(self, inputs: "Records"):
         raise NotImplementedError(f"forward in {self.__class__}")
 
     def rsv(self, query: str, documents: List[ScoredDocument]) -> List[ScoredDocument]:

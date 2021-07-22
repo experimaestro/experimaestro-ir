@@ -11,15 +11,15 @@ import ir_datasets
 # provides adapted data types
 
 
-class IRDSId(Config):
+class IRDSId:
     @classmethod
     def __xpmid__(cls):
         return f"ir_datasets.{cls.__qualname__}"
 
-    irds: Option[str]
-
 
 class AdhocTopics(ir.AdhocTopics, IRDSId):
+    irds: Option[str]
+
     def iter(self) -> Iterator[ir.AdhocTopic]:
         """Returns an iterator over topics"""
         ds = ir_datasets.load(self.irds)
@@ -28,6 +28,8 @@ class AdhocTopics(ir.AdhocTopics, IRDSId):
 
 
 class AdhocAssessments(ir.AdhocAssessments, IRDSId):
+    irds: Option[str]
+
     def iter(self):
         """Returns an iterator over assessments"""
         ds = ir_datasets.load(self.irds)
@@ -48,6 +50,8 @@ class AdhocAssessments(ir.AdhocAssessments, IRDSId):
 
 
 class AdhocDocuments(ir.AdhocDocuments, IRDSId):
+    irds: Option[str]
+
     def iter(self) -> Iterator[ir.AdhocDocument]:
         """Returns an iterator over adhoc documents"""
         ds = ir_datasets.load(self.irds)
@@ -56,13 +60,15 @@ class AdhocDocuments(ir.AdhocDocuments, IRDSId):
 
 
 class Adhoc(ir.Adhoc, IRDSId):
-    pass
+    irds: Option[str]
 
 
 class AdhocRun(ir.AdhocRun, IRDSId):
-    pass
+    irds: Option[str]
 
 
 class TrainingTripletsLines(ir.TrainingTripletsLines, IRDSId):
+    irds: Option[str]
+
     def iter(self) -> Iterator[Tuple[str, str, str]]:
         yield from read_tsv(self.path)
