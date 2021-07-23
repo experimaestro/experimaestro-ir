@@ -11,7 +11,7 @@ from .data import (
     AdhocTopics,
     Adhoc,
     IRDSId,
-    TrainingTripletsLines,
+    TrainingTriplets,
 )
 
 
@@ -100,19 +100,12 @@ class Documents(Dataset):
 class TrainingTripletsDataset(Dataset):
     SUFFIX = "docpairs"
 
-    @property
-    def configtype(self):
-        if issubclass(self.irds_ds.docpairs_cls(), GenericDocPair):
-            return TrainingTripletsLines
-
     def _prepare(self, download=False) -> AdhocDocuments:
-        if issubclass(self.irds_ds.docpairs_cls(), GenericDocPair):
-            return TrainingTripletsLines(
-                id=self.fullid,
-                ids=True,
-                path=Path(self.irds_ds.docpairs_path()),
-            )
-        raise NotImplementedError("For %s", self.irds_ds.docpairs_cls())
+        return TrainingTriplets(
+            id=self.fullid,
+            ids=True,
+            path=Path(self.irds_ds.docpairs_path()),
+        )
 
 
 class AdhocRunDataset(Dataset):

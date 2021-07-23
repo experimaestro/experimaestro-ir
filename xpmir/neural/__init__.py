@@ -1,15 +1,24 @@
-from typing import List
+from typing import Generic, List, Optional, TypeVar
 import torch
 import torch.nn as nn
 
-from experimaestro import config, Param
-from xpmir.letor.records import Records, PointwiseRecord
-from xpmir.rankers import LearnableScorer, ScoredDocument
+from experimaestro import Param
+from xpmir.letor.records import BaseRecords
+from xpmir.rankers import LearnableScorer
 from xpmir.vocab import Vocab
 
 
-@config()
-class InteractionScorer(LearnableScorer, nn.Module):
+class TorchLearnableScorer(LearnableScorer, nn.Module):
+    """Base class for torch-learnable scorers"""
+
+    def __init__(self):
+        nn.Module.__init__(self)
+
+    def __call__(self, inputs: BaseRecords):
+        return nn.Module.__call__(self, inputs)
+
+
+class InteractionScorer(TorchLearnableScorer):
     """Interaction-based neural scorer
 
     This is the base class for all scorers that depend on a map
@@ -48,7 +57,7 @@ class InteractionScorer(LearnableScorer, nn.Module):
             self.qlen <= self.vocab.maxtokens()
         ), f"The maximum query length ({self.qlen}) should be less that what the vocab can process ({self.vocab.maxtokens()})"
 
-    def forward(self, inputs: Records):
+    def forward(self, inputs: BaseRecords):
         # Forward to model
         result = self._forward(inputs)
 
@@ -63,7 +72,7 @@ class InteractionScorer(LearnableScorer, nn.Module):
 
         return result
 
-    def _forward(self, inputs: Records):
+    def _forward(self, inputs: BaseRecords):
         raise NotImplementedError
 
     def save(self, path):

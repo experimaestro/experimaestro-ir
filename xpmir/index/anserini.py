@@ -2,6 +2,8 @@ from pathlib import Path
 from typing import List, Tuple
 from cached_property import cached_property
 from experimaestro import Choices, Param, Annotated
+from xpmir.rankers import TwoStageRetriever, Scorer
+from xpmir.interfaces.anserini import AnseriniRetriever
 from .base import Index as BaseIndex
 
 

@@ -1,14 +1,22 @@
 import itertools
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, NamedTuple, Optional, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, NamedTuple, Optional, Tuple
 import numpy as np
 from datamaestro_text.data.ir import Adhoc, AdhocTopic, TrainingTriplets
 from experimaestro import Config, Param, tqdm
 from experimaestro.annotations import cache
-from xpmir.letor.records import Document, PairwiseRecord, PointwiseRecord
+import torch
+from xpmir.letor.records import (
+    BatchwiseRecords,
+    CartesianProductRecords,
+    Document,
+    PairwiseRecord,
+    PointwiseRecord,
+)
 from xpmir.rankers import Retriever, ScoredDocument
+from xpmir.test.neural.test_forward import pairwise
 from xpmir.utils import EasyLogger
-from xpmir.dm.data import Index
+from xpmir.index import Index
 
 
 class Sampler(Config, EasyLogger):
@@ -26,6 +34,16 @@ class Sampler(Config, EasyLogger):
         raise NotImplementedError(
             f"{self.__class__} does not implement pairwiserecord_iter()"
         )
+
+
+class BatchwiseSampler(Sampler, Iterable[BatchwiseRecords]):
+    def __iter__(self, batch_size: int) -> Iterator[BatchwiseRecords]:
+        """Iterate over batches of size (# of queries) batch_size
+
+        Args:
+            batch_size: Number of queries per batch
+        """
+        raise NotImplementedError(f"{self.__class__} should implement __iter__")
 
 
 class ModelBasedSampler(Sampler):
@@ -204,6 +222,34 @@ class PairwiseModelBasedSampler(ModelBasedSampler):
                 self.random.randint(0, len(self.topics))
             ]
             yield PairwiseRecord(title, self.sample(positives), self.sample(negatives))
+
+
+class PairwiseInBatchNegativesSampler(BatchwiseSampler):
+    """An in-batch negative sampler constructured from a pairwise one
+
+    Args:
+        BatchwiseSampler: A pairwise sampler
+    """
+
+    sampler: Param[PairwiseModelBasedSampler]
+
+    def initialize(self, random):
+        super().initialize(random)
+        self.sampler.initialize(random)
+
+    def __iter__(self, batch_size: int) -> Iterator[BatchwiseRecords]:
+        it = self.sampler.pairwiserecord_iter()
+
+        # Pre-compute relevance matrix
+        relevances = torch.diag(torch.ones(batch_size * 2, dtype=torch.float))
+
+        while True:
+            batch = CartesianProductRecords()
+            for _, record in zip(range(batch_size), it):
+                batch.addQueries(record.query)
+                batch.addDocuments(record.positive, record.negative)
+            batch.setRelevances(relevances)
+            yield batch
 
 
 class TripletBasedSampler(Sampler):

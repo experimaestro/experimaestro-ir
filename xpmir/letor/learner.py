@@ -112,7 +112,6 @@ class ValidationListener(LearnerListener):
 
             for metric, keep in self.metrics.items():
                 value = means[metric]
-                print("//////", metric, value, state.epoch)
 
                 self.context.writer.add_scalar(
                     f"{self.key}/{metric}", value, state.epoch
@@ -150,7 +149,7 @@ class ValidationListener(LearnerListener):
 
 # Checkpoints
 class Learner(Task, EasyLogger):
-    """Learns a model
+    """Model Learner
 
     The learner task is generic, and takes two main arguments:
     (1) the scorer defines the model (e.g. DRMM), and

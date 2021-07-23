@@ -1,10 +1,6 @@
-from collections import defaultdict
-from pathlib import Path
 from typing import Iterator, Tuple
-from datamaestro_text.interfaces.trec import parse_qrels
-from experimaestro import Config, Option
+from experimaestro import Option
 import datamaestro_text.data.ir as ir
-from datamaestro_text.interfaces.plaintext import read_tsv
 import ir_datasets
 
 # Interface between ir_datasets and datamaestro:
@@ -67,8 +63,11 @@ class AdhocRun(ir.AdhocRun, IRDSId):
     irds: Option[str]
 
 
-class TrainingTripletsLines(ir.TrainingTripletsLines, IRDSId):
+class TrainingTriplets(ir.TrainingTriplets, IRDSId):
     irds: Option[str]
 
     def iter(self) -> Iterator[Tuple[str, str, str]]:
-        yield from read_tsv(self.path)
+        ds = ir_datasets.load(self.irds)
+        if isinstance(ds.docpairs_handler(), ir_datasets.formats.tsv.TsvDocPairs):
+            for entry in ds.docpairs_iter():
+                yield (entry.query_id, entry.doc_id_a, entry.doc_id_b)

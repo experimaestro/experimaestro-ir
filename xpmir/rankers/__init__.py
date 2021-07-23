@@ -3,10 +3,10 @@
 from logging import Logger
 from typing import Iterable, List, Tuple
 import torch
-from experimaestro import Param, Config
-from xpmir.dm.data import Index
+from experimaestro import Param, Config, documentation
+from xpmir.index import Index
 from xpmir.letor import Random
-from xpmir.letor.records import PointwiseRecord, Records
+from xpmir.letor.records import Document, BaseRecords
 from xpmir.utils import EasyLogger
 
 
@@ -60,15 +60,23 @@ class LearnableScorer(Scorer):
     def initialize(self, random):
         self.random = random
 
-    def __call__(self, inputs: "Records"):
+    def __call__(self, inputs: "BaseRecords"):
+        """Computes the score of all (query, document) pairs
+
+        Different subclasses can process the input more or
+        less efficiently based on the `BaseRecords` instance (pointwise,
+        pairwise, or structured)
+        """
         raise NotImplementedError(f"forward in {self.__class__}")
 
     def rsv(self, query: str, documents: List[ScoredDocument]) -> List[ScoredDocument]:
         # Prepare the inputs and call the model
-        inputs = Records()
+        inputs = BatchRecords()
         for doc in documents:
             assert doc.content is not None
-            inputs.add(PointwiseRecord(query, doc.docid, doc.content, doc.score, None))
+
+        inputs._queries = [query]
+        inputs._documents = [Document(d.docid, d.content, d.score) for d in documents]
 
         with torch.no_grad():
             scores = self(inputs).cpu().numpy()
@@ -101,6 +109,11 @@ class Retriever(Config):
     def getindex(self) -> Index:
         """Returns the associated index (if any)"""
         raise NotImplementedError()
+
+    @documentation
+    def getReranker(self, scorer: Scorer, batch_size: int):
+        """Retrieves a two stage re-ranker"""
+        return TwoStageRetriever(retriever=self, scorer=scorer, batchsize=batch_size)
 
 
 class TwoStageRetriever(Retriever):

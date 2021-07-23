@@ -9,7 +9,7 @@ import torch
 from experimaestro import Annotated, Option, Task, pathgenerator, Param, tqdm
 import logging
 
-from xpmir.dm.data.base import Index
+from xpmir.index.base import Index
 from xpmir.neural.siamese import TextEncoder
 from xpmir.rankers import Retriever, ScoredDocument
 

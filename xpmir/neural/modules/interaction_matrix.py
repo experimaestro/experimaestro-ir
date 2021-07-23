@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+from xpmir.letor.records import BaseRecords
 from xpmir.vocab import Vocab
 
 
@@ -56,10 +57,12 @@ class InteractionMatrix(nn.Module):
                 simmats.append(cos_simmat(a_emb, b_emb, a_mask, b_mask))
         return torch.stack(simmats, dim=1)
 
-    def encode_query_doc(self, encoder: Vocab, inputs, d_maxlen=None, q_maxlen=None):
+    def encode_query_doc(
+        self, encoder: Vocab, inputs: BaseRecords, d_maxlen=None, q_maxlen=None
+    ):
         """Returns a (batch x ... x #q x #d) tensor"""
         tokq, q, tokd, d = encoder.enc_query_doc(
-            inputs.queries,
+            [q.text for q in inputs.queries],
             [d.text for d in inputs.documents],
             d_maxlen=d_maxlen,
             q_maxlen=q_maxlen,

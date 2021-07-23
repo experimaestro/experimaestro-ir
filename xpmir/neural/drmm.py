@@ -1,16 +1,15 @@
 import math
 from typing import Optional
-from experimaestro import param, config, Choices, Param, default
+from experimaestro import param, Config, Choices, Param, default
 import torch
 from torch import nn
 from typing_extensions import Annotated
-from xpmir.dm.data.base import Index
+from xpmir.index.base import Index
 from . import InteractionScorer
 import xpmir.neural.modules as modules
 
 
-@config()
-class CountHistogram(nn.Module):
+class CountHistogram(Config, nn.Module):
     """Base histogram class
 
     Attributes:
@@ -51,7 +50,6 @@ class CountHistogram(nn.Module):
         return histogram
 
 
-@config()
 class NormalizedHistogram(CountHistogram):
     def forward(self, simmat, dlens, dtoks, qtoks):
         result = super().forward(simmat, dlens, dtoks, qtoks)
@@ -59,7 +57,6 @@ class NormalizedHistogram(CountHistogram):
         return result / dlens.reshape(BATCH, 1).expand(BATCH, QLEN)
 
 
-@config()
 class LogCountHistogram(CountHistogram):
     def forward(self, simmat, dlens, dtoks, qtoks):
         result = super().forward(simmat, dlens, dtoks, qtoks)
@@ -67,9 +64,9 @@ class LogCountHistogram(CountHistogram):
 
 
 @param("combine", default="idf", checker=Choices(["idf", "sum"]), help="term gate type")
-@config()
 class Drmm(InteractionScorer):
-    """
+    """Deep Relevance Matching Model (DRMM)
+
     Implementation of the DRMM model from:
       > Jiafeng Guo, Yixing Fan, Qingyao Ai, and William Bruce Croft. 2016. A Deep Relevance
       > Matching Model for Ad-hoc Retrieval. In CIKM.

@@ -1,14 +1,13 @@
-from typing import Iterable, List, Optional
+from typing import Optional
 import itertools
-import torch
 import torch.nn as nn
 from experimaestro import Param
-from xpmir.letor.records import Records
-from xpmir.rankers import LearnableScorer
+from xpmir.letor.records import BaseRecords
+from xpmir.neural import TorchLearnableScorer
 from xpmir.vocab.encoders import TextEncoder
 
 
-class CosineSiamese(LearnableScorer, nn.Module):
+class CosineSiamese(TorchLearnableScorer, nn.Module):
     """Siamese model (cosine)
 
     Attributes:
@@ -36,7 +35,7 @@ class CosineSiamese(LearnableScorer, nn.Module):
             )
         return self.encoder.parameters()
 
-    def forward(self, inputs: Records):
+    def forward(self, inputs: BaseRecords):
         # Encode queries and documents
         queries = (self.query_encoder or self.encoder)(
             [d.text for d in inputs.documents]

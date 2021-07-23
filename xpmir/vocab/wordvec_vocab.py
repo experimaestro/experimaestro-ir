@@ -22,10 +22,6 @@ from datamaestro_text.data.embeddings import WordEmbeddings
 #         'wiki-news-300d-1M': wordvec.zip_handler('https://dl.fbaipublicfiles.com/fasttext/vectors-english/wiki-news-300d-1M.vec.zip'),
 #         'crawl-300d-2M': wordvec.zip_handler('https://dl.fbaipublicfiles.com/fasttext/vectors-english/crawl-300d-2M.vec.zip'),
 #     },
-#     'glove': {
-#         'cc-42b-300d': wordvec.zip_handler('http://nlp.stanford.edu/data/glove.42B.300d.zip', ext='.txt'),
-#         'cc-840b-300d': wordvec.zip_handler('http://nlp.stanford.edu/data/glove.840B.300d.zip', ext='.txt')
-#     },
 #     'convknrm': {
 #         'knrm-bing': wordvec.convknrm_handler('http://boston.lti.cs.cmu.edu/appendices/WSDM2018-ConvKNRM/K-NRM/bing/'),
 #         'knrm-sogou': wordvec.convknrm_handler('http://boston.lti.cs.cmu.edu/appendices/WSDM2018-ConvKNRM/K-NRM/sogou/'),
@@ -39,7 +35,6 @@ from datamaestro_text.data.embeddings import WordEmbeddings
 # }
 
 
-@config()
 class WordvecVocab(Vocab, nn.Module):
     """Word-based pre-trained embeddings
 

@@ -18,6 +18,7 @@ Functionalities can be added by installing optional dependencies:
 ## What's inside?
 
 - Collection management (using datamaestro)
+    - []
 - Subsampling topic/assessments
 - Representation
     - Word Embeddings

@@ -1,15 +1,16 @@
-from typing import Iterable, List, Optional
-import itertools
 import torch
 import torch.nn as nn
-from experimaestro import Config, Param
-from xpmir.letor.records import PointwiseRecord, Records
-from xpmir.rankers import LearnableScorer, ScoredDocument
+from experimaestro import Param
+from xpmir.letor.records import BaseRecords
+from xpmir.neural import TorchLearnableScorer
 from xpmir.vocab.encoders import DualTextEncoder
 
 
-class JointClassifier(LearnableScorer, nn.Module):
-    """Transformer-based classification based on the [CLS] token
+class JointClassifier(TorchLearnableScorer, nn.Module):
+    """Query-Document Representation Classifier
+
+    Based on a query-document representation representation (e.g. BERT [CLS] token),
+    takes a decision
 
     Attributes:
         encoder: Document (and query) encoder
@@ -30,7 +31,7 @@ class JointClassifier(LearnableScorer, nn.Module):
     def parameters(self):
         return self.encoder.parameters()
 
-    def forward(self, inputs: Records):
+    def forward(self, inputs: BaseRecords):
         # Encode queries and documents
         pairs = self.encoder(
             [(q, d.text) for q, d in zip(inputs.queries, inputs.documents)]

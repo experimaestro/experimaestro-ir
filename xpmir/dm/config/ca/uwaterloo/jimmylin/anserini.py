@@ -6,7 +6,7 @@ from datamaestro.definitions import argument, datatasks, datatags, dataset
 from datamaestro.download.archive import tardownloader
 from datamaestro.annotations.agreement import useragreement
 from datamaestro.utils import HashCheck
-from xpmir.dm.data.anserini import Index
+from xpmir.index.anserini import Index
 from hashlib import md5
 
 

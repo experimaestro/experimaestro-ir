@@ -20,35 +20,12 @@ import xpmir.letor.trainers.pairwise as pairwise
 from xpmir.neural.drmm import Drmm
 from xpmir.neural.colbert import Colbert
 from xpmir.neural.jointclassifier import JointClassifier
-from xpmir.rankers import RandomScorer, TwoStageRetriever
+from xpmir.rankers import RandomScorer, Scorer, TwoStageRetriever
 from xpmir.rankers.standard import BM25
 from xpmir.vocab.huggingface import DualTransformerEncoder, TransformerVocab
 from xpmir.vocab.wordvec_vocab import WordvecUnkVocab
 
 logging.basicConfig(level=logging.INFO)
-
-
-class Information:
-    def __init__(self):
-        self._indexes = {}
-
-    def index(self, ds):
-        """Returns the anserini index"""
-        index = self._indexes.get(ds.id)
-        if index is None:
-            import multiprocessing
-
-            CPU_COUNT = multiprocessing.cpu_count()
-
-            index = IndexCollection(
-                documents=ds,
-                storePositions=True,
-                storeDocvectors=True,
-                storeContents=True,
-                threads=CPU_COUNT,
-            ).submit()
-            self._indexes[ds.id] = index
-        return index
 
 
 def evaluate(token=None, launcher=None, **kwargs):
@@ -112,8 +89,6 @@ def cli(
         max_epoch % validation_interval == 0
     ), f"Number of epochs ({max_epoch}) is not a multiple of validation interval ({validation_interval})"
 
-    info = Information()
-
     # Sets the working directory and the name of the xp
     if scheduler == "slurm":
         import socket
@@ -148,6 +123,20 @@ def cli(
         # Train / validation / test
         documents = prepare_dataset("irds.msmarco-passage.documents")
         train_triples = prepare_dataset("irds.msmarco-passage.train.docpairs")
+        devsmall = prepare_dataset("irds.msmarco-passage.dev.small")
+        dev = prepare_dataset("irds.msmarco-passage.dev")
+        ds_val = RandomFold(
+            dataset=dev, seed=123, fold=0, sizes=[VAL_SIZE], exclude=devsmall.topics
+        ).submit()
+        triplesid = ShuffledTrainingTripletsLines(
+            seed=123,
+            data=train_triples,
+        ).submit()
+
+        tests = {
+            "trec2019": prepare_dataset("irds.msmarco-passage.trec-dl-2019"),
+            "msmarco-dev": devsmall,
+        }
 
         # MS Marco index
         index = info.index(documents)
@@ -158,31 +147,14 @@ def cli(
         random_scorer = RandomScorer(random=random).tag("model", "random")
 
         # Creates the validation dataset
-        devsmall = prepare_dataset("irds.msmarco-passage.dev.small")
-        dev = prepare_dataset("irds.msmarco-passage.dev")
 
         # This part is used for validation
-        ds_val = RandomFold(
-            dataset=dev, seed=123, fold=0, sizes=[VAL_SIZE], exclude=devsmall.topics
-        ).submit()
 
-        tests = {
-            "trec2019": prepare_dataset("irds.msmarco-passage.trec-dl-2019"),
-            "msmarco-dev": devsmall,
-        }
-
-        triplesid = ShuffledTrainingTripletsLines(
-            seed=123,
-            data=train_triples,
-        ).submit()
         train_sampler = TripletBasedSampler(source=triplesid, index=index)
 
-        # @lru_cache
-        def get_reranker(index, scorer, topk=topK):
-            base_retriever = AnseriniRetriever(k=topk, index=index, model=basemodel)
-            return TwoStageRetriever(
-                retriever=base_retriever, scorer=scorer, batchsize=batch_size
-            )
+        # Base retrievers
+        base_retriever = AnseriniRetriever(k=topk, index=index, model=basemodel)
+        base_retriever_val = AnseriniRetriever(k=valtopK, index=index, model=basemodel)
 
         # Search and evaluate with BM25
         bm25_retriever = AnseriniRetriever(
@@ -194,7 +166,8 @@ def cli(
             evaluations[key] = [
                 evaluate(dataset=test, retriever=bm25_retriever),
                 evaluate(
-                    dataset=test, retriever=get_reranker(test_index, random_scorer)
+                    dataset=test,
+                    retriever=base_retriever.getReranker(random_scorer, batch_size),
                 ),
             ]
 
@@ -215,10 +188,11 @@ def cli(
         cleanupdir(runspath)
         runspath.mkdir(exist_ok=True, parents=True)
 
-        def run(scorer, trainer: Trainer):
+        def run(scorer: Scorer, trainer: Trainer):
+
             validation = ValidationListener(
                 dataset=ds_val,
-                retriever=get_reranker(index, scorer, valtopK),
+                retriever=base_retriever_val.getReranker(scorer, valtopK),
                 validation_interval=validation_interval,
                 metrics={"MRR@10": True, "MAP": False},
             )
@@ -241,11 +215,12 @@ def cli(
                     evaluate(
                         token=token,
                         dataset=test,
-                        retriever=get_reranker(index, best),
+                        retriever=base_retriever.getReranker(index, best),
                         launcher=gpulauncher,
                     )
                 )
 
+        # Compares PCE and Softmax
         for lossfn in (
             pairwise.PointwiseCrossEntropyLoss().tag("loss", "pce"),
             pairwise.SoftmaxLoss().tag("loss", "softmax"),

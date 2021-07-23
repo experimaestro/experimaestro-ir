@@ -7,8 +7,8 @@ from experimaestro import param, Config, Constant, Param, default, Annotated
 import torch
 from torch import nn
 import torch.nn.functional as F
-from xpmir.dm.data.base import Index
-from xpmir.letor.records import Records
+from xpmir.index.base import Index
+from xpmir.letor.records import BaseRecords
 from . import InteractionScorer
 import xpmir.neural.modules as modules
 
@@ -65,6 +65,7 @@ class Colbert(InteractionScorer):
 
         assert self.compression_size >= 0, "Last layer size should be 0 or above"
 
+        # TODO: implement the "official" Colbert
         assert not self.masktoken, "Not implemented"
         assert not self.querytoken, "Not implemented"
         assert not self.doctoken, "Not implemented"
@@ -75,7 +76,7 @@ class Colbert(InteractionScorer):
         self.linear = nn.Linear(self.vocab.dim(), self.linear_dim, bias=False)
 
     def _encode(self, texts: List[str], maskoutput=False):
-        tokens = self.vocab.batch_tokenize(texts)
+        tokens = self.vocab.batch_tokenize(texts, mask=maskoutput)
         output = self.linear(self.vocab(tokens))
 
         if maskoutput:
@@ -84,8 +85,8 @@ class Colbert(InteractionScorer):
 
         return F.normalize(output, p=2, dim=2)
 
-    def _forward(self, inputs: Records):
-        queries = self._encode(inputs.queries, False)
+    def _forward(self, inputs: BaseRecords):
+        queries = self._encode([q.text for q in inputs.queries], False)
         documents = self._encode([d.text for d in inputs.documents], True)
 
         return self.similarity(queries, documents)

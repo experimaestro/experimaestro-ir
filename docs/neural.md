@@ -4,4 +4,4 @@ title: Neural models
 
 # Neural models
 
-::xpm::xpmir.rankers.Scorer
+::xpm::xpmir.rankers:Scorer

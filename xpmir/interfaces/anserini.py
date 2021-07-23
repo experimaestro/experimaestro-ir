@@ -22,7 +22,7 @@ from datamaestro_text.data.ir.trec import (
 )
 from experimaestro import Param, param, pathoption, progress, task
 from tqdm import tqdm
-from xpmir.dm.data.anserini import Index
+from xpmir.index.anserini import Index
 from xpmir.evaluation import TrecAdhocRun
 from xpmir.rankers import Retriever, ScoredDocument
 from xpmir.rankers.standard import BM25, Model

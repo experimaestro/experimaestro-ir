@@ -5,12 +5,13 @@ import os
 from pathlib import Path
 import tempfile
 from threading import Thread
+from typing import BinaryIO, Callable, TextIO, Union
 
 
 class StreamGenerator(Thread):
     """Create a FIFO pipe (*nix only) that is fed by the provider generator"""
 
-    def __init__(self, generator, mode="wb"):
+    def __init__(self, generator: Callable[[Union[TextIO, BinaryIO]], None], mode="wb"):
         super().__init__()
         tmpdir = tempfile.mkdtemp()
         self.mode = mode
@@ -22,7 +23,15 @@ class StreamGenerator(Thread):
     def run(self):
         try:
             with self.filepath.open(self.mode) as out:
-                self.generator(out)
+                try:
+                    self.generator(out)
+                except Exception:
+                    # Just write something so the file is closed
+                    if isinstance(out, TextIO):
+                        out.write("")
+                    else:
+                        out.write(b"0")
+                    raise
         except Exception:
             self.error = True
             raise

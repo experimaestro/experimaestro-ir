@@ -10,6 +10,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 from typing_extensions import Annotated
 from xpmir.letor.samplers import Sampler
+from xpmir.rankers import LearnableScorer
 from xpmir.utils import EasyLogger, easylog
 from xpmir.letor.optim import Adam, Optimizer
 from xpmir.letor import Device, DEFAULT_DEVICE
@@ -171,7 +172,7 @@ class Trainer(Config, EasyLogger):
     # How to split batches if memory issues
     grad_acc_batch: Param[int] = 0
 
-    def initialize(self, random, ranker, context: TrainContext):
+    def initialize(self, random, ranker: LearnableScorer, context: TrainContext):
         self.random = random
         self.ranker = ranker
         self.context = context

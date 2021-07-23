@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from experimaestro import Param, config
-from xpmir.letor.records import Records
+from xpmir.letor.records import PointwiseRecords
 from xpmir.letor.trainers import Trainer
 
 
@@ -29,7 +29,7 @@ class PointwiseTrainer(Trainer):
 
     def iter_batches(self, it):
         while True:
-            batch = Records()
+            batch = PointwiseRecords()
             for _, record in zip(range(self.batch_size), it):
                 batch.add(record)
 
