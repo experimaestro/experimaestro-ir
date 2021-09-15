@@ -9,7 +9,7 @@ import numpy as np
 
 
 class BatchwiseLoss(Config):
-    NAME = ""
+    NAME = "?"
 
     def compute(self, scores: torch.Tensor, relevances: torch.Tensor) -> torch.Tensor:
         """

@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 import contextlib
 import json
 import logging
@@ -6,12 +7,9 @@ import os
 import re
 import subprocess
 import sys
-import tempfile
-from pathlib import Path
-from threading import Thread
 from typing import List
 from experimaestro import tqdm as xpmtqdm
-
+import itertools
 
 import datamaestro_text.data.ir.csv as ir_csv
 from datamaestro_text.data.ir.trec import (
@@ -23,19 +21,30 @@ from datamaestro_text.data.ir.trec import (
 from experimaestro import Param, param, pathoption, progress, task
 from tqdm import tqdm
 from xpmir.index.anserini import Index
-from xpmir.evaluation import TrecAdhocRun
 from xpmir.rankers import Retriever, ScoredDocument
 from xpmir.rankers.standard import BM25, Model
 from xpmir.utils import Handler, StreamGenerator
 
 
+def anserini_classpath():
+    import pyserini
+
+    base = Path(pyserini.__file__).parent
+
+    paths = [path for path in base.rglob("anserini-*-fatjar.jar")]
+    if not paths:
+        raise Exception(f"No matching jar file found in {base}")
+
+    latest = max(paths, key=os.path.getctime)
+    return latest
+
+
 def javacommand():
     """Returns the start of the java command including the Anserini class path"""
     from jnius_config import get_classpath
-    from pyserini.pyclass import configure_classpath
 
     command = ["{}/bin/java".format(os.environ["JAVA_HOME"]), "-cp"]
-    command.append(":".join(get_classpath()))
+    command.append(":".join(get_classpath() + [str(anserini_classpath())]))
 
     return command
 
@@ -141,6 +150,7 @@ class IndexCollection(Index):
 
         async def run(command):
             with generator as _:
+                logging.info("Running with command %s", command)
                 proc = await asyncio.create_subprocess_exec(
                     *command, stderr=None, stdout=asyncio.subprocess.PIPE
                 )
@@ -234,7 +244,7 @@ class AnseriniRetriever(Retriever):
     model: Param[Model]
     k: Param[int] = 1500
 
-    def initialize(self):
+    def __postinit__(self):
         from pyserini.search import SimpleSearcher
 
         self.searcher = SimpleSearcher(str(self.index.path))

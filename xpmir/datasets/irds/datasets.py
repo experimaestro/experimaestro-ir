@@ -104,7 +104,6 @@ class TrainingTripletsDataset(Dataset):
         return TrainingTriplets(
             id=self.fullid,
             ids=True,
-            path=Path(self.irds_ds.docpairs_path()),
         )
 
 

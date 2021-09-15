@@ -29,7 +29,7 @@ logging.basicConfig(level=logging.INFO)
 
 
 def evaluate(token=None, launcher=None, **kwargs):
-    v = Evaluate(metrics=["MAP", "P@20", "NDCG", "NDCG@20", "MRR", "MRR@10"], **kwargs)
+    v = Evaluate(measures=["AP", "P@20", "NDCG", "NDCG@20", "RR", "RR@10"], **kwargs)
     if token is not None:
         v = token(1, v)
     return v.submit(launcher=launcher)
@@ -85,6 +85,10 @@ def cli(
         batch_size = batch_size or 256
         max_epoch = max_epoch or 64
 
+    logging.info(
+        f"Number of epochs {max_epoch}, validation interval {validation_interval}"
+    )
+
     assert (
         max_epoch % validation_interval == 0
     ), f"Number of epochs ({max_epoch}) is not a multiple of validation interval ({validation_interval})"
@@ -139,7 +143,7 @@ def cli(
         }
 
         # MS Marco index
-        index = info.index(documents)
+        index = IndexCollection(documents=documents, storeContents=True).submit()
         test_index = index
 
         # Base models
@@ -153,7 +157,7 @@ def cli(
         train_sampler = TripletBasedSampler(source=triplesid, index=index)
 
         # Base retrievers
-        base_retriever = AnseriniRetriever(k=topk, index=index, model=basemodel)
+        base_retriever = AnseriniRetriever(k=topK, index=index, model=basemodel)
         base_retriever_val = AnseriniRetriever(k=valtopK, index=index, model=basemodel)
 
         # Search and evaluate with BM25
@@ -194,7 +198,7 @@ def cli(
                 dataset=ds_val,
                 retriever=base_retriever_val.getReranker(scorer, valtopK),
                 validation_interval=validation_interval,
-                metrics={"MRR@10": True, "MAP": False},
+                metrics={"RR@10": True, "AP": False},
             )
 
             learner = Learner(
@@ -209,13 +213,13 @@ def cli(
 
             # Evaluate the neural model
             for key, test in tests.items():
-                best = outputs["listeners"]["bestval"]["MRR@10"]
+                best = outputs["listeners"]["bestval"]["RR@10"]
 
                 evaluations[key].append(
                     evaluate(
                         token=token,
                         dataset=test,
-                        retriever=base_retriever.getReranker(index, best),
+                        retriever=base_retriever.getReranker(best, batch_size),
                         launcher=gpulauncher,
                     )
                 )
@@ -245,7 +249,7 @@ def cli(
                 querytoken=False,
                 dlen=512,
             ).tag("model", "colbert")
-            for lr in 1e-6, 1e-4:
+            for lr in [1e-6, 1e-4]:
                 run(
                     colbert,
                     trainer(lr=tag(lr), grad_acc_batch=grad_acc_batch, lossfn=lossfn),

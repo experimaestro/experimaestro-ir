@@ -22,7 +22,7 @@ class Index(Config):
         raise NotImplementedError()
 
     @property
-    def documentcount(self):
+    def documentcount(self) -> int:
         """Returns the number of documents in the index"""
         raise NotImplementedError()
 

@@ -2,8 +2,6 @@ from pathlib import Path
 from typing import List, Tuple
 from cached_property import cached_property
 from experimaestro import Choices, Param, Annotated
-from xpmir.rankers import TwoStageRetriever, Scorer
-from xpmir.interfaces.anserini import AnseriniRetriever
 from .base import Index as BaseIndex
 
 
@@ -16,7 +14,7 @@ class Index(BaseIndex):
         storePositions: Store term positions
         storeDocvectors: Store document term vectors
         storeRaw: Store raw document
-        storeContents: Store processed documents (e.g. with HTML tags)
+        storeContents: Store processed documents (e.g. without HTML tags)
         stemmer: The stemmer to use
     """
 

@@ -6,7 +6,7 @@ import torch
 from experimaestro import Param, Config, documentation
 from xpmir.index import Index
 from xpmir.letor import Random
-from xpmir.letor.records import Document, BaseRecords
+from xpmir.letor.records import Document, BaseRecords, Query
 from xpmir.utils import EasyLogger
 
 
@@ -71,12 +71,12 @@ class LearnableScorer(Scorer):
 
     def rsv(self, query: str, documents: List[ScoredDocument]) -> List[ScoredDocument]:
         # Prepare the inputs and call the model
-        inputs = BatchRecords()
+        inputs = BaseRecords()
         for doc in documents:
             assert doc.content is not None
 
-        inputs._queries = [query]
-        inputs._documents = [Document(d.docid, d.content, d.score) for d in documents]
+        inputs.queries = [Query(query) for _ in documents]
+        inputs.documents = [Document(d.docid, d.content, d.score) for d in documents]
 
         with torch.no_grad():
             scores = self(inputs).cpu().numpy()
@@ -84,7 +84,7 @@ class LearnableScorer(Scorer):
         # Returns the scored documents
         scoredDocuments = []
         for i in range(len(documents)):
-            scoredDocuments.append(ScoredDocument(documents[i].docid, scores[i]))
+            scoredDocuments.append(ScoredDocument(documents[i].docid, float(scores[i])))
 
         return scoredDocuments
 

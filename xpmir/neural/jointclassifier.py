@@ -34,6 +34,6 @@ class JointClassifier(TorchLearnableScorer, nn.Module):
     def forward(self, inputs: BaseRecords):
         # Encode queries and documents
         pairs = self.encoder(
-            [(q, d.text) for q, d in zip(inputs.queries, inputs.documents)]
+            [(q.text, d.text) for q, d in zip(inputs.queries, inputs.documents)]
         )
         return self.classifier(pairs).squeeze(1)

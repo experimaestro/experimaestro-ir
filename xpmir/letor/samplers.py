@@ -12,6 +12,7 @@ from xpmir.letor.records import (
     Document,
     PairwiseRecord,
     PointwiseRecord,
+    Query,
 )
 from xpmir.rankers import Retriever, ScoredDocument
 from xpmir.test.neural.test_forward import pairwise
@@ -262,7 +263,7 @@ class TripletBasedSampler(Sampler):
     """
 
     source: Param[TrainingTriplets]
-    index: Param[Index] = None
+    index: Param[Optional[Index]] = None
 
     def __validate__(self):
         assert (
@@ -282,4 +283,4 @@ class TripletBasedSampler(Sampler):
 
         while True:
             for query, pos, neg in self.source.iter():
-                yield PairwiseRecord(query, getdoc(pos), getdoc(neg))
+                yield PairwiseRecord(Query(query), getdoc(pos), getdoc(neg))

@@ -111,6 +111,7 @@ class Drmm(InteractionScorer):
 
         query_idf = None
         if self.needs_idf:
+            assert self.index is not None
             query_idf = torch.full_like(tokq.ids, float("-inf"), dtype=torch.float)
             log_nd = math.log(self.index.documentcount + 1)
             for i, tok in enumerate(tokq.tokens):

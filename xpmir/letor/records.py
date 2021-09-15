@@ -75,7 +75,7 @@ class PointwiseRecords(BaseRecords):
     """Pointwise records are the objects passed to the module forwards"""
 
     # The queries
-    queries: List[str]
+    queries: List[Query]
 
     # Text of the documents
     documents: List[Document]

@@ -2,15 +2,13 @@
 #
 # From https://github.com/stanford-futuredata/ColBERT/blob/v0.2/colbert/modeling/colbert.py
 
-from typing import List, Optional
-from experimaestro import param, Config, Constant, Param, default, Annotated
+from typing import List
+from experimaestro import Config, Constant, Param, default, Annotated
 import torch
 from torch import nn
 import torch.nn.functional as F
-from xpmir.index.base import Index
 from xpmir.letor.records import BaseRecords
 from . import InteractionScorer
-import xpmir.neural.modules as modules
 
 
 class Similarity(Config):
@@ -48,6 +46,9 @@ class Colbert(InteractionScorer):
         compression_size: Projection layer for the last layer (or 0 if None)
         similarity: The similarity used to compute
         linear_dim: Size of the linear layer
+        masktoken: whether to mask PAD tokens
+        doctoken: whether to add a document token
+        querytoken: whether to add a query token
     """
 
     version: Constant[int] = 2

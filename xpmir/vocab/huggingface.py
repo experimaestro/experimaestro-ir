@@ -79,6 +79,7 @@ class TransformerVocab(vocab.Vocab):
         texts: Union[List[str], List[Tuple[str, str]]],
         batch_first=True,
         maxlen=None,
+        mask=False,
     ) -> TokenizedTexts:
         if maxlen is None:
             maxlen = self.tokenizer.model_max_length
@@ -94,9 +95,13 @@ class TransformerVocab(vocab.Vocab):
             padding=True,
             return_tensors="pt",
             return_length=True,
+            return_attention_mask=mask,
         )
         return TokenizedTexts(
-            None, r["input_ids"].to(self.device), r["length"], r["attention_mask"]
+            None,
+            r["input_ids"].to(self.device),
+            r["length"],
+            r.get("attention_mask", None),
         )
 
     def id2tok(self, idx):
@@ -116,7 +121,8 @@ class TransformerVocab(vocab.Vocab):
     def forward(self, toks: TokenizedTexts):
         device = self._dummy_params.device
         return self.model(
-            toks.ids.to(device), attention_mask=toks.mask.to(device)
+            toks.ids.to(device),
+            attention_mask=toks.mask.to(device) if toks.mask is not None else None,
         ).last_hidden_state
 
     def dim(self):
