@@ -156,7 +156,7 @@ class DualTransformerEncoder(TransformerVocab, DualTextEncoder):
 
     def forward(self, texts: List[Tuple[str, str]]):
         device = self._dummy_params.device
-        tokenized = self.batch_tokenize(texts)
+        tokenized = self.batch_tokenize(texts, mask=True)
 
         with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
             y = self.model(tokenized.ids, attention_mask=tokenized.mask.to(device))
