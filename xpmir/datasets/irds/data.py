@@ -1,3 +1,4 @@
+import logging
 from typing import Iterator, Tuple
 from experimaestro import Option
 import datamaestro_text.data.ir as ir
@@ -68,6 +69,14 @@ class TrainingTriplets(ir.TrainingTriplets, IRDSId):
 
     def iter(self) -> Iterator[Tuple[str, str, str]]:
         ds = ir_datasets.load(self.irds)
+
+        logging.info("Loading queries")
+        queries = {}
+        for query in ds.queries_iter():
+            queries[query.query_id] = query.text
+
+        logging.info("Starting to generate triplets")
         if isinstance(ds.docpairs_handler(), ir_datasets.formats.tsv.TsvDocPairs):
             for entry in ds.docpairs_iter():
-                yield (entry.query_id, entry.doc_id_a, entry.doc_id_b)
+                yield (queries[entry.query_id], entry.doc_id_a, entry.doc_id_b)
+        logging.info("Ending triplet generation")
