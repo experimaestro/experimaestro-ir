@@ -7,6 +7,7 @@ from experimaestro import Config, Constant, Param, default, Annotated
 import torch
 from torch import nn
 import torch.nn.functional as F
+from xpmir.rankers import TwoStageRetriever
 from xpmir.letor.records import BaseRecords
 from . import InteractionScorer
 
@@ -91,3 +92,14 @@ class Colbert(InteractionScorer):
         documents = self._encode([d.text for d in inputs.documents], True)
 
         return self.similarity(queries, documents)
+
+
+def colbert(train):
+    """Experiment with full Colbert pipeline: given a training corpus,
+    train the model and returns a retriever"""
+
+    # 200K iterations
+    raise NotImplementedError()
+
+    model = Colbert()
+    return model

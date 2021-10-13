@@ -1,4 +1,4 @@
-from functools import cached_property
+from cached_property import cached_property
 from typing import List, Tuple, Union
 import logging
 import torch

@@ -68,14 +68,15 @@ class Drmm(InteractionScorer):
     """Deep Relevance Matching Model (DRMM)
 
     Implementation of the DRMM model from:
-      > Jiafeng Guo, Yixing Fan, Qingyao Ai, and William Bruce Croft. 2016. A Deep Relevance
-      > Matching Model for Ad-hoc Retrieval. In CIKM.
+
+      Jiafeng Guo, Yixing Fan, Qingyao Ai, and William Bruce Croft. 2016. A Deep Relevance
+      Matching Model for Ad-hoc Retrieval. In CIKM.
 
     Attributes:
 
-    hist: The histogram type
-    hidden: Hidden layer dimension for the feed forward matching network
-    index: the index (only used when using IDF to combine)
+        hist: The histogram type
+        hidden: Hidden layer dimension for the feed forward matching network
+        index: the index (only used when using IDF to combine)
     """
 
     hist: Annotated[CountHistogram, default(LogCountHistogram())]

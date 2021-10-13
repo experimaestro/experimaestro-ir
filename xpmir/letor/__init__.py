@@ -8,7 +8,7 @@ class Random(Config):
     seed: Param[int] = 0
 
     @cached_property
-    def state(self):
+    def state(self) -> np.random.RandomState:
         return np.random.RandomState(self.seed)
 
     def __getstate__(self):

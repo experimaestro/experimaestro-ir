@@ -1,24 +1,25 @@
 import logging
+import torch
 import json
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Iterable, List
 from datamaestro_text.data.ir import Adhoc
 from experimaestro import (
     Task,
     Config,
     Param,
-    pathoption,
+    Meta,
     pathgenerator,
     SerializedConfig,
-    Serialized,
 )
+import numpy as np
 from experimaestro.notifications import tqdm
 from typing_extensions import Annotated
 from xpmir.utils import EasyLogger
 from xpmir.evaluation import evaluate
 from xpmir.letor import Random
 from xpmir.letor.trainers import TrainContext, TrainState, Trainer
-from xpmir.rankers import LearnableScorer, Retriever
+from xpmir.rankers import LearnableScorer, Retriever, ScoredDocument, Scorer
 
 
 class LearnerListener(Config):
@@ -44,14 +45,24 @@ class LearnerListener(Config):
         return None
 
 
-class SavedScorer(Serialized):
+class SavedScorer(Scorer):
     """Generic scorer that has been saved"""
 
-    @staticmethod
-    def fromJSON(path):
+    ranker: Param[LearnableScorer]
+    checkpoint: Meta[Path]
+
+    def __postinit__(self):
         state = TrainState()
-        state.load(Path(path))
+        state.ranker = self.ranker
+        self.ranker.initialize(np.random.RandomState())
+        state.optimizer = None
+        state.load(Path(self.checkpoint))
         return state.ranker
+
+    def rsv(
+        self, query: str, documents: Iterable[ScoredDocument], keepcontent=False
+    ) -> List[ScoredDocument]:
+        return self.ranker.rsv(query, documents)
 
 
 class ValidationListener(LearnerListener):
@@ -100,7 +111,7 @@ class ValidationListener(LearnerListener):
     def taskoutputs(self, learner: "Learner"):
         """Experimaestro outputs"""
         return {
-            key: SerializedConfig(learner.scorer, SavedScorer(str(self.bestpath / key)))
+            key: SavedScorer(ranker=learner.scorer, checkpoint=str(self.bestpath / key))
             for key, store in self.metrics.items()
             if store
         }
@@ -197,6 +208,9 @@ class Learner(Task, EasyLogger):
         for handler in logger.handlers:
             handler.setLevel(logging.INFO)
 
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
         self.only_cached = False
 
         # Initialize the scorer and trainer
@@ -209,18 +223,23 @@ class Learner(Task, EasyLogger):
             listener.initialize(key, self, context)
 
         self.logger.info("Trainer initialization")
+        seed = self.random.state.randint((2 ** 32) - 1)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+
+        # Initialize the trainer
         self.trainer.initialize(self.random.state, self.scorer, context)
 
         self.logger.info("Starting to train")
 
         current = 0
         state = None
-        with tqdm(
-            self.trainer.iter_train(self.max_epoch), total=self.max_epoch
-        ) as states:
-            for state in states:
+
+        with tqdm(total=self.max_epoch) as tqdm_epochs:
+            for state in self.trainer.iter_train(self.max_epoch):
                 # Report progress
-                states.update(state.epoch - current)
+                tqdm_epochs.update(state.epoch - current)
+                current = state.epoch
 
                 if state.epoch >= 0 and not self.only_cached:
                     message = f"epoch {state.epoch}"

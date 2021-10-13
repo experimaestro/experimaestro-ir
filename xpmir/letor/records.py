@@ -1,6 +1,6 @@
 import torch
 import itertools
-from typing import Iterable, List, NamedTuple, Optional, Tuple
+from typing import Iterable, Iterator, List, NamedTuple, Optional, Tuple
 
 
 class Query(NamedTuple):
@@ -52,18 +52,29 @@ class TokenizedTexts:
         self.mask = mask
 
 
-# The mask is a list (queries) of list (document index)
+# The mask is a list (queries) of list (document index) corresponding
+# to the computed items
 QDMask = List[List[int]]
 
+# Structured sample
+# If the mask is None, this means that scores should be computed
+# for all documents and queries
+StructuredSample = Tuple[List[Query], List[Document], Optional[QDMask]]
+
 # Structured iterator for a batch
-StructuredIterator = Iterable[Tuple[List[Query], List[Document], Optional[QDMask]]]
+StructuredIterator = Iterable[StructuredSample]
 
 
 class BaseRecords:
     """Base records just exposes iterables on (query, document) pairs"""
 
-    queries: Iterable[Query]
-    documents: Iterable[Document]
+    def queries(self) -> Iterable[Query]:
+        """Iterates over queries"""
+        raise NotImplementedError(f"queries() in {self.__class__}")
+
+    def documents(self) -> Iterable[Document]:
+        """Iterates over documents"""
+        raise NotImplementedError(f"queries() in {self.__class__}")
 
     def structured(self) -> StructuredIterator:
         """Returns structured query/document couples"""

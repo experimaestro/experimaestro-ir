@@ -29,6 +29,13 @@ class CrossEntropyLoss(BatchwiseLoss):
         return F.binary_cross_entropy(scores, relevances, reduction="mean")
 
 
+class ContrastiveLoss:
+    """Computes the probability of relevant documents for a given query"""
+
+    def compute(self, score, relevances):
+        raise NotImplementedError()
+
+
 class BatchwiseTrainer(Trainer):
     """Batchwise trainer
 

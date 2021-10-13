@@ -36,8 +36,7 @@ class RandomScorer(Scorer):
     """A random scorer
 
     Attributes:
-
-    random: The random state
+        random: The random state
     """
 
     random: Param[Random]
@@ -57,8 +56,13 @@ class LearnableScorer(Scorer):
 
     A scorer with parameters that can be learnt"""
 
-    def initialize(self, random):
-        self.random = random
+    def initialize(self, random_or_state):
+        """Initialize a learnable scorer
+
+        Args:
+            random_or_state (np.random.Random): The random state or the current state
+        """
+        pass
 
     def __call__(self, inputs: "BaseRecords"):
         """Computes the score of all (query, document) pairs
@@ -94,7 +98,7 @@ class Retriever(Config):
 
     Attributes:
 
-    topk: Number of documents to retrieve (used after re-reranking by the second stage retriever)
+        topk: Number of documents to retrieve (used after re-reranking by the second stage retriever)
     """
 
     topk: Param[int] = 1500
@@ -121,9 +125,9 @@ class TwoStageRetriever(Retriever):
 
     Attributes:
 
-    retriever: The base retriever
-    scorer: The scorer used to re-rank the documents
-    batchsize: The batch size for the re-ranker
+        retriever: The base retriever
+        scorer: The scorer used to re-rank the documents
+        batchsize: The batch size for the re-ranker
     """
 
     retriever: Param[Retriever]

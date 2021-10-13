@@ -12,7 +12,7 @@ class Encoder(Config, nn.Module):
 
 
 class TextEncoder(Encoder):
-    """Dense representation of a text"""
+    """Dense representation of one text"""
 
     @property
     def dimension(self):
@@ -20,7 +20,11 @@ class TextEncoder(Encoder):
 
 
 class DualTextEncoder(Encoder):
-    """Dense representation for pairs of text"""
+    """Dense representation for a pair of text
+
+    This is used for instance in the case of BERT models
+    that represent the (query, document couple)
+    """
 
     @property
     def dimension(self) -> int:

@@ -2,7 +2,7 @@ import json
 import os
 from pathlib import Path
 from shutil import rmtree
-from typing import Dict, Iterator
+from typing import Dict, Iterator, Optional
 from experimaestro import Option, Config, help, Param
 from experimaestro import tqdm
 from experimaestro.utils import cleanupdir
@@ -21,7 +21,9 @@ class TrainState:
 
     def __init__(self, state: "TrainState" = None):
         # Model and optimizer
-        self.ranker = state.ranker if state else None
+        self.ranker = (
+            state.ranker if state else None
+        )  # type: Optional["LearnableScorer"]
         self.optimizer = state.optimizer if state else None
 
         # The epoch
@@ -43,8 +45,13 @@ class TrainState:
         with (path / "info.json").open("wt") as fp:
             json.dump(self.__getstate__(), fp)
 
-        with (path / "checkpoint.pth").open("wb") as fp:
-            torch.save((self.ranker, self.optimizer), fp)
+        torch.save(
+            {
+                "model_state_dict": self.ranker.state_dict(),
+                "optimizer_state_dict": self.optimizer.state_dict(),
+            },
+            path / "checkpoint.pth",
+        )
 
         # FIXME: should try to serialize the sampler
 
@@ -52,8 +59,12 @@ class TrainState:
 
     def load(self, path, onlyinfo=False):
         if not onlyinfo:
-            with (path / "checkpoint.pth").open("rb") as fp:
-                self.ranker, self.optimizer = torch.load(fp)
+            checkpoint = torch.load(path / "checkpoint.pth")
+            assert self.ranker is not None
+            self.ranker.load_state_dict(checkpoint["model_state_dict"])
+
+            if self.optimizer is not None:
+                self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
 
         with (path / "info.json").open("rt") as fp:
             self.__dict__.update(json.load(fp))
@@ -199,11 +210,12 @@ class Trainer(Config, EasyLogger):
     def iter_train(self, loadepoch: int) -> Iterator[TrainState]:
         context = self.context
 
-        if not self.context.load_bestcheckpoint(loadepoch):
+        if self.context.load_bestcheckpoint(loadepoch):
+            context.state.optimizer.zero_grad()
+            yield context.state
+        else:
             context.state.optimizer = self.optimizer(self.ranker.parameters())
             context.state.ranker = self.ranker
-        else:
-            yield context.state
 
         self.logger.info("Transfering model to device %s", self.device)
         context.state.ranker.to(self.device)
@@ -212,17 +224,17 @@ class Trainer(Config, EasyLogger):
         while True:
             context.nextepoch()
 
-            # forward to previous versions (if needed)
+            # Put into training mode
             context.state.ranker.train()
 
+            # Train for an epoch
             with tqdm(
                 leave=False, total=b_count, ncols=100, desc=f"train {context.epoch}"
             ) as pbar:
                 total_metrics = {}
                 for b in range(self.batches_per_epoch):
                     for _ in range(self.num_microbatches):
-                        loss, metrics = self.train_batch()
-                        loss.backward()
+                        loss, metrics = self.train_batch_backward()
                         total_metrics = {
                             key: value + total_metrics.get(key, 0.0)
                             for key, value in metrics.items()
@@ -239,22 +251,14 @@ class Trainer(Config, EasyLogger):
                     self.context.epoch,
                 )
 
+            # Yields the current state (after one epoch)
             yield context.state
+
+    def train_batch_backward(self):
+        """Combines a batch train and backard"""
+        loss, metrics = self.train_batch()
+        loss.backward()
+        return loss, metrics
 
     def train_batch(self):
         raise NotImplementedError()
-
-    def fast_forward(self, record_count):
-        raise NotImplementedError()
-
-    def _fast_forward(self, train_it, fields, record_count):
-        # Since the train_it holds a refernece to fields, we can greatly speed up the "fast forward"
-        # process by temporarily clearing the requested fields (meaning that the train iterator
-        # should simply find the records/pairs to return, but yield an empty payload).
-        orig_fields = set(fields)
-        try:
-            fields.clear()
-            for _ in zip(range(record_count), train_it):
-                pass
-        finally:
-            fields.update(orig_fields)

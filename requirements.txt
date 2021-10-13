@@ -4,4 +4,5 @@ datamaestro_text>2021.7.19
 # --- SKIP_DOCBUILD ---
 
 # TODO: switch to regular releases when stabilized
-git+git://github.com/terrierteam/ir_measures@main#egg=ir-measures
+ir-measures>=0.2.1
+ir_datasets

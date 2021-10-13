@@ -25,6 +25,7 @@ class InteractionScorer(TorchLearnableScorer):
     of cosine/inner products between query and document tokens.
 
     Attributes:
+
         vocab: The embedding model -- the vocab also defines how to tokenize text
         qlen: Maximum query length (this can be even shortened by the model)
         dlen: Maximum document length (this can be even shortened by the model)
@@ -40,11 +41,6 @@ class InteractionScorer(TorchLearnableScorer):
 
     def initialize(self, random):
         self.random = random
-        seed = self.random.randint((2 ** 32) - 1)
-        torch.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
         if self.add_runscore:
             self.runscore_alpha = torch.nn.Parameter(torch.full((1,), -1.0))
         self.vocab.initialize()

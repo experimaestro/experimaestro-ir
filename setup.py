@@ -25,9 +25,6 @@ install_requires = re.sub(
 # Removes dependencies if building documentation
 if os.environ.get("DOC_BUILDING", 0) == "1":
     install_requires = re.sub(r"SKIP_DOCBUILD.*", r"", install_requires, 0, re.DOTALL)
-else:
-    install_requires = (basepath / "requirements.txt").read_text()
-
 
 setup(
     name="xpmir",
