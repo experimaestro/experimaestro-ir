@@ -1,5 +1,5 @@
 experimaestro>=0.9.11
-datamaestro_text>2021.11.19
+datamaestro_text>=2021.11.19
 
 # --- SKIP_DOCBUILD ---
 
