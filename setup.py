@@ -27,7 +27,7 @@ if os.environ.get("DOC_BUILDING", 0) == "1":
     install_requires = re.sub(r"SKIP_DOCBUILD.*", r"", install_requires, 0, re.DOTALL)
 
 setup(
-    name="xpmir",
+    name="experimaestro-ir",
     python_requires=">=3.7",
     description="Experimaestro common module for IR experiments",
     long_description=get_description(),
