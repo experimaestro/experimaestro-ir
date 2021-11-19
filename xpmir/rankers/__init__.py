@@ -1,13 +1,15 @@
 # This package contains all rankers
 
-from logging import Logger
-from typing import Iterable, List, Tuple
+from typing import Iterable, Iterator, List, Optional
 import torch
-from experimaestro import Param, Config, documentation
+from experimaestro import Param, Config, Option, documentation
 from xpmir.index import Index
-from xpmir.letor import Random
+from xpmir.letor import DEFAULT_DEVICE, Device, Random
+from xpmir.letor.batchers import Batcher
 from xpmir.letor.records import Document, BaseRecords, Query
-from xpmir.utils import EasyLogger
+from xpmir.utils import EasyLogger, easylog
+
+logger = easylog()
 
 
 class ScoredDocument:
@@ -30,6 +32,14 @@ class Scorer(Config, EasyLogger):
     ) -> List[ScoredDocument]:
         """Score all the documents (inference mode, no training)"""
         raise NotImplementedError()
+
+    def eval(self):
+        """Put the model in inference/evaluation mode"""
+        pass
+
+    def train(self):
+        """Put the model in training mode"""
+        pass
 
 
 class RandomScorer(Scorer):
@@ -115,9 +125,21 @@ class Retriever(Config):
         raise NotImplementedError()
 
     @documentation
-    def getReranker(self, scorer: Scorer, batch_size: int):
-        """Retrieves a two stage re-ranker"""
-        return TwoStageRetriever(retriever=self, scorer=scorer, batchsize=batch_size)
+    def getReranker(
+        self, scorer: Scorer, batch_size: int, batcher: Batcher = Batcher(), device=None
+    ):
+        """Retrieves a two stage re-ranker
+
+        Arguments:
+            device: Device for the ranker or None if no change should be made
+        """
+        return TwoStageRetriever(
+            retriever=self,
+            scorer=scorer,
+            batchsize=batch_size,
+            batcher=batcher,
+            device=device,
+        )
 
 
 class TwoStageRetriever(Retriever):
@@ -133,23 +155,31 @@ class TwoStageRetriever(Retriever):
     retriever: Param[Retriever]
     scorer: Param[Scorer]
     batchsize: Param[int] = 0
+    batcher: Param[Batcher] = Batcher()
+    device: Option[Optional[Device]] = None
 
     def initialize(self):
         self.retriever.initialize()
+        self._batcher = self.batcher.initialize(self.batchsize, self._retrieve)
+
+        # Compute with the scorer
+        if self.device is not None:
+            self.scorer.to(self.device(logger))
+
+    def _retrieve(self, batches: Iterator[List[ScoredDocument]], query: str):
+        _scoredDocuments = []
+        for batch in batches:
+            _scoredDocuments.extend(self.scorer.rsv(query, batch))
+        return _scoredDocuments
 
     def retrieve(self, query: str):
+        # Calls the retriever
         scoredDocuments = self.retriever.retrieve(query)
 
-        if self.batchsize > 0:
-            # Work per batch
-            _scoredDocuments = []
-            for i in range(0, len(scoredDocuments), self.batchsize):
-                _scoredDocuments.extend(
-                    self.scorer.rsv(query, scoredDocuments[i : (i + self.batchsize)])
-                )
-        else:
-            # Score everything at once
-            _scoredDocuments = self.scorer.rsv(query, scoredDocuments)
+        # Scorer in evaluation mode
+        self.scorer.eval()
 
-        _scoredDocuments.sort(reverse=True)
-        return _scoredDocuments[: self.topk]
+        scoredDocuments = self._batcher(scoredDocuments, query)
+
+        scoredDocuments.sort(reverse=True)
+        return scoredDocuments[: self.topk]

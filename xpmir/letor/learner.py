@@ -10,7 +10,6 @@ from experimaestro import (
     Param,
     Meta,
     pathgenerator,
-    SerializedConfig,
 )
 import numpy as np
 from experimaestro.notifications import tqdm
@@ -58,6 +57,9 @@ class SavedScorer(Scorer):
         state.optimizer = None
         state.load(Path(self.checkpoint))
         return state.ranker
+
+    def to(self, device):
+        self.ranker.to(device)
 
     def rsv(
         self, query: str, documents: Iterable[ScoredDocument], keepcontent=False

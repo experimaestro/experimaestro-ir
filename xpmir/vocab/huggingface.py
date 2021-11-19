@@ -1,5 +1,5 @@
-from cached_property import cached_property
-from typing import List, Tuple, Union
+from experimaestro.compat import cached_property
+from typing import List, Optional, Tuple, Union
 import logging
 import torch
 import torch.nn as nn
@@ -7,7 +7,7 @@ from experimaestro import Param
 from xpmir.vocab.encoders import DualTextEncoder, TextEncoder
 
 try:
-    from transformers import AutoModel, AutoTokenizer
+    from transformers import AutoModel, AutoTokenizer, AutoConfig
 except Exception:
     logging.error("Install huggingface transformers to use these configurations")
     raise
@@ -41,9 +41,16 @@ class TransformerVocab(vocab.Vocab):
     def pad_tokenid(self) -> int:
         return self.tokenizer.pad_token_id
 
-    def initialize(self):
-        super().initialize()
-        self.model = AutoModel.from_pretrained(self.model_id)
+    def initialize(self, noinit=False):
+        super().initialize(noinit=noinit)
+
+        if noinit:
+            config = AutoConfig.from_pretrained(self.model_id)
+            self.model = AutoModel.from_config(config)
+        else:
+            self.model = AutoModel.from_pretrained(self.model_id)
+
+        # Loads the tokenizer
         self._tokenizer = AutoTokenizer.from_pretrained(self.model_id, use_fast=True)
 
         layer = self.layer
@@ -152,11 +159,16 @@ class TransformerEncoder(TransformerVocab, TextEncoder):
 
 
 class DualTransformerEncoder(TransformerVocab, DualTextEncoder):
-    """Encodes using the [CLS] token"""
+    """Encodes the (query, document pair) using the [CLS] token
+
+    maxlen: Maximum length of the query document pair (in tokens) or None if using the transformer limit
+    """
+
+    maxlen: Param[Optional[int]] = None
 
     def forward(self, texts: List[Tuple[str, str]]):
         device = self._dummy_params.device
-        tokenized = self.batch_tokenize(texts, mask=True)
+        tokenized = self.batch_tokenize(texts, maxlen=self.maxlen, mask=True)
 
         with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
             y = self.model(tokenized.ids, attention_mask=tokenized.mask.to(device))

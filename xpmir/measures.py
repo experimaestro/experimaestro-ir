@@ -1,0 +1,35 @@
+from typing import Optional
+import ir_measures as irm
+from experimaestro import Config, Param
+from datamaestro_text.data.ir import Measure as BaseMeasure
+
+
+class Measure(BaseMeasure):
+    """Mirrors the ir_measures metric object"""
+
+    identifier: Param[str]
+    """main identifier"""
+
+    rel: Param[int] = 1
+    """minimum relevance score to be considered relevant (inclusive)"""
+
+    cutoff: Param[Optional[int]]
+    """Cutoff value"""
+
+    def __matmul__(self, cutoff):
+        return Measure(identifier=self.identifier, rel=self.rel, cutoff=cutoff)
+
+    def __call__(self):
+        measure = irm.parse_measure(self.identifier)
+        if self.cutoff is not None:
+            measure = measure @ self.cutoff
+        return measure
+
+    def __repr__(self):
+        return f"{self.identifier}@{self.cutoff}/rel={self.rel}"
+
+
+AP = Measure(identifier="AP")
+P = Measure(identifier="P")
+RR = Measure(identifier="P")
+nDCG = Measure(identifier="nDCG")

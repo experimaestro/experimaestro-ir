@@ -6,7 +6,7 @@ from xpmir.neural import TorchLearnableScorer
 from xpmir.vocab.encoders import DualTextEncoder
 
 
-class JointClassifier(TorchLearnableScorer, nn.Module):
+class JointClassifier(TorchLearnableScorer):
     """Query-Document Representation Classifier
 
     Based on a query-document representation representation (e.g. BERT [CLS] token),

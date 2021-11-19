@@ -1,6 +1,6 @@
 import torch
 import itertools
-from typing import Iterable, Iterator, List, NamedTuple, Optional, Tuple
+from typing import Iterable, Iterator, List, NamedTuple, Optional, Tuple, Union
 
 
 class Query(NamedTuple):
@@ -83,7 +83,7 @@ class BaseRecords:
 
 
 class PointwiseRecords(BaseRecords):
-    """Pointwise records are the objects passed to the module forwards"""
+    """Pointwise records are a set of triples (query, document, relevance)"""
 
     # The queries
     queries: List[Query]
@@ -106,6 +106,8 @@ class PointwiseRecords(BaseRecords):
 
 
 class PairwiseRecord:
+    """A pairwise record is composed of a query, a positive and a negative document"""
+
     query: Query
     positive: Document
     negative: Document
@@ -117,7 +119,7 @@ class PairwiseRecord:
 
 
 class PairwiseRecords(BaseRecords):
-    """Pairwise records with (positive, negative) pairs"""
+    """Pairwise records of queries associated with (positive, negative) pairs"""
 
     # The queries
     _queries: List[Query]
@@ -147,8 +149,25 @@ class PairwiseRecords(BaseRecords):
         return itertools.chain(self.positives, self.negatives)
 
     def structured(self) -> StructuredIterator:
+        """Returns a structured iterator"""
         for q, p, n in zip(self._queries, self.positives, self.negatives):
             yield ([q], [p, n], None)
+
+    def __len__(self):
+        return len(self._queries)
+
+    def __getitem__(self, ix: Union[slice, int]):
+        if isinstance(ix, slice):
+            records = PairwiseRecords()
+            for i in range(ix.start, min(ix.stop, len(self._queries)), ix.step or 1):
+                records.add(
+                    PairwiseRecord(
+                        self._queries[i], self.positives[i], self.negatives[i]
+                    )
+                )
+            return records
+
+        return PairwiseRecord(self._queries[ix], self.positives[ix], self.negatives[ix])
 
 
 class BatchwiseRecords(BaseRecords):

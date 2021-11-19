@@ -15,9 +15,12 @@ class Adam(Optimizer):
 
 
 class AdamW(Optimizer):
+    """Adam optimizer that takes into account the regularization"""
+
     lr: Param[float] = 1e-3
+    weight_decay: Param[float] = 1e-2
 
     def __call__(self, parameters):
         from torch.optim import AdamW
 
-        return AdamW(parameters, lr=self.lr)
+        return AdamW(parameters, lr=self.lr, weight_decay=self.weight_decay)

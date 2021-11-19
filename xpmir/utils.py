@@ -1,4 +1,3 @@
-from logging import Logger
 import inspect
 import logging
 import os
@@ -111,9 +110,9 @@ def easylog():
     try:
         frame = inspect.stack()[1]  # caller
         module = inspect.getmodule(frame[0])
-        return Logger(module.__name__)
+        return logging.getLogger(module.__name__)
     except IndexError:
-        return Logger("UNKNOWN")
+        return logging.getLogger("UNKNOWN")
 
 
 class EasyLogger:

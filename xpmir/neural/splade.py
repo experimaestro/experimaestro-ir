@@ -1,13 +1,37 @@
+from typing import List
 from experimaestro import Config, Param
 import torch.nn as nn
+import torch
 from xpmir.neural import TorchLearnableScorer
 from xpmir.vocab.huggingface import TransformerVocab
+from xpmir.letor.records import BaseRecords
 
 
 class Aggregation(Config):
     """The aggregation function for Splade"""
 
     pass
+
+
+class MaxAggregation(Aggregation):
+    """Aggregate using a max"""
+
+    def __call__(self, logits, mask):
+        values, _ = torch.max(
+            torch.log(1 + torch.relu(logits) * mask.unsqueeze(-1)),
+            dim=1,
+        )
+        return values
+
+
+class SumAggregation(Aggregation):
+    """Aggregate using a sum"""
+
+    def __cal__(self, logits, mask):
+        return torch.sum(
+            torch.log(1 + torch.relu(logits) * mask.unsqueeze(-1)),
+            dim=1,
+        )
 
 
 class Splade(TorchLearnableScorer):
@@ -28,19 +52,11 @@ class Splade(TorchLearnableScorer):
 
         self.encoder.initialize()
 
-    def forward(self):
-        out = self.transformer(**kwargs)[
-            "logits"
-        ]  # output (logits) of MLM head, shape (bs, pad_len, voc_size)
-        if self.agg == "max":
-            values, _ = torch.max(
-                torch.log(1 + torch.relu(out)) * kwargs["attention_mask"].unsqueeze(-1),
-                dim=1,
-            )
-            return values
-            # 0 masking also works with max because all activations are positive
-        else:
-            return torch.sum(
-                torch.log(1 + torch.relu(out)) * kwargs["attention_mask"].unsqueeze(-1),
-                dim=1,
-            )
+    def forward(self, inputs: BaseRecords):
+        queries = self._encode([q.text for q in inputs.queries])
+        documents = self._encode([d.text for d in inputs.documents])
+
+    def _encode(self, texts: List[str]):
+        tokenized = self.vocab.batch_tokenize(inputs, maskoutput=True)
+        out = self.vocab(input_ids=tokenized.ids, attention_mask=tokenized.mask)
+        return self.aggregation(out)

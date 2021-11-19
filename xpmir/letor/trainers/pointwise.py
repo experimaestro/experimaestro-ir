@@ -1,10 +1,11 @@
 import sys
 import numpy as np
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from experimaestro import Param, Config
 from xpmir.letor.records import PointwiseRecords
-from xpmir.letor.trainers import Trainer
+from xpmir.letor.trainers import MetricAccumulator, Trainer
 
 
 class PointwiseLoss(Config):
@@ -30,20 +31,13 @@ class BinaryCrossEntropyLoss(PointwiseLoss):
 
     NAME = "ce"
 
-    logits: Param[bool]
+    logits: Param[bool] = True
+
+    def __init__(self):
+        self.loss = nn.BCEWithLogitsLoss() if self.logits else nn.BCELoss()
 
     def compute(self, rel_scores, target_relscores):
-        if self.logits:
-            invlogsigmoid = (1.0 + (-rel_scores).exp()).log()
-            loss = invlogsigmoid + torch.where(
-                target_relscores > 0, torch.zeros_like(rel_scores), rel_scores
-            )
-        else:
-            # Scores are probabilities
-            loss = -torch.where(
-                target_relscores > 0, rel_scores, 1.0 - rel_scores
-            ).log()
-        return loss.mean()
+        return self.loss(rel_scores, (target_relscores > 0).float())
 
 
 class PointwiseTrainer(Trainer):
@@ -54,7 +48,7 @@ class PointwiseTrainer(Trainer):
         lossfn: Loss function to use (mse, mse-nil, l1, l1pos, smoothl1, cross_entropy, cross_entropy_logits, softmax, mean)
     """
 
-    lossfn: Param[PointwiseLoss] = "mse"
+    lossfn: Param[PointwiseLoss] = MSELoss()
 
     def initialize(self, random: np.random.RandomState, ranker, context):
         super().initialize(random, ranker, context)
@@ -65,6 +59,9 @@ class PointwiseTrainer(Trainer):
         self.train_iter_core = self.sampler.record_iter()
         self.train_iter = self.iter_batches(self.train_iter_core)
 
+    def __validate__(self):
+        assert self.grad_acc_batch >= 0, "Adaptative batch size not implemented"
+
     def iter_batches(self, it):
         while True:
             batch = PointwiseRecords()
@@ -73,7 +70,7 @@ class PointwiseTrainer(Trainer):
 
             yield batch
 
-    def train_batch(self):
+    def train_batch(self, metrics: MetricAccumulator):
         # Get the next batch
         batch = next(self.train_iter)
 
@@ -133,7 +130,8 @@ class PointwiseTrainer(Trainer):
         # else:
         #     raise ValueError(f"unknown lossfn `{self.lossfn}`")
 
-        return loss, {f"{self.lossfn}": loss.item()}
+        metrics.update({f"{self.lossfn}": loss.item()}, self.batch_size)
+        return loss
 
     def fast_forward(self, record_count):
         self._fast_forward(self.train_iter_core, self.iter_fields, record_count)

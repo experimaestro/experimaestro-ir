@@ -33,7 +33,13 @@ class Vocab(Config, EasyLogger, nn.Module):
     name = None
     __has_clstoken__ = False
 
-    def initialize(self):
+    def initialize(self, noinit=False):
+        """Initialize the vocabulary
+
+        Args:
+            noinit (bool, optional): If `noinit` is true, parameters are not initialized (useful to have a faster
+            model initialization when loading parameters from checkpoint). Defaults to False.
+        """
         # Easy and hacky way to get the device
         self._dummy_params = nn.Parameter(torch.Tensor())
 

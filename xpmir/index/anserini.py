@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import List, Tuple
-from cached_property import cached_property
+from experimaestro.compat import cached_property
 from experimaestro import Choices, Param, Annotated
 from .base import Index as BaseIndex
 

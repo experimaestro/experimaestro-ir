@@ -1,5 +1,5 @@
+from xpmir.utils import easylog
 from pathlib import Path
-import tempfile
 from typing import Iterator, List, Optional
 from datamaestro_text.data.ir import Adhoc, AdhocAssessments
 from experimaestro import Config, tqdm, Task, Param, pathgenerator, Annotated
@@ -7,22 +7,22 @@ from datamaestro_text.data.ir.trec import (
     TrecAdhocRun,
     TrecAdhocResults,
 )
-
+from xpmir.measures import Measure
+import xpmir.measures as m
 import ir_measures
 from xpmir.rankers import Retriever
 
 
-def get_evaluator(measures: List[str], assessments: AdhocAssessments):
+def get_evaluator(metrics: List[ir_measures.Metric], assessments: AdhocAssessments):
     qrels = {
         assessedTopic.qid: {r.docno: r.rel for r in assessedTopic.assessments}
         for assessedTopic in assessments.iter()
     }
-    metrics = [ir_measures.parse_measure(measures) for measures in measures]
     return ir_measures.evaluator(metrics, qrels)
 
 
 class BaseEvaluation(Task):
-    measures: Param[List[str]] = ["AP", "P@20", "NDCG", "NDCG@20", "RR"]
+    measures: Param[List[Measure]] = [m.AP, m.P @ 20, m.nDCG, m.nDCG @ 20, m.RR]
     aggregated: Annotated[Path, pathgenerator("aggregated.txt")]
     detailed: Annotated[Path, pathgenerator("detailed.dat")]
 
@@ -34,7 +34,7 @@ class BaseEvaluation(Task):
     def _execute(self, run, assessments):
         """Evaluate an IR ad-hoc run with trec-eval"""
 
-        evaluator = get_evaluator(self.measures, assessments)
+        evaluator = get_evaluator([m() for m in self.measures], assessments)
 
         def print_line(fp, measure, scope, value):
             fp.write("{:25s}{:8s}{:.4f}\n".format(measure, scope, value))
@@ -69,7 +69,9 @@ def get_run(retriever: Retriever, dataset: Adhoc):
 
 
 def evaluate(retriever: Retriever, dataset: Adhoc, measures: List[str]):
-    evaluator = get_evaluator(measures, dataset.assessments)
+    evaluator = get_evaluator(
+        [ir_measures.parse_measure(m) for m in measures], dataset.assessments
+    )
     run = get_run(retriever, dataset)
     return {str(key): value for key, value in evaluator.calc_aggregate(run).items()}
 
@@ -95,5 +97,6 @@ class Evaluate(BaseEvaluation, Task):
     retriever: Param[Retriever]
 
     def execute(self):
+        self.retriever.initialize()
         run = get_run(self.retriever, self.dataset)
         self._execute(run, self.dataset.assessments)

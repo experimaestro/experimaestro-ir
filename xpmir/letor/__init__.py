@@ -1,6 +1,6 @@
 import torch
 from experimaestro import Config, Param
-from cached_property import cached_property
+from experimaestro.compat import cached_property
 import numpy as np
 
 
