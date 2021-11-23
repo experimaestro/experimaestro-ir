@@ -31,5 +31,5 @@ class Measure(BaseMeasure):
 
 AP = Measure(identifier="AP")
 P = Measure(identifier="P")
-RR = Measure(identifier="P")
+RR = Measure(identifier="RR")
 nDCG = Measure(identifier="nDCG")
