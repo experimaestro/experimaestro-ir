@@ -28,4 +28,4 @@ class LinearWithWarmup(Scheduler):
         )
 
     def __call__(self, optimizer, *, last_epoch=-1):
-        return LambdaLR(optimizer, self.lr_lambda)
+        return LambdaLR(optimizer, self.lr_lambda, last_epoch=last_epoch)
