@@ -1,6 +1,16 @@
 import torch
 import itertools
-from typing import Iterable, Iterator, List, NamedTuple, Optional, Tuple, Union
+from typing import (
+    Any,
+    Iterable,
+    Iterator,
+    List,
+    NamedTuple,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+)
 
 
 class Query(NamedTuple):
@@ -52,34 +62,41 @@ class TokenizedTexts:
         self.mask = mask
 
 
-# The mask is a list (queries) of list (document index) corresponding
-# to the computed items
-QDMask = List[List[int]]
-
-# Structured sample
-# If the mask is None, this means that scores should be computed
-# for all documents and queries
-StructuredSample = Tuple[List[Query], List[Document], Optional[QDMask]]
-
-# Structured iterator for a batch
-StructuredIterator = Iterable[StructuredSample]
-
-
 class BaseRecords:
-    """Base records just exposes iterables on (query, document) pairs"""
+    """Base records just exposes iterables on (query, document) pairs
 
-    def queries(self) -> Iterable[Query]:
+    Records can be structured, i.e. the same queries and documents
+    can be used more than once. To allow optimization (e.g. pre-computing
+    document/query representation),
+    """
+
+    @property
+    def queries(self) -> List[Query]:
         """Iterates over queries"""
         raise NotImplementedError(f"queries() in {self.__class__}")
 
+    @property
+    def unique_queries(self) -> Iterable[Query]:
+        return self.queries
+
+    @property
     def documents(self) -> Iterable[Document]:
         """Iterates over documents"""
         raise NotImplementedError(f"queries() in {self.__class__}")
 
-    def structured(self) -> StructuredIterator:
-        """Returns structured query/document couples"""
-        for q, d in zip(self.queries, self.documents):
-            yield ([q], [d], None)
+    @property
+    def unique_documents(self) -> Iterable[Document]:
+        return self.documents
+
+    def pairs(self) -> Tuple[List[int], List[int]]:
+        """Returns the list of query/document indices for which we should compute the score,
+        or None if all (cartesian product). This method should be used with `unique` set
+        to true to get the queries/documents"""
+        raise NotImplementedError(f"masks() in {self.__class__}")
+
+    def __getitem__(self, ix: Union[slice, int]):
+        """Sub-sample"""
+        raise NotImplementedError(f"__getitem__() in {self.__class__}")
 
 
 class PointwiseRecords(BaseRecords):
@@ -145,13 +162,16 @@ class PairwiseRecords(BaseRecords):
         return itertools.chain(self._queries, self._queries)
 
     @property
+    def unique_queries(self):
+        return self._queries
+
+    @property
     def documents(self):
         return itertools.chain(self.positives, self.negatives)
 
-    def structured(self) -> StructuredIterator:
-        """Returns a structured iterator"""
-        for q, p, n in zip(self._queries, self.positives, self.negatives):
-            yield ([q], [p, n], None)
+    def pairs(self):
+        indices = list(range(len(self._queries)))
+        return indices * 2, list(range(2 * len(self.positives)))
 
     def __len__(self):
         return len(self._queries)
@@ -180,7 +200,7 @@ class BatchwiseRecords(BaseRecords):
     relevances: torch.Tensor
 
 
-class CartesianProductRecords(BatchwiseRecords):
+class ProductRecords(BatchwiseRecords):
     """Computes the score for all the documents and queries
 
     Attributes:
@@ -215,10 +235,18 @@ class CartesianProductRecords(BatchwiseRecords):
                 yield q
 
     @property
+    def unique_queries(self):
+        return self._queries
+
+    @property
     def documents(self):
         for _ in self._queries:
             for d in self._documents:
                 yield d
 
-    def structured(self) -> StructuredIterator:
-        return [(self._queries, self._documents, None)]
+    @property
+    def unique_documents(self):
+        return self._documents
+
+    def pairs(self):
+        return None

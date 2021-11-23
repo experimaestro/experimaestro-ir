@@ -117,7 +117,7 @@ class TrainContext(EasyLogger):
         self.state = self.newstate(self.oldstate)
         self.state.epoch += 1
 
-    def load_bestcheckpoint(self, target):
+    def load_bestcheckpoint(self, target, ranker, optimizer):
         # Find all the potential epochs
         epochs = []
         for f in self.path.glob(f"{TrainContext.PREFIX}*"):
@@ -133,10 +133,13 @@ class TrainContext(EasyLogger):
 
             try:
                 self.state = self.newstate()
+                self.state.ranker = ranker
+                self.state.optimizer = optimizer
                 self.state.load(path)
                 return True
 
             except Exception:
+                # FIXME: prevent deletion (do a save/load cycle to check first)?
                 rmtree(path)
                 self.logger.exception(f"Cannot load from epoch %d", epoch)
 
@@ -218,7 +221,11 @@ class Trainer(Config, EasyLogger):
     def iter_train(self, loadepoch: int) -> Iterator[TrainState]:
         context = self.context
 
-        if self.context.load_bestcheckpoint(loadepoch):
+        self.logger.info("Transfering model to device %s", self.device)
+        self.ranker.to(self.device)
+        optimizer = self.optimizer(self.ranker.parameters())
+
+        if self.context.load_bestcheckpoint(loadepoch, self.ranker, optimizer):
             if self.scheduler:
                 context.state.scheduler = self.scheduler(
                     context.state.optimizer,
@@ -226,13 +233,12 @@ class Trainer(Config, EasyLogger):
                 )
             yield context.state
         else:
-            context.state.optimizer = self.optimizer(self.ranker.parameters())
+            context.state.optimizer = optimizer
             context.state.ranker = self.ranker
+
             if self.scheduler:
                 context.state.scheduler = self.scheduler(context.state.optimizer)
 
-        self.logger.info("Transfering model to device %s", self.device)
-        context.state.ranker.to(self.device)
         self.to(self.device)
         b_count = self.batches_per_epoch * self.batch_size
 

@@ -8,10 +8,10 @@ from experimaestro.annotations import cache
 import torch
 from xpmir.letor.records import (
     BatchwiseRecords,
-    CartesianProductRecords,
     Document,
     PairwiseRecord,
     PointwiseRecord,
+    ProductRecords,
     Query,
 )
 from xpmir.rankers import Retriever, ScoredDocument
@@ -245,7 +245,7 @@ class PairwiseInBatchNegativesSampler(BatchwiseSampler):
         relevances = torch.diag(torch.ones(batch_size * 2, dtype=torch.float))
 
         while True:
-            batch = CartesianProductRecords()
+            batch = ProductRecords()
             for _, record in zip(range(batch_size), it):
                 batch.addQueries(record.query)
                 batch.addDocuments(record.positive, record.negative)
