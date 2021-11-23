@@ -1,5 +1,5 @@
 from experimaestro.compat import cached_property
-from typing import List, Optional, Tuple, Union
+from typing import ClassVar, List, Optional, Tuple, Union
 import logging
 import torch
 import torch.nn as nn
@@ -26,6 +26,8 @@ class TransformerVocab(vocab.Vocab):
     layer: Layer to use (0 is the last, -1 to use them all)
     """
 
+    AUTOMODEL_CLASS: ClassVar = AutoModel
+
     model_id: Param[str] = "bert-base-uncased"
     trainable: Param[bool] = False
     layer: Param[int] = 0
@@ -46,9 +48,9 @@ class TransformerVocab(vocab.Vocab):
 
         if noinit:
             config = AutoConfig.from_pretrained(self.model_id)
-            self.model = AutoModel.from_config(config)
+            self.model = self.AUTOMODEL_CLASS.from_config(config)
         else:
-            self.model = AutoModel.from_pretrained(self.model_id)
+            self.model = self.AUTOMODEL_CLASS.from_pretrained(self.model_id)
 
         # Loads the tokenizer
         self._tokenizer = AutoTokenizer.from_pretrained(self.model_id, use_fast=True)
