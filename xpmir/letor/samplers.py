@@ -8,16 +8,18 @@ from experimaestro.annotations import cache
 import torch
 from xpmir.letor.records import (
     BatchwiseRecords,
+    ProductRecords,
     Document,
     PairwiseRecord,
     PointwiseRecord,
-    ProductRecords,
     Query,
 )
 from xpmir.rankers import Retriever, ScoredDocument
 from xpmir.test.neural.test_forward import pairwise
-from xpmir.utils import EasyLogger
+from xpmir.utils import EasyLogger, easylog
 from xpmir.index import Index
+
+logger = easylog()
 
 
 class Sampler(Config, EasyLogger):
@@ -35,6 +37,12 @@ class Sampler(Config, EasyLogger):
         raise NotImplementedError(
             f"{self.__class__} does not implement pairwiserecord_iter()"
         )
+
+    def state_dict(self) -> Dict:
+        raise NotImplementedError(f"state_dict() not implemented in {self.__class__}")
+
+    def load_dict(self, Dict):
+        raise NotImplementedError(f"load_dict() not implemented in {self.__class__}")
 
 
 class BatchwiseSampler(Sampler, Iterable[BatchwiseRecords]):
@@ -273,6 +281,10 @@ class TripletBasedSampler(Sampler):
     def _fromid(self, docid: str):
         return Document(docid, self.index.document_text(docid), None)
 
+    def __init__(self):
+        super().__init__()
+        self.count = 0
+
     @staticmethod
     def _fromtext(text: str):
         return Document(None, text, None)
@@ -282,5 +294,20 @@ class TripletBasedSampler(Sampler):
         getdoc = self._fromid if self.source.ids else self._fromtext
 
         while True:
-            for query, pos, neg in self.source.iter():
+            iter = self.source.iter()
+
+            # Skip self.count items
+            logger.info("Skipping %d records to match state (sampler)", self.count)
+            for _ in range(self.count):
+                next(iter)
+
+            # And now go ahead
+            for query, pos, neg in iter:
+                self.count += 1
                 yield PairwiseRecord(Query(query), getdoc(pos), getdoc(neg))
+
+    def state_dict(self) -> Dict:
+        return {"count": self.count}
+
+    def load_state_dict(self, state: Dict):
+        self.count = state["count"]

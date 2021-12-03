@@ -70,19 +70,12 @@ class BaseRecords:
     document/query representation),
     """
 
-    @property
-    def queries(self) -> List[Query]:
-        """Iterates over queries"""
-        raise NotImplementedError(f"queries() in {self.__class__}")
+    queries: Iterable[Query]
+    documents: Iterable[Document]
 
     @property
     def unique_queries(self) -> Iterable[Query]:
         return self.queries
-
-    @property
-    def documents(self) -> Iterable[Document]:
-        """Iterates over documents"""
-        raise NotImplementedError(f"queries() in {self.__class__}")
 
     @property
     def unique_documents(self) -> Iterable[Document]:
@@ -97,6 +90,14 @@ class BaseRecords:
     def __getitem__(self, ix: Union[slice, int]):
         """Sub-sample"""
         raise NotImplementedError(f"__getitem__() in {self.__class__}")
+
+    def __len__(self):
+        """Returns the number of records
+
+        The length is dependant on the type of records, and is mainly used
+        to divide the data into batches
+        """
+        raise NotImplementedError(f"__len__() in {self.__class__}")
 
 
 class PointwiseRecords(BaseRecords):
@@ -120,6 +121,9 @@ class PointwiseRecords(BaseRecords):
         self.queries.append(record.query)
         self.relevances.append(record.relevance or 0)
         self.documents.append(record.document)
+
+    def __len__(self):
+        return len(self.queries)
 
 
 class PairwiseRecord:

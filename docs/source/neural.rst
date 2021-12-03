@@ -3,16 +3,18 @@ Neural models
 -------------
 
 
+
+
 Sparse models
 =============
 
 .. autoxpmconfig:: xpmir.neural.splade.Splade
 
-
 Dense models
 ============
 
-:: autoxpmconfig::
+.. autoxpmconfig:: xpmir.neural.siamese.DotDense
+.. autoxpmconfig:: xpmir.neural.siamese.CosineDense
 
 Interaction models
 ==================
@@ -21,3 +23,10 @@ Interaction models
 .. autoxpmconfig:: xpmir.neural.drmm.Drmm
 
 .. autoxpmconfig:: xpmir.neural.colbert.Colbert
+
+
+Pretrained models
+=================
+
+.. automodule:: xpmir.neural.pretrained
+    :members:

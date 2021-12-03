@@ -1,20 +1,13 @@
 from typing import Optional
 import itertools
-import torch.nn as nn
+import torch
 from experimaestro import Param
 from xpmir.letor.records import BaseRecords
-from xpmir.neural import TorchLearnableScorer
+from xpmir.neural import SeparateRepresentationTorchScorer
 from xpmir.vocab.encoders import TextEncoder
 
 
-class CosineSiamese(TorchLearnableScorer, nn.Module):
-    """Siamese model (cosine)
-
-    Attributes:
-        encoder: Document (and query) encoder
-        query_encoder: Query encoder; if null, uses the document encoder
-    """
-
+class Dense(SeparateRepresentationTorchScorer):
     encoder: Param[TextEncoder]
     query_encoder: Param[Optional[TextEncoder]]
 
@@ -28,6 +21,36 @@ class CosineSiamese(TorchLearnableScorer, nn.Module):
         if self.query_encoder:
             self.query_encoder.initialize()
 
+
+class CosineDense(Dense):
+    """Siamese model (cosine)
+
+    Attributes:
+        encoder: Document (and query) encoder
+        query_encoder: Query encoder; if null, uses the document encoder
+    """
+
+    def encode_queries(self, texts):
+        queries = (self.query_encoder or self.encoder)(texts)
+        return queries / queries.norm(dim=1, keepdim=True)
+
+    def encode_documents(self, texts):
+        documents = self.encoder(texts)
+        return documents / documents.norm(dim=1, keepdim=True)
+
+
+class DotDense(Dense):
+    """Siamese model (cosine)
+
+    Attributes:
+        encoder: Document (and query) encoder
+        query_encoder: Query encoder; if null, uses the document encoder
+    """
+
+    def __validate__(self):
+        super().__validate__()
+        assert not self.encoder.static(), "The vocabulary should be learnable"
+
     def parameters(self):
         if self.query_encoder:
             return itertools.chain(
@@ -35,17 +58,8 @@ class CosineSiamese(TorchLearnableScorer, nn.Module):
             )
         return self.encoder.parameters()
 
-    def forward(self, inputs: BaseRecords):
-        # Encode queries and documents
-        queries = (self.query_encoder or self.encoder)(
-            [d.text for d in inputs.documents]
-        )
-        documents = self.encoder(inputs.queries)
+    def encode_queries(self, texts):
+        return (self.query_encoder or self.encoder)(texts)
 
-        # Normalize each document and query
-        queries = queries / queries.norm(dim=1, keepdim=True)
-        documents = documents / documents.norm(dim=1, keepdim=True)
-
-        # Compute batch dot product and return it
-        scores = queries.unsqueeze(1) @ documents.unsqueeze(2)
-        return scores.squeeze()
+    def encode_documents(self, texts):
+        return self.encoder(texts)

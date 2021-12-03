@@ -157,7 +157,8 @@ class TransformerEncoder(TransformerVocab, TextEncoder):
         with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
             y = self.model(tokenized.ids)
 
-        return y.last_hidden_state[:, -1]
+        # Assumes that [CLS] is the first token
+        return y.last_hidden_state[:, 0]
 
 
 class DualTransformerEncoder(TransformerVocab, DualTextEncoder):
@@ -175,7 +176,8 @@ class DualTransformerEncoder(TransformerVocab, DualTextEncoder):
         with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
             y = self.model(tokenized.ids, attention_mask=tokenized.mask.to(device))
 
-        return y.last_hidden_state[:, -1]
+        # Assumes that [CLS] is the first token
+        return y.last_hidden_state[:, 0]
 
     @property
     def dimension(self) -> int:

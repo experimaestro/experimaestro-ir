@@ -1,19 +1,21 @@
 import logging
+from typing import List, Tuple
 import pytest
 import torch
 from xpmir.index.base import Index
 from xpmir.letor import Random
 from xpmir.letor.records import (
-    CartesianProductRecords,
     Document,
     PairwiseRecord,
     PairwiseRecords,
     PointwiseRecord,
     PointwiseRecords,
+    ProductRecords,
     Query,
     TokenizedTexts,
 )
 from xpmir.vocab import Vocab
+from xpmir.vocab.encoders import DualTextEncoder
 
 
 class RandomVocab(Vocab):
@@ -64,17 +66,38 @@ class CustomIndex(Index):
 
 
 def drmm():
+    """Drmm factory"""
     from xpmir.neural.drmm import Drmm
 
     return Drmm(vocab=RandomVocab(), index=CustomIndex()).instance()
 
 
 def colbert():
+    """Colbert model factory"""
     from xpmir.neural.colbert import Colbert
 
     return Colbert(
         vocab=RandomVocab(), masktoken=False, doctoken=False, querytoken=False
     ).instance()
+
+
+class DummyDualTextEncoder(DualTextEncoder):
+    @property
+    def dimension(self) -> int:
+        return 13
+
+    def static(self):
+        return False
+
+    def forward(self, texts: List[Tuple[str, str]]):
+        return torch.randn(len(texts), 13)
+
+
+def joint():
+    """Joint classifier factory"""
+    from xpmir.neural.jointclassifier import JointClassifier
+
+    return JointClassifier(encoder=DummyDualTextEncoder()).instance()
 
 
 # ---
@@ -102,7 +125,7 @@ def pairwise():
 
 
 def cartesian():
-    inputs = CartesianProductRecords()
+    inputs = ProductRecords()
     inputs.addDocuments(
         Document("1", "the cat sat on the mat", 1),
         Document("2", "the purple car", 1),
@@ -113,7 +136,7 @@ def cartesian():
     return inputs
 
 
-@pytest.mark.parametrize("modelfactory", [drmm, colbert])
+@pytest.mark.parametrize("modelfactory", [drmm, colbert, joint])
 @pytest.mark.parametrize("inputfactory", [pointwise, pairwise, cartesian])
 def test_model_forward(modelfactory, inputfactory):
     model = modelfactory()

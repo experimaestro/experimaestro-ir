@@ -7,6 +7,7 @@ from experimaestro import Config, Constant, Param, default, Annotated
 import torch
 from torch import nn
 import torch.nn.functional as F
+from xpmir.letor.metrics import Metrics
 from xpmir.rankers import TwoStageRetriever
 from xpmir.letor.records import BaseRecords
 from . import InteractionScorer
@@ -87,7 +88,7 @@ class Colbert(InteractionScorer):
 
         return F.normalize(output, p=2, dim=2)
 
-    def _forward(self, inputs: BaseRecords):
+    def _forward(self, inputs: BaseRecords, metrics: Metrics = None):
         queries = self._encode([q.text for q in inputs.queries], False)
         documents = self._encode([d.text for d in inputs.documents], True)
 

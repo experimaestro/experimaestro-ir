@@ -16,7 +16,7 @@ from xpmir.utils import EasyLogger, easylog
 from xpmir.letor.optim import Adam, Optimizer
 from xpmir.letor import Device, DEFAULT_DEVICE
 from xpmir.letor.batchers import Batcher
-from xpmir.letor.metrics import MetricAccumulator
+from xpmir.letor.metrics import Metrics
 
 logger = easylog()
 
@@ -32,6 +32,7 @@ class TrainState:
 
         self.optimizer = state.optimizer if state else None
         self.scheduler = state.scheduler if state else None
+        self.sampler = state.sampler if state else None
 
         # The epoch
         self.epoch = state.epoch if state else 0
@@ -56,6 +57,7 @@ class TrainState:
             {
                 "model_state_dict": self.ranker.state_dict(),
                 "optimizer_state_dict": self.optimizer.state_dict(),
+                "sampler_state_dict": self.sampler.state_dict(),
             },
             path / "checkpoint.pth",
         )
@@ -69,6 +71,9 @@ class TrainState:
             checkpoint = torch.load(path / "checkpoint.pth")
             assert self.ranker is not None
             self.ranker.load_state_dict(checkpoint["model_state_dict"])
+
+            if self.sampler is not None:
+                self.sampler.load_state_dict(checkpoint["sampler_state_dict"])
 
             if self.optimizer is not None:
                 self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
@@ -117,7 +122,7 @@ class TrainContext(EasyLogger):
         self.state = self.newstate(self.oldstate)
         self.state.epoch += 1
 
-    def load_bestcheckpoint(self, target, ranker, optimizer):
+    def load_bestcheckpoint(self, target, ranker, optimizer, sampler):
         # Find all the potential epochs
         epochs = []
         for f in self.path.glob(f"{TrainContext.PREFIX}*"):
@@ -134,12 +139,14 @@ class TrainContext(EasyLogger):
             try:
                 self.state = self.newstate()
                 self.state.ranker = ranker
+                self.state.sampler = sampler
                 self.state.optimizer = optimizer
                 self.state.load(path)
                 return True
-
+            except NotImplementedError:
+                logger.error("Not removing checkpoint")
+                raise
             except Exception:
-                # FIXME: prevent deletion (do a save/load cycle to check first)?
                 rmtree(path)
                 self.logger.exception(f"Cannot load from epoch %d", epoch)
 
@@ -218,23 +225,26 @@ class Trainer(Config, EasyLogger):
         """Change the computing device (if this is needed)"""
         pass
 
-    def iter_train(self, loadepoch: int) -> Iterator[TrainState]:
+    def iter_train(self, max_epoch: int) -> Iterator[TrainState]:
         context = self.context
 
         self.logger.info("Transfering model to device %s", self.device)
         self.ranker.to(self.device)
         optimizer = self.optimizer(self.ranker.parameters())
 
-        if self.context.load_bestcheckpoint(loadepoch, self.ranker, optimizer):
+        if self.context.load_bestcheckpoint(
+            max_epoch, self.ranker, optimizer, self.sampler
+        ):
             if self.scheduler:
                 context.state.scheduler = self.scheduler(
                     context.state.optimizer,
-                    last_epoch=loadepoch * self.batches_per_epoch,
+                    last_epoch=context.state.epoch * self.batches_per_epoch,
                 )
             yield context.state
         else:
             context.state.optimizer = optimizer
             context.state.ranker = self.ranker
+            context.state.sampler = self.sampler
 
             if self.scheduler:
                 context.state.scheduler = self.scheduler(context.state.optimizer)
@@ -257,7 +267,7 @@ class Trainer(Config, EasyLogger):
             ) as pbar:
 
                 # Epoch: loop over batches
-                metrics = MetricAccumulator()
+                metrics = Metrics()
                 for b in range(self.batches_per_epoch):
                     batch = next(self.train_iter)
                     metrics.merge(batcher(batch))
@@ -282,19 +292,17 @@ class Trainer(Config, EasyLogger):
 
     def do_train(self, microbatches: Iterator[BaseRecords]):
         """Train on a series of microbatches"""
-        metrics = MetricAccumulator()
+        metrics = Metrics()
         self.context.state.optimizer.zero_grad()
         for microbatch in microbatches:
             self.train_batch_backward(microbatch, metrics)
         return metrics
 
-    def train_batch_backward(self, records: BaseRecords, metrics: MetricAccumulator):
+    def train_batch_backward(self, records: BaseRecords, metrics: Metrics):
         """Combines a batch train and backard"""
         loss = self.train_batch(records, metrics)
         loss.backward()
         return loss, metrics
 
-    def train_batch(
-        self, records: BaseRecords, metrics: MetricAccumulator
-    ) -> torch.Tensor:
+    def train_batch(self, records: BaseRecords, metrics: Metrics) -> torch.Tensor:
         raise NotImplementedError()

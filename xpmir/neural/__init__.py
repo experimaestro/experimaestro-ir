@@ -1,9 +1,10 @@
-from typing import Generic, List, Optional, TypeVar
+from typing import Generic, Iterable, List, Optional, TypeVar
 import torch
 import torch.nn as nn
 
 from experimaestro import Param
-from xpmir.letor.records import BaseRecords
+from xpmir.letor.metrics import Metrics
+from xpmir.letor.records import BaseRecords, Document, Query
 from xpmir.rankers import LearnableScorer
 from xpmir.vocab import Vocab
 
@@ -14,8 +15,44 @@ class TorchLearnableScorer(LearnableScorer, nn.Module):
     def __init__(self):
         nn.Module.__init__(self)
 
-    def __call__(self, inputs: BaseRecords):
-        return nn.Module.__call__(self, inputs)
+    def __call__(self, inputs: BaseRecords, metrics: Metrics = None):
+        return nn.Module.__call__(self, inputs, metrics)
+
+
+class SeparateRepresentationTorchScorer(TorchLearnableScorer):
+    """Neural scorer based on (at least a partially) independant representation
+    of
+
+    This is the base class for all scorers that depend on a map
+    of cosine/inner products between query and document tokens.
+    """
+
+    def forward(self, inputs: BaseRecords, metrics: Metrics = None):
+        # Forward to model
+        enc_queries = [self._encode_queries(q.text) for q in inputs.unique_queries]
+        enc_documents = [self._encode_document(d.text) for d in inputs.unique_documents]
+
+        pairs = inputs.pairs
+        if pairs is None:
+            self.score_product(enc_queries, enc_documents)
+
+        # Case where pairs of indices are given
+        q_ix, d_ix = pairs
+        device = enc_queries.device
+
+        return self.score_pairs(
+            torch.index_select(enc_queries, 0, torch.LongTensor(q_ix, device=device)),
+            torch.index_select(enc_documents, 0, torch.LongTensor(d_ix, device=device)),
+        )
+
+    def encode(self, texts: Iterable[str]):
+        raise NotImplementedError()
+
+    def encode_documents(self, texts: Iterable[str]):
+        return self.encode(texts)
+
+    def encode_queries(self, texts: Iterable[str]):
+        return self.encode(texts)
 
 
 class InteractionScorer(TorchLearnableScorer):
@@ -37,12 +74,9 @@ class InteractionScorer(TorchLearnableScorer):
     vocab: Param[Vocab]
     qlen: Param[int] = 20
     dlen: Param[int] = 2000
-    add_runscore: Param[bool] = False
 
     def initialize(self, random):
         self.random = random
-        if self.add_runscore:
-            self.runscore_alpha = torch.nn.Parameter(torch.full((1,), -1.0))
         self.vocab.initialize()
 
     def __validate__(self):
@@ -53,22 +87,13 @@ class InteractionScorer(TorchLearnableScorer):
             self.qlen <= self.vocab.maxtokens()
         ), f"The maximum query length ({self.qlen}) should be less that what the vocab can process ({self.vocab.maxtokens()})"
 
-    def forward(self, inputs: BaseRecords):
+    def forward(self, inputs: BaseRecords, metrics: Metrics = None):
         # Forward to model
-        result = self._forward(inputs)
-
-        if len(result.shape) == 2 and result.shape[1] == 1:
-            result = result.reshape(result.shape[0])
-
-        # Add run score if needed
-        if self.add_runscore:
-            alpha = torch.sigmoid(self.runscore_alpha)
-            scores = torch.Tensor([d.score for d in inputs.documents])
-            result = alpha * result + (1 - alpha) * scores
+        result = self._forward(inputs, metrics)
 
         return result
 
-    def _forward(self, inputs: BaseRecords):
+    def _forward(self, inputs: BaseRecords, metrics: Metrics = None):
         raise NotImplementedError
 
     def save(self, path):

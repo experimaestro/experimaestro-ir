@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from experimaestro import Param, Config
 from xpmir.letor.records import PointwiseRecords
-from xpmir.letor.trainers import MetricAccumulator, Trainer
+from xpmir.letor.trainers import Metrics, Trainer
 
 
 class PointwiseLoss(Config):
@@ -70,7 +70,7 @@ class PointwiseTrainer(Trainer):
 
             yield batch
 
-    def train_batch(self, metrics: MetricAccumulator):
+    def train_batch(self, metrics: Metrics):
         # Get the next batch
         batch = next(self.train_iter)
 

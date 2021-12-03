@@ -5,15 +5,22 @@ from torch import nn
 from torch.functional import Tensor
 import torch.nn.functional as F
 from experimaestro import Config, default, Annotated, Param
+from xpmir.letor.metrics import ScalarMetric
 from xpmir.letor.records import Document, PairwiseRecord, PairwiseRecords, Query
-from xpmir.letor.trainers import MetricAccumulator, Trainer
+from xpmir.letor.trainers import Metrics, Trainer
 import numpy as np
+from xpmir.rankers import LearnableScorer, ScorerOutputType
 
 
 class PairwiseLoss(Config, nn.Module):
     NAME = "?"
 
-    def compute(self, rel_scores_by_record: Tensor) -> Tuple[Tensor, Dict[str, Tensor]]:
+    def initialize(self, ranker: LearnableScorer):
+        pass
+
+    def compute(
+        self, rel_scores_by_record: Tensor, metrics: Metrics
+    ) -> Tuple[Tensor, Dict[str, Tensor]]:
         """
         Compute the loss
 
@@ -27,26 +34,26 @@ class PairwiseLoss(Config, nn.Module):
 class CrossEntropyLoss(PairwiseLoss):
     NAME = "cross-entropy"
 
-    def compute(self, rel_scores_by_record):
+    def compute(self, rel_scores_by_record, metrics: Metrics):
         target = (
             torch.zeros(rel_scores_by_record.shape[0])
             .long()
             .to(rel_scores_by_record.device)
         )
-        return F.cross_entropy(rel_scores_by_record, target, reduction="mean"), {}
+        return F.cross_entropy(rel_scores_by_record, target, reduction="mean")
 
 
 class NogueiraCrossEntropyLoss(PairwiseLoss):
     NAME = "nogueira-cross-entropy"
 
-    def compute(self, rel_scores_by_record):
+    def compute(self, rel_scores_by_record, metrics: Metrics):
         """
         cross entropy loss formulation for BERT from:
         > Rodrigo Nogueira and Kyunghyun Cho. 2019.Passage re-ranking with bert. ArXiv,
         > abs/1901.04085.
         """
         log_probs = -rel_scores_by_record.log_softmax(dim=2)
-        return (log_probs[:, 0, 0] + log_probs[:, 1, 1]).mean(), {}
+        return (log_probs[:, 0, 0] + log_probs[:, 1, 1]).mean()
 
 
 class SoftmaxLoss(PairwiseLoss):
@@ -54,8 +61,8 @@ class SoftmaxLoss(PairwiseLoss):
 
     NAME = "softmax"
 
-    def compute(self, rel_scores_by_record):
-        return torch.mean(1.0 - F.softmax(rel_scores_by_record, dim=1)[:, 0]), {}
+    def compute(self, rel_scores_by_record, metrics: Metrics):
+        return torch.mean(1.0 - F.softmax(rel_scores_by_record, dim=1)[:, 0])
 
 
 class HingeLoss(PairwiseLoss):
@@ -63,12 +70,17 @@ class HingeLoss(PairwiseLoss):
 
     margin: Param[float] = 1.0
 
-    def compute(self, rel_scores_by_record):
-        return (
-            F.relu(
-                self.margin - rel_scores_by_record[:, :1] + rel_scores_by_record[:, 1:]
-            ).mean(),
-            {},
+    def compute(self, rel_scores_by_record, metrics: Metrics):
+        return F.relu(
+            self.margin - rel_scores_by_record[:, :1] + rel_scores_by_record[:, 1:]
+        ).mean()
+
+
+class BCEWithLogLoss(nn.Module):
+    def __call__(self, log_probs):
+        # Assumes target is a two column matrix (1 0)
+        return 0.5 * (
+            log_probs[:, 0].mean() + (1.0 - log_probs[:, 1].exp()).log().mean()
         )
 
 
@@ -79,17 +91,28 @@ class PointwiseCrossEntropyLoss(PairwiseLoss):
 
     NAME = "pointwise-cross-entropy"
 
-    def __init__(self):
-        super().__init__()
-        self.loss = nn.BCEWithLogitsLoss()
+    def initialize(self, ranker: LearnableScorer):
+        super().initialize(ranker)
+        self.rankerOutputType = ranker.outputType
+        if ranker.outputType == ScorerOutputType.REAL:
+            self.loss = nn.BCEWithLogitsLoss()
+        elif ranker.outputType == ScorerOutputType.PROBABILITY:
+            self.loss = nn.BCELoss()
+        elif ranker.outputType == ScorerOutputType.LOG_PROBABILITY:
+            self.loss = BCEWithLogLoss()
+        else:
+            raise Exception("Not implemented")
 
-    def compute(self, rel_scores_by_record):
+    def compute(self, rel_scores_by_record, metrics: Metrics):
+        if self.rankerOutputType == ScorerOutputType.LOG_PROBABILITY:
+            return self.loss(rel_scores_by_record)
+
         device = rel_scores_by_record.device
         dim = rel_scores_by_record.shape[0]
         target = torch.cat(
             (torch.ones(dim, device=device), torch.zeros(dim, device=device))
         )
-        return self.loss(rel_scores_by_record.T.flatten(), target), {}
+        return self.loss(rel_scores_by_record.T.flatten(), target)
 
 
 class PairwiseTrainer(Trainer):
@@ -102,11 +125,14 @@ class PairwiseTrainer(Trainer):
 
     lossfn: Annotated[PairwiseLoss, default(SoftmaxLoss())]
 
-    def initialize(self, random: np.random.RandomState, ranker, context):
+    def initialize(
+        self, random: np.random.RandomState, ranker: LearnableScorer, context
+    ):
         super().initialize(random, ranker, context)
 
         self.train_iter_core = self.sampler.pairwiserecord_iter()
         self.train_iter = self.iter_batches(self.train_iter_core)
+        self.lossfn.initialize(ranker)
 
     def to(self, device):
         self.lossfn.to(device)
@@ -118,9 +144,9 @@ class PairwiseTrainer(Trainer):
                 batch.add(record)
             yield batch
 
-    def train_batch(self, records: PairwiseRecords, metrics: MetricAccumulator):
+    def train_batch(self, records: PairwiseRecords, metrics: Metrics):
         # Get the next batch and compute the scores for each query/document
-        rel_scores = self.ranker(records)
+        rel_scores = self.ranker(records, metrics)
 
         if torch.isnan(rel_scores).any() or torch.isinf(rel_scores).any():
             self.logger.error("nan or inf relevance score detected. Aborting.")
@@ -128,17 +154,18 @@ class PairwiseTrainer(Trainer):
 
         # Reshape to get the pairs and compute the loss
         pairwise_scores = rel_scores.reshape(2, len(records)).T
-        loss, other_losses = self.lossfn.compute(pairwise_scores)
+        loss = self.lossfn.compute(pairwise_scores, metrics)
 
-        losses = {
-            f"pairwise-{self.lossfn.NAME}": float(loss.item()),
-            "acc": float(self.acc(pairwise_scores).item()),
-        }
-
-        for key, value in other_losses.items():
-            losses[f"pairwise-{key}"] = float(value.item())
-
-        metrics.update(losses, len(records))
+        metrics.add(
+            ScalarMetric(
+                f"pairwise-{self.lossfn.NAME}", float(loss.item()), len(rel_scores)
+            )
+        )
+        metrics.add(
+            ScalarMetric(
+                f"accuracy", float(self.acc(pairwise_scores).item()), len(rel_scores)
+            )
+        )
 
         return loss
 

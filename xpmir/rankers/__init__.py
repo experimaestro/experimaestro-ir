@@ -1,11 +1,13 @@
 # This package contains all rankers
 
+from enum import Enum
 from typing import Iterable, Iterator, List, Optional
 import torch
 from experimaestro import Param, Config, Option, documentation
 from xpmir.index import Index
 from xpmir.letor import DEFAULT_DEVICE, Device, Random
 from xpmir.letor.batchers import Batcher
+from xpmir.letor.metrics import Metrics
 from xpmir.letor.records import Document, BaseRecords, ProductRecords, Query
 from xpmir.utils import EasyLogger, easylog
 
@@ -22,10 +24,23 @@ class ScoredDocument:
         return self.score < other.score
 
 
+class ScorerOutputType(Enum):
+    REAL = 0
+    """An unbounded scalar value"""
+
+    LOG_PROBABILITY = 1
+    """A log probability, bounded by 0"""
+
+    PROBABILITY = 2
+    """A probability, in ]0,1["""
+
+
 class Scorer(Config, EasyLogger):
     """Query-document scorer
 
     A model able to give a score to a list of documents given a query"""
+
+    outputType: ScorerOutputType = ScorerOutputType.REAL
 
     def rsv(
         self, query: str, documents: Iterable[ScoredDocument], keepcontent=False
@@ -74,7 +89,7 @@ class LearnableScorer(Scorer):
         """
         pass
 
-    def __call__(self, inputs: "BaseRecords"):
+    def __call__(self, inputs: "BaseRecords", metrics: Metrics):
         """Computes the score of all (query, document) pairs
 
         Different subclasses can process the input more or
