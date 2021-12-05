@@ -16,7 +16,7 @@ from xpmir.utils import EasyLogger, easylog
 from xpmir.letor.optim import Adam, Optimizer
 from xpmir.letor import Device, DEFAULT_DEVICE
 from xpmir.letor.batchers import Batcher
-from xpmir.letor.metrics import Metrics
+from xpmir.letor.traininfo import TrainingInformation, TrainingInformation
 
 logger = easylog()
 
@@ -293,16 +293,19 @@ class Trainer(Config, EasyLogger):
     def do_train(self, microbatches: Iterator[BaseRecords]):
         """Train on a series of microbatches"""
         metrics = Metrics()
+        info = TrainingInformation(metrics, epoch)
         self.context.state.optimizer.zero_grad()
         for microbatch in microbatches:
-            self.train_batch_backward(microbatch, metrics)
+            self.train_batch_backward(microbatch, info)
         return metrics
 
-    def train_batch_backward(self, records: BaseRecords, metrics: Metrics):
+    def train_batch_backward(self, records: BaseRecords, info: TrainingInformation):
         """Combines a batch train and backard"""
-        loss = self.train_batch(records, metrics)
+        loss = self.train_batch(records, info)
         loss.backward()
-        return loss, metrics
+        return loss
 
-    def train_batch(self, records: BaseRecords, metrics: Metrics) -> torch.Tensor:
+    def train_batch(
+        self, records: BaseRecords, info: TrainingInformation
+    ) -> torch.Tensor:
         raise NotImplementedError()

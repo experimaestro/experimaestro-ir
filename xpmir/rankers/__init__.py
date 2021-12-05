@@ -7,7 +7,7 @@ from experimaestro import Param, Config, Option, documentation
 from xpmir.index import Index
 from xpmir.letor import DEFAULT_DEVICE, Device, Random
 from xpmir.letor.batchers import Batcher
-from xpmir.letor.metrics import Metrics
+from xpmir.letor.traininfo import TrainingInformation
 from xpmir.letor.records import Document, BaseRecords, ProductRecords, Query
 from xpmir.utils import EasyLogger, easylog
 
@@ -89,7 +89,7 @@ class LearnableScorer(Scorer):
         """
         pass
 
-    def __call__(self, inputs: "BaseRecords", metrics: Metrics):
+    def __call__(self, inputs: "BaseRecords", info: TrainingInformation):
         """Computes the score of all (query, document) pairs
 
         Different subclasses can process the input more or

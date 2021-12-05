@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from experimaestro import Param
-from xpmir.letor.metrics import Metrics
+from xpmir.letor.traininfo import TrainingInformation
 from xpmir.letor.records import BaseRecords
 from xpmir.neural import TorchLearnableScorer
 from xpmir.vocab.encoders import DualTextEncoder
@@ -32,7 +32,7 @@ class JointClassifier(TorchLearnableScorer):
     def parameters(self):
         return self.encoder.parameters()
 
-    def forward(self, inputs: BaseRecords, metrics: Metrics = None):
+    def forward(self, inputs: BaseRecords, info: TrainingInformation = None):
         # Encode queries and documents
         pairs = self.encoder(
             [(q.text, d.text) for q, d in zip(inputs.queries, inputs.documents)]

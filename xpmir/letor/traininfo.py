@@ -1,5 +1,6 @@
 from torch.utils.tensorboard.writer import SummaryWriter
 from typing import Dict
+from dataclasses import dataclass
 
 
 class Metric:
@@ -63,3 +64,9 @@ class Metrics:
     def report(self, epoch, writer, prefix):
         for value in self.metrics.values():
             value.report(epoch, writer, prefix)
+
+
+@dataclass
+class TrainingInformation:
+    metrics: Metrics
+    epoch: int

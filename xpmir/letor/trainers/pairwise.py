@@ -5,9 +5,9 @@ from torch import nn
 from torch.functional import Tensor
 import torch.nn.functional as F
 from experimaestro import Config, default, Annotated, Param
-from xpmir.letor.metrics import ScalarMetric
+from xpmir.letor.traininfo import ScalarMetric
 from xpmir.letor.records import Document, PairwiseRecord, PairwiseRecords, Query
-from xpmir.letor.trainers import Metrics, Trainer
+from xpmir.letor.trainers import TrainingInformation, Trainer
 import numpy as np
 from xpmir.rankers import LearnableScorer, ScorerOutputType
 
@@ -19,7 +19,7 @@ class PairwiseLoss(Config, nn.Module):
         pass
 
     def compute(
-        self, rel_scores_by_record: Tensor, metrics: Metrics
+        self, rel_scores_by_record: Tensor, info: TrainingInformation
     ) -> Tuple[Tensor, Dict[str, Tensor]]:
         """
         Compute the loss
@@ -34,7 +34,7 @@ class PairwiseLoss(Config, nn.Module):
 class CrossEntropyLoss(PairwiseLoss):
     NAME = "cross-entropy"
 
-    def compute(self, rel_scores_by_record, metrics: Metrics):
+    def compute(self, rel_scores_by_record, info: TrainingInformation):
         target = (
             torch.zeros(rel_scores_by_record.shape[0])
             .long()
@@ -46,7 +46,7 @@ class CrossEntropyLoss(PairwiseLoss):
 class NogueiraCrossEntropyLoss(PairwiseLoss):
     NAME = "nogueira-cross-entropy"
 
-    def compute(self, rel_scores_by_record, metrics: Metrics):
+    def compute(self, rel_scores_by_record, info: TrainingInformation):
         """
         cross entropy loss formulation for BERT from:
         > Rodrigo Nogueira and Kyunghyun Cho. 2019.Passage re-ranking with bert. ArXiv,
@@ -61,7 +61,7 @@ class SoftmaxLoss(PairwiseLoss):
 
     NAME = "softmax"
 
-    def compute(self, rel_scores_by_record, metrics: Metrics):
+    def compute(self, rel_scores_by_record, info: TrainingInformation):
         return torch.mean(1.0 - F.softmax(rel_scores_by_record, dim=1)[:, 0])
 
 
@@ -70,24 +70,37 @@ class HingeLoss(PairwiseLoss):
 
     margin: Param[float] = 1.0
 
-    def compute(self, rel_scores_by_record, metrics: Metrics):
+    def compute(self, rel_scores_by_record, info: TrainingInformation):
         return F.relu(
             self.margin - rel_scores_by_record[:, :1] + rel_scores_by_record[:, 1:]
         ).mean()
 
 
 class BCEWithLogLoss(nn.Module):
-    def __call__(self, log_probs):
-        # Assumes target is a two column matrix (1 0)
-        return 0.5 * (
-            log_probs[:, 0].mean() + (1.0 - log_probs[:, 1].exp()).log().mean()
+    def __call__(self, log_probs, info: TrainingInformation):
+        # Assumes target is a two column matrix (rel. / not rel.)
+        rel_cost, nrel_cost = (
+            log_probs[:, 0].mean(),
+            (1.0 - log_probs[:, 1].exp()).log().mean(),
         )
+        info.metrics.add(
+            ScalarMetric("pairwise-pce-rel", rel_cost.item(), len(log_probs))
+        )
+        info.metrics.add(
+            ScalarMetric("pairwise-pce-nrel", nrel_cost.item(), len(log_probs))
+        )
+        return (rel_cost + nrel_cost) / 2
 
 
 class PointwiseCrossEntropyLoss(PairwiseLoss):
     """Regular PCE (>0 for relevant, 0 otherwise)
 
-    The score of a document is sigmoid(...)"""
+    Uses the ranker output type:
+
+    - If real, uses a BCELossWithLogits (sigmoid transformation)
+    - If probability, uses the BCELoss
+    - If log probability, uses a custom BCE loss
+    """
 
     NAME = "pointwise-cross-entropy"
 
@@ -103,9 +116,9 @@ class PointwiseCrossEntropyLoss(PairwiseLoss):
         else:
             raise Exception("Not implemented")
 
-    def compute(self, rel_scores_by_record, metrics: Metrics):
+    def compute(self, rel_scores_by_record, info: TrainingInformation):
         if self.rankerOutputType == ScorerOutputType.LOG_PROBABILITY:
-            return self.loss(rel_scores_by_record)
+            return self.loss(rel_scores_by_record, metrics)
 
         device = rel_scores_by_record.device
         dim = rel_scores_by_record.shape[0]
@@ -144,9 +157,9 @@ class PairwiseTrainer(Trainer):
                 batch.add(record)
             yield batch
 
-    def train_batch(self, records: PairwiseRecords, metrics: Metrics):
+    def train_batch(self, records: PairwiseRecords, info: TrainingInformation):
         # Get the next batch and compute the scores for each query/document
-        rel_scores = self.ranker(records, metrics)
+        rel_scores = self.ranker(records, info)
 
         if torch.isnan(rel_scores).any() or torch.isinf(rel_scores).any():
             self.logger.error("nan or inf relevance score detected. Aborting.")
@@ -154,14 +167,14 @@ class PairwiseTrainer(Trainer):
 
         # Reshape to get the pairs and compute the loss
         pairwise_scores = rel_scores.reshape(2, len(records)).T
-        loss = self.lossfn.compute(pairwise_scores, metrics)
+        loss = self.lossfn.compute(pairwise_scores, info)
 
-        metrics.add(
+        info.metrics.add(
             ScalarMetric(
                 f"pairwise-{self.lossfn.NAME}", float(loss.item()), len(rel_scores)
             )
         )
-        metrics.add(
+        info.metrics.add(
             ScalarMetric(
                 f"accuracy", float(self.acc(pairwise_scores).item()), len(rel_scores)
             )

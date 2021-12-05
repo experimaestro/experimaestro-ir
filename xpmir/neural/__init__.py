@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 
 from experimaestro import Param
-from xpmir.letor.metrics import Metrics
+from xpmir.letor.traininfo import TrainingInformation
 from xpmir.letor.records import BaseRecords, Document, Query
 from xpmir.rankers import LearnableScorer
 from xpmir.vocab import Vocab
@@ -15,7 +15,7 @@ class TorchLearnableScorer(LearnableScorer, nn.Module):
     def __init__(self):
         nn.Module.__init__(self)
 
-    def __call__(self, inputs: BaseRecords, metrics: Metrics = None):
+    def __call__(self, inputs: BaseRecords, info: TrainingInformation = None):
         return nn.Module.__call__(self, inputs, metrics)
 
 
@@ -27,7 +27,7 @@ class SeparateRepresentationTorchScorer(TorchLearnableScorer):
     of cosine/inner products between query and document tokens.
     """
 
-    def forward(self, inputs: BaseRecords, metrics: Metrics = None):
+    def forward(self, inputs: BaseRecords, info: TrainingInformation = None):
         # Forward to model
         enc_queries = [self._encode_queries(q.text) for q in inputs.unique_queries]
         enc_documents = [self._encode_document(d.text) for d in inputs.unique_documents]
@@ -87,13 +87,13 @@ class InteractionScorer(TorchLearnableScorer):
             self.qlen <= self.vocab.maxtokens()
         ), f"The maximum query length ({self.qlen}) should be less that what the vocab can process ({self.vocab.maxtokens()})"
 
-    def forward(self, inputs: BaseRecords, metrics: Metrics = None):
+    def forward(self, inputs: BaseRecords, info: TrainingInformation = None):
         # Forward to model
         result = self._forward(inputs, metrics)
 
         return result
 
-    def _forward(self, inputs: BaseRecords, metrics: Metrics = None):
+    def _forward(self, inputs: BaseRecords, info: TrainingInformation = None):
         raise NotImplementedError
 
     def save(self, path):
