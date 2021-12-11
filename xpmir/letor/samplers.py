@@ -1,8 +1,7 @@
-import itertools
 from pathlib import Path
-from typing import Any, Dict, Iterable, Iterator, List, NamedTuple, Optional, Tuple
+from typing import Dict, Iterator, List, Optional, Tuple
 import numpy as np
-from datamaestro_text.data.ir import Adhoc, AdhocTopic, TrainingTriplets
+from datamaestro_text.data.ir import Adhoc, TrainingTriplets
 from experimaestro import Config, Param, tqdm
 from experimaestro.annotations import cache
 import torch
@@ -15,11 +14,12 @@ from xpmir.letor.records import (
     Query,
 )
 from xpmir.rankers import Retriever, ScoredDocument
-from xpmir.test.neural.test_forward import pairwise
 from xpmir.utils import EasyLogger, easylog
 from xpmir.index import Index
 
 logger = easylog()
+
+# --- Base classes for samplers
 
 
 class Sampler(Config, EasyLogger):
@@ -28,16 +28,6 @@ class Sampler(Config, EasyLogger):
     def initialize(self, random: np.random.RandomState):
         self.random = random
 
-    def record_iter(self) -> Iterator[PointwiseRecord]:
-        """Returns an iterator over records (query, document, relevance)"""
-        raise NotImplementedError(f"{self.__class__} does not implement record_iter()")
-
-    def pairwiserecord_iter(self) -> Iterator[PairwiseRecord]:
-        """Returns an iterator over records (query, document, relevance)"""
-        raise NotImplementedError(
-            f"{self.__class__} does not implement pairwiserecord_iter()"
-        )
-
     def state_dict(self) -> Dict:
         raise NotImplementedError(f"state_dict() not implemented in {self.__class__}")
 
@@ -45,14 +35,32 @@ class Sampler(Config, EasyLogger):
         raise NotImplementedError(f"load_dict() not implemented in {self.__class__}")
 
 
-class BatchwiseSampler(Sampler, Iterable[BatchwiseRecords]):
-    def __iter__(self, batch_size: int) -> Iterator[BatchwiseRecords]:
+class PointwiseSampler(Sampler):
+    def pointwise_iter(self) -> Iterator[PointwiseRecord]:
+        raise NotImplementedError(f"{self.__class__} should implement PointwiseRecord")
+
+
+class PairwiseSampler(Sampler):
+    def pairwise_iter(self) -> Iterator[PairwiseRecord]:
         """Iterate over batches of size (# of queries) batch_size
 
         Args:
             batch_size: Number of queries per batch
         """
         raise NotImplementedError(f"{self.__class__} should implement __iter__")
+
+
+class BatchwiseSampler(Sampler):
+    def batchwise_iter(self) -> Iterator[BatchwiseRecords]:
+        """Iterate over batches of size (# of queries) batch_size
+
+        Args:
+            batch_size: Number of queries per batch
+        """
+        raise NotImplementedError(f"{self.__class__} should implement __iter__")
+
+
+# --- Real instances
 
 
 class ModelBasedSampler(Sampler):
@@ -166,8 +174,9 @@ class ModelBasedSampler(Sampler):
                 yield oldtitle, positives, negatives
 
 
-class PointwiseModelBasedSampler(ModelBasedSampler):
+class PointwiseModelBasedSampler(PointwiseSampler, ModelBasedSampler):
     relevant_ratio: Param[float] = 0.5
+    """The target relevance ratio"""
 
     def initialize(self, random):
         super().initialize(random)
@@ -204,7 +213,7 @@ class PointwiseModelBasedSampler(ModelBasedSampler):
                 yield self.prepare(self.neg_records[self.random.randint(0, nneg)])
 
 
-class PairwiseModelBasedSampler(ModelBasedSampler):
+class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
     """A pairwise sampler based on a retrieval model"""
 
     def initialize(self, random):
@@ -225,7 +234,7 @@ class PairwiseModelBasedSampler(ModelBasedSampler):
         text = self.index.document_text(docid)
         return Document(docid, text, score)
 
-    def pairwiserecord_iter(self) -> Iterator[PairwiseRecord]:
+    def pairwise_iter(self) -> Iterator[PairwiseRecord]:
         while True:
             title, positives, negatives = self.topics[
                 self.random.randint(0, len(self.topics))
@@ -234,20 +243,17 @@ class PairwiseModelBasedSampler(ModelBasedSampler):
 
 
 class PairwiseInBatchNegativesSampler(BatchwiseSampler):
-    """An in-batch negative sampler constructured from a pairwise one
+    """An in-batch negative sampler constructured from a pairwise one"""
 
-    Args:
-        BatchwiseSampler: A pairwise sampler
-    """
-
-    sampler: Param[PairwiseModelBasedSampler]
+    sampler: Param[PairwiseSampler]
+    """The base pairwise sampler"""
 
     def initialize(self, random):
         super().initialize(random)
         self.sampler.initialize(random)
 
-    def __iter__(self, batch_size: int) -> Iterator[BatchwiseRecords]:
-        it = self.sampler.pairwiserecord_iter()
+    def batchwise_iter(self, batch_size: int) -> Iterator[BatchwiseRecords]:
+        it = self.sampler.pairwise_iter()
 
         # Pre-compute relevance matrix
         relevances = torch.diag(torch.ones(batch_size * 2, dtype=torch.float))
@@ -261,7 +267,7 @@ class PairwiseInBatchNegativesSampler(BatchwiseSampler):
             yield batch
 
 
-class TripletBasedSampler(Sampler):
+class TripletBasedSampler(PairwiseSampler):
     """Sampler based on a triplet file
 
     Attributes:
@@ -279,6 +285,7 @@ class TripletBasedSampler(Sampler):
         ), "An index should be provided if source is IDs only"
 
     def _fromid(self, docid: str):
+        assert self.index is not None
         return Document(docid, self.index.document_text(docid), None)
 
     def __init__(self):
@@ -289,7 +296,7 @@ class TripletBasedSampler(Sampler):
     def _fromtext(text: str):
         return Document(None, text, None)
 
-    def pairwiserecord_iter(self) -> Iterator[PairwiseRecord]:
+    def pairwise_iter(self) -> Iterator[PairwiseRecord]:
         # Nature of the documents
         getdoc = self._fromid if self.source.ids else self._fromtext
 

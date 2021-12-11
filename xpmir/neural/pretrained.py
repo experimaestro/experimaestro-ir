@@ -2,8 +2,6 @@
 
 from xpmir.neural.siamese import DotDense
 
-# class TasBalancedTextEncoder(SeparateRepresentationTorchScorer):
-
 
 def tas_balanced():
     """Returns the TAS-Balanced model (from huggingface)

@@ -16,7 +16,7 @@ from xpmir.utils import EasyLogger, easylog
 from xpmir.letor.optim import Adam, Optimizer
 from xpmir.letor import Device, DEFAULT_DEVICE
 from xpmir.letor.batchers import Batcher
-from xpmir.letor.traininfo import TrainingInformation, TrainingInformation
+from xpmir.letor.traininfo import TrainingInformation, Metrics
 
 logger = easylog()
 
@@ -252,7 +252,7 @@ class Trainer(Config, EasyLogger):
         self.to(self.device)
         b_count = self.batches_per_epoch * self.batch_size
 
-        batcher = self.batcher.initialize(self.batch_size, self.do_train)
+        batcher = self.batcher.initialize(self.batch_size)
 
         while True:
             # Step to the next epoch
@@ -270,7 +270,7 @@ class Trainer(Config, EasyLogger):
                 metrics = Metrics()
                 for b in range(self.batches_per_epoch):
                     batch = next(self.train_iter)
-                    metrics.merge(batcher(batch))
+                    metrics.merge(batcher.process_withreplay(batch, self.do_train))
                     pbar.update(self.batch_size)
 
                     # Optimizer step and scheduler step
@@ -293,7 +293,7 @@ class Trainer(Config, EasyLogger):
     def do_train(self, microbatches: Iterator[BaseRecords]):
         """Train on a series of microbatches"""
         metrics = Metrics()
-        info = TrainingInformation(metrics, epoch)
+        info = TrainingInformation(metrics, self.context.state.epoch)
         self.context.state.optimizer.zero_grad()
         for microbatch in microbatches:
             self.train_batch_backward(microbatch, info)

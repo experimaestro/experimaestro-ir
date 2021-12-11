@@ -58,6 +58,9 @@ class IndexCollection(Index):
 
     CLASSPATH = "io.anserini.index.IndexCollection"
 
+    id: Param[str] = ""
+    """Use an empty ID since identifier is determined by documents"""
+
     def execute(self):
         command = javacommand()
         command.append(IndexCollection.CLASSPATH)

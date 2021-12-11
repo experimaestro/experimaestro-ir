@@ -18,9 +18,11 @@ class Query(NamedTuple):
 
 
 class Document(NamedTuple):
-    docid: str
-    text: str
-    score: float
+    """A document (the docid or the text can be None, but not both)"""
+
+    docid: Optional[str]
+    text: Optional[str]
+    score: Optional[float]
 
 
 class PointwiseRecord:
@@ -62,7 +64,10 @@ class TokenizedTexts:
         self.mask = mask
 
 
-class BaseRecords:
+RT = TypeVar("RT")
+
+
+class BaseRecords(List[RT]):
     """Base records just exposes iterables on (query, document) pairs
 
     Records can be structured, i.e. the same queries and documents
@@ -72,6 +77,7 @@ class BaseRecords:
 
     queries: Iterable[Query]
     documents: Iterable[Document]
+    is_product = False
 
     @property
     def unique_queries(self) -> Iterable[Query]:
@@ -84,8 +90,9 @@ class BaseRecords:
     def pairs(self) -> Tuple[List[int], List[int]]:
         """Returns the list of query/document indices for which we should compute the score,
         or None if all (cartesian product). This method should be used with `unique` set
-        to true to get the queries/documents"""
-        raise NotImplementedError(f"masks() in {self.__class__}")
+        to true to get the queries/documents
+        """
+        raise NotImplementedError(f"pairs() in {self.__class__}")
 
     def __getitem__(self, ix: Union[slice, int]):
         """Sub-sample"""
@@ -100,7 +107,7 @@ class BaseRecords:
         raise NotImplementedError(f"__len__() in {self.__class__}")
 
 
-class PointwiseRecords(BaseRecords):
+class PointwiseRecords(BaseRecords[PointwiseRecord]):
     """Pointwise records are a set of triples (query, document, relevance)"""
 
     # The queries
@@ -216,6 +223,7 @@ class ProductRecords(BatchwiseRecords):
 
     _queries: List[Query]
     _documents: List[Document]
+    is_product = True
 
     def __init__(self):
         self._queries = []
@@ -253,4 +261,10 @@ class ProductRecords(BatchwiseRecords):
         return self._documents
 
     def pairs(self):
-        return None
+        queries = []
+        documents = []
+        for q in range(len(self._queries)):
+            for d in range(len(self._documents)):
+                queries.append(q)
+                documents.append(d)
+        return queries, documents

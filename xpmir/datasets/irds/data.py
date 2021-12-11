@@ -53,7 +53,7 @@ class AdhocAssessments(ir.AdhocAssessments, IRDSId):
         return qrels.values()
 
 
-class AdhocDocuments(ir.AdhocDocuments, IRDSId):
+class AdhocDocuments(ir.AdhocDocumentStore, IRDSId):
     irds: Option[str]
 
     def iter(self) -> Iterator[ir.AdhocDocument]:

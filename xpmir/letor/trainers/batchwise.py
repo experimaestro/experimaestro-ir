@@ -3,6 +3,7 @@ import torch
 import torch.nn.functional as F
 from experimaestro import Config, default, Annotated, Param
 from xpmir.letor.samplers import BatchwiseSampler
+from xpmir.letor.traininfo import TrainingInformation
 from xpmir.rankers import LearnableScorer
 from xpmir.letor.trainers import TrainContext, Trainer
 import numpy as np
@@ -11,13 +12,16 @@ import numpy as np
 class BatchwiseLoss(Config):
     NAME = "?"
 
-    def compute(self, scores: torch.Tensor, relevances: torch.Tensor) -> torch.Tensor:
+    def compute(
+        self, scores: torch.Tensor, relevances: torch.Tensor, info: TrainingInformation
+    ) -> torch.Tensor:
         """
         Compute the loss
 
         Arguments:
 
-        - rel_scores_by_record: A (batch x 2) tensor (positive/negative)
+        - scores: A (queries x documents) tensor
+        - relevances: A (queries x documents) tensor
         """
         raise NotImplementedError()
 
@@ -29,7 +33,7 @@ class CrossEntropyLoss(BatchwiseLoss):
         return F.binary_cross_entropy(scores, relevances, reduction="mean")
 
 
-class ContrastiveLoss:
+class SoftmaxCrossEntropy:
     """Computes the probability of relevant documents for a given query"""
 
     def compute(self, score, relevances):

@@ -2,10 +2,12 @@ from typing import List, Tuple
 from experimaestro import Config, Param
 import torch.nn as nn
 import torch
+from xpmir.letor.samplers import PairwiseSampler, PairwiseInBatchNegativesSampler
 from xpmir.neural import TorchLearnableScorer
 from xpmir.vocab.huggingface import TransformerVocab
-from xpmir.letor.records import BaseRecords
+from xpmir.vocab.encoders import TextEncoder
 from xpmir.letor.trainers.batchwise import BatchwiseTrainer
+from xpmir.neural.siamese import DotDense, FlopsRegularizer
 from transformers import AutoModelForMaskedLM
 
 
@@ -36,41 +38,56 @@ class SumAggregation(Aggregation):
         )
 
 
-class Splade(TorchLearnableScorer):
-    """Splade model
-
-        SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval (arXiv:2109.10086)
-
-    Attributes:
-
-        encoder: The transformer that will be fine-tuned
-    """
+class SpladeTextEncoder(TextEncoder):
+    """Splade model (text encoder)"""
 
     AUTOMODEL_CLASS: AutoModelForMaskedLM
     encoder: Param[TransformerVocab]
     aggregation: Param[Aggregation]
 
-    def initialize(self, random):
-        super().initialize(random)
-
+    def initialize(self):
         self.encoder.initialize()
 
-    def score_pairs(self, queries: torch.Tensor, documents: torch.Tensor):
-        return queries.unsqueeze(1) @ documents.unsqueeze(2).flatten()
-
-    def score_product(self, queries: torch.Tensor, documents: torch.Tensor):
-        return (queries @ documents.T).flatten()
-
-    def encode(self, texts: List[str]) -> torch.Tensor:
+    def forward(self, texts: List[str]) -> torch.Tensor:
         """Returns a batch x vocab tensor"""
         tokenized = self.vocab.batch_tokenize(inputs, maskoutput=True)
         out = self.vocab(input_ids=tokenized.ids, attention_mask=tokenized.mask)
-        return self.aggregation(out)
+        out = self.aggregation(out)
+        return out
 
 
-def spladev2(sampler) -> Tuple[BatchwiseTrainer, Splade]:
+def spladeV1():
+    """Returns the Splade architecture"""
+    return Splade(
+        aggregation=LogAggregation(),
+        encoder=TransformerVocab(model_id="distilbert-base-cased"),
+    )
+
+
+def spladeV2():
+    """Returns the Splade v2 architecture
+
+    SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval (arXiv:2109.10086)
+    """
+    encoder = SpladeTextEncoder(
+        aggregation=SumAggregation(),
+        encoder=TransformerVocab(model_id="distilbert-base-cased"),
+    )
+    return DotDense(encoder=encoder, regularizer=FlopsRegularizer)
+
+
+def spladev2(sampler: PairwiseSampler) -> Tuple[BatchwiseTrainer, Splade]:
     """Returns the model described in Splade V2"""
     from xpmir.letor.optim import Adam
+    from xpmir.letor.trainers.batchwise import SoftmaxCrossEntropy
 
-    optimizer = Adam(lr=2e-5)
-    BatchwiseTrainer(sampler=sampler, lossfn=...)
+    ibn_sampler = PairwiseInBatchNegativesSampler(sampler=sampler)
+    trainer = BatchwiseTrainer(
+        batch_size=124,
+        optimizer=Adam(lr=2e-5),
+        sampler=ibn_sampler,
+        lossfn=SoftmaxCrossEntropy(),
+    )
+
+    # Trained with distillation
+    return trainer, Splade.v2()

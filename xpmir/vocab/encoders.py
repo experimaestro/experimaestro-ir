@@ -1,5 +1,6 @@
 from typing import List, Tuple
 import torch.nn as nn
+import torch
 from experimaestro import Config
 
 
@@ -12,11 +13,16 @@ class Encoder(Config, nn.Module):
 
 
 class TextEncoder(Encoder):
-    """Dense representation of one text"""
+    """Vector representation of a text - can be dense or sparse"""
 
     @property
     def dimension(self):
-        raise NotImplementedError()
+        """Returns the dimension of the representation"""
+        raise NotImplementedError(f"dimension for {self.__class__}")
+
+    def forward(self, texts: List[str]) -> torch.Tensor:
+        """Returns a matrix encoding the provided texts"""
+        raise NotImplementedError(f"forward for {self.__class__}")
 
 
 class DualTextEncoder(Encoder):

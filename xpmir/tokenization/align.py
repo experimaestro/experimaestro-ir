@@ -7,7 +7,7 @@ from typing import (
     List,
     Optional,
     Protocol,
-    NamedTuple,
+    Iterable,
     Tuple,
     TypeVar,
 )
@@ -34,21 +34,23 @@ class Match(Generic[QueryToken, DocumentToken]):
 
 
 def findmatches(
-    query_toks: Iterator[QueryToken], document_toks: Iterator[DocumentToken]
+    query_toks: Iterator[QueryToken], document_toks: Iterator[DocumentToken], all=True
 ) -> Dict[str, Match[QueryToken, DocumentToken]]:
     """Find query tokens in documents"""
     # Find all words in query
     matching = {}
 
     for token in query_toks:
-        match = matching.setdefault(token.string, Match(token.string, [], []))
-        match.query.append(token)
+        if all or token.string not in matching:
+            match = matching.setdefault(token.string, Match(token.string, [], []))
+            match.query.append(token)
 
     # Find all query words in documents
     for token in document_toks:
         match = matching.get(token.string, None)
         if match is not None:
-            match.document.append(token)
+            if all or len(match.document) == 0:
+                match.document.append(token)
 
     return matching
 

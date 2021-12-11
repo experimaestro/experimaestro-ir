@@ -1,6 +1,10 @@
 Learning to rank
 ----------------
 
+.. toctree::
+   :maxdepth: 2
+
+   samplers
 
 Scorers
 =======
@@ -26,10 +30,3 @@ Trainers
 Trainers are responsible for defining the loss (given a learnable scorer)
 
 .. automodule:: xpmir.letor.trainers.Trainer
-
-Sampler
-=======
-
-How to sample learning batches.
-
-.. autosummary:: xpmir.letor.samplers.Sampler

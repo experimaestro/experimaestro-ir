@@ -10,8 +10,8 @@ from xpmir.vocab.encoders import DualTextEncoder
 class JointClassifier(TorchLearnableScorer):
     """Query-Document Representation Classifier
 
-    Based on a query-document representation representation (e.g. BERT [CLS] token),
-    takes a decision
+    Based on a query-document representation representation (e.g. BERT [CLS] token).
+    AKA Cross-Encoder
 
     Attributes:
         encoder: Document (and query) encoder

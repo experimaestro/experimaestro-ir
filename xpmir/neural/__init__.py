@@ -7,6 +7,7 @@ from xpmir.letor.traininfo import TrainingInformation
 from xpmir.letor.records import BaseRecords, Document, Query
 from xpmir.rankers import LearnableScorer
 from xpmir.vocab import Vocab
+from xpmir.vocab.encoders import TextEncoder
 
 
 class TorchLearnableScorer(LearnableScorer, nn.Module):
@@ -16,10 +17,10 @@ class TorchLearnableScorer(LearnableScorer, nn.Module):
         nn.Module.__init__(self)
 
     def __call__(self, inputs: BaseRecords, info: TrainingInformation = None):
-        return nn.Module.__call__(self, inputs, metrics)
+        return nn.Module.__call__(self, inputs, info)
 
 
-class SeparateRepresentationTorchScorer(TorchLearnableScorer):
+class DualRepresentationTorchScorer(TorchLearnableScorer):
     """Neural scorer based on (at least a partially) independant representation
     of
 

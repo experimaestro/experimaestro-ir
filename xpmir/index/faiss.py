@@ -5,13 +5,18 @@ https://github.com/facebookresearch/faiss
 
 from pathlib import Path
 from typing import List
+from experimaestro.core.objects import Config
 import torch
-from experimaestro import Annotated, Option, Task, pathgenerator, Param, tqdm
+from experimaestro import Annotated, Meta, Task, pathgenerator, Param, tqdm
 import logging
-
-from xpmir.index.base import Index
+from datamaestro_text.data.ir import AdhocDocumentStore
 from xpmir.neural.siamese import TextEncoder
 from xpmir.rankers import Retriever, ScoredDocument
+from xpmir.letor.batchers import Batcher
+from xpmir.letor import Device, DEFAULT_DEVICE
+from xpmir.utils import batchiter, easylog
+
+logger = easylog()
 
 try:
     import faiss
@@ -20,9 +25,10 @@ except ImportError:
     raise
 
 
-class FaissIndex(Index):
+class FaissIndex(Config):
     normalize: Param[bool]
     faiss_index: Annotated[Path, pathgenerator("faiss.dat")]
+    documents: Param[AdhocDocumentStore]
 
 
 class IndexBackedFaiss(FaissIndex, Task):
@@ -36,38 +42,35 @@ class IndexBackedFaiss(FaissIndex, Task):
 
     """
 
-    index: Param[Index]
     encoder: Param[TextEncoder]
-    batchsize: Option[int] = 1
+    batchsize: Meta[int] = 1
+    device: Meta[Device] = DEFAULT_DEVICE
+    batcher: Meta[Batcher] = Batcher()
 
     def execute(self):
         index = faiss.IndexFlatL2(self.encoder.dimension)
 
-        def batches():
-            batch = []
-            for _, text in tqdm(
-                self.index.iter_documents(), total=self.index.documentcount
-            ):
-                batch.append(text)
-                if len(batch) >= self.batchsize:
-                    yield batch
-                    batch = []
+        doc_iter = tqdm(
+            self.documents.iter_documents(), total=self.documents.documentcount
+        )
+        batcher = self.batcher.initialize(self.batchsize)
 
-            if batch:
-                yield batch
-
+        self.encoder.to(self.device(logger)).eval()
         with torch.no_grad():
-            for batch in batches():
-                x = self.encoder(batch)
-                if self.normalize:
-                    x /= x.norm(2, keepdim=True, dim=1)
-                index.add(x.cpu().numpy())
+            for batch in batchiter(self.batchsize, doc_iter, index):
+                batcher.process(batch, self.index_documents)
 
         logging.info("Writing FAISS index (%d documents)", index.ntotal)
         faiss.write_index(index, str(self.faiss_index))
 
+    def index_documents(self, batch: List[str], index):
+        x = self.encoder(batch)
+        if self.normalize:
+            x /= x.norm(2, keepdim=True, dim=1)
+        index.add(x.cpu().numpy())
+
     def docid_internal2external(self, docid: int):
-        return self.index.docid_internal2external(docid)
+        return self.documents.docid_internal2external(docid)
 
 
 class FaissRetriever(Retriever):
@@ -81,6 +84,7 @@ class FaissRetriever(Retriever):
 
     encoder: Param[TextEncoder]
     index: Param[FaissIndex]
+    topk: Param[int]
 
     def __postinit__(self):
         self._index = faiss.read_index(str(self.index.faiss_index))
@@ -96,6 +100,8 @@ class FaissRetriever(Retriever):
                 encoded_query.cpu().numpy(), self.topk
             )
             return [
-                ScoredDocument(self.index.docid_internal2external(ix), -distance)
+                ScoredDocument(
+                    self.index.documents.docid_internal2external(ix), -distance
+                )
                 for ix, distance in zip(indices[0], distances[0])
             ]

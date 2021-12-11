@@ -6,7 +6,8 @@ from torch.functional import Tensor
 import torch.nn.functional as F
 from experimaestro import Config, default, Annotated, Param
 from xpmir.letor.traininfo import ScalarMetric
-from xpmir.letor.records import Document, PairwiseRecord, PairwiseRecords, Query
+from xpmir.letor.records import PairwiseRecord, PairwiseRecords
+from xpmir.letor.samplers import PairwiseSampler
 from xpmir.letor.trainers import TrainingInformation, Trainer
 import numpy as np
 from xpmir.rankers import LearnableScorer, ScorerOutputType
@@ -65,6 +66,15 @@ class SoftmaxLoss(PairwiseLoss):
         return torch.mean(1.0 - F.softmax(rel_scores_by_record, dim=1)[:, 0])
 
 
+class LogSoftmaxLoss(PairwiseLoss):
+    """Contrastive loss"""
+
+    NAME = "softmax"
+
+    def compute(self, rel_scores_by_record, info: TrainingInformation):
+        return -F.log_softmax(rel_scores_by_record, dim=1)[:, 0]
+
+
 class HingeLoss(PairwiseLoss):
     NAME = "hinge"
 
@@ -80,8 +90,8 @@ class BCEWithLogLoss(nn.Module):
     def __call__(self, log_probs, info: TrainingInformation):
         # Assumes target is a two column matrix (rel. / not rel.)
         rel_cost, nrel_cost = (
-            log_probs[:, 0].mean(),
-            (1.0 - log_probs[:, 1].exp()).log().mean(),
+            -log_probs[:, 0].mean(),
+            -(1.0 - log_probs[:, 1].exp()).log().mean(),
         )
         info.metrics.add(
             ScalarMetric("pairwise-pce-rel", rel_cost.item(), len(log_probs))
@@ -118,7 +128,7 @@ class PointwiseCrossEntropyLoss(PairwiseLoss):
 
     def compute(self, rel_scores_by_record, info: TrainingInformation):
         if self.rankerOutputType == ScorerOutputType.LOG_PROBABILITY:
-            return self.loss(rel_scores_by_record, metrics)
+            return self.loss(rel_scores_by_record, info)
 
         device = rel_scores_by_record.device
         dim = rel_scores_by_record.shape[0]
@@ -136,6 +146,8 @@ class PairwiseTrainer(Trainer):
     lossfn: The loss function to use
     """
 
+    sampler: Param[PairwiseSampler]
+
     lossfn: Annotated[PairwiseLoss, default(SoftmaxLoss())]
 
     def initialize(
@@ -143,7 +155,7 @@ class PairwiseTrainer(Trainer):
     ):
         super().initialize(random, ranker, context)
 
-        self.train_iter_core = self.sampler.pairwiserecord_iter()
+        self.train_iter_core = self.sampler.pairwise_iter()
         self.train_iter = self.iter_batches(self.train_iter_core)
         self.lossfn.initialize(ranker)
 

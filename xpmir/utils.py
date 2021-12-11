@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import tempfile
 from threading import Thread
-from typing import BinaryIO, Callable, TextIO, Union
+from typing import BinaryIO, Callable, Iterator, List, TextIO, TypeVar, Union
 
 
 class StreamGenerator(Thread):
@@ -99,6 +99,23 @@ class Handler:
             handler = self.defaulthandler
 
         return handler(key)
+
+
+T = TypeVar("T")
+
+
+def batchiter(batchsize: int, iter: Iterator[T], keeppartial=True) -> Iterator[List[T]]:
+    """Group items together to form of list of size `batchsize`"""
+    samples = []
+    for sample in iter:
+        samples.append(sample)
+        if len(samples) % batchsize == 0:
+            yield samples
+            samples = []
+
+    # Yield last samples if keeppartial is true
+    if keeppartial and len(samples) > 0:
+        yield samples
 
 
 def easylog():

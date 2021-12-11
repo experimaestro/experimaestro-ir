@@ -4,7 +4,7 @@ from experimaestro import param, Config, Choices, Param, default
 import torch
 from torch import nn
 from typing_extensions import Annotated
-from xpmir.index.base import Index
+from xpmir.index import Index
 from . import InteractionScorer
 import xpmir.neural.modules as modules
 

@@ -1,13 +1,23 @@
-from typing import Iterable, List, Optional
+from typing import Iterable, List, Optional, Set
 from pathlib import Path
-from experimaestro import Param, Task, cache, pathgenerator, Annotated
-from datamaestro_text.data.ir import Adhoc, AdhocAssessments, AdhocTopics
+from experimaestro import Param, Task, cache, pathgenerator, Annotated, Meta
+from datamaestro_text.data.ir import (
+    Adhoc,
+    AdhocAssessments,
+    AdhocDocuments,
+    AdhocTopics,
+)
 from datamaestro_text.data.ir.trec import TrecAdhocAssessments
 from datamaestro_text.data.ir.csv import AdhocTopics as CSVAdhocTopics
-import math
+from xpmir.rankers import Retriever
+from xpmir.utils import easylog
+
+logger = easylog()
 
 
 class AdhocTopicFold(AdhocTopics):
+    """ID-based topic selection"""
+
     ids: Param[List[str]]
     topics: Param[AdhocTopics]
 
@@ -143,3 +153,83 @@ class RandomFold(Task):
                 if qrels.qid in ids:
                     for qrel in qrels.assessments:
                         fp.write(f"""{qrels.qid} 0 {qrel.docno} {qrel.rel}\n""")
+
+
+class AdhocDocumentSubset(AdhocDocuments):
+    """ID-based topic selection"""
+
+    base: Param[AdhocDocuments]
+    docids: Meta[Path]
+
+    def iter(self):
+        ids = set(self.ids)
+        for topic in self.topics.iter():
+            if topic.qid in ids:
+                yield topic
+
+
+class RetrieverBasedCollection(Task):
+    """Buils a subset of documents based on the output of a set of retrievers
+    and on relevance assessment.
+    """
+
+    relevance_threshold: Param[float] = 0
+    """Relevance threshold"""
+
+    dataset: Param[Adhoc]
+    """A dataset"""
+
+    retrievers: List[Retriever]
+    """Rankers"""
+
+    keepRelevant: Param[bool] = True
+    """Keep documents judged relevant"""
+
+    keepNotRelevant: Param[bool] = False
+    """Keep documents judged not relevant"""
+
+    docids: Annotated[Path, pathgenerator("docids.txt")]
+    """The file containing the document identifiers of the collection"""
+
+    def __validate__(self):
+        assert len(self.retrievers) > 0, "At least one retriever should be given"
+
+    def config(self) -> Adhoc:
+        return Adhoc(
+            id="",  # No need to have a more specific id since it is generated
+            topics=self.dataset.topics,
+            assessments=self.TrecAdhocAssessments(id="", path=self.assessments),
+            documents=AdhocDocumentSubset(
+                base=self.dataset.documents, docids=self.docids
+            ),
+        )
+
+    def execute(self):
+        # Selected document IDs
+        docids: Set[str] = set()
+
+        topics = {t.qid: t for t in self.dataset.assessments.iter()}
+
+        # Retrieve all documents
+        for topic in self.dataset.topics.iter():
+            qrels = topics.get(topic.qid)
+            assert qrels is not None
+
+            if self.keepRelevant:
+                docids.update(
+                    a.docno
+                    for a in qrels.assessments
+                    if a.rel > self.relevance_threshold
+                )
+
+            if self.keepNotRelevant:
+                docids.update(
+                    a.docno
+                    for a in qrels.assessments
+                    if a.rel <= self.relevance_threshold
+                )
+
+            for retriever in self.retrievers:
+                docids.update(sd.docid for sd in retriever.retrieve(topic.text))
+
+        # Write the document IDs

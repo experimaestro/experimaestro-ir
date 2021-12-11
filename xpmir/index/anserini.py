@@ -2,10 +2,10 @@ from pathlib import Path
 from typing import List, Tuple
 from experimaestro.compat import cached_property
 from experimaestro import Choices, Param, Annotated
-from .base import Index as BaseIndex
+from datamaestro_text.data.ir import AdhocIndex
 
 
-class Index(BaseIndex):
+class Index(AdhocIndex):
     """Anserini-backed index
 
     Attributes:
