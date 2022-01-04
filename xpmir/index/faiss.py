@@ -10,9 +10,9 @@ import torch
 from experimaestro import Annotated, Meta, Task, pathgenerator, Param, tqdm
 import logging
 from datamaestro_text.data.ir import AdhocDocumentStore
-from xpmir.neural.siamese import TextEncoder
 from xpmir.rankers import Retriever, ScoredDocument
 from xpmir.letor.batchers import Batcher
+from xpmir.vocab.encoders import TextEncoder
 from xpmir.letor import Device, DEFAULT_DEVICE
 from xpmir.utils import batchiter, easylog
 
@@ -20,7 +20,7 @@ logger = easylog()
 
 try:
     import faiss
-except ImportError:
+except ModuleNotFoundError:
     logging.error("FAISS library is not available (install faiss-cpu or faiss)")
     raise
 
@@ -48,6 +48,7 @@ class IndexBackedFaiss(FaissIndex, Task):
     batcher: Meta[Batcher] = Batcher()
 
     def execute(self):
+        self.encoder.initialize()
         index = faiss.IndexFlatL2(self.encoder.dimension)
 
         doc_iter = tqdm(

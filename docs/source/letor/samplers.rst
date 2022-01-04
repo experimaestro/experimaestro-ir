@@ -12,5 +12,5 @@ Available samplers
 Records for training
 ====================
 
-.. autoclass:: xpmir.letor.records
+.. automodule:: xpmir.letor.records
     :members: PointwiseRecord, PairwiseRecord

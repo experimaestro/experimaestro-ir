@@ -26,7 +26,7 @@ class Sampler(Config, EasyLogger):
     """"Abtract data sampler"""
 
     def initialize(self, random: np.random.RandomState):
-        self.random = random
+        self.random = np.random.RandomState(random.randint(0, 2 ** 31))
 
     def state_dict(self) -> Dict:
         raise NotImplementedError(f"state_dict() not implemented in {self.__class__}")
@@ -67,7 +67,6 @@ class ModelBasedSampler(Sampler):
     """Retriever-based sampler
 
     Attributes:
-        relevant_ratio: The sampling ratio of relevant to non relevant
         dataset: The topics and assessments
         retriever: The document retriever
     """
@@ -90,7 +89,9 @@ class ModelBasedSampler(Sampler):
         self.logger.info("Reading topics and retrieving documents")
 
         if not runpath.is_file():
-            with runpath.open("wt") as fp:
+            tmprunpath = runpath.with_suffix(".tmp")
+
+            with tmprunpath.open("wt") as fp:
 
                 # Read the assessments
                 self.logger.info("Reading assessments")
@@ -98,8 +99,8 @@ class ModelBasedSampler(Sampler):
                 for qrels in self.dataset.assessments.iter():
                     doc2rel = {}
                     assessments[qrels.qid] = doc2rel
-                    for docid, rel in qrels.assessments:
-                        doc2rel[docid] = rel
+                    for qrel in qrels.assessments:
+                        doc2rel[qrel.docno] = qrel.rel
                 self.logger.info("Read assessments for %d topics", len(assessments))
 
                 self.logger.info("Retrieving documents for each topic")
@@ -112,13 +113,22 @@ class ModelBasedSampler(Sampler):
                 for query in tqdm(queries):
                     qassessments = assessments.get(query.qid, None)
                     if not qassessments:
+                        skipped += 1
                         self.logger.warning(
                             "Skipping topic %s (no assessments)", query.qid
                         )
                         continue
 
-                    totalrel = sum(rel for docno, rel in qassessments.items())
-                    if totalrel == 0:
+                    # Write all the positive documents
+                    positives = []
+                    for docno, rel in qassessments.items():
+                        if rel > 0:
+                            fp.write(
+                                f"{query.text if not positives else ''}\t{docno}\t0.\t{rel}\n"
+                            )
+                            positives.append((docno, rel, 0))
+
+                    if not positives:
                         self.logger.debug(
                             "Skipping topic %s (no relevant documents)", query.qid
                         )
@@ -129,24 +139,24 @@ class ModelBasedSampler(Sampler):
                         query.text
                     )  # type: List[ScoredDocument]
 
-                    positives = []
                     negatives = []
                     for rank, sd in enumerate(scoreddocuments):
                         # Get the assessment (assumes not relevant)
                         rel = qassessments.get(sd.docid, 0)
-                        (positives if rel > 0 else negatives).append(
-                            (sd.docid, rel, sd.score)
-                        )
-                        fp.write(
-                            f"{query.text if rank == 0 else ''}\t{sd.docid}\t{sd.score}\t{rel}\n"
-                        )
+                        if rel > 0:
+                            continue
 
+                        negatives.append((sd.docid, rel, sd.score))
+                        fp.write(f"\t{sd.docid}\t{sd.score}\t{rel}\n")
+
+                    assert len(positives) > 0 and len(negatives) > 0
                     yield query.text, positives, negatives
 
-                # Finally...
+                # Finally, move the cache file in place...
                 self.logger.info(
                     "Processed %d topics (%d skipped)", len(queries), skipped
                 )
+                tmprunpath.rename(runpath)
         else:
             # Read from cache
             self.logger.info("Reading records from file %s", runpath)
@@ -216,12 +226,12 @@ class PointwiseModelBasedSampler(PointwiseSampler, ModelBasedSampler):
 class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
     """A pairwise sampler based on a retrieval model"""
 
-    def initialize(self, random):
+    def initialize(self, random: np.random.RandomState):
         super().initialize(random)
 
         self.retriever.initialize()
         self.index = self.retriever.index
-        self.topics = self._readrecords()
+        self.topics: List[Tuple[str, List, List]] = self._readrecords()
 
     def _readrecords(self):
         topics = []
@@ -234,12 +244,22 @@ class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
         text = self.index.document_text(docid)
         return Document(docid, text, score)
 
+    def state_dict(self):
+        # FIXME: should do something
+        pass
+
+    def load_state_dict(self, state):
+        # FIXME: should do something
+        pass
+
     def pairwise_iter(self) -> Iterator[PairwiseRecord]:
         while True:
             title, positives, negatives = self.topics[
                 self.random.randint(0, len(self.topics))
             ]
-            yield PairwiseRecord(title, self.sample(positives), self.sample(negatives))
+            yield PairwiseRecord(
+                Query(None, title), self.sample(positives), self.sample(negatives)
+            )
 
 
 class PairwiseInBatchNegativesSampler(BatchwiseSampler):
@@ -311,7 +331,7 @@ class TripletBasedSampler(PairwiseSampler):
             # And now go ahead
             for query, pos, neg in iter:
                 self.count += 1
-                yield PairwiseRecord(Query(query), getdoc(pos), getdoc(neg))
+                yield PairwiseRecord(Query(None, query), getdoc(pos), getdoc(neg))
 
     def state_dict(self) -> Dict:
         return {"count": self.count}

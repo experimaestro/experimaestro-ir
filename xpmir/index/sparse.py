@@ -50,8 +50,8 @@ class SparseRetrieverIndex(Config):
     info_path: Meta[Path]
     documents: Param[AdhocDocumentStore]
 
-    starts: List[array.array[int]]
-    lengths: List[array.array[int]]
+    starts: List[array.array]
+    lengths: List[array.array]
 
     def __postinit__(self):
         with self.info_path.open("rb") as fp:
@@ -59,9 +59,6 @@ class SparseRetrieverIndex(Config):
             self.starts, self.lengths = pickle.load(fp)
 
         self.index_mm = mmap.mmap(self.index_path.open("r+b").fileno(), 0)
-
-    def getRetriever(self, encoder: TextEncoder):
-        return SparseRetrieverIndex(index=self, encoder=encoder)
 
     def iter_postings(self, ix: int) -> Iterator[Posting]:
         for start, length in zip(self.starts[ix], self.lengths[ix]):
@@ -154,7 +151,7 @@ class TermInfo:
         self.values = valuesArray()
 
 
-class SparseRetrieverIndex(Task):
+class SparseRetrieverIndexBuilder(Task):
     """Builds an index from a sparse representation
 
     Assumes that document and queries have the same dimension, and
@@ -164,7 +161,7 @@ class SparseRetrieverIndex(Task):
     documents: Param[AdhocDocumentStore]
     encoder: Param[TextEncoder]
 
-    batcher: Meta[Batcher]
+    batcher: Meta[Batcher] = Batcher()
     batch_size: Param[int]
     threshold: Param[float] = 0
 
@@ -178,7 +175,9 @@ class SparseRetrieverIndex(Task):
 
     def config(self):
         return SparseRetrieverIndex(
-            index_path=self.index_path, info_path=self.info_path, documents=documents
+            index_path=self.index_path,
+            info_path=self.info_path,
+            documents=self.documents,
         )
 
     def __init__(self):

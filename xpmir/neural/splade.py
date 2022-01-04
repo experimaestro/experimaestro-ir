@@ -7,7 +7,7 @@ from xpmir.neural import TorchLearnableScorer
 from xpmir.vocab.huggingface import TransformerVocab
 from xpmir.vocab.encoders import TextEncoder
 from xpmir.letor.trainers.batchwise import BatchwiseTrainer
-from xpmir.neural.siamese import DotDense, FlopsRegularizer
+from xpmir.neural.dual import DotDense, FlopsRegularizer
 from transformers import AutoModelForMaskedLM
 
 
@@ -55,6 +55,9 @@ class SpladeTextEncoder(TextEncoder):
         out = self.aggregation(out)
         return out
 
+    def static(self):
+        return False
+
 
 def spladeV1():
     """Returns the Splade architecture"""
@@ -64,7 +67,7 @@ def spladeV1():
     )
 
 
-def spladeV2():
+def spladeV2(lambda_q: float, lambda_d: float):
     """Returns the Splade v2 architecture
 
     SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval (arXiv:2109.10086)
@@ -73,10 +76,12 @@ def spladeV2():
         aggregation=SumAggregation(),
         encoder=TransformerVocab(model_id="distilbert-base-cased"),
     )
-    return DotDense(encoder=encoder, regularizer=FlopsRegularizer)
+    return DotDense(encoder=encoder), FlopsRegularizer(
+        lambda_q=lambda_q, lambda_d=lambda_d
+    )
 
 
-def spladev2(sampler: PairwiseSampler) -> Tuple[BatchwiseTrainer, Splade]:
+def spladev2(sampler: PairwiseSampler) -> Tuple[BatchwiseTrainer, DotDense]:
     """Returns the model described in Splade V2"""
     from xpmir.letor.optim import Adam
     from xpmir.letor.trainers.batchwise import SoftmaxCrossEntropy
@@ -90,4 +95,4 @@ def spladev2(sampler: PairwiseSampler) -> Tuple[BatchwiseTrainer, Splade]:
     )
 
     # Trained with distillation
-    return trainer, Splade.v2()
+    return trainer, spladeV2()

@@ -4,7 +4,12 @@ import logging
 import torch
 import torch.nn as nn
 from experimaestro import Param
-from xpmir.vocab.encoders import DualTextEncoder, TextEncoder
+from xpmir.vocab.encoders import (
+    ContextualizedTextEncoder,
+    ContextualizedTextEncoderOutput,
+    DualTextEncoder,
+    TextEncoder,
+)
 
 try:
     from transformers import AutoModel, AutoTokenizer, AutoConfig
@@ -29,7 +34,7 @@ class TransformerVocab(vocab.Vocab):
     AUTOMODEL_CLASS: ClassVar = AutoModel
 
     model_id: Param[str] = "bert-base-uncased"
-    trainable: Param[bool] = False
+    trainable: Param[bool]
     layer: Param[int] = 0
 
     CLS: int
@@ -137,6 +142,11 @@ class TransformerVocab(vocab.Vocab):
     def dim(self):
         return self.model.config.hidden_size
 
+    @property
+    def vocab_size(self) -> int:
+        """Returns the size of the vocabulary"""
+        return self.tokenizer.vocab_size
+
 
 class IndependentTransformerVocab(TransformerVocab):
     """Encodes as [CLS] QUERY [SEP]"""
@@ -151,14 +161,47 @@ class IndependentTransformerVocab(TransformerVocab):
 class TransformerEncoder(TransformerVocab, TextEncoder):
     """Encodes using the [CLS] token"""
 
+    maxlen: Param[Optional[int]] = None
+
     def forward(self, texts: List[str]):
-        tokenized = self.batch_tokenize(texts)
+        tokenized = self.batch_tokenize(texts, maxlen=self.maxlen, mask=True)
+        device = self._dummy_params.device
 
         with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
-            y = self.model(tokenized.ids)
+            y = self.model(tokenized.ids, attention_mask=tokenized.mask.to(device))
 
         # Assumes that [CLS] is the first token
         return y.last_hidden_state[:, 0]
+
+    @property
+    def dimension(self):
+        return self.dim()
+
+
+class ContextualizedTransformerEncoder(TransformerVocab, ContextualizedTextEncoder):
+    maxlen: Param[Optional[int]] = None
+
+    @property
+    def dimension(self):
+        return self.dim()
+
+    def forward(self, texts: List[str], only_tokens=True, output_hidden_states=False):
+        tokenized = self.batch_tokenize(texts, maxlen=self.maxlen, mask=True)
+        device = self._dummy_params.device
+        with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
+            y = self.model(
+                tokenized.ids,
+                attention_mask=tokenized.mask.to(device),
+                output_hidden_states=output_hidden_states,
+            )
+            mask = tokenized.mask
+            device = y.last_hidden_state.device
+            ids = tokenized.ids.to(device)
+            if only_tokens:
+                mask = (self.CLS != ids) & (self.SEP != ids) & mask.to(device)
+            return ContextualizedTextEncoderOutput(
+                ids, mask, y.last_hidden_state, y.hidden_states
+            )
 
 
 class DualTransformerEncoder(TransformerVocab, DualTextEncoder):

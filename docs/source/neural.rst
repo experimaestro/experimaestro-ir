@@ -8,7 +8,8 @@ Neural models
 Sparse models
 =============
 
-.. autoxpmconfig:: xpmir.neural.splade.Splade
+Splade
+.. autoxpmconfig:: xpmir.neural.splade.SpladeTextEncoder
 
 Dense models
 ============

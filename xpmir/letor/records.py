@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import torch
 import itertools
 from typing import (
@@ -13,8 +14,10 @@ from typing import (
 )
 
 
-class Query(NamedTuple):
-    text: str
+@dataclass
+class Query:
+    id: Optional[str]
+    text: Optional[str]
 
 
 class Document(NamedTuple):
@@ -87,7 +90,7 @@ class BaseRecords(List[RT]):
     def unique_documents(self) -> Iterable[Document]:
         return self.documents
 
-    def pairs(self) -> Tuple[List[int], List[int]]:
+    def pairs(self) -> Tuple[Iterable[int], Iterable[int]]:
         """Returns the list of query/document indices for which we should compute the score,
         or None if all (cartesian product). This method should be used with `unique` set
         to true to get the queries/documents
@@ -131,6 +134,10 @@ class PointwiseRecords(BaseRecords[PointwiseRecord]):
 
     def __len__(self):
         return len(self.queries)
+
+    def pairs(self) -> Tuple[List[int], List[int]]:
+        ix = list(range(len(self.queries)))
+        return (ix, ix)
 
 
 class PairwiseRecord:
@@ -260,7 +267,7 @@ class ProductRecords(BatchwiseRecords):
     def unique_documents(self):
         return self._documents
 
-    def pairs(self):
+    def pairs(self) -> Tuple[Iterable[int], Iterable[int]]:
         queries = []
         documents = []
         for q in range(len(self._queries)):

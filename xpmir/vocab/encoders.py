@@ -1,7 +1,8 @@
-from typing import List, Tuple
+from typing import List, NamedTuple, Optional, Tuple
 import torch.nn as nn
 import torch
-from experimaestro import Config
+from experimaestro import Config, Param
+from . import Vocab
 
 
 class Encoder(Config, nn.Module):
@@ -16,7 +17,7 @@ class TextEncoder(Encoder):
     """Vector representation of a text - can be dense or sparse"""
 
     @property
-    def dimension(self):
+    def dimension(self) -> int:
         """Returns the dimension of the representation"""
         raise NotImplementedError(f"dimension for {self.__class__}")
 
@@ -38,3 +39,62 @@ class DualTextEncoder(Encoder):
 
     def forward(self, texts: List[Tuple[str, str]]):
         raise NotImplementedError(f"forward in {self.__clas__}")
+
+
+class ContextualizedTextEncoderOutput(NamedTuple):
+    ids: torch.Tensor
+    """The token IDs"""
+
+    mask: torch.Tensor
+    """A 0/1 mask"""
+
+    last_layer: torch.Tensor
+    """Last layer"""
+
+    layers: Optional[List[torch.Tensor]]
+    """All layers (if asked for)"""
+
+
+class ContextualizedTextEncoder(Encoder):
+    """Returns a contextualized embeddings of tokens"""
+
+    @property
+    def dimension(self) -> int:
+        raise NotImplementedError()
+
+    @property
+    def layers(self) -> int:
+        raise NotImplementedError()
+
+    def forward(
+        self, texts: List[str], only_tokens=True, output_hidden_states=False
+    ) -> ContextualizedTextEncoderOutput:
+        """Returns contextualized version of tokens
+
+        Arguments:
+            only_tokens: add special tokens to the mask
+            all_layers: add all layers to the output
+        """
+        raise NotImplementedError(f"forward in {self.__clas__}")
+
+
+class MeanTextEncoder(TextEncoder):
+    """Returns the mean of the word embeddings"""
+
+    vocab: Param[Vocab]
+
+    def initialize(self):
+        self.vocab.initialize()
+
+    def static(self):
+        return self.vocab.static()
+
+    @property
+    def dimension(self):
+        return self.vocab.dim()
+
+    def forward(self, texts: List[str]) -> torch.Tensor:
+        tokenized = self.vocab.batch_tokenize(texts, True)
+        emb_texts = self.vocab(tokenized)
+        # Computes the mean over the time dimension (vocab output is batch x time x dim)
+        return emb_texts.mean(1)

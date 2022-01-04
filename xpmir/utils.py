@@ -4,7 +4,9 @@ import os
 from pathlib import Path
 import tempfile
 from threading import Thread
-from typing import BinaryIO, Callable, Iterator, List, TextIO, TypeVar, Union
+from typing import BinaryIO, Callable, Iterator, List, TextIO, TypeVar, Union, Iterable
+
+T = TypeVar("T")
 
 
 class StreamGenerator(Thread):
@@ -101,7 +103,9 @@ class Handler:
         return handler(key)
 
 
-T = TypeVar("T")
+def foreach(iterator: Iterable[T], fn: Callable[[T], None]):
+    for t in map(fn, iterator):
+        pass
 
 
 def batchiter(batchsize: int, iter: Iterator[T], keeppartial=True) -> Iterator[List[T]]:

@@ -1,14 +1,14 @@
-from xpmir.utils import easylog
 from pathlib import Path
-from typing import Iterator, List, Optional
+from typing import DefaultDict, List
 from datamaestro_text.data.ir import Adhoc, AdhocAssessments
-from experimaestro import Config, tqdm, Task, Param, pathgenerator, Annotated
+from experimaestro import tqdm, Task, Param, pathgenerator, Annotated
 from datamaestro_text.data.ir.trec import (
     TrecAdhocRun,
     TrecAdhocResults,
 )
 from xpmir.measures import Measure
 import xpmir.measures as m
+from xpmir.metrics import evaluator
 import ir_measures
 from xpmir.rankers import Retriever
 
@@ -18,7 +18,7 @@ def get_evaluator(metrics: List[ir_measures.Metric], assessments: AdhocAssessmen
         assessedTopic.qid: {r.docno: r.rel for r in assessedTopic.assessments}
         for assessedTopic in assessments.iter()
     }
-    return ir_measures.evaluator(metrics, qrels)
+    return evaluator(metrics, qrels)
 
 
 class BaseEvaluation(Task):
@@ -68,12 +68,24 @@ def get_run(retriever: Retriever, dataset: Adhoc):
     return run
 
 
-def evaluate(retriever: Retriever, dataset: Adhoc, measures: List[str]):
+def evaluate(retriever: Retriever, dataset: Adhoc, measures: List[str], details=False):
     evaluator = get_evaluator(
         [ir_measures.parse_measure(m) for m in measures], dataset.assessments
     )
     run = get_run(retriever, dataset)
-    return {str(key): value for key, value in evaluator.calc_aggregate(run).items()}
+
+    aggregators = {m: m.aggregator() for m in evaluator.measures}
+    details = DefaultDict(lambda: {}) if details else None
+    for metric in evaluator.iter_calc(run):
+        aggregators[metric.measure].add(metric.value)
+        if details is not None:
+            details[str(metric.measure)][metric.query_id] = metric.value
+
+    metrics = {str(m): agg.result() for m, agg in aggregators.items()}
+    if details is not None:
+        return metrics, details
+
+    return details
 
 
 class RunEvaluation(BaseEvaluation, Task):

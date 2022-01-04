@@ -1,8 +1,11 @@
 import logging
-from typing import List, Tuple
+from typing import Callable, List, NamedTuple, Tuple
+import itertools
 import pytest
 import torch
-from xpmir.index.base import Index
+from collections import defaultdict
+from experimaestro import Constant
+from xpmir.index import Index
 from xpmir.letor import Random
 from xpmir.letor.records import (
     Document,
@@ -15,7 +18,7 @@ from xpmir.letor.records import (
     TokenizedTexts,
 )
 from xpmir.vocab import Vocab
-from xpmir.vocab.encoders import DualTextEncoder
+from xpmir.vocab.encoders import DualTextEncoder, MeanTextEncoder, TextEncoder
 
 
 class RandomVocab(Vocab):
@@ -52,6 +55,8 @@ class RandomVocab(Vocab):
 
 
 class CustomIndex(Index):
+    id: Constant[int] = 1
+
     @property
     def documentcount(self):
         return 50
@@ -64,7 +69,15 @@ class CustomIndex(Index):
 # --- Model factories
 # ---
 
+modelfactories = []
 
+
+def registermodel(method):
+    modelfactories.append(method)
+    return method
+
+
+@registermodel
 def drmm():
     """Drmm factory"""
     from xpmir.neural.drmm import Drmm
@@ -72,6 +85,7 @@ def drmm():
     return Drmm(vocab=RandomVocab(), index=CustomIndex()).instance()
 
 
+@registermodel
 def colbert():
     """Colbert model factory"""
     from xpmir.neural.colbert import Colbert
@@ -81,7 +95,33 @@ def colbert():
     ).instance()
 
 
+@registermodel
+def dotdense():
+    """Colbert model factory"""
+    from xpmir.neural.siamese import DotDense
+
+    return DotDense(
+        encoder=MeanTextEncoder(vocab=RandomVocab()),
+        query_encoder=MeanTextEncoder(vocab=RandomVocab()),
+    ).instance()
+
+
+@registermodel
+def cosinedense():
+    """Colbert model factory"""
+    from xpmir.neural.siamese import CosineDense
+
+    return CosineDense(
+        encoder=MeanTextEncoder(vocab=RandomVocab()),
+        query_encoder=MeanTextEncoder(vocab=RandomVocab()),
+    ).instance()
+
+
 class DummyDualTextEncoder(DualTextEncoder):
+    def __init__(self):
+        super().__init__()
+        self.cache = defaultdict(lambda: torch.randn(1, 13))
+
     @property
     def dimension(self) -> int:
         return 13
@@ -90,9 +130,10 @@ class DummyDualTextEncoder(DualTextEncoder):
         return False
 
     def forward(self, texts: List[Tuple[str, str]]):
-        return torch.randn(len(texts), 13)
+        return torch.cat([self.cache[text] for text in texts])
 
 
+@registermodel
 def joint():
     """Joint classifier factory"""
     from xpmir.neural.jointclassifier import JointClassifier
@@ -104,45 +145,99 @@ def joint():
 # --- Input factory
 # ---
 
+QUERIES = [Query(None, "purple cat"), Query(None, "yellow house")]
+DOCUMENTS = [
+    Document("1", "the cat sat on the mat", 1),
+    Document("2", "the purple car", 1),
+    Document("3", "my little dog", 1),
+    Document("4", "the truck was on track", 1),
+]
+
 
 def pointwise():
     # Pointwise inputs
     inputs = PointwiseRecords()
-    inputs.add(PointwiseRecord(Query("purple cat"), "d1", "the purple car", 1, 1))
+
+    # Implicit order (Q0, D0) (Q1, D0) (Q0, D1) (Q1, D1)
+    inputs.add(
+        PointwiseRecord(QUERIES[0], DOCUMENTS[0].docid, DOCUMENTS[1].text, 0.0, 0.0)
+    )
+    inputs.add(
+        PointwiseRecord(QUERIES[0], DOCUMENTS[0].docid, DOCUMENTS[0].text, 0.0, 0.0)
+    )
+    inputs.add(
+        PointwiseRecord(QUERIES[1], DOCUMENTS[2].docid, DOCUMENTS[2].text, 0.0, 0.0)
+    )
+    inputs.add(
+        PointwiseRecord(QUERIES[1], DOCUMENTS[1].docid, DOCUMENTS[2].text, 0.0, 0.0)
+    )
     return inputs
 
 
 def pairwise():
+    # Implicit order (Q0, D0) (Q1, D0) (Q0, D1) (Q1, D1)
     inputs = PairwiseRecords()
-    inputs.add(
-        PairwiseRecord(
-            Query("purple cat"),
-            Document("1", "the cat sat on the mat", 1),
-            Document("2", "the purple car", 1),
-        )
-    )
+    inputs.add(PairwiseRecord(QUERIES[0], DOCUMENTS[0], DOCUMENTS[1]))
+    inputs.add(PairwiseRecord(QUERIES[1], DOCUMENTS[2], DOCUMENTS[3]))
     return inputs
 
 
-def cartesian():
+def product():
+    # Implicit order (Q0, D0) (Q0, D1) (Q1, D0)
     inputs = ProductRecords()
-    inputs.addDocuments(
-        Document("1", "the cat sat on the mat", 1),
-        Document("2", "the purple car", 1),
-    )
-
-    inputs.addQueries(Query("purple cat"), Query("blue tiger"))
+    inputs.addQueries(QUERIES[0], QUERIES[1])
+    inputs.addDocuments(DOCUMENTS[0], DOCUMENTS[1])
 
     return inputs
 
 
-@pytest.mark.parametrize("modelfactory", [drmm, colbert, joint])
-@pytest.mark.parametrize("inputfactory", [pointwise, pairwise, cartesian])
-def test_model_forward(modelfactory, inputfactory):
+inputfactories = [pointwise, pairwise, product]
+
+
+@pytest.mark.parametrize("modelfactory", modelfactories)
+@pytest.mark.parametrize("inputfactory", inputfactories)
+@pytest.mark.dependency()
+def test_forward_types(modelfactory, inputfactory):
     model = modelfactory()
     random = Random().instance().state
     model.initialize(random)
 
     inputs = inputfactory()
 
-    logging.debug("%s", model(inputs))
+    logging.debug("%s", model(inputs, None))
+
+
+@pytest.mark.parametrize("modelfactory", modelfactories)
+@pytest.mark.parametrize(
+    "inputfactoriescouple",
+    (
+        pytest.param((f1, f2), id=f"{f1.__name__}-{f2.__name__}")
+        for f1, f2 in itertools.combinations(inputfactories, 2)
+    ),
+)
+@pytest.mark.dependency(depends=["test_model_forward"])
+def test_forward_consistency(modelfactory, inputfactoriescouple):
+    """Test that the outputs are consistent between different records types"""
+    model = modelfactory()
+    random = Random().instance().state
+    model.initialize(random)
+
+    outputs = []
+    maps = []
+    with torch.no_grad():
+        for f in inputfactoriescouple:
+            input = f()
+            outputs.append(model(input, None))
+            maps.append(
+                {
+                    (q.text, d.text): ix
+                    for ix, (q, d) in enumerate(zip(input.queries, input.documents))
+                }
+            )
+
+    inter = set(maps[0].keys() & maps[1].keys())
+    assert len(inter) > 0, "No common query/document pair"
+    for key in inter:
+        s1 = outputs[0][maps[0][key]].item()
+        s2 = outputs[1][maps[1][key]].item()
+        assert s1 == s2, f"{s1} different from {s2} in {outputs[0]}, {outputs[1]}"

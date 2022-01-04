@@ -139,6 +139,7 @@ def cli(
 
         tests = {
             "trec2019": prepare_dataset("irds.msmarco-passage.trec-dl-2019"),
+            "trec2020": prepare_dataset("irds.msmarco-passage.trec-dl-2020"),
             "msmarco-dev": devsmall,
         }
 

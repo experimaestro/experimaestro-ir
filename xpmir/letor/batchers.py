@@ -1,5 +1,6 @@
 from typing import (
     Generic,
+    List,
     Protocol,
     Callable,
     Any,
@@ -37,7 +38,7 @@ class Sliceable(Protocol, Generic[T]):
 
 class IterativeProcessor(Protocol, Generic[T, RT, ARGS, KWARGS]):
     def __call__(
-        self, batch: Iterator[Sliceable[T]], *args: ARGS, **kwargs: KWARGS
+        self, batch: Iterator[Sliceable[T]], length: int, *args: ARGS, **kwargs: KWARGS
     ) -> RT:
         ...
 
@@ -59,7 +60,7 @@ class BatcherWorker:
         **kwargs: KWARGS
     ) -> RT:
         # Just do nothing
-        return process(iter([batch]), *args, **kwargs)
+        return process(iter([batch]), 1, *args, **kwargs)
 
     def process(
         self,
@@ -69,6 +70,24 @@ class BatcherWorker:
         **kwargs: KWARGS
     ) -> None:
         process(batch, *args, **kwargs)
+
+
+def is_cublas_alloc_failed(exception):
+    return (
+        isinstance(exception, RuntimeError)
+        and len(exception.args) == 1
+        and "CUBLAS_STATUS_ALLOC_FAILED" in exception.args[0]
+    )
+
+
+def is_oom_error(exception):
+    """Detect CUDA out-of-memory errors"""
+    from pytorch_lightning.utilities.memory import is_oom_error as legacy_check
+
+    if legacy_check(exception):
+        return True
+
+    return is_cublas_alloc_failed(exception)
 
 
 class Batcher(Config):
@@ -90,13 +109,15 @@ class PowerAdaptativeBatcherWorker(BatcherWorker):
         logger.info("Adaptative batcher: initial batch size is %d", self.batch_size)
 
     def get_ranges(self, batch_size):
+        ranges = []
         ix = 0
         while ix < batch_size:
-            yield slice(ix, ix + self.batch_size)
+            ranges.append(slice(ix, ix + self.batch_size))
             ix += self.batch_size
+        return ranges
 
-    def iter(self, batch: Sliceable[T]) -> Iterator[Sliceable[T]]:
-        for range in self.get_ranges(len(batch)):
+    def iter(self, batch: Sliceable[T], ranges: List[slice]) -> Iterator[Sliceable[T]]:
+        for range in ranges:
             yield batch[range]
 
     def process_withreplay(
@@ -107,7 +128,10 @@ class PowerAdaptativeBatcherWorker(BatcherWorker):
         **kwargs: KWARGS
     ) -> RT:
         while True:
-            flag, rt = self._run(lambda: process(self.iter(batch), *args, **kwargs))
+            ranges = self.get_ranges(len(batch))
+            flag, rt = self._run(
+                lambda: process(self.iter(batch, ranges), len(ranges), *args, **kwargs)
+            )
             if flag:
                 return rt
 
@@ -126,7 +150,6 @@ class PowerAdaptativeBatcherWorker(BatcherWorker):
                 ix += self.batch_size
 
     def _run(self, process: Callable[[], RT]) -> Tuple[bool, Union[RT, None]]:
-        from pytorch_lightning.utilities.memory import is_oom_error
 
         try:
             # Perform a process

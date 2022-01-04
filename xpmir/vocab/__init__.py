@@ -83,8 +83,7 @@ class Vocab(Config, EasyLogger, nn.Module):
         self, texts: List[str], batch_first=True, maxlen=None, mask=False
     ) -> TokenizedTexts:
         """
-        Returns a tensor of dimension batch x length x dimension (when batch_first is True)
-        or length x batch x dimension otherwise
+        Returns tokenized texts
 
         Arguments:
             mask: Whether a mask should be computed

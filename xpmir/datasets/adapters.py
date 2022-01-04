@@ -1,9 +1,12 @@
-from typing import Iterable, List, Optional, Set
+from typing import Iterable, Iterator, List, Optional, Set
 from pathlib import Path
-from experimaestro import Param, Task, cache, pathgenerator, Annotated, Meta
+from experimaestro import Param, Config, Task, cache, pathgenerator, Annotated, Meta
+from experimaestro.compat import cached_property
 from datamaestro_text.data.ir import (
     Adhoc,
     AdhocAssessments,
+    AdhocDocument,
+    AdhocDocumentStore,
     AdhocDocuments,
     AdhocTopics,
 )
@@ -158,14 +161,22 @@ class RandomFold(Task):
 class AdhocDocumentSubset(AdhocDocuments):
     """ID-based topic selection"""
 
-    base: Param[AdhocDocuments]
-    docids: Meta[Path]
+    base: Param[AdhocDocumentStore]
+    docids_path: Meta[Path]
 
-    def iter(self):
-        ids = set(self.ids)
-        for topic in self.topics.iter():
-            if topic.qid in ids:
-                yield topic
+    @cached_property
+    def docids(self) -> List[str]:
+        # Read document IDs
+        with self.docids_path.open("rt") as fp:
+            return [line.strip() for line in fp]
+
+    def iter_ids(self):
+        yield from self.docids
+
+    def iter_documents(self) -> Iterator[AdhocDocument]:
+        for docid in self.iter_ids():
+            content = self.base.document_text(docid)
+            yield AdhocDocument(docid, content)
 
 
 class RetrieverBasedCollection(Task):
@@ -179,7 +190,7 @@ class RetrieverBasedCollection(Task):
     dataset: Param[Adhoc]
     """A dataset"""
 
-    retrievers: List[Retriever]
+    retrievers: Param[List[Retriever]]
     """Rankers"""
 
     keepRelevant: Param[bool] = True
@@ -188,7 +199,7 @@ class RetrieverBasedCollection(Task):
     keepNotRelevant: Param[bool] = False
     """Keep documents judged not relevant"""
 
-    docids: Annotated[Path, pathgenerator("docids.txt")]
+    docids_path: Annotated[Path, pathgenerator("docids.txt")]
     """The file containing the document identifiers of the collection"""
 
     def __validate__(self):
@@ -198,9 +209,9 @@ class RetrieverBasedCollection(Task):
         return Adhoc(
             id="",  # No need to have a more specific id since it is generated
             topics=self.dataset.topics,
-            assessments=self.TrecAdhocAssessments(id="", path=self.assessments),
+            assessments=self.dataset.assessments,
             documents=AdhocDocumentSubset(
-                base=self.dataset.documents, docids=self.docids
+                base=self.dataset.documents, docids_path=self.docids_path
             ),
         )
 
@@ -215,6 +226,7 @@ class RetrieverBasedCollection(Task):
             qrels = topics.get(topic.qid)
             assert qrels is not None
 
+            # Add (not) relevant documents
             if self.keepRelevant:
                 docids.update(
                     a.docno
@@ -229,7 +241,30 @@ class RetrieverBasedCollection(Task):
                     if a.rel <= self.relevance_threshold
                 )
 
+            # Retrieve and add
             for retriever in self.retrievers:
                 docids.update(sd.docid for sd in retriever.retrieve(topic.text))
 
         # Write the document IDs
+        with self.docids_path.open("wt") as fp:
+            fp.writelines(docids)
+
+
+class TextStore(Config):
+    """Associates an ID with a text"""
+
+    def __getitem__(self, key: str) -> str:
+        raise NotImplementedError()
+
+
+class MemoryTopicStore(TextStore):
+    """View a set of topics as a (in memory) text store"""
+
+    topics: Param[AdhocTopics]
+
+    @cached_property
+    def store(self):
+        return {topic.qid: topic.text for topic in self.topics.iter()}
+
+    def __getitem__(self, key: str) -> str:
+        return self.store[key]

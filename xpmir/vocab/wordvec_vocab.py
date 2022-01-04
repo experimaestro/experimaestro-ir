@@ -130,9 +130,6 @@ class WordvecUnkVocab(WordvecVocab):
         return len(self._terms) + 1
 
 
-@param("hashspace", default=1000)
-@param("init_stddev", default=0.5)
-@param("log_miss", default=False)
 class WordvecHashVocab(WordvecVocab):
     """Word-based embeddings with hash-based OOV
 
@@ -140,9 +137,13 @@ class WordvecHashVocab(WordvecVocab):
     their hash value. Each position is assigned its own random weight.
     """
 
+    hashspace: Param[int] = 1000
+    init_stddev: Param[float] = 0.5
+    log_miss: Param[bool] = False
+
     def initialize(self, random):
         hash_weights = random.normal(
-            scale=config["init_stddev"], size=(self.hashspace, self._weights.shape[1])
+            scale=self.init_stddev, size=(self.hashspace, self._weights.shape[1])
         )
         self._weights = np.concatenate([self._weights, hash_weights])
 

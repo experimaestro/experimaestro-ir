@@ -5,6 +5,7 @@ Learning to rank
    :maxdepth: 2
 
    samplers
+   optimization
 
 Scorers
 =======
@@ -27,6 +28,9 @@ Scores can be used as retrievers through
 Trainers
 ========
 
-Trainers are responsible for defining the loss (given a learnable scorer)
+Trainers are responsible for defining the the way to train
+a learnable scorer.
 
-.. automodule:: xpmir.letor.trainers.Trainer
+.. autoxpmconfig:: xpmir.letor.trainers.Trainer
+.. autoxpmconfig:: xpmir.letor.trainers.pointwise.PointwiseTrainer
+.. autoxpmconfig:: xpmir.letor.trainers.pairwise.PairwiseTrainer

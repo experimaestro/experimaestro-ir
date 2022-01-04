@@ -6,11 +6,16 @@ import torch.nn.functional as F
 from experimaestro import Param, Config
 from xpmir.letor.records import PointwiseRecords
 from xpmir.letor.trainers import Trainer
-from xpmir.letor.traininfo import TrainingInformation
+from xpmir.letor.context import Loss, TrainContext
 
 
 class PointwiseLoss(Config):
     NAME = "?"
+    weight: Param[float] = 1.0
+
+    def process(self, scores, targets, context: TrainContext):
+        value = self.compute(scores, targets)
+        context.add_loss(Loss(f"point-{self.NAME}", value, self.weight))
 
     def compute(self, rel_scores, target_relscores) -> torch.Tensor:
         raise NotImplementedError()
@@ -71,7 +76,7 @@ class PointwiseTrainer(Trainer):
 
             yield batch
 
-    def train_batch(self, info: TrainingInformation):
+    def train_batch(self, info: TrainContext):
         # Get the next batch
         batch = next(self.train_iter)
 
@@ -130,9 +135,4 @@ class PointwiseTrainer(Trainer):
         #     loss = rel_scores.mean()
         # else:
         #     raise ValueError(f"unknown lossfn `{self.lossfn}`")
-
-        metrics.update({f"{self.lossfn}": loss.item()}, self.batch_size)
         return loss
-
-    def fast_forward(self, record_count):
-        self._fast_forward(self.train_iter_core, self.iter_fields, record_count)

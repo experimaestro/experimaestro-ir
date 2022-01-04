@@ -1,4 +1,6 @@
 import logging
+from experimaestro import Config
+from experimaestro.compat import cached_property
 from typing import Iterator, Tuple
 from experimaestro import Option
 import datamaestro_text.data.ir as ir
@@ -8,15 +10,19 @@ import ir_datasets
 # provides adapted data types
 
 
-class IRDSId:
+class IRDSId(Config):
+    irds: Option[str]
+
     @classmethod
     def __xpmid__(cls):
         return f"ir_datasets.{cls.__qualname__}"
 
+    @cached_property
+    def dataset(self):
+        return ir_datasets.load(self.irds)
+
 
 class AdhocTopics(ir.AdhocTopics, IRDSId):
-    irds: Option[str]
-
     def iter(self) -> Iterator[ir.AdhocTopic]:
         """Returns an iterator over topics"""
         ds = ir_datasets.load(self.irds)
@@ -32,8 +38,6 @@ class AdhocTopics(ir.AdhocTopics, IRDSId):
 
 
 class AdhocAssessments(ir.AdhocAssessments, IRDSId):
-    irds: Option[str]
-
     def iter(self):
         """Returns an iterator over assessments"""
         ds = ir_datasets.load(self.irds)
@@ -54,26 +58,28 @@ class AdhocAssessments(ir.AdhocAssessments, IRDSId):
 
 
 class AdhocDocuments(ir.AdhocDocumentStore, IRDSId):
-    irds: Option[str]
-
     def iter(self) -> Iterator[ir.AdhocDocument]:
         """Returns an iterator over adhoc documents"""
-        ds = ir_datasets.load(self.irds)
-        for doc in ds.docs_iter():
+        for doc in self.dataset.docs_iter():
             yield ir.AdhocDocument(doc.doc_id, doc.text)
+
+    @cached_property
+    def store(self):
+        return self.dataset.docs_store()
+
+    def document_text(self, docid: str) -> str:
+        return self.store.get(docid).text
 
 
 class Adhoc(ir.Adhoc, IRDSId):
-    irds: Option[str]
+    pass
 
 
 class AdhocRun(ir.AdhocRun, IRDSId):
-    irds: Option[str]
+    pass
 
 
 class TrainingTriplets(ir.TrainingTriplets, IRDSId):
-    irds: Option[str]
-
     def iter(self) -> Iterator[Tuple[str, str, str]]:
         ds = ir_datasets.load(self.irds)
 

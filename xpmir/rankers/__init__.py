@@ -1,13 +1,15 @@
 # This package contains all rankers
 
 from enum import Enum
-from typing import Dict, Iterable, Iterator, List, Optional
+from pathlib import Path
+from typing import Dict, Iterable, Iterator, List, Optional, final
 import torch
-from experimaestro import Param, Config, Option, documentation
+import numpy as np
+from experimaestro import Param, Config, Option, documentation, Meta
 from datamaestro_text.data.ir import AdhocIndex as Index, AdhocDocuments
 from xpmir.letor import Device, Random
 from xpmir.letor.batchers import Batcher
-from xpmir.letor.traininfo import TrainingInformation
+from xpmir.letor.context import TrainContext
 from xpmir.letor.records import Document, BaseRecords, ProductRecords, Query
 from xpmir.utils import EasyLogger, easylog
 
@@ -15,10 +17,13 @@ logger = easylog()
 
 
 class ScoredDocument:
-    def __init__(self, docid: str, score: float, content: str = None):
+    def __init__(self, docid: Optional[str], score: float, content: str = None):
         self.docid = docid
         self.score = score
         self.content = content
+
+    def __repr__(self):
+        return f"document({self.docid}, {self.score}, {self.content})"
 
     def __lt__(self, other):
         return self.score < other.score
@@ -42,6 +47,18 @@ class Scorer(Config, EasyLogger):
 
     outputType: ScorerOutputType = ScorerOutputType.REAL
 
+    def initialize(self, random: Optional[np.random.RandomState]):
+        """Initialize the scorer
+
+        Arguments:
+
+            random:
+                Random state for random number generation; when random is None,
+                this means that the state will be loaded from
+                disk after initializations
+        """
+        pass
+
     def rsv(
         self, query: str, documents: Iterable[ScoredDocument], keepcontent=False
     ) -> List[ScoredDocument]:
@@ -52,19 +69,12 @@ class Scorer(Config, EasyLogger):
         """Put the model in inference/evaluation mode"""
         pass
 
-    def train(self):
-        """Put the model in training mode"""
-        pass
-
 
 class RandomScorer(Scorer):
-    """A random scorer
-
-    Attributes:
-        random: The random state
-    """
+    """A random scorer"""
 
     random: Param[Random]
+    """The random number generator"""
 
     def rsv(
         self, query: str, documents: Iterable[ScoredDocument], keepcontent=False
@@ -81,15 +91,54 @@ class LearnableScorer(Scorer):
 
     A scorer with parameters that can be learnt"""
 
-    def initialize(self, random_or_state):
+    checkpoint: Meta[Optional[Path]]
+    """A checkpoint path from which the model should be loaded (or None otherwise)"""
+
+    def __init__(self):
+        super().__init__()
+        self._initialized = False
+
+    def _initialize(self, random):
+        raise NotImplementedError(f"_initialize in {self.__class__}")
+
+    def train(self, mode=True):
+        """Put the model in training mode"""
+        raise NotImplementedError("train() in {self.__class__}")
+
+    def eval(self):
+        """Put the model in training mode"""
+        self.train(False)
+
+    @final
+    def initialize(self, random: Optional[np.random.RandomState]):
         """Initialize a learnable scorer
 
-        Args:
-            random_or_state (np.random.Random): The random state or the current state
+        Initialization can either be determined by a checkpoint (if set) or
+        otherwise (random or pre-trained checkpoint depending on the models)
         """
-        pass
+        if self._initialized:
+            return
 
-    def __call__(self, inputs: "BaseRecords", info: Optional[TrainingInformation]):
+        if self.checkpoint is None:
+            # Sets the current random seed
+            if random is not None:
+                seed = random.randint((2 ** 32) - 1)
+                torch.manual_seed(seed)
+                torch.cuda.manual_seed_all(seed)
+            self._initialize(random)
+        else:
+            from xpmir.letor.trainers import TrainState
+
+            state = TrainState()
+            state.ranker = self
+            state.optimizer = None
+
+            self._initialize(None)
+            state.load(Path(self.checkpoint))
+
+        self._initialized = True
+
+    def __call__(self, inputs: "BaseRecords", info: Optional[TrainContext]):
         """Computes the score of all (query, document) pairs
 
         Different subclasses can process the input more or
@@ -104,7 +153,7 @@ class LearnableScorer(Scorer):
         for doc in documents:
             assert doc.content is not None
 
-        inputs.addQueries(Query(query))
+        inputs.addQueries(Query(None, query))
         inputs.addDocuments(*[Document(d.docid, d.content, d.score) for d in documents])
 
         with torch.no_grad():
@@ -167,7 +216,11 @@ class Retriever(Config):
 
 
 class FullRetriever(Retriever):
-    """Retrieves all the documents of the collection"""
+    """Retrieves all the documents of the collection
+
+    This can be used to build a small validation set on a subset of the collection - in that
+    case, the scorer can be used through a TwoStageRetriever
+    """
 
     documents: Param[AdhocDocuments]
 
@@ -200,6 +253,7 @@ class TwoStageRetriever(Retriever):
     def initialize(self):
         self.retriever.initialize()
         self._batcher = self.batcher.initialize(self.batchsize)
+        self.scorer.initialize(None)
 
         # Compute with the scorer
         if self.device is not None:

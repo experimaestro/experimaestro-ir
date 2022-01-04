@@ -7,7 +7,7 @@ from experimaestro import Config, Constant, Param, default, Annotated
 import torch
 from torch import nn
 import torch.nn.functional as F
-from xpmir.letor.traininfo import TrainingInformation
+from xpmir.letor.context import TrainContext
 from xpmir.rankers import TwoStageRetriever
 from xpmir.letor.records import BaseRecords
 from . import InteractionScorer
@@ -73,8 +73,8 @@ class Colbert(InteractionScorer):
         assert not self.querytoken, "Not implemented"
         assert not self.doctoken, "Not implemented"
 
-    def initialize(self, random):
-        super().initialize(random)
+    def _initialize(self, random):
+        super()._initialize(random)
 
         self.linear = nn.Linear(self.vocab.dim(), self.linear_dim, bias=False)
 
@@ -88,7 +88,7 @@ class Colbert(InteractionScorer):
 
         return F.normalize(output, p=2, dim=2)
 
-    def _forward(self, inputs: BaseRecords, info: TrainingInformation = None):
+    def _forward(self, inputs: BaseRecords, info: TrainContext = None):
         queries = self._encode([q.text for q in inputs.queries], False)
         documents = self._encode([d.text for d in inputs.documents], True)
 

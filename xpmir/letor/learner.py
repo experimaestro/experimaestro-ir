@@ -1,23 +1,18 @@
 import logging
 import torch
 import json
+import math
 from pathlib import Path
-from typing import Dict, Iterable, List
+from typing import Dict
 from datamaestro_text.data.ir import Adhoc
-from experimaestro import (
-    Task,
-    Config,
-    Param,
-    Meta,
-    pathgenerator,
-)
+from experimaestro import Task, Config, Param, copyconfig, pathgenerator, Annotated
 import numpy as np
 from experimaestro.notifications import tqdm
-from typing_extensions import Annotated
 from xpmir.utils import EasyLogger
 from xpmir.evaluation import evaluate
 from xpmir.letor import Random
-from xpmir.letor.trainers import TrainContext, TrainState, Trainer
+from xpmir.letor.trainers import Trainer
+from xpmir.letor.context import TrainContext
 from xpmir.rankers import LearnableScorer, Retriever, ScoredDocument, Scorer
 
 
@@ -42,29 +37,6 @@ class LearnerListener(Config):
     def taskoutputs(self, learner: "Learner"):
         """Outputs from this listeners"""
         return None
-
-
-class SavedScorer(Scorer):
-    """Generic scorer that has been saved"""
-
-    ranker: Param[LearnableScorer]
-    checkpoint: Meta[Path]
-
-    def __postinit__(self):
-        state = TrainState()
-        state.ranker = self.ranker
-        self.ranker.initialize(np.random.RandomState())
-        state.optimizer = None
-        state.load(Path(self.checkpoint))
-        return state.ranker
-
-    def to(self, device):
-        self.ranker.to(device)
-
-    def rsv(
-        self, query: str, documents: Iterable[ScoredDocument], keepcontent=False
-    ) -> List[ScoredDocument]:
-        return self.ranker.rsv(query, documents)
 
 
 class ValidationListener(LearnerListener):
@@ -111,9 +83,10 @@ class ValidationListener(LearnerListener):
                 metrics[f"{self.key}/final/{metric}"] = self.top[metric]["value"]
 
     def taskoutputs(self, learner: "Learner"):
-        """Experimaestro outputs"""
+        """Experimaestro outputs: returns the best checkpoints for each
+        metric"""
         return {
-            key: SavedScorer(ranker=learner.scorer, checkpoint=str(self.bestpath / key))
+            key: copyconfig(learner.scorer, checkpoint=str(self.bestpath / key))
             for key, store in self.metrics.items()
             if store
         }
@@ -121,13 +94,21 @@ class ValidationListener(LearnerListener):
     def __call__(self, state):
         if state.epoch % self.validation_interval == 0:
             # Compute validation metrics
-            means = evaluate(self.retriever, self.dataset, list(self.metrics.keys()))
+            means, details = evaluate(
+                self.retriever, self.dataset, list(self.metrics.keys()), True
+            )
 
             for metric, keep in self.metrics.items():
                 value = means[metric]
 
                 self.context.writer.add_scalar(
-                    f"{self.key}/{metric}", value, state.epoch
+                    f"{self.key}/{metric}/mean", value, state.step
+                )
+
+                self.context.writer.add_histogram(
+                    f"{self.key}/{metric}",
+                    np.array(list(details[metric].values())),
+                    state.step,
                 )
 
                 # Update the top validation
@@ -166,12 +147,11 @@ class Learner(Task, EasyLogger):
 
     The learner task is generic, and takes two main arguments:
     (1) the scorer defines the model (e.g. DRMM), and
-    (2) the trainer defines the loss (e.g. pointwise, pairwise, etc.)
+    (2) the trainer defines how the model should be trained (e.g. pointwise, pairwise, etc.)
 
     Attributes:
 
         max_epoch: Maximum training epoch
-        early_stop: Maximum number of epochs without improvement on validation
         checkpoint_interval: Number of epochs between each checkpoint
         scorer: The scorer to learn
         trainer: The trainer used to learn the parameters of the scorer
@@ -186,6 +166,7 @@ class Learner(Task, EasyLogger):
     trainer: Param[Trainer]
     scorer: Param[LearnableScorer]
 
+    # Listen to learner
     listeners: Param[Dict[str, LearnerListener]]
 
     # Checkpoints
@@ -196,6 +177,7 @@ class Learner(Task, EasyLogger):
     checkpointspath: Annotated[Path, pathgenerator("checkpoints")]
 
     def taskoutputs(self):
+        """Object returned when submitting the task"""
         return {
             "listeners": {
                 key: listener.taskoutputs(self)
@@ -210,24 +192,29 @@ class Learner(Task, EasyLogger):
         for handler in logger.handlers:
             handler.setLevel(logging.INFO)
 
+        self.only_cached = False
+
+        # CUDNN settings
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 
-        self.only_cached = False
+        # Sets the random seed
+        seed = self.random.state.randint((2 ** 32) - 1)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
 
         # Initialize the scorer and trainer
         self.logger.info("Scorer initialization")
+
         self.scorer.initialize(self.random.state)
 
         # Initialize the listeners
-        context = TrainContext(self.logpath, self.checkpointspath)
+        context = TrainContext(self.logpath, self.checkpointspath, self.max_epoch)
         for key, listener in self.listeners.items():
             listener.initialize(key, self, context)
 
         self.logger.info("Trainer initialization")
-        seed = self.random.state.randint((2 ** 32) - 1)
-        torch.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
 
         # Initialize the trainer
         self.trainer.initialize(self.random.state, self.scorer, context)
