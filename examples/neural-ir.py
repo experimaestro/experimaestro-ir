@@ -8,7 +8,7 @@ from xpmir.letor.samplers import Sampler, ModelBasedSampler, TripletBasedSampler
 from xpmir.letor.trainers import Trainer
 from xpmir.letor.trainers.pointwise import PointwiseTrainer
 from xpmir.letor.trainers.pairwise import PairwiseTrainer
-from xpmir.neural import InteractionScorer
+from xpmir.neural.interaction import InteractionScorer
 from xpmir.neural.interaction.drmm import Drmm
 
 from xpmir.rankers import RandomScorer, TwoStageRetriever

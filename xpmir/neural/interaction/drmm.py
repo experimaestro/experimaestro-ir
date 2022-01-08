@@ -5,7 +5,7 @@ import torch
 from torch import nn
 from typing_extensions import Annotated
 from xpmir.index import Index
-from .. import InteractionScorer
+from xpmir.neural.interaction import InteractionScorer
 import xpmir.neural.modules as modules
 
 # The code below is heavily borrowed from OpenNIR
@@ -80,7 +80,6 @@ class IdfCombination(Combination):
         return (scores * idf).sum(dim=1)
 
 
-@param("combine", default="idf", checker=Choices(["idf", "sum"]), help="term gate type")
 class Drmm(InteractionScorer):
     """Deep Relevance Matching Model (DRMM)
 
@@ -99,7 +98,7 @@ class Drmm(InteractionScorer):
     index: Param[Optional[Index]]
     """The index (only used when using IDF to combine)"""
 
-    combine: Param[Combination, default(IdfCombination())]
+    combine: Annotated[Combination, default(IdfCombination())]
     """How to combine the query term scores"""
 
     def __validate__(self):

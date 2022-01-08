@@ -8,9 +8,8 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from xpmir.letor.context import TrainContext
-from xpmir.rankers import TwoStageRetriever
 from xpmir.letor.records import BaseRecords
-from . import InteractionScorer
+from xpmir.neural.interaction import InteractionScorer
 
 
 class Similarity(Config):
