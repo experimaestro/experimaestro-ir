@@ -21,7 +21,7 @@ class PairwiseDistillationSamples(Config, Iterable[PairwiseDistillationSample]):
 
 
 class PairwiseHydrator(PairwiseDistillationSamples):
-    """Hydrate samples with document and/or query content"""
+    """Hydrate ID-based samples with document and/or query content"""
 
     samples: Param[PairwiseDistillationSamples]
 

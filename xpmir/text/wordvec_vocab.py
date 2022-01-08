@@ -13,7 +13,7 @@ from xpmir.letor import Random
 from xpmir.letor.records import TokenizedTexts
 
 # from onir.interfaces import wordvec
-from xpmir.vocab import Vocab
+from xpmir.text import Vocab
 from datamaestro_text.data.embeddings import WordEmbeddings
 
 # TODO: add sources to datamaestro

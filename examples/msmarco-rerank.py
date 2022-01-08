@@ -17,13 +17,13 @@ from xpmir.letor.optim import Adam
 from xpmir.letor.samplers import ModelBasedSampler, Sampler, TripletBasedSampler
 from xpmir.letor.trainers import Trainer
 import xpmir.letor.trainers.pairwise as pairwise
-from xpmir.neural.drmm import Drmm
+from xpmir.neural.interaction.drmm import Drmm
 from xpmir.neural.colbert import Colbert
 from xpmir.neural.jointclassifier import JointClassifier
 from xpmir.rankers import RandomScorer, Scorer, TwoStageRetriever
 from xpmir.rankers.standard import BM25
-from xpmir.vocab.huggingface import DualTransformerEncoder, TransformerVocab
-from xpmir.vocab.wordvec_vocab import WordvecUnkVocab
+from xpmir.text.huggingface import DualTransformerEncoder, TransformerVocab
+from xpmir.text.wordvec_vocab import WordvecUnkVocab
 
 logging.basicConfig(level=logging.INFO)
 

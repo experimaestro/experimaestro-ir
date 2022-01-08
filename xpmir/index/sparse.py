@@ -8,7 +8,7 @@ from datamaestro_text.data.ir import AdhocDocument, AdhocDocumentStore
 from xpmir.letor.batchers import Batcher
 from xpmir.utils import batchiter
 from xpmir.letor import Device, DEFAULT_DEVICE
-from xpmir.vocab.encoders import TextEncoder
+from xpmir.text.encoders import TextEncoder
 from xpmir.rankers import Retriever, ScoredDocument
 import array
 import pickle

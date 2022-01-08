@@ -5,11 +5,11 @@ import torch.nn as nn
 from experimaestro import Param
 from xpmir.letor.context import TrainContext
 from xpmir.letor.records import BaseRecords
+from xpmir.letor import Module
 from xpmir.rankers import LearnableScorer
-from xpmir.vocab import Vocab
 
 
-class TorchLearnableScorer(LearnableScorer, nn.Module):
+class TorchLearnableScorer(LearnableScorer, Module):
     """Base class for torch-learnable scorers"""
 
     def __init__(self):
@@ -32,20 +32,24 @@ class DualRepresentationScorer(TorchLearnableScorer):
     of cosine/inner products between query and document tokens.
     """
 
-    def forward(self, inputs: BaseRecords, info: TrainContext = None):
+    def forward(self, inputs: BaseRecords, info: Optional[TrainContext] = None):
         # Forward to model
         enc_queries = self.encode_queries([q.text for q in inputs.unique_queries])
         enc_documents = self.encode_documents([d.text for d in inputs.unique_documents])
 
+        # Get the pairs
         pairs = inputs.pairs()
-
-        # Case where pairs of indices are given
         q_ix, d_ix = pairs
-        device = enc_queries.device
+
+        # TODO: Use a product query x document if possible
 
         return self.score_pairs(
-            torch.index_select(enc_queries, 0, torch.LongTensor(q_ix).to(device)),
-            torch.index_select(enc_documents, 0, torch.LongTensor(d_ix).to(device)),
+            enc_queries[
+                q_ix,
+            ],
+            enc_documents[
+                d_ix,
+            ],
             info,
         )
 
@@ -61,59 +65,7 @@ class DualRepresentationScorer(TorchLearnableScorer):
     def score_product(self, queries, documents, info: TrainContext):
         raise NotImplementedError()
 
-    def score_pairs(self, queries, documents, info: Optional[TrainContext]):
+    def score_pairs(
+        self, queries, documents, info: Optional[TrainContext]
+    ) -> torch.Tensor:
         raise NotImplementedError()
-
-
-class InteractionScorer(TorchLearnableScorer):
-    """Interaction-based neural scorer
-
-    This is the base class for all scorers that depend on a map
-    of cosine/inner products between query and document tokens.
-
-    Attributes:
-
-        vocab: The embedding model -- the vocab also defines how to tokenize text
-        qlen: Maximum query length (this can be even shortened by the model)
-        dlen: Maximum document length (this can be even shortened by the model)
-        add_runscore:
-            Whether the base predictor score should be added to the
-            model score
-    """
-
-    vocab: Param[Vocab]
-    qlen: Param[int] = 20
-    dlen: Param[int] = 2000
-
-    def _initialize(self, random):
-        self.random = random
-        self.vocab.initialize()
-
-    def __validate__(self):
-        assert (
-            self.dlen <= self.vocab.maxtokens()
-        ), f"The maximum document length ({self.dlen}) should be less that what the vocab can process ({self.vocab.maxtokens()})"
-        assert (
-            self.qlen <= self.vocab.maxtokens()
-        ), f"The maximum query length ({self.qlen}) should be less that what the vocab can process ({self.vocab.maxtokens()})"
-
-    def forward(self, inputs: BaseRecords, info: TrainContext = None):
-        # Forward to model
-        result = self._forward(inputs, info)
-
-        return result
-
-    def _forward(self, inputs: BaseRecords, info: TrainContext = None):
-        raise NotImplementedError
-
-    def save(self, path):
-        state = self.state_dict(keep_vars=True)
-        for key in list(state):
-            if state[key].requires_grad:
-                state[key] = state[key].data
-            else:
-                del state[key]
-        torch.save(state, path)
-
-    def load(self, path):
-        self.load_state_dict(torch.load(path), strict=False)

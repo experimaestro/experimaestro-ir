@@ -9,7 +9,7 @@ from xpmir.letor.trainers import Trainer
 from xpmir.letor.trainers.pointwise import PointwiseTrainer
 from xpmir.letor.trainers.pairwise import PairwiseTrainer
 from xpmir.neural import InteractionScorer
-from xpmir.neural.drmm import Drmm
+from xpmir.neural.interaction.drmm import Drmm
 
 from xpmir.rankers import RandomScorer, TwoStageRetriever
 
@@ -25,7 +25,7 @@ from xpmir.interfaces.anserini import (
     IndexCollection,
 )
 from xpmir.evaluation import Evaluate
-from xpmir.vocab.huggingface import TransformerVocab
+from xpmir.text.huggingface import TransformerVocab
 
 logging.basicConfig(level=logging.INFO)
 
@@ -219,7 +219,7 @@ def vocab(method):
 
 @vocab
 def glove(info):
-    from xpmir.vocab.wordvec_vocab import WordvecUnkVocab
+    from xpmir.text.wordvec_vocab import WordvecUnkVocab
 
     wordembs = prepare_dataset("edu.stanford.glove.6b.50")
     return WordvecUnkVocab(data=wordembs, random=info.random)
@@ -231,7 +231,7 @@ def glove(info):
 )
 @vocab
 def bertencoder(info, trainable, model_id):
-    import xpmir.vocab.huggingface as bv
+    import xpmir.text.huggingface as bv
 
     return bv.IndependentTransformerVocab(trainable=trainable, model_id=model_id)
 

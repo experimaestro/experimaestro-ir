@@ -1,14 +1,17 @@
 from typing import Callable, List, Optional, Tuple
 import itertools
 import torch
-from experimaestro import Config, Param
+from experimaestro import Config, Param, Meta
+from xpmir.letor import DEFAULT_DEVICE, Device
 from xpmir.neural import DualRepresentationScorer
-from xpmir.utils import foreach
-from xpmir.vocab.encoders import TextEncoder
-from xpmir.letor.context import ScalarMetric, TrainContext
+from xpmir.utils import easylog, foreach
+from xpmir.text.encoders import TextEncoder
+from xpmir.letor.context import ScalarMetric, TrainContext, TrainingHook
+
+logger = easylog()
 
 
-class DualVectorListener(Config):
+class DualVectorListener(TrainingHook):
     """Regularizer called with the (vectorial) representation of queries and documents"""
 
     def __call__(
@@ -131,5 +134,5 @@ class FlopsRegularizer(DualVectorListener):
         info.metrics.add(ScalarMetric("flops_d", flops_d.item(), len(d)))
 
         with torch.no_grad():
-            info.metrics.add(ScalarMetric("sparsity_q", (q != 0).sum().item(), len(q)))
-            info.metrics.add(ScalarMetric("sparsity_d", (d != 0).sum().item(), len(d)))
+            info.metrics.add(ScalarMetric("sparsity_q", (q != 0).mean().item(), len(q)))
+            info.metrics.add(ScalarMetric("sparsity_d", (d != 0).mean().item(), len(d)))

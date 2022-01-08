@@ -17,8 +17,8 @@ from xpmir.letor.records import (
     Query,
     TokenizedTexts,
 )
-from xpmir.vocab import Vocab
-from xpmir.vocab.encoders import DualTextEncoder, MeanTextEncoder, TextEncoder
+from xpmir.text import Vocab
+from xpmir.text.encoders import DualTextEncoder, MeanTextEncoder, TextEncoder
 
 
 class RandomVocab(Vocab):
@@ -80,7 +80,7 @@ def registermodel(method):
 @registermodel
 def drmm():
     """Drmm factory"""
-    from xpmir.neural.drmm import Drmm
+    from xpmir.neural.interaction.drmm import Drmm
 
     return Drmm(vocab=RandomVocab(), index=CustomIndex()).instance()
 
@@ -198,6 +198,7 @@ inputfactories = [pointwise, pairwise, product]
 @pytest.mark.parametrize("inputfactory", inputfactories)
 @pytest.mark.dependency()
 def test_forward_types(modelfactory, inputfactory):
+    """Test that each record type is handled"""
     model = modelfactory()
     random = Random().instance().state
     model.initialize(random)
@@ -217,7 +218,7 @@ def test_forward_types(modelfactory, inputfactory):
 )
 @pytest.mark.dependency(depends=["test_model_forward"])
 def test_forward_consistency(modelfactory, inputfactoriescouple):
-    """Test that the outputs are consistent between different records types"""
+    """Test that outputs are consistent between the different records types"""
     model = modelfactory()
     random = Random().instance().state
     model.initialize(random)

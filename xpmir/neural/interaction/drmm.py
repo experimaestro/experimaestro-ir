@@ -5,8 +5,10 @@ import torch
 from torch import nn
 from typing_extensions import Annotated
 from xpmir.index import Index
-from . import InteractionScorer
+from .. import InteractionScorer
 import xpmir.neural.modules as modules
+
+# The code below is heavily borrowed from OpenNIR
 
 
 class CountHistogram(Config, nn.Module):
@@ -63,6 +65,21 @@ class LogCountHistogram(CountHistogram):
         return (result.float() + 1e-5).log()
 
 
+class Combination(Config, nn.Module):
+    pass
+
+
+class SumCombination(Combination):
+    def forward(self, scores, idf):
+        return scores.sum(dim=1)
+
+
+class IdfCombination(Combination):
+    def forward(self, scores, idf):
+        idf = idf.softmax(dim=1)
+        return (scores * idf).sum(dim=1)
+
+
 @param("combine", default="idf", checker=Choices(["idf", "sum"]), help="term gate type")
 class Drmm(InteractionScorer):
     """Deep Relevance Matching Model (DRMM)
@@ -71,17 +88,19 @@ class Drmm(InteractionScorer):
 
       Jiafeng Guo, Yixing Fan, Qingyao Ai, and William Bruce Croft. 2016. A Deep Relevance
       Matching Model for Ad-hoc Retrieval. In CIKM.
-
-    Attributes:
-
-        hist: The histogram type
-        hidden: Hidden layer dimension for the feed forward matching network
-        index: the index (only used when using IDF to combine)
     """
 
     hist: Annotated[CountHistogram, default(LogCountHistogram())]
+    """The histogram type"""
+
     hidden: Param[int] = 5
+    """Hidden layer dimension for the feed forward matching network"""
+
     index: Param[Optional[Index]]
+    """The index (only used when using IDF to combine)"""
+
+    combine: Param[Combination, default(IdfCombination())]
+    """How to combine the query term scores"""
 
     def __validate__(self):
         super().__validate__()
@@ -101,14 +120,14 @@ class Drmm(InteractionScorer):
         channels = self.vocab.emb_views()
         self.hidden_1 = nn.Linear(self.hist.nbins * channels, self.hidden)
         self.hidden_2 = nn.Linear(self.hidden, 1)
-        self.needs_idf = self.combine == "idf"
-        self.combine = {"idf": IdfCombination, "sum": SumCombination}[self.combine]()
+        self.needs_idf = isinstance(self.combine, IdfCombination)
 
     def _forward(self, inputs, info):
         simmat, tokq, tokd = self.simmat.encode_query_doc(
             self.vocab, inputs, d_maxlen=self.dlen, q_maxlen=self.qlen
         )
 
+        # Computes the IDF if needed
         query_idf = None
         if self.needs_idf:
             assert self.index is not None
@@ -131,14 +150,3 @@ class Drmm(InteractionScorer):
         histogram = histogram.permute(0, 2, 3, 1)
         histogram = histogram.reshape(BATCH, QLEN, BINS * CHANNELS)
         return histogram
-
-
-class SumCombination(nn.Module):
-    def forward(self, scores, idf):
-        return scores.sum(dim=1)
-
-
-class IdfCombination(nn.Module):
-    def forward(self, scores, idf):
-        idf = idf.softmax(dim=1)
-        return (scores * idf).sum(dim=1)

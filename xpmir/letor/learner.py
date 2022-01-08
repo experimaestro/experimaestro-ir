@@ -46,9 +46,7 @@ class ValidationListener(LearnerListener):
 
     Attributes:
         warmup: Number of warmup epochs
-        early_stop: Maximum number of epochs without improvement on validation
         validation: How to compute the validation metric
-        validation_interval: interval for computing validation metrics
         metrics: Dictionary whose keys are the metrics to record, and boolean
             values whether the best performance checkpoint should be kept for
             the associated metric
@@ -57,11 +55,21 @@ class ValidationListener(LearnerListener):
     metrics: Param[Dict[str, bool]] = {"map": True}
     dataset: Param[Adhoc]
     retriever: Param[Retriever]
-    validation_interval: Param[int] = 1
     warmup: Param[int] = -1
     bestpath: Annotated[Path, pathgenerator("best")]
     info: Annotated[Path, pathgenerator("info.json")]
-    early_stop: Param[int] = 20
+
+    validation_interval: Param[int] = 1
+    """Epochs between each validation"""
+
+    early_stop: Param[int] = 0
+    """Number of epochs without improvement after which we stop learning.
+    Should be a multiple of validation_interval or 0 (no early stopping)"""
+
+    def __validate__(self):
+        assert (
+            self.early_stop % self.validation_interval == 0
+        ), "Early stop should be a multiple of the validation interval"
 
     def initialize(self, key: str, learner: "Learner", context: TrainContext):
         super().initialize(key, learner, context)
@@ -91,7 +99,22 @@ class ValidationListener(LearnerListener):
             if store
         }
 
-    def __call__(self, state):
+    def should_stop(self, epoch=0):
+        if self.early_stop > 0 and self.top:
+            epochs_since_imp = (epoch or self.context.epoch) - max(
+                info["epoch"] for key, info in self.top.items() if self.metrics[key]
+            )
+            return epochs_since_imp >= self.early_stop
+
+        # No, proceed...
+        return False
+
+    def __call__(self, state: TrainContext):
+        # Check that we did not stop earlier (when loading from checkpoint / if other
+        # listeners have not stopped yet)
+        if self.should_stop(state.epoch - 1):
+            return True
+
         if state.epoch % self.validation_interval == 0:
             # Compute validation metrics
             means, details = evaluate(
@@ -130,15 +153,7 @@ class ValidationListener(LearnerListener):
                 json.dump(self.top, fp)
 
         # Early stopping?
-        if self.early_stop > 0 and self.top:
-            epochs_since_imp = self.context.epoch - max(
-                info["epoch"] for info in self.top.values()
-            )
-            if epochs_since_imp >= self.early_stop:
-                return False
-
-        # No, proceed...
-        return True
+        return self.should_stop()
 
 
 # Checkpoints
@@ -245,8 +260,9 @@ class Learner(Task, EasyLogger):
                     context.save_checkpoint()
 
                 # Call listeners
-                stop = False
+                stop = True
                 for listener in self.listeners.values():
+                    # listener.__call__ returns True if we should stop
                     stop = listener(state) and stop
 
                 if stop:
@@ -254,6 +270,7 @@ class Learner(Task, EasyLogger):
                         "stopping after epoch {epoch} ({early_stop} epochs since "
                         "all listeners asked for it"
                     )
+                    break
 
                 # Stop if max epoch is reached
                 if context.epoch >= self.max_epoch:

@@ -4,17 +4,19 @@ https://github.com/facebookresearch/faiss
 """
 
 from pathlib import Path
-from typing import List
+from typing import Callable, Iterator, List, Tuple
 from experimaestro.core.objects import Config
 import torch
+import numpy as np
 from experimaestro import Annotated, Meta, Task, pathgenerator, Param, tqdm
 import logging
 from datamaestro_text.data.ir import AdhocDocumentStore
 from xpmir.rankers import Retriever, ScoredDocument
 from xpmir.letor.batchers import Batcher
-from xpmir.vocab.encoders import TextEncoder
+from xpmir.text.encoders import TextEncoder
 from xpmir.letor import Device, DEFAULT_DEVICE
 from xpmir.utils import batchiter, easylog
+from xpmir.documents.samplers import DocumentSampler
 
 logger = easylog()
 
@@ -29,6 +31,56 @@ class FaissIndex(Config):
     normalize: Param[bool]
     faiss_index: Annotated[Path, pathgenerator("faiss.dat")]
     documents: Param[AdhocDocumentStore]
+
+
+class FaissIndexFactory(Config):
+    """The index type, see https://github.com/facebookresearch/faiss/wiki/Faiss-indexes for the list."""
+
+    def __call__(self, dimension: int) -> faiss.Index:
+        raise NotImplementedError
+
+
+class FlatIPIndexer(FaissIndexFactory):
+    """Exact Search for Inner Product"""
+
+    def __call__(self, dimension: int):
+        return faiss.IndexFlatIP(dimension)
+
+
+class TrainableIndexFactory(FaissIndexFactory):
+    sampler: Param[DocumentSampler]
+
+    def train(
+        self,
+        index: faiss.Index,
+        batch_encoder: Callable[[Iterator[str]], Iterator[torch.Tensor]],
+    ):
+        logger.info("Building index")
+        count, iter = self.sampler()
+        doc_iter = tqdm(iter, total=count)
+
+        # Collect batches
+        batches = []
+        for batch in batch_encoder(doc_iter):
+            batches.append(batch.cpu().numpy())
+
+        xt = np.ascontiguousarray(np.concatenate(batches, 0))
+        del batches
+
+        logger.info("Training index")
+        index.train(xt)
+
+
+class HNSWSQIndexer(TrainableIndexFactory):
+    graph_neighbors: Param[int]
+
+    def __call__(self, dimension: int):
+        return faiss.IndexHNSWSQ(
+            dimension,
+            faiss.ScalarQuantizer.QT_fp16,
+            self.graph_neighbors,
+            faiss.METRIC_INNER_PRODUCT,
+        )
 
 
 class IndexBackedFaiss(FaissIndex, Task):
@@ -47,19 +99,37 @@ class IndexBackedFaiss(FaissIndex, Task):
     device: Meta[Device] = DEFAULT_DEVICE
     batcher: Meta[Batcher] = Batcher()
 
-    def execute(self):
-        self.encoder.initialize()
-        index = faiss.IndexFlatL2(self.encoder.dimension)
+    indexer: Param[FaissIndexFactory]
+    """
+    The index type, see https://github.com/facebookresearch/faiss/wiki/Faiss-indexes for the list.
+    """
 
+    def execute(self):
+        # Initializations
+        self.encoder.initialize()
+        index = self.indexer(self.encoder.dimension)
+        batcher = self.batcher.initialize(self.batchsize)
+
+        # Train the
+        if isinstance(self.indexer, TrainableIndexFactory):
+            logging.info("Training FAISS index (%d documents)", index.ntotal)
+
+            def batch_encoder(doc_iter: Iterator[str]):
+                for batch in batchiter(self.batchsize, doc_iter, index):
+                    yield self.encoder(batch)
+
+            self.indexer.train(index, batch_encoder)
+
+        # Index the collection
         doc_iter = tqdm(
             self.documents.iter_documents(), total=self.documents.documentcount
         )
-        batcher = self.batcher.initialize(self.batchsize)
-
         self.encoder.to(self.device(logger)).eval()
         with torch.no_grad():
             for batch in batchiter(self.batchsize, doc_iter, index):
-                batcher.process(batch, self.index_documents)
+                batcher.process(
+                    [document.text for document in batch], self.index_documents, index
+                )
 
         logging.info("Writing FAISS index (%d documents)", index.ntotal)
         faiss.write_index(index, str(self.faiss_index))
@@ -68,7 +138,7 @@ class IndexBackedFaiss(FaissIndex, Task):
         x = self.encoder(batch)
         if self.normalize:
             x /= x.norm(2, keepdim=True, dim=1)
-        index.add(x.cpu().numpy())
+        index.add(np.ascontiguousarray(x.cpu().numpy()))
 
     def docid_internal2external(self, docid: int):
         return self.documents.docid_internal2external(docid)
@@ -97,12 +167,9 @@ class FaissRetriever(Retriever):
             if self.index.normalize:
                 encoded_query /= encoded_query.norm(2)
 
-            distances, indices = self._index.search(
-                encoded_query.cpu().numpy(), self.topk
-            )
+            values, indices = self._index.search(encoded_query.cpu().numpy(), self.topk)
             return [
-                ScoredDocument(
-                    self.index.documents.docid_internal2external(ix), -distance
-                )
-                for ix, distance in zip(indices[0], distances[0])
+                ScoredDocument(self.index.documents.docid_internal2external(ix), value)
+                for ix, value in zip(indices[0], values[0])
+                if ix >= 0
             ]

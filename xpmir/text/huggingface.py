@@ -1,15 +1,18 @@
 from experimaestro.compat import cached_property
 from typing import ClassVar, List, Optional, Tuple, Union
 import logging
+import re
 import torch
 import torch.nn as nn
 from experimaestro import Param
-from xpmir.vocab.encoders import (
+from xpmir.letor.context import StepTrainingHook, TrainState, TrainingHook
+from xpmir.text.encoders import (
     ContextualizedTextEncoder,
     ContextualizedTextEncoderOutput,
     DualTextEncoder,
     TextEncoder,
 )
+from xpmir.utils import easylog
 
 try:
     from transformers import AutoModel, AutoTokenizer, AutoConfig
@@ -18,10 +21,12 @@ except Exception:
     raise
 
 from xpmir.letor.records import TokenizedTexts
-import xpmir.vocab as vocab
+import xpmir.text as text
+
+logger = easylog()
 
 
-class TransformerVocab(vocab.Vocab):
+class TransformerVocab(text.Vocab):
     """Transformer-based encoder
 
     Args:
@@ -70,6 +75,11 @@ class TransformerVocab(vocab.Vocab):
             self.model.train()
         else:
             self.model.eval()
+
+    def parameters(self, recurse=True):
+        if self.trainable:
+            return super().parameters(recurse)
+        return []
 
     def train(self, mode: bool = True):
         # We should not make this layer trainable unless asked
@@ -163,8 +173,8 @@ class TransformerEncoder(TransformerVocab, TextEncoder):
 
     maxlen: Param[Optional[int]] = None
 
-    def forward(self, texts: List[str]):
-        tokenized = self.batch_tokenize(texts, maxlen=self.maxlen, mask=True)
+    def forward(self, texts: List[str], maxlen=None):
+        tokenized = self.batch_tokenize(texts, maxlen=maxlen or self.maxlen, mask=True)
         device = self._dummy_params.device
 
         with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
@@ -177,16 +187,47 @@ class TransformerEncoder(TransformerVocab, TextEncoder):
     def dimension(self):
         return self.dim()
 
+    def with_maxlength(self, maxlen: int):
+        return TransformerTextEncoderAdapter(encoder=self, maxlen=maxlen)
+
+
+class TransformerTextEncoderAdapter(TextEncoder):
+    encoder: Param[TransformerEncoder]
+    maxlen: Param[Optional[int]] = None
+
+    def initialize(self):
+        self.encoder.initialize()
+
+    @property
+    def dimension(self):
+        return self.encoder.dimension
+
+    def forward(self, texts: List[str], maxlen=None):
+        return self.encoder.forward(texts, maxlen=self.maxlen)
+
+    def static(self):
+        return self.encoder.static()
+
+    @property
+    def vocab_size(self):
+        return self.encoder.vocab_size
+
 
 class ContextualizedTransformerEncoder(TransformerVocab, ContextualizedTextEncoder):
-    maxlen: Param[Optional[int]] = None
+    """Returns the contextualized output at the various layers"""
 
     @property
     def dimension(self):
         return self.dim()
 
-    def forward(self, texts: List[str], only_tokens=True, output_hidden_states=False):
-        tokenized = self.batch_tokenize(texts, maxlen=self.maxlen, mask=True)
+    def forward(
+        self,
+        texts: List[str],
+        maxlen=None,
+        only_tokens=True,
+        output_hidden_states=False,
+    ):
+        tokenized = self.batch_tokenize(texts, maxlen=maxlen or self.maxlen, mask=True)
         device = self._dummy_params.device
         with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
             y = self.model(
@@ -202,6 +243,31 @@ class ContextualizedTransformerEncoder(TransformerVocab, ContextualizedTextEncod
             return ContextualizedTextEncoderOutput(
                 ids, mask, y.last_hidden_state, y.hidden_states
             )
+
+    def with_maxlength(self, maxlen: int):
+        return ContextualizedTextEncoderAdapter(encoder=self, maxlen=maxlen)
+
+
+class ContextualizedTextEncoderAdapter(ContextualizedTextEncoder):
+    encoder: Param[ContextualizedTransformerEncoder]
+    maxlen: Param[Optional[int]] = None
+
+    def initialize(self):
+        self.encoder.initialize()
+
+    def forward(self, texts: List[str], **kwargs):
+        return self.encoder.forward(texts, maxlen=self.maxlen, **kwargs)
+
+    @property
+    def dimension(self):
+        return self.encoder.dimension
+
+    def static(self):
+        return self.encoder.static()
+
+    @property
+    def vocab_size(self):
+        return self.encoder.vocab_size
 
 
 class DualTransformerEncoder(TransformerVocab, DualTextEncoder):
@@ -225,3 +291,49 @@ class DualTransformerEncoder(TransformerVocab, DualTextEncoder):
     @property
     def dimension(self) -> int:
         return self.model.config.hidden_size
+
+
+class LayerFreezer(StepTrainingHook):
+    """This training hook class can be used to freeze some of the transformer layers"""
+
+    RE_LAYER = re.compile(r"""^(?:encoder|transformer)\.layer\.(\d+)\.""")
+
+    transformer: Param[TransformerVocab]
+    """Freeze layers"""
+
+    freeze_embeddings: Param[bool] = True
+
+    frozen: Param[int]
+    """Number of frozen layers (can be negative, i.e. -1 meaning until the last layer excluded, etc. / 0 means no layer)"""
+
+    def __init__(self):
+        self._initialized = False
+
+    @cached_property
+    def nlayers(self):
+        count = 0
+        for name, param in self.transformer.model.named_parameters():
+            if m := LayerFreezer.RE_LAYER.match(name):
+                count = max(count, int(m.group(1)))
+        return count
+
+    def should_freeze(self, name: str):
+        if self.freeze_embeddings and name.startswith("embeddings."):
+            return True
+
+        if self.frozen != 0:
+            if m := LayerFreezer.RE_LAYER.match(name):
+                layer = int(m.group(1))
+                if self.frozen < 0:
+                    return layer <= self.nlayers + self.frozen
+                return layer < self.frozen
+
+        return False
+
+    def before(self, state: TrainState):
+        if not self._initialized:
+            self._initialized = True
+            for name, param in self.transformer.model.named_parameters():
+                if self.should_freeze(name):
+                    logger.info("Freezing layer %s", name)
+                    param.requires_grad = False

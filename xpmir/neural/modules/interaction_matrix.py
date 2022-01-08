@@ -1,7 +1,10 @@
 import torch
 from torch import nn
 from xpmir.letor.records import BaseRecords
-from xpmir.vocab import Vocab
+from xpmir.text import Vocab
+
+
+# The code below is heavily borrowed from OpenNIR
 
 
 def binmat(a, b, padding=None):

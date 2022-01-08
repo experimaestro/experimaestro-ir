@@ -63,6 +63,10 @@ class AdhocDocuments(ir.AdhocDocumentStore, IRDSId):
         for doc in self.dataset.docs_iter():
             yield ir.AdhocDocument(doc.doc_id, doc.text)
 
+    @property
+    def documentcount(self):
+        return self.dataset.docs_count()
+
     @cached_property
     def store(self):
         return self.dataset.docs_store()

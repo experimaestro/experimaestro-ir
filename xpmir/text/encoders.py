@@ -1,11 +1,11 @@
 from typing import List, NamedTuple, Optional, Tuple
-import torch.nn as nn
 import torch
-from experimaestro import Config, Param
+from experimaestro import Param
+from xpmir.letor.optim import Module
 from . import Vocab
 
 
-class Encoder(Config, nn.Module):
+class Encoder(Module):
     def initialize(self):
         pass
 

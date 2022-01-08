@@ -4,7 +4,7 @@ from experimaestro import Param
 from xpmir.letor.context import TrainContext
 from xpmir.letor.records import BaseRecords
 from xpmir.neural import TorchLearnableScorer
-from xpmir.vocab.encoders import DualTextEncoder
+from xpmir.text.encoders import DualTextEncoder
 
 
 class CrossScorer(TorchLearnableScorer):

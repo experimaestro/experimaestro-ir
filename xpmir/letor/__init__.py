@@ -3,6 +3,8 @@ from experimaestro import Config, Param
 from experimaestro.compat import cached_property
 import numpy as np
 
+from .optim import Module
+
 
 class Random(Config):
     seed: Param[int] = 0

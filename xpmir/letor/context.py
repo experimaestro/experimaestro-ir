@@ -1,3 +1,4 @@
+from types import MethodType
 import torch
 from experimaestro import Config
 from pathlib import Path
@@ -91,15 +92,6 @@ class Loss(NamedTuple):
     name: str
     value: torch.Tensor
     weight: float
-
-
-HookType = TypeVar("HookType")
-
-
-class TrainingHook(Config):
-    """Base class for all training hooks"""
-
-    pass
 
 
 class TrainState:
@@ -196,6 +188,25 @@ class TrainState:
         self.cached = True
 
 
+HookType = TypeVar("HookType")
+
+
+class TrainingHook(Config):
+    """Base class for all training hooks"""
+
+    pass
+
+
+class StepTrainingHook(TrainingHook):
+    """Base class for hooks called at each epoch (before/after)"""
+
+    def after(self, state: "TrainContext"):
+        pass
+
+    def before(self, state: "TrainContext"):
+        pass
+
+
 class TrainContext:
     """Contains all the information about the training context
 
@@ -209,6 +220,9 @@ class TrainContext:
 
     losses: List[Loss]
     """Regularization losses to be added to the main loss"""
+
+    hooksmap: Dict[Type, List[TrainingHook]]
+    """Map of hooks"""
 
     PREFIX = "epoch-"
 
@@ -332,4 +346,8 @@ class TrainContext:
 
     def hooks(self, cls: Type[HookType]) -> List[HookType]:
         """Returns all the hooks"""
-        return self.hooksmap.get(cls, [])
+        return self.hooksmap.get(cls, [])  # type: ignore
+
+    def call_hooks(self, cls: Type, method: Callable, *args, **kwargs):
+        for hook in self.hooks(cls):
+            method(hook, *args, **kwargs)

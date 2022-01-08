@@ -4,8 +4,8 @@ import torch.nn as nn
 import torch
 from xpmir.letor.samplers import PairwiseSampler, PairwiseInBatchNegativesSampler
 from xpmir.neural import TorchLearnableScorer
-from xpmir.vocab.huggingface import TransformerVocab
-from xpmir.vocab.encoders import TextEncoder
+from xpmir.text.huggingface import TransformerVocab
+from xpmir.text.encoders import TextEncoder
 from xpmir.letor.trainers.batchwise import BatchwiseTrainer
 from xpmir.neural.dual import DotDense, FlopsRegularizer
 from transformers import AutoModelForMaskedLM
@@ -74,7 +74,7 @@ def spladeV2(lambda_q: float, lambda_d: float):
     """
     encoder = SpladeTextEncoder(
         aggregation=SumAggregation(),
-        encoder=TransformerVocab(model_id="distilbert-base-cased"),
+        encoder=TransformerVocab(model_id="distilbert-base-cased", trainable=True),
     )
     return DotDense(encoder=encoder), FlopsRegularizer(
         lambda_q=lambda_q, lambda_d=lambda_d

@@ -15,6 +15,7 @@ from xpmir.letor import Device, DEFAULT_DEVICE
 from xpmir.letor.batchers import Batcher
 from xpmir.letor.context import (
     ScalarMetric,
+    StepTrainingHook,
     TrainingHook,
     TrainContext,
     TrainState,
@@ -49,7 +50,7 @@ class ScheduledOptimizer:
         self.schedulers = []
         self.scheduler_factories = []
         self.optimizers = []
-        self.scheduler_steps = 0  # Number of scheduler steps\
+        self.scheduler_steps = -1  # Number of scheduler steps
         self.num_training_steps = num_training_steps
 
         filter = ParameterFilter()
@@ -57,14 +58,8 @@ class ScheduledOptimizer:
             optimizer = param_optimizer.create_optimizer(module, filter)
             self.optimizers.append(optimizer)
             self.scheduler_factories.append(param_optimizer.scheduler)
-            if param_optimizer.scheduler is not None:
-                self.schedulers.append(
-                    param_optimizer.scheduler(
-                        optimizer, num_training_steps, last_epoch=-1
-                    )
-                )
-            else:
-                self.schedulers.append(None)
+
+        self.reset_schedulers()
 
         assert len(self.schedulers) == len(self.optimizers)
 
@@ -80,13 +75,23 @@ class ScheduledOptimizer:
             self.scaler.load_state_dict(state["scaler"])
 
         # Re-create schedulers
-        self.steps = state["scheduler_steps"]
-        for ix, scheduler_factory in enumerate(self.scheduler_factories):
-            if scheduler_factory is not None:
-                self.schedulers[ix] = scheduler_factory(
-                    self.optimizers[ix],
-                    self.num_training_steps,
-                    last_epoch=self.scheduler_steps,
+        self.scheduler_steps = state["scheduler_steps"]
+        self.reset_schedulers()
+
+    def reset_schedulers(self):
+        self.schedulers = []
+        for optimizer, scheduler_factory in zip(
+            self.optimizers, self.scheduler_factories
+        ):
+            if scheduler_factory is None:
+                self.schedulers.append(None)
+            else:
+                self.schedulers.append(
+                    scheduler_factory(
+                        optimizer,
+                        self.num_training_steps,
+                        last_epoch=self.scheduler_steps,
+                    )
                 )
 
     def state_dict(self):
@@ -116,16 +121,17 @@ class ScheduledOptimizer:
             for optimizer in self.optimizers:
                 self.scaler.step(optimizer)
             context.metrics.add(
-                ScalarMetric("train/gradient/scaler", self.scaler.get_scale(), 1)
+                ScalarMetric("gradient/scaler", self.scaler.get_scale(), 1)
             )
             self.scaler.update()
 
     def scheduler_step(self, context: TrainContext):
+        """Performs a step for all the schedulers"""
         for ix, scheduler in enumerate(self.schedulers):
             if scheduler is not None:
                 for p_ix, lr in enumerate(scheduler.get_last_lr()):
                     context.metrics.add(
-                        ScalarMetric(f"train/gradient/scheduler/{ix+1}/{p_ix+1}", lr, 1)
+                        ScalarMetric(f"gradient/scheduler/{ix+1}/{p_ix+1}", lr, 1)
                     )
                 scheduler.step()
         self.scheduler_steps += 1
@@ -191,11 +197,12 @@ class Trainer(Config, EasyLogger):
         foreach(self.context.hooks(nn.Module), lambda hook: hook.to(device))
 
     def iter_train(self, max_epoch: int) -> Iterator[TrainState]:
+        """iter_train is called by the learner"""
         context = self.context
 
         self.logger.info("Transfering model to device %s", self.device)
         self.ranker.to(self.device)
-        num_training_steps = context.state.epoch * self.batches_per_epoch
+        num_training_steps = max_epoch * self.batches_per_epoch
         optimizer = ScheduledOptimizer(
             self.optimizers, num_training_steps, self.ranker, self.use_fp16
         )
@@ -216,6 +223,12 @@ class Trainer(Config, EasyLogger):
 
         assert context.state.optimizer is not None
         while True:
+            # Call the hook epoch hook
+            foreach(
+                self.context.hooks(StepTrainingHook),
+                lambda hook: hook.before(self.context),
+            )
+
             # Step to the next epoch
             context.nextepoch()
 
@@ -246,6 +259,10 @@ class Trainer(Config, EasyLogger):
             metrics.report(self.context.state.step, self.context.writer, "train")
 
             # Yields the current state (after one epoch)
+            foreach(
+                self.context.hooks(StepTrainingHook),
+                lambda hook: hook.after(self.context),
+            )
             yield context.state
 
     def do_train(self, microbatches: Iterator[BaseRecords], length: int):

@@ -1,6 +1,7 @@
 # Pre-trained models
 
-from xpmir.neural.siamese import DotDense
+from xpmir.neural.dual import DotDense
+from xpmir.text.huggingface import TransformerTextEncoderAdapter
 
 
 def tas_balanced():
@@ -12,13 +13,18 @@ def tas_balanced():
     Returns:
         DotDense: A DotDense ranker based on tas-balanced
     """
-    from xpmir.vocab.huggingface import TransformerEncoder
+    from xpmir.text.huggingface import TransformerEncoder
 
     encoder = TransformerEncoder(
         model_id="sebastian-hofstaetter/distilbert-dot-tas_b-b256-msmarco",
         trainable=True,
+        maxlen=200,
     )
-    return DotDense(encoder=encoder)
+
+    return DotDense(
+        encoder=encoder,
+        query_encoder=TransformerTextEncoderAdapter(encoder=encoder, maxlen=30),
+    )
 
 
 def spladev2():
