@@ -5,27 +5,28 @@ from torch import nn
 from torch.functional import Tensor
 import torch.nn.functional as F
 from experimaestro import Config, default, Annotated, Param, deprecate
-from xpmir.letor.context import Loss, ScalarMetric, TrainingHook
+from xpmir.letor.context import Loss
+from xpmir.letor.metrics import ScalarMetric
 from xpmir.letor.records import PairwiseRecord, PairwiseRecords
-from xpmir.letor.samplers import PairwiseSampler
-from xpmir.letor.trainers import TrainContext, Trainer
+from xpmir.letor.samplers import PairwiseSampler, SerializableIterator
+from xpmir.letor.trainers import TrainerContext, Trainer
 import numpy as np
 from xpmir.rankers import LearnableScorer, ScorerOutputType
 from xpmir.utils import foreach
 
 
-class PairwiseLoss(TrainingHook, nn.Module):
+class PairwiseLoss(Config, nn.Module):
     NAME = "?"
     weight: Param[float] = 1.0
 
     def initialize(self, ranker: LearnableScorer):
         pass
 
-    def process(self, scores: Tensor, context: TrainContext):
+    def process(self, scores: Tensor, context: TrainerContext):
         value = self.compute(scores, context)
         context.add_loss(Loss(f"pair-{self.NAME}", value, self.weight))
 
-    def compute(self, scores: Tensor, info: TrainContext) -> Tensor:
+    def compute(self, scores: Tensor, info: TrainerContext) -> Tensor:
         """
         Compute the loss
 
@@ -39,7 +40,7 @@ class PairwiseLoss(TrainingHook, nn.Module):
 class CrossEntropyLoss(PairwiseLoss):
     NAME = "cross-entropy"
 
-    def compute(self, rel_scores_by_record, info: TrainContext):
+    def compute(self, rel_scores_by_record, info: TrainerContext):
         target = (
             torch.zeros(rel_scores_by_record.shape[0])
             .long()
@@ -53,7 +54,7 @@ class SoftmaxLoss(PairwiseLoss):
 
     NAME = "softmax"
 
-    def compute(self, rel_scores_by_record, info: TrainContext):
+    def compute(self, rel_scores_by_record, info: TrainerContext):
         return torch.mean(1.0 - F.softmax(rel_scores_by_record, dim=1)[:, 0])
 
 
@@ -69,7 +70,7 @@ class LogSoftmaxLoss(PairwiseLoss):
 
     NAME = "ranknet"
 
-    def compute(self, scores: torch.Tensor, info: TrainContext):
+    def compute(self, scores: torch.Tensor, info: TrainerContext):
         return -F.logsigmoid(scores[:, 0] - scores[:, 1]).mean()
 
 
@@ -81,14 +82,14 @@ class HingeLoss(PairwiseLoss):
 
     margin: Param[float] = 1.0
 
-    def compute(self, rel_scores_by_record, info: TrainContext):
+    def compute(self, rel_scores_by_record, info: TrainerContext):
         return F.relu(
             self.margin - rel_scores_by_record[:, 0] + rel_scores_by_record[:, 1]
         ).mean()
 
 
 class BCEWithLogLoss(nn.Module):
-    def __call__(self, log_probs, info: TrainContext):
+    def __call__(self, log_probs, info: TrainerContext):
         # Assumes target is a two column matrix (rel. / not rel.)
         rel_cost, nrel_cost = (
             -log_probs[:, 0].mean(),
@@ -127,7 +128,7 @@ class PointwiseCrossEntropyLoss(PairwiseLoss):
         else:
             raise Exception("Not implemented")
 
-    def compute(self, rel_scores_by_record, info: TrainContext):
+    def compute(self, rel_scores_by_record, info: TrainerContext):
         if self.rankerOutputType == ScorerOutputType.LOG_PROBABILITY:
             return self.loss(rel_scores_by_record, info)
 
@@ -142,34 +143,30 @@ class PointwiseCrossEntropyLoss(PairwiseLoss):
 class PairwiseTrainer(Trainer):
     """Pairwise trainer uses samples of the form (query, positive, negative)"""
 
+    lossfn: Param[PairwiseLoss]
+    """The loss function"""
+
     sampler: Param[PairwiseSampler]
     """The pairwise sampler"""
+
+    sampler_iter: SerializableIterator[PairwiseRecord]
 
     def initialize(
         self,
         random: np.random.RandomState,
-        ranker: LearnableScorer,
-        context: TrainContext,
+        context: TrainerContext,
     ):
-        super().initialize(random, ranker, context)
+        super().initialize(random, context)
+        foreach(context.hooks(PairwiseLoss), lambda loss: loss.initialize(self.ranker))
+        self.sampler.initialize(random)
+        self.sampler_iter = self.sampler.pairwise_iter()
 
-        self.train_iter_core = self.sampler.pairwise_iter()
-        self.train_iter = self.iter_batches(self.train_iter_core)
-
-        foreach(context.hooks(PairwiseLoss), lambda loss: loss.initialize(ranker))
-
-    def iter_batches(self, it: Iterator[PairwiseRecord]):
+    def iter_batches(self) -> Iterator[PairwiseRecords]:
         while True:
             batch = PairwiseRecords()
-            for _, record in zip(range(self.batch_size), it):
+            for _, record in zip(range(self.batch_size), self.sampler_iter):
                 batch.add(record)
             yield batch
-
-    @deprecate
-    def lossfn(self, value):
-        """Use hooks instead"""
-        assert not self.hooks
-        self.hooks = [value]
 
     def train_batch(self, records: PairwiseRecords):
         # Get the next batch and compute the scores for each query/document
@@ -181,12 +178,9 @@ class PairwiseTrainer(Trainer):
 
         # Reshape to get the pairs and compute the loss
         pairwise_scores = rel_scores.reshape(2, len(records)).T
-        foreach(
-            self.context.hooks(PairwiseLoss),
-            lambda loss: loss.process(pairwise_scores, self.context),
-        )
+        self.lossfn.process(pairwise_scores, self.context)
 
-        self.context.metrics.add(
+        self.context.add_metric(
             ScalarMetric(
                 "accuracy", float(self.acc(pairwise_scores).item()), len(rel_scores)
             )

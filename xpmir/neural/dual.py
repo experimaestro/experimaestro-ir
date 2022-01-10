@@ -6,7 +6,8 @@ from xpmir.letor import DEFAULT_DEVICE, Device
 from xpmir.neural import DualRepresentationScorer
 from xpmir.utils import easylog, foreach
 from xpmir.text.encoders import TextEncoder
-from xpmir.letor.context import ScalarMetric, TrainContext, TrainingHook
+from xpmir.letor.context import TrainerContext, TrainingHook
+from xpmir.letor.metrics import ScalarMetric
 
 logger = easylog()
 
@@ -15,7 +16,7 @@ class DualVectorListener(TrainingHook):
     """Regularizer called with the (vectorial) representation of queries and documents"""
 
     def __call__(
-        self, info: TrainContext, queries: torch.Tensor, documents: torch.Tensor
+        self, info: TrainerContext, queries: torch.Tensor, documents: torch.Tensor
     ):
         raise NotImplementedError(f"__call__ in {self.__class__}")
 
@@ -41,7 +42,7 @@ class Dense(DualVectorScorer):
         if self.query_encoder:
             self.query_encoder.initialize()
 
-    def score_pairs(self, queries, documents, info: TrainContext):
+    def score_pairs(self, queries, documents, info: TrainerContext):
         scores = (queries.unsqueeze(1) @ documents.unsqueeze(2)).squeeze(-1).squeeze(-1)
 
         # Apply the dual vector hook
@@ -119,7 +120,7 @@ class FlopsRegularizer(DualVectorListener):
     lambda_q: Param[float]
     lambda_d: Param[float]
 
-    def __call__(self, info: TrainContext, queries, documents):
+    def __call__(self, info: TrainerContext, queries, documents):
         q = queries.abs().mean(0)
         flops_q = (q.unsqueeze(1) @ q.unsqueeze(2)).sum()
 

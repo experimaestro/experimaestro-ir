@@ -23,6 +23,16 @@ ARGS = TypeVar("ARGS")
 KWARGS = TypeVar("KWARGS")
 
 
+class RecoverableOOMError(Exception):
+    """Exception raised when a OOM occurs and the batcher
+    is taking this into account for the next round (i.e. we
+    can reprocess the batch with a higher probability of not
+    having an OOM)
+    """
+
+    pass
+
+
 class Sliceable(Protocol, Generic[T]):
     @overload
     def __getitem__(self, slice: slice) -> "Sliceable[T]":
@@ -67,8 +77,13 @@ class BatcherWorker:
         batch: Sliceable[T],
         process: Processor[T, ARGS, KWARGS],
         *args: ARGS,
+        raise_oom=False,
         **kwargs: KWARGS
     ) -> None:
+        """Attributes:
+
+        raise_oom: Raise an OOM exception when an OOM is recoverable
+        """
         process(batch, *args, **kwargs)
 
 
@@ -140,6 +155,7 @@ class PowerAdaptativeBatcherWorker(BatcherWorker):
         batch: Sliceable[T],
         process: Processor[T, ARGS, KWARGS],
         *args: ARGS,
+        raise_oom=False,
         **kwargs: KWARGS
     ) -> None:
         ix = 0
@@ -148,6 +164,8 @@ class PowerAdaptativeBatcherWorker(BatcherWorker):
             flag, rt = self._run(lambda: process(batch[s], *args, **kwargs))
             if flag:
                 ix += self.batch_size
+            elif raise_oom:
+                raise RecoverableOOMError()
 
     def _run(self, process: Callable[[], RT]) -> Tuple[bool, Union[RT, None]]:
 

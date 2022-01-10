@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 
 from experimaestro import Param
-from xpmir.letor.context import TrainContext
+from xpmir.letor.context import TrainerContext
 from xpmir.letor.records import BaseRecords
 from xpmir.letor import Module
 from xpmir.rankers import LearnableScorer
@@ -16,7 +16,7 @@ class TorchLearnableScorer(LearnableScorer, Module):
         nn.Module.__init__(self)
         super().__init__()
 
-    def __call__(self, inputs: BaseRecords, info: TrainContext = None):
+    def __call__(self, inputs: BaseRecords, info: TrainerContext = None):
         # Redirects to nn.Module rather than using LearnableScorer one
         return nn.Module.__call__(self, inputs, info)
 
@@ -32,7 +32,7 @@ class DualRepresentationScorer(TorchLearnableScorer):
     of cosine/inner products between query and document tokens.
     """
 
-    def forward(self, inputs: BaseRecords, info: Optional[TrainContext] = None):
+    def forward(self, inputs: BaseRecords, info: Optional[TrainerContext] = None):
         # Forward to model
         enc_queries = self.encode_queries([q.text for q in inputs.unique_queries])
         enc_documents = self.encode_documents([d.text for d in inputs.unique_documents])
@@ -62,10 +62,10 @@ class DualRepresentationScorer(TorchLearnableScorer):
     def encode_queries(self, texts: Iterable[str]):
         return self.encode(texts)
 
-    def score_product(self, queries, documents, info: TrainContext):
+    def score_product(self, queries, documents, info: TrainerContext):
         raise NotImplementedError()
 
     def score_pairs(
-        self, queries, documents, info: Optional[TrainContext]
+        self, queries, documents, info: Optional[TrainerContext]
     ) -> torch.Tensor:
         raise NotImplementedError()

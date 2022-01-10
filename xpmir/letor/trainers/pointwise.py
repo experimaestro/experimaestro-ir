@@ -6,14 +6,14 @@ import torch.nn.functional as F
 from experimaestro import Param, Config
 from xpmir.letor.records import PointwiseRecords
 from xpmir.letor.trainers import Trainer
-from xpmir.letor.context import Loss, TrainContext
+from xpmir.letor.context import Loss, TrainerContext
 
 
 class PointwiseLoss(Config):
     NAME = "?"
     weight: Param[float] = 1.0
 
-    def process(self, scores, targets, context: TrainContext):
+    def process(self, scores, targets, context: TrainerContext):
         value = self.compute(scores, targets)
         context.add_loss(Loss(f"point-{self.NAME}", value, self.weight))
 
@@ -76,7 +76,7 @@ class PointwiseTrainer(Trainer):
 
             yield batch
 
-    def train_batch(self, info: TrainContext):
+    def train_batch(self, info: TrainerContext):
         # Get the next batch
         batch = next(self.train_iter)
 

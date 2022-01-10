@@ -9,14 +9,14 @@ from xpmir.letor.records import Document, PairwiseRecord, PairwiseRecords
 from xpmir.letor.context import Loss
 from xpmir.letor.trainers.pairwise import PairwiseLoss
 from xpmir.letor.trainers.pointwise import PointwiseLoss
-from xpmir.letor.trainers import TrainContext, Trainer, TrainingHook
+from xpmir.letor.trainers import TrainerContext, Trainer, TrainingHook
 from xpmir.utils import batchiter, foreach
 from .samplers import DistillationPairwiseSampler, PairwiseDistillationSample
 import numpy as np
 from xpmir.rankers import LearnableScorer, ScorerOutputType
 
 
-class DistillationPairwiseLoss(TrainingHook, nn.Module):
+class DistillationPairwiseLoss(Config, nn.Module):
     weight: Param[float] = 1.0
     NAME = "?"
 
@@ -24,13 +24,13 @@ class DistillationPairwiseLoss(TrainingHook, nn.Module):
         pass
 
     def process(
-        self, student_scores: Tensor, teacher_scores: Tensor, info: TrainContext
+        self, student_scores: Tensor, teacher_scores: Tensor, info: TrainerContext
     ):
         loss = self.compute(student_scores, teacher_scores, info)
         info.add_loss(Loss(f"pairwise-{self.NAME}", loss, self.weight))
 
     def compute(
-        self, student_scores: Tensor, teacher_scores: Tensor, context: TrainContext
+        self, student_scores: Tensor, teacher_scores: Tensor, context: TrainerContext
     ) -> torch.Tensor:
         """
         Compute the loss
@@ -56,7 +56,7 @@ class MSEDifferenceLoss(DistillationPairwiseLoss):
         self.loss = nn.MSELoss()
 
     def compute(
-        self, student_scores: Tensor, teacher_scores: Tensor, info: TrainContext
+        self, student_scores: Tensor, teacher_scores: Tensor, info: TrainerContext
     ) -> torch.Tensor:
         return self.loss(
             student_scores[:, 1] - student_scores[:, 0],
@@ -74,27 +74,22 @@ class DistillationPairwiseTrainer(Trainer):
 
     sampler: Param[DistillationPairwiseSampler]
 
-    @deprecate
-    def lossfn(self, value):
-        """Use hooks instead"""
-        assert not self.hooks
-        self.hooks = [value]
+    lossfn: Param[DistillationPairwiseLoss]
+    """The distillation pairwise batch function"""
 
     def initialize(
         self,
         random: np.random.RandomState,
         ranker: LearnableScorer,
-        context: TrainContext,
+        context: TrainerContext,
     ):
         super().initialize(random, ranker, context)
         self.train_iter = batchiter(self.batch_size, self.sampler.pairwise_iter())
-        foreach(
-            context.hooks(DistillationPairwiseLoss),
-            lambda hook: hook.initialize(ranker),
-        )
-        foreach(context.hooks(PairwiseLoss), lambda hook: hook.initialize(ranker))
+        self.lossfn.initialize(ranker)
 
-    def train_batch(self, samples: List[PairwiseDistillationSample]):
+    def train_batch(
+        self, samples: List[PairwiseDistillationSample], context: TrainerContext
+    ):
         # Builds records and teacher score matrix
         teacher_scores = torch.empty(len(samples), 2)
         records = PairwiseRecords()
@@ -118,19 +113,4 @@ class DistillationPairwiseTrainer(Trainer):
 
         # Call the losses (distillation, pairwise and pointwise)
         teacher_scores = teacher_scores.to(scores.device)
-        foreach(
-            self.context.hooks(DistillationPairwiseLoss),
-            lambda hook: hook.process(scores, teacher_scores, self.context),
-        )
-        foreach(
-            self.context.hooks(PairwiseLoss),
-            lambda hook: hook.process(scores, self.context),
-        )
-
-        pointwise_hooks = self.context.hooks(PointwiseLoss)
-        if pointwise_hooks:
-            n = len(scores)
-            target = torch.cat((torch.ones(n), torch.zeros(n))).reshape(2, -1).T
-            foreach(
-                pointwise_hooks, lambda hook: hook.process(scores, target, self.context)
-            )
+        self.lossfn.process(scores, teacher_scores, context)

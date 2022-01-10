@@ -3,17 +3,17 @@ import torch
 import torch.nn.functional as F
 from experimaestro import Config, default, Annotated, Param
 from xpmir.letor.samplers import BatchwiseSampler
-from xpmir.letor.context import TrainingHook, TrainContext, TrainContext
+from xpmir.letor.context import TrainingHook, TrainerContext, TrainerContext
 from xpmir.rankers import LearnableScorer
 from xpmir.letor.trainers import Trainer
 import numpy as np
 
 
-class BatchwiseLoss(TrainingHook):
+class BatchwiseLoss(Config):
     NAME = "?"
 
     def compute(
-        self, scores: torch.Tensor, relevances: torch.Tensor, info: TrainContext
+        self, scores: torch.Tensor, relevances: torch.Tensor, info: TrainerContext
     ) -> torch.Tensor:
         """
         Compute the loss
@@ -50,12 +50,16 @@ class BatchwiseTrainer(Trainer):
     """
 
     sampler: Param[BatchwiseSampler]
+    """A batch-wise sampler"""
+
+    lossfn: Param[BatchwiseLoss]
+    """A batchwise loss function"""
 
     def initialize(
         self,
         random: np.random.RandomState,
         ranker: LearnableScorer,
-        context: TrainContext,
+        context: TrainerContext,
     ):
         super().initialize(random, ranker, context)
         self.train_iter = iter(self.sampler)
@@ -74,4 +78,4 @@ class BatchwiseTrainer(Trainer):
         # Reshape to get the pairs and compute the loss
 
         batch_scores = rel_scores.reshape(*batch.relevances.shape)
-        return self.lossfn.compute(batch_scores, batch.relevances)
+        return self.lossfn.compute(batch_scores, batch.relevances, self.context)

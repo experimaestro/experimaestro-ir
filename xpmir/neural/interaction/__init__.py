@@ -2,7 +2,7 @@ from experimaestro import Param
 from xpmir.neural import TorchLearnableScorer
 from xpmir.text import Vocab
 from xpmir.letor.records import BaseRecords
-from xpmir.letor.context import TrainContext
+from xpmir.letor.context import TrainerContext
 
 
 class InteractionScorer(TorchLearnableScorer):
@@ -37,10 +37,10 @@ class InteractionScorer(TorchLearnableScorer):
             self.qlen <= self.vocab.maxtokens()
         ), f"The maximum query length ({self.qlen}) should be less that what the vocab can process ({self.vocab.maxtokens()})"
 
-    def forward(self, inputs: BaseRecords, info: TrainContext = None):
+    def forward(self, inputs: BaseRecords, info: TrainerContext = None):
         return self._forward(inputs, info)
 
-    def _forward(self, inputs: BaseRecords, info: TrainContext = None):
+    def _forward(self, inputs: BaseRecords, info: TrainerContext = None):
         raise NotImplementedError
 
     def save(self, path):

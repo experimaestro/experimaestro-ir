@@ -9,7 +9,7 @@ from experimaestro import Param, Config, Option, documentation, Meta
 from datamaestro_text.data.ir import AdhocIndex as Index, AdhocDocuments
 from xpmir.letor import Device, Random
 from xpmir.letor.batchers import Batcher
-from xpmir.letor.context import TrainContext
+from xpmir.letor.context import TrainerContext
 from xpmir.letor.records import Document, BaseRecords, ProductRecords, Query
 from xpmir.utils import EasyLogger, easylog
 
@@ -138,7 +138,7 @@ class LearnableScorer(Scorer):
 
         self._initialized = True
 
-    def __call__(self, inputs: "BaseRecords", info: Optional[TrainContext]):
+    def __call__(self, inputs: "BaseRecords", info: Optional[TrainerContext]):
         """Computes the score of all (query, document) pairs
 
         Different subclasses can process the input more or

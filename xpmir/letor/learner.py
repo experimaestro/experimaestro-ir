@@ -3,17 +3,29 @@ import torch
 import json
 import math
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Iterator, List
 from datamaestro_text.data.ir import Adhoc
-from experimaestro import Task, Config, Param, copyconfig, pathgenerator, Annotated
+from experimaestro import (
+    Task,
+    Config,
+    Param,
+    copyconfig,
+    pathgenerator,
+    Annotated,
+    tqdm,
+    Meta,
+)
 import numpy as np
 from experimaestro.notifications import tqdm
-from xpmir.utils import EasyLogger
+from xpmir.letor.batchers import RecoverableOOMError
+from xpmir.utils import EasyLogger, foreach
 from xpmir.evaluation import evaluate
-from xpmir.letor import Random
+from xpmir.letor import DEFAULT_DEVICE, Device, Random
 from xpmir.letor.trainers import Trainer
-from xpmir.letor.context import TrainContext
+from xpmir.letor.context import StepTrainingHook, TrainState, TrainerContext
+from xpmir.letor.metrics import Metrics
 from xpmir.rankers import LearnableScorer, Retriever, ScoredDocument, Scorer
+from xpmir.letor.optim import ParameterOptimizer, ScheduledOptimizer
 
 
 class LearnerListener(Config):
@@ -21,7 +33,7 @@ class LearnerListener(Config):
 
     Performs some operations after a learning epoch"""
 
-    def initialize(self, key: str, learner: "Learner", context: TrainContext):
+    def initialize(self, key: str, learner: "Learner", context: TrainerContext):
         self.key = key
         self.learner = learner
         self.context = context
@@ -71,7 +83,7 @@ class ValidationListener(LearnerListener):
             self.early_stop % self.validation_interval == 0
         ), "Early stop should be a multiple of the validation interval"
 
-    def initialize(self, key: str, learner: "Learner", context: TrainContext):
+    def initialize(self, key: str, learner: "Learner", context: TrainerContext):
         super().initialize(key, learner, context)
 
         self.retriever.initialize()
@@ -109,7 +121,7 @@ class ValidationListener(LearnerListener):
         # No, proceed...
         return False
 
-    def __call__(self, state: TrainContext):
+    def __call__(self, state: TrainerContext):
         # Check that we did not stop earlier (when loading from checkpoint / if other
         # listeners have not stopped yet)
         if self.should_stop(state.epoch - 1):
@@ -177,9 +189,20 @@ class Learner(Task, EasyLogger):
     # Training
     random: Param[Random]
 
-    max_epoch: Param[int] = 1000
     trainer: Param[Trainer]
     scorer: Param[LearnableScorer]
+
+    max_epochs: Param[int] = 1000
+    """Maximum number of epochs"""
+
+    steps_per_epoch: Param[int] = 128
+    """Number of steps for one epoch (after each epoch results are logged)"""
+
+    use_fp16: Param[bool] = False
+    """Use mixed precision when training"""
+
+    optimizers: Param[List[ParameterOptimizer]]
+    """The list of parameter optimizers"""
 
     # Listen to learner
     listeners: Param[Dict[str, LearnerListener]]
@@ -190,6 +213,13 @@ class Learner(Task, EasyLogger):
     # Paths
     logpath: Annotated[Path, pathgenerator("runs")]
     checkpointspath: Annotated[Path, pathgenerator("checkpoints")]
+
+    device: Meta[Device] = DEFAULT_DEVICE
+    """The device(s) to be used for the model"""
+
+    def __validate__(self):
+        assert self.optimizers, "At least one optimizer should be defined"
+        return super().__validate__()
 
     def taskoutputs(self):
         """Object returned when submitting the task"""
@@ -208,10 +238,7 @@ class Learner(Task, EasyLogger):
             handler.setLevel(logging.INFO)
 
         self.only_cached = False
-
-        # CUDNN settings
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
+        self._device = self.device(logger)
 
         # Sets the random seed
         seed = self.random.state.randint((2 ** 32) - 1)
@@ -221,26 +248,39 @@ class Learner(Task, EasyLogger):
 
         # Initialize the scorer and trainer
         self.logger.info("Scorer initialization")
-
         self.scorer.initialize(self.random.state)
 
-        # Initialize the listeners
-        context = TrainContext(self.logpath, self.checkpointspath, self.max_epoch)
+        # Initialize the optimizer
+        num_training_steps = self.max_epochs * self.steps_per_epoch
+        self.optimizer = ScheduledOptimizer(
+            self.optimizers, num_training_steps, self.scorer, self.use_fp16
+        )
+
+        # Initialize the context and the listeners
+        self.context = TrainerContext(
+            self.logpath,
+            self.checkpointspath,
+            self.max_epochs,
+            self.steps_per_epoch,
+            self.trainer,
+            self.scorer,
+            self.optimizer,
+        )
+        self.trainer.initialize(self.random.state, self.context)
         for key, listener in self.listeners.items():
-            listener.initialize(key, self, context)
+            listener.initialize(key, self, self.context)
 
-        self.logger.info("Trainer initialization")
-
-        # Initialize the trainer
-        self.trainer.initialize(self.random.state, self.scorer, context)
+        self.logger.info("Moving to device %s", self._device)
+        self.scorer.to(self._device)
+        self.trainer.to(self._device)
 
         self.logger.info("Starting to train")
 
         current = 0
         state = None
 
-        with tqdm(total=self.max_epoch) as tqdm_epochs:
-            for state in self.trainer.iter_train(self.max_epoch):
+        with tqdm(total=self.max_epochs) as tqdm_epochs:
+            for state in self.iter_train():
                 # Report progress
                 tqdm_epochs.update(state.epoch - current)
                 current = state.epoch
@@ -257,7 +297,7 @@ class Learner(Task, EasyLogger):
 
                 if not state.cached and state.epoch % self.checkpoint_interval == 0:
                     # Save checkpoint if needed
-                    context.save_checkpoint()
+                    self.context.save_checkpoint()
 
                 # Call listeners
                 stop = True
@@ -267,15 +307,15 @@ class Learner(Task, EasyLogger):
 
                 if stop:
                     self.logger.warn(
-                        "stopping after epoch {epoch} ({early_stop} epochs since "
+                        "stopping after epoch {epoch} ({early_stop} epochs) since "
                         "all listeners asked for it"
                     )
                     break
 
                 # Stop if max epoch is reached
-                if context.epoch >= self.max_epoch:
+                if self.context.epoch >= self.max_epochs:
                     self.logger.warn(
-                        "stopping after epoch {max_epoch} (max_epoch)".format(
+                        "stopping after epoch {max_epochs} (max_epoch)".format(
                             **self.__dict__
                         )
                     )
@@ -287,4 +327,72 @@ class Learner(Task, EasyLogger):
                 metrics = {}
                 for listener in self.listeners.values():
                     listener.update_metrics(metrics)
-                context.writer.add_hparams(self.__tags__, metrics)
+                self.context.writer.add_hparams(self.__tags__, metrics)
+
+    def iter_train(self) -> Iterator[TrainState]:
+        """Train iteration"""
+        # Try to load a checkpoint
+
+        if self.context.load_bestcheckpoint(self.max_epochs):
+            yield self.context.state
+
+        # Get an iterator over batches
+        iter = self.trainer.iter_batches()
+
+        while True:
+            # Step to the next epoch
+            self.context.nextepoch()
+
+            # Train for an epoch
+            with tqdm(
+                leave=False,
+                total=self.steps_per_epoch * self.max_epochs,
+                ncols=100,
+                desc=f"Train for {self.context.epoch} epochs",
+            ) as pbar:
+                # Put the model into training mode (just in case)
+                self.context.state.model.train()
+
+                # Epoch: loop over batches
+                metrics = Metrics()
+                for b in range(self.steps_per_epoch):
+                    # Get the next batch
+                    batch = next(iter)
+                    self.context.nextbatch()
+
+                    while True:
+                        try:
+                            # Computes the gradient, takes a step and collect metrics
+                            with self.context.step() as step_metrics:
+                                # Call the hook epoch hook
+                                foreach(
+                                    self.context.hooks(StepTrainingHook),
+                                    lambda hook: hook.before(self.context),
+                                )
+
+                                # Computes the gradient
+                                with torch.autocast(
+                                    self._device.type, enabled=self.use_fp16
+                                ):
+                                    self.trainer.process_batch(batch)
+
+                                # Update metrics and counter
+                                pbar.update(1)
+                                metrics.merge(step_metrics)
+
+                                # Report metrics over the epoch
+                                metrics.report(
+                                    self.context.state.step,
+                                    self.context.writer,
+                                    "train",
+                                )
+
+                                # Yields the current state (after one epoch)
+                                foreach(
+                                    self.context.hooks(StepTrainingHook),
+                                    lambda hook: hook.after(self.context),
+                                )
+                                yield self.context.state
+
+                        except RecoverableOOMError:
+                            continue
