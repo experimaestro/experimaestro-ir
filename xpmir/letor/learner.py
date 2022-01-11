@@ -346,9 +346,9 @@ class Learner(Task, EasyLogger):
             # Train for an epoch
             with tqdm(
                 leave=False,
-                total=self.steps_per_epoch * self.max_epochs,
+                total=self.steps_per_epoch,
                 ncols=100,
-                desc=f"Train for {self.context.epoch} epochs",
+                desc=f"Train - epoch #{self.context.epoch}",
             ) as pbar:
                 # Put the model into training mode (just in case)
                 self.context.state.model.train()
@@ -379,20 +379,21 @@ class Learner(Task, EasyLogger):
                                 # Update metrics and counter
                                 pbar.update(1)
                                 metrics.merge(step_metrics)
-
-                                # Report metrics over the epoch
-                                metrics.report(
-                                    self.context.state.step,
-                                    self.context.writer,
-                                    "train",
-                                )
-
-                                # Yields the current state (after one epoch)
-                                foreach(
-                                    self.context.hooks(StepTrainingHook),
-                                    lambda hook: hook.after(self.context),
-                                )
-                                yield self.context.state
-
+                                break
                         except RecoverableOOMError:
                             continue
+
+                    foreach(
+                        self.context.hooks(StepTrainingHook),
+                        lambda hook: hook.after(self.context),
+                    )
+
+                # Yields the current state (after one epoch)
+                yield self.context.state
+
+                # Report metrics over the epoch
+                metrics.report(
+                    self.context.state.step,
+                    self.context.writer,
+                    "train",
+                )

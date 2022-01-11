@@ -46,11 +46,8 @@ class TrainState:
     epoch: int
     """The epoch"""
 
-    batches: int
-    """The number of batches (each epoch is composed of batches)"""
-
-    samplecount: int = 0
-    """Number of samples used so far"""
+    steps: int
+    """The number of steps (each epoch is composed of sptes)"""
 
     def __init__(
         self,
@@ -116,6 +113,11 @@ class TrainState:
             self.load_state_dict(json.load(fp))
         self.path = path
         self.cached = True
+
+    def copy_model(self, path: Path):
+        assert self.path is not None
+        for name in ["model.pth", "info.json"]:
+            os.link(self.path / name, path / name)
 
 
 HookType = TypeVar("HookType")
@@ -268,12 +270,7 @@ class TrainerContext:
 
         if path:
             cleanupdir(path)
-            for f in trainpath.rglob("*"):
-                relpath = f.relative_to(trainpath)
-                if f.is_dir():
-                    (path / relpath).mkdir(exist_ok=True)
-                else:
-                    os.link(f, path / relpath)
+            self.state.copy_model(path)
 
     def hooks(self, cls: Type[HookType]) -> List[HookType]:
         """Returns all the hooks"""

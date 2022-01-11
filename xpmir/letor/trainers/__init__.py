@@ -102,7 +102,7 @@ class Trainer(Config, EasyLogger):
         raise NotImplementedError()
 
     def load_state_dict(self, state: Dict):
-        self.sampler_iter.load_dict(state["sampler"])
+        self.sampler_iter.load_state_dict(state["sampler"])
 
     def state_dict(self):
         return {"sampler": self.sampler_iter.state_dict()}
