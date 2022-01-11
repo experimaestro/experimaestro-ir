@@ -127,14 +127,10 @@ class LearnableScorer(Scorer):
                 torch.cuda.manual_seed_all(seed)
             self._initialize(random)
         else:
-            from xpmir.letor.trainers import TrainState
-
-            state = TrainState()
-            state.ranker = self
-            state.optimizer = None
-
+            logger.info("Loading model from path %s", self.checkpoint)
+            path = Path(self.checkpoint)
             self._initialize(None)
-            state.load(Path(self.checkpoint))
+            self.load_state_dict(torch.load(path / "model.pth"))
 
         self._initialized = True
 

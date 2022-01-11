@@ -286,11 +286,12 @@ class TrainerContext:
 
     @contextmanager
     def losses(self):
+        previous = self._losses
         try:
             self._losses = []
             yield self._losses
         finally:
-            self._losses = None
+            self._losses = previous
 
     @contextmanager
     def step(self):
@@ -305,6 +306,8 @@ class TrainerContext:
 
     def add_metric(self, metric: Metric):
         assert self.metrics is not None, "Not within an optimization step"
+        if self._scope:
+            metric.key = "/".join(self._scope) + "/" + metric.key
         self.metrics.add(metric)
 
     @contextmanager

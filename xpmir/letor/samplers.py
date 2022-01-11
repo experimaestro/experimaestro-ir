@@ -1,5 +1,16 @@
 from pathlib import Path
-from typing import Dict, Iterable, Iterator, List, Optional, Tuple, TypeVar, Protocol
+from typing import (
+    Callable,
+    Dict,
+    Generic,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+    Protocol,
+)
 import numpy as np
 from datamaestro_text.data.ir import Adhoc, TrainingTriplets
 from experimaestro import Config, Param, tqdm
@@ -21,10 +32,12 @@ logger = easylog()
 
 # --- Utility classes
 
-T = TypeVar("T", covariant=True)
+T = TypeVar("T")
+U = TypeVar("U")
+ItType = TypeVar("ItType", covariant=True)
 
 
-class SerializableIterator(Iterator[T], Protocol):
+class SerializableIterator(Iterator[ItType], Protocol[ItType]):
     def state_dict(self) -> Dict:
         ...
 
@@ -33,11 +46,45 @@ class SerializableIterator(Iterator[T], Protocol):
 
 
 class RandomSerializableIterator(Iterator[T]):
-    def __init__(self, iter: Iterator[T], state: Optional[Dict]):
-        self.iter = iter
+    def __init__(
+        self,
+        random: np.random.RandomState,
+        generator: Callable[[np.random.RandomState], Iterator[T]],
+    ):
+        self.random = random
+        self.generator = generator
+        self.iter = generator(random)
+
+    def load_state_dict(self, state):
+        self.random.set_state(state["random"])
+        self.iter = self.generator(self.random)
 
     def state_dict(self):
-        return {}
+        return {"random": self.random.get_state()}
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return next(self.iter)
+
+
+class SerializableIteratorWrapper(Iterable[U], Generic[T, U]):
+    def __init__(
+        self,
+        main: SerializableIterator[T],
+        generator: Callable[[SerializableIterator[T]], Iterator[U]],
+    ):
+        self.generator = generator
+        self.main = main
+        self.iter = generator(main)
+
+    def load_state_dict(self, state):
+        self.main.load_state_dict(state)
+        self.iter = self.generator(self.main)
+
+    def state_dict(self):
+        return self.main.state_dict()
 
     def __iter__(self):
         return self
@@ -114,7 +161,7 @@ class PairwiseSampler(Sampler):
 
 
 class BatchwiseSampler(Sampler):
-    def batchwise_iter(self) -> SerializableIterator[BatchwiseRecords]:
+    def batchwise_iter(self, batchsize: int) -> SerializableIterator[BatchwiseRecords]:
         """Iterate over batches of size (# of queries) batch_size
 
         Args:
@@ -308,16 +355,16 @@ class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
         return Document(docid, text, score)
 
     def pairwise_iter(self) -> SerializableIterator[PairwiseRecord]:
-        def iter():
+        def iter(random):
             while True:
                 title, positives, negatives = self.topics[
-                    self.random.randint(0, len(self.topics))
+                    random.randint(0, len(self.topics))
                 ]
                 yield PairwiseRecord(
                     Query(None, title), self.sample(positives), self.sample(negatives)
                 )
 
-        return RandomSerializableIterator(iter(), state)
+        return RandomSerializableIterator(self.random, iter)
 
 
 class PairwiseInBatchNegativesSampler(BatchwiseSampler):
@@ -331,21 +378,19 @@ class PairwiseInBatchNegativesSampler(BatchwiseSampler):
         self.sampler.initialize(random)
 
     def batchwise_iter(self, batch_size: int) -> SerializableIterator[BatchwiseRecords]:
-        it = self.sampler.pairwise_iter()
-
-        def iter():
+        def iter(pair_iter):
             # Pre-compute relevance matrix
             relevances = torch.diag(torch.ones(batch_size * 2, dtype=torch.float))
 
             while True:
                 batch = ProductRecords()
-                for _, record in zip(range(batch_size), it):
+                for _, record in zip(range(batch_size), pair_iter):
                     batch.addQueries(record.query)
                     batch.addDocuments(record.positive, record.negative)
                 batch.setRelevances(relevances)
                 yield batch
 
-        return RandomSerializableIterator(iter(), state)
+        return SerializableIteratorWrapper(self.sampler.pairwise_iter(), iter)
 
 
 class TripletBasedSampler(PairwiseSampler):

@@ -243,9 +243,16 @@ class ProductRecords(BatchwiseRecords):
         self._documents.extend(documents)
 
     def setRelevances(self, relevances: torch.Tensor):
-        assert relevances.shape[0] == len(self._queries)
-        assert relevances.shape[1] == len(self._documents)
+        assert relevances.shape[0] == len(
+            self._queries
+        ), f"The number of queries {len(self._queries)} does not match the number of rows {relevances.shape[0]}"
+        assert relevances.shape[1] == len(
+            self._documents
+        ), f"The number of documents {len(self._documents)} does not match the number of rows {relevances.shape[1]}"
         self.relevances = relevances
+
+    def __len__(self):
+        return len(self._queries)
 
     @property
     def queries(self):

@@ -18,7 +18,7 @@ from experimaestro import (
 import numpy as np
 from experimaestro.notifications import tqdm
 from xpmir.letor.batchers import RecoverableOOMError
-from xpmir.utils import EasyLogger, foreach
+from xpmir.utils import EasyLogger, easylog, foreach
 from xpmir.evaluation import evaluate
 from xpmir.letor import DEFAULT_DEVICE, Device, Random
 from xpmir.letor.trainers import Trainer
@@ -26,6 +26,8 @@ from xpmir.letor.context import StepTrainingHook, TrainState, TrainerContext
 from xpmir.letor.metrics import Metrics
 from xpmir.rankers import LearnableScorer, Retriever, ScoredDocument, Scorer
 from xpmir.letor.optim import ParameterOptimizer, ScheduledOptimizer
+
+logger = easylog()
 
 
 class LearnerListener(Config):
@@ -381,6 +383,9 @@ class Learner(Task, EasyLogger):
                                 metrics.merge(step_metrics)
                                 break
                         except RecoverableOOMError:
+                            logger.warning(
+                                "Recoverable OOM detected - re-running the training step"
+                            )
                             continue
 
                     foreach(

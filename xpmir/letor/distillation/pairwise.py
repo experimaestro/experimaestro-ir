@@ -9,7 +9,7 @@ from xpmir.letor.records import Document, PairwiseRecord, PairwiseRecords
 from xpmir.letor.context import Loss
 from xpmir.letor.trainers.pairwise import PairwiseLoss
 from xpmir.letor.trainers.pointwise import PointwiseLoss
-from xpmir.letor.trainers import TrainerContext, Trainer, TrainingHook
+from xpmir.letor.trainers import TrainerContext, LossTrainer, TrainingHook
 from xpmir.utils import batchiter, foreach
 from .samplers import DistillationPairwiseSampler, PairwiseDistillationSample
 import numpy as np
@@ -64,7 +64,7 @@ class MSEDifferenceLoss(DistillationPairwiseLoss):
         )
 
 
-class DistillationPairwiseTrainer(Trainer):
+class DistillationPairwiseTrainer(LossTrainer):
     """Pairwse trainer
 
     Arguments:
@@ -80,12 +80,11 @@ class DistillationPairwiseTrainer(Trainer):
     def initialize(
         self,
         random: np.random.RandomState,
-        ranker: LearnableScorer,
         context: TrainerContext,
     ):
-        super().initialize(random, ranker, context)
+        super().initialize(random, context)
         self.train_iter = batchiter(self.batch_size, self.sampler.pairwise_iter())
-        self.lossfn.initialize(ranker)
+        self.lossfn.initialize(self.ranker)
 
     def train_batch(
         self, samples: List[PairwiseDistillationSample], context: TrainerContext

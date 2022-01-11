@@ -9,7 +9,7 @@ from xpmir.letor.context import Loss
 from xpmir.letor.metrics import ScalarMetric
 from xpmir.letor.records import PairwiseRecord, PairwiseRecords
 from xpmir.letor.samplers import PairwiseSampler, SerializableIterator
-from xpmir.letor.trainers import TrainerContext, Trainer
+from xpmir.letor.trainers import TrainerContext, LossTrainer
 import numpy as np
 from xpmir.rankers import LearnableScorer, ScorerOutputType
 from xpmir.utils import foreach
@@ -140,7 +140,7 @@ class PointwiseCrossEntropyLoss(PairwiseLoss):
         return self.loss(rel_scores_by_record.T.flatten(), target)
 
 
-class PairwiseTrainer(Trainer):
+class PairwiseTrainer(LossTrainer):
     """Pairwise trainer uses samples of the form (query, positive, negative)"""
 
     lossfn: Param[PairwiseLoss]

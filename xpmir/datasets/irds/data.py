@@ -74,6 +74,13 @@ class AdhocDocuments(ir.AdhocDocumentStore, IRDSId):
     def document_text(self, docid: str) -> str:
         return self.store.get(docid).text
 
+    def docid_internal2external(self, ix: int):
+        return self.dataset.docs_iter()[ix].doc_id
+
+    def document(self, ix):
+        d = self.dataset.docs_iter()[ix]
+        return ir.AdhocDocument(d.doc_id, d.text)
+
 
 class Adhoc(ir.Adhoc, IRDSId):
     pass

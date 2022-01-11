@@ -5,8 +5,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from experimaestro import Param, Config
 from xpmir.letor.records import PointwiseRecords
-from xpmir.letor.trainers import Trainer
-from xpmir.letor.context import Loss, TrainerContext
+from xpmir.letor.trainers import LossTrainer
+from xpmir.letor.context import TrainerContext
 
 
 class PointwiseLoss(Config):
@@ -46,7 +46,7 @@ class BinaryCrossEntropyLoss(PointwiseLoss):
         return self.loss(rel_scores, (target_relscores > 0).float())
 
 
-class PointwiseTrainer(Trainer):
+class PointwiseTrainer(LossTrainer):
     """Pointwise trainer
 
     Attribute:
