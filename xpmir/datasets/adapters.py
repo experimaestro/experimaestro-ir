@@ -1,6 +1,15 @@
 from typing import Iterable, Iterator, List, Optional, Set
 from pathlib import Path
-from experimaestro import Param, Config, Task, cache, pathgenerator, Annotated, Meta
+from experimaestro import (
+    Param,
+    Config,
+    Task,
+    tqdm,
+    cache,
+    pathgenerator,
+    Annotated,
+    Meta,
+)
 from experimaestro.compat import cached_property
 from datamaestro_text.data.ir import (
     Adhoc,
@@ -173,7 +182,7 @@ class AdhocDocumentSubset(AdhocDocuments):
     def iter_ids(self):
         yield from self.docids
 
-    def iter_documents(self) -> Iterator[AdhocDocument]:
+    def iter(self) -> Iterator[AdhocDocument]:
         for docid in self.iter_ids():
             content = self.base.document_text(docid)
             yield AdhocDocument(docid, content)
@@ -211,20 +220,29 @@ class RetrieverBasedCollection(Task):
             topics=self.dataset.topics,
             assessments=self.dataset.assessments,
             documents=AdhocDocumentSubset(
-                base=self.dataset.documents, docids_path=self.docids_path
+                id="", base=self.dataset.documents, docids_path=self.docids_path
             ),
         )
 
     def execute(self):
+        for retriever in self.retrievers:
+            retriever.initialize()
+
         # Selected document IDs
         docids: Set[str] = set()
 
         topics = {t.qid: t for t in self.dataset.assessments.iter()}
 
         # Retrieve all documents
-        for topic in self.dataset.topics.iter():
+        for topic in tqdm(
+            self.dataset.topics.iter(), total=self.dataset.topics.count()
+        ):
             qrels = topics.get(topic.qid)
-            assert qrels is not None
+            if qrels is None:
+                logger.warning(
+                    "Skipping topic %s [%s], (no assessment)", topic.qid, topic.text
+                )
+                continue
 
             # Add (not) relevant documents
             if self.keepRelevant:
@@ -247,7 +265,7 @@ class RetrieverBasedCollection(Task):
 
         # Write the document IDs
         with self.docids_path.open("wt") as fp:
-            fp.writelines(docids)
+            fp.writelines(f"{docid}\n" for docid in docids)
 
 
 class TextStore(Config):

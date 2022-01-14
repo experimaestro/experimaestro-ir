@@ -365,7 +365,7 @@ class Learner(Task, EasyLogger):
                     while True:
                         try:
                             # Computes the gradient, takes a step and collect metrics
-                            with self.context.step() as step_metrics:
+                            with self.context.step(metrics):
                                 # Call the hook epoch hook
                                 foreach(
                                     self.context.hooks(StepTrainingHook),
@@ -380,7 +380,6 @@ class Learner(Task, EasyLogger):
 
                                 # Update metrics and counter
                                 pbar.update(1)
-                                metrics.merge(step_metrics)
                                 break
                         except RecoverableOOMError:
                             logger.warning(

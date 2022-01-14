@@ -20,8 +20,8 @@ Dense models
 Interaction models
 ==================
 
-.. autoxpmconfig:: xpmir.neural.InteractionScorer
-.. autoxpmconfig:: xpmir.neural.drmm.Drmm
+.. autoxpmconfig:: xpmir.neural.interaction.InteractionScorer
+.. autoxpmconfig:: xpmir.neural.interaction.drmm.Drmm
 
 .. autoxpmconfig:: xpmir.neural.colbert.Colbert
 

@@ -379,14 +379,21 @@ class PairwiseInBatchNegativesSampler(BatchwiseSampler):
 
     def batchwise_iter(self, batch_size: int) -> SerializableIterator[BatchwiseRecords]:
         def iter(pair_iter):
-            # Pre-compute relevance matrix
-            relevances = torch.diag(torch.ones(batch_size * 2, dtype=torch.float))
+            # Pre-compute relevance matrix (query x document)
+            relevances = torch.cat(
+                (torch.eye(batch_size), torch.zeros(batch_size, batch_size)), 1
+            )
 
             while True:
                 batch = ProductRecords()
+                positives = []
+                negatives = []
                 for _, record in zip(range(batch_size), pair_iter):
                     batch.addQueries(record.query)
-                    batch.addDocuments(record.positive, record.negative)
+                    positives.append(record.positive)
+                    negatives.append(record.negative)
+                batch.addDocuments(*positives)
+                batch.addDocuments(*negatives)
                 batch.setRelevances(relevances)
                 yield batch
 

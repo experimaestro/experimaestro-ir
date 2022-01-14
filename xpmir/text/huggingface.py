@@ -36,8 +36,6 @@ class TransformerVocab(text.Vocab):
     layer: Layer to use (0 is the last, -1 to use them all)
     """
 
-    AUTOMODEL_CLASS: ClassVar = AutoModel
-
     model_id: Param[str] = "bert-base-uncased"
     trainable: Param[bool]
     layer: Param[int] = 0
@@ -53,14 +51,14 @@ class TransformerVocab(text.Vocab):
     def pad_tokenid(self) -> int:
         return self.tokenizer.pad_token_id
 
-    def initialize(self, noinit=False):
+    def initialize(self, noinit=False, automodel=AutoModel):
         super().initialize(noinit=noinit)
 
         if noinit:
             config = AutoConfig.from_pretrained(self.model_id)
-            self.model = self.AUTOMODEL_CLASS.from_config(config)
+            self.model = automodel.from_config(config)
         else:
-            self.model = self.AUTOMODEL_CLASS.from_pretrained(self.model_id)
+            self.model = automodel.from_pretrained(self.model_id)
 
         # Loads the tokenizer
         self._tokenizer = AutoTokenizer.from_pretrained(self.model_id, use_fast=True)
@@ -142,12 +140,14 @@ class TransformerVocab(text.Vocab):
     def maxtokens(self) -> int:
         return self.tokenizer.model_max_length
 
-    def forward(self, toks: TokenizedTexts):
-        device = self._dummy_params.device
-        return self.model(
-            toks.ids.to(device),
-            attention_mask=toks.mask.to(device) if toks.mask is not None else None,
-        ).last_hidden_state
+    def forward(self, toks: TokenizedTexts, all_outputs=False):
+        outputs = self.model(
+            toks.ids.to(self.device),
+            attention_mask=toks.mask.to(self.device) if toks.mask is not None else None,
+        )
+        if all_outputs:
+            return outputs
+        return outputs.last_hidden_state
 
     def dim(self):
         return self.model.config.hidden_size
@@ -175,10 +175,9 @@ class TransformerEncoder(TransformerVocab, TextEncoder):
 
     def forward(self, texts: List[str], maxlen=None):
         tokenized = self.batch_tokenize(texts, maxlen=maxlen or self.maxlen, mask=True)
-        device = self._dummy_params.device
 
         with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
-            y = self.model(tokenized.ids, attention_mask=tokenized.mask.to(device))
+            y = self.model(tokenized.ids, attention_mask=tokenized.mask.to(self.device))
 
         # Assumes that [CLS] is the first token
         return y.last_hidden_state[:, 0]
@@ -228,18 +227,16 @@ class ContextualizedTransformerEncoder(TransformerVocab, ContextualizedTextEncod
         output_hidden_states=False,
     ):
         tokenized = self.batch_tokenize(texts, maxlen=maxlen or self.maxlen, mask=True)
-        device = self._dummy_params.device
         with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
             y = self.model(
                 tokenized.ids,
-                attention_mask=tokenized.mask.to(device),
+                attention_mask=tokenized.mask.to(self.device),
                 output_hidden_states=output_hidden_states,
             )
             mask = tokenized.mask
-            device = y.last_hidden_state.device
-            ids = tokenized.ids.to(device)
+            ids = tokenized.ids.to(self.device)
             if only_tokens:
-                mask = (self.CLS != ids) & (self.SEP != ids) & mask.to(device)
+                mask = (self.CLS != ids) & (self.SEP != ids) & mask.to(self.device)
             return ContextualizedTextEncoderOutput(
                 ids, mask, y.last_hidden_state, y.hidden_states
             )
@@ -279,11 +276,10 @@ class DualTransformerEncoder(TransformerVocab, DualTextEncoder):
     maxlen: Param[Optional[int]] = None
 
     def forward(self, texts: List[Tuple[str, str]]):
-        device = self._dummy_params.device
         tokenized = self.batch_tokenize(texts, maxlen=self.maxlen, mask=True)
 
         with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
-            y = self.model(tokenized.ids, attention_mask=tokenized.mask.to(device))
+            y = self.model(tokenized.ids, attention_mask=tokenized.mask.to(self.device))
 
         # Assumes that [CLS] is the first token
         return y.last_hidden_state[:, 0]

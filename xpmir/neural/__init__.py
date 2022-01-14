@@ -26,7 +26,7 @@ class TorchLearnableScorer(LearnableScorer, Module):
 
 class DualRepresentationScorer(TorchLearnableScorer):
     """Neural scorer based on (at least a partially) independant representation
-    of
+    of the document and the question.
 
     This is the base class for all scorers that depend on a map
     of cosine/inner products between query and document tokens.

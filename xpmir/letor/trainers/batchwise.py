@@ -2,7 +2,7 @@ import sys
 from typing import Iterator
 import torch
 import torch.nn.functional as F
-from experimaestro import Config, Param
+from experimaestro import Config, Param, initializer
 from xpmir.letor.samplers import BatchwiseSampler, BatchwiseRecords
 from xpmir.letor.context import Loss, TrainerContext, TrainerContext
 from xpmir.rankers import LearnableScorer, ScorerOutputType
@@ -81,6 +81,7 @@ class BatchwiseTrainer(LossTrainer):
     lossfn: Param[BatchwiseLoss]
     """A batchwise loss function"""
 
+    @initializer
     def initialize(
         self,
         random: np.random.RandomState,

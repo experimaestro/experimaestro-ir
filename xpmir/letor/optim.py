@@ -40,7 +40,8 @@ class AdamW(Optimizer):
 class Module(Config, torch.nn.Module):
     """A module contains parameters"""
 
-    pass
+    def __call__(self, *args, **kwargs):
+        return torch.nn.Module.__call__(self, *args, **kwargs)
 
 
 class ParameterFilter(Config):

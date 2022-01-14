@@ -80,8 +80,6 @@ class LossTrainer(Trainer):
     ):
         super().initialize(random, context)
 
-        foreach(self.hooks, self.context.add_hook)
-
         self.sampler.initialize(random)
 
         self.batcher_worker = self.batcher.initialize(self.batch_size)

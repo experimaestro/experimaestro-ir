@@ -36,6 +36,9 @@ class AdhocTopics(ir.AdhocTopics, IRDSId):
             for query in ds.queries_iter():
                 yield ir.AdhocTopic(query.query_id, query.text, {})
 
+    def count(self):
+        return self.dataset.queries_count()
+
 
 class AdhocAssessments(ir.AdhocAssessments, IRDSId):
     def iter(self):

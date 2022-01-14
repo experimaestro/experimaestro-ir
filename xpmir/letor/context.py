@@ -5,16 +5,13 @@ from pathlib import Path
 import os
 import json
 from typing import (
-    Any,
     Callable,
     DefaultDict,
     Dict,
-    Generic,
     List,
     NamedTuple,
-    Optional,
-    Protocol,
     TypeVar,
+    Optional,
     Type,
     TYPE_CHECKING,
 )
@@ -294,13 +291,14 @@ class TrainerContext:
             self._losses = previous
 
     @contextmanager
-    def step(self):
+    def step(self, metrics):
         try:
             self.state.optimizer.zero_grad()
             self.metrics = Metrics()
             yield self.metrics
             self.state.optimizer.optimizer_step(self)
             self.state.optimizer.scheduler_step(self)
+            metrics.merge(self.metrics)
         finally:
             self.metrics = None
 

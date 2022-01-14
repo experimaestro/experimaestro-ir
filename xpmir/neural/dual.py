@@ -6,7 +6,7 @@ from xpmir.letor import DEFAULT_DEVICE, Device
 from xpmir.neural import DualRepresentationScorer
 from xpmir.utils import easylog, foreach
 from xpmir.text.encoders import TextEncoder
-from xpmir.letor.context import TrainerContext, TrainingHook
+from xpmir.letor.context import Loss, TrainerContext, TrainingHook
 from xpmir.letor.metrics import ScalarMetric
 
 logger = easylog()
@@ -91,7 +91,7 @@ class DenseQueryEncoder(DenseBaseEncoder):
 
 
 class CosineDense(Dense):
-    """Dual model based on cosine similarity"""
+    """Dual model based on cosine similarity."""
 
     def encode_queries(self, texts):
         queries = (self.query_encoder or self.encoder)(texts)
@@ -103,7 +103,7 @@ class CosineDense(Dense):
 
 
 class DotDense(Dense):
-    """Dual model based on inner product"""
+    """Dual model based on inner product."""
 
     def __validate__(self):
         super().__validate__()
@@ -119,21 +119,34 @@ class DotDense(Dense):
 class FlopsRegularizer(DualVectorListener):
     lambda_q: Param[float]
     lambda_d: Param[float]
+    weight: Param[float] = 1.0
 
     def __call__(self, info: TrainerContext, queries, documents):
-        q = queries.abs().mean(0)
+        q = queries.abs()
         flops_q = (q.unsqueeze(1) @ q.unsqueeze(2)).sum()
 
-        d = documents.abs().mean(0)
+        d = documents.abs()
         flops_d = (d.unsqueeze(1) @ d.unsqueeze(2)).sum()
 
         flops = self.lambda_d * flops_d + self.lambda_q * flops_q
-        info.add_loss(flops)
+        info.add_loss(Loss("flops", flops, self.weight))
 
         info.metrics.add(ScalarMetric("flops", flops.item(), len(q)))
         info.metrics.add(ScalarMetric("flops_q", flops_q.item(), len(q)))
         info.metrics.add(ScalarMetric("flops_d", flops_d.item(), len(d)))
 
         with torch.no_grad():
-            info.metrics.add(ScalarMetric("sparsity_q", (q != 0).mean().item(), len(q)))
-            info.metrics.add(ScalarMetric("sparsity_d", (d != 0).mean().item(), len(d)))
+            info.metrics.add(
+                ScalarMetric(
+                    "sparsity_q",
+                    (q != 0).sum().item() / (q.shape[0] * q.shape[1]),
+                    len(q),
+                )
+            )
+            info.metrics.add(
+                ScalarMetric(
+                    "sparsity_d",
+                    (d != 0).sum().item() / (d.shape[0] * d.shape[1]),
+                    len(d),
+                )
+            )

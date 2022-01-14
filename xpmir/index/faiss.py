@@ -5,7 +5,7 @@ https://github.com/facebookresearch/faiss
 
 from pathlib import Path
 from typing import Callable, Iterator, List, Tuple
-from experimaestro.core.objects import Config
+from experimaestro import Config, initializer
 import torch
 import numpy as np
 from experimaestro import Annotated, Meta, Task, pathgenerator, Param, tqdm
@@ -157,8 +157,13 @@ class FaissRetriever(Retriever):
     index: Param[FaissIndex]
     topk: Param[int]
 
-    def __postinit__(self):
+    @initializer
+    def initialize(self):
+        logger.info("FAISS retriever (1/2): initializing the encoder")
+        self.encoder.initialize()
+        logger.info("FAISS retriever (2/2): reading the index")
         self._index = faiss.read_index(str(self.index.faiss_index))
+        logger.info("FAISS retriever: initialized")
 
     def retrieve(self, query: str) -> List[ScoredDocument]:
         """Retrieves a documents, returning a list sorted by decreasing score"""
@@ -169,7 +174,9 @@ class FaissRetriever(Retriever):
 
             values, indices = self._index.search(encoded_query.cpu().numpy(), self.topk)
             return [
-                ScoredDocument(self.index.documents.docid_internal2external(ix), value)
+                ScoredDocument(
+                    self.index.documents.docid_internal2external(int(ix)), value
+                )
                 for ix, value in zip(indices[0], values[0])
                 if ix >= 0
             ]

@@ -185,8 +185,11 @@ class Retriever(Config):
             results[key] = self.retrieve(text)
         return results
 
-    def retrieve(self, query: str) -> List[ScoredDocument]:
-        """Retrieves a documents, returning a list sorted by decreasing score"""
+    def retrieve(self, query: str, content=False) -> List[ScoredDocument]:
+        """Retrieves a documents, returning a list sorted by decreasing score
+
+        if `content` is true, includes the document full text
+        """
         raise NotImplementedError()
 
     def getindex(self) -> Index:
@@ -220,10 +223,10 @@ class FullRetriever(Retriever):
 
     documents: Param[AdhocDocuments]
 
-    def retrieve(self, query: str, withContent=False) -> List[ScoredDocument]:
-        if withContent:
+    def retrieve(self, query: str, content=False) -> List[ScoredDocument]:
+        if content:
             return [
-                ScoredDocument(doc.docno, 0.0, doc.content)
+                ScoredDocument(doc.docid, 0.0, doc.text)
                 for doc in self.documents.iter()
             ]
         return [ScoredDocument(docid, 0.0, None) for docid in self.documents.iter_ids()]
@@ -265,7 +268,7 @@ class TwoStageRetriever(Retriever):
 
     def retrieve(self, query: str):
         # Calls the retriever
-        scoredDocuments = self.retriever.retrieve(query)
+        scoredDocuments = self.retriever.retrieve(query, content=True)
 
         # Scorer in evaluation mode
         self.scorer.eval()

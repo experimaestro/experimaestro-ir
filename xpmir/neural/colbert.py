@@ -36,9 +36,9 @@ class Colbert(InteractionScorer):
 
     Implementation of the Colbert model from:
 
-    > Khattab, Omar, and Matei Zaharia.
-    > “ColBERT: Efficient and Effective Passage Search via Contextualized Late Interaction over BERT.”
-    > SIGIR 2020, Xi'An, China
+        Khattab, Omar, and Matei Zaharia.
+        “ColBERT: Efficient and Effective Passage Search via Contextualized Late Interaction over BERT.”
+        SIGIR 2020, Xi'An, China
 
     For the standard Colbert model, use BERT as the vocab(ulary)
 

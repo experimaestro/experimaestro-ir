@@ -28,7 +28,10 @@ class BaseEvaluation(Task):
 
     def config(self):
         return TrecAdhocResults(
-            results=self.aggregated, detailed=self.detailed, metrics=self.measures
+            id="",
+            results=self.aggregated,
+            detailed=self.detailed,
+            metrics=self.measures,
         )
 
     def _execute(self, run, assessments):
