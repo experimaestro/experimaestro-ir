@@ -2,10 +2,9 @@ from typing import Generic, Iterable, List, Optional, TypeVar
 import torch
 import torch.nn as nn
 
-from experimaestro import Param
 from xpmir.letor.context import TrainerContext
 from xpmir.letor.records import BaseRecords
-from xpmir.letor import Module
+from xpmir.letor.optim import Module
 from xpmir.rankers import LearnableScorer
 
 
@@ -16,9 +15,8 @@ class TorchLearnableScorer(LearnableScorer, Module):
         nn.Module.__init__(self)
         super().__init__()
 
-    def __call__(self, inputs: BaseRecords, info: TrainerContext = None):
-        # Redirects to nn.Module rather than using LearnableScorer one
-        return nn.Module.__call__(self, inputs, info)
+    __call__ = nn.Module.__call__
+    to = nn.Module.to
 
     def train(self, mode=True):
         return nn.Module.train(self, mode)
@@ -62,7 +60,7 @@ class DualRepresentationScorer(TorchLearnableScorer):
     def encode_queries(self, texts: Iterable[str]):
         return self.encode(texts)
 
-    def score_product(self, queries, documents, info: TrainerContext):
+    def score_product(self, queries, documents, info: Optional[TrainerContext]):
         raise NotImplementedError()
 
     def score_pairs(

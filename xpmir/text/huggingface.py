@@ -5,7 +5,9 @@ import re
 import torch
 import torch.nn as nn
 from experimaestro import Param
-from xpmir.letor.context import StepTrainingHook, TrainState, TrainingHook
+from xpmir.context import Context, InitializationHook
+from xpmir.letor import DistributedDeviceInformation
+from xpmir.letor.context import StepTrainingHook, TrainState
 from xpmir.text.encoders import (
     ContextualizedTextEncoder,
     ContextualizedTextEncoderOutput,
@@ -27,18 +29,16 @@ logger = easylog()
 
 
 class TransformerVocab(text.Vocab):
-    """Transformer-based encoder
-
-    Args:
-
-    model_id: Model ID from huggingface
-    trainable: Whether BERT parameters should be trained
-    layer: Layer to use (0 is the last, -1 to use them all)
-    """
+    """Transformer-based encoder from Huggingface"""
 
     model_id: Param[str] = "bert-base-uncased"
+    """Model ID from huggingface"""
+
     trainable: Param[bool]
+    """Whether BERT parameters should be trained"""
+
     layer: Param[int] = 0
+    """Layer to use (0 is the last, -1 to use them all)"""
 
     CLS: int
     SEP: int
@@ -295,7 +295,7 @@ class LayerFreezer(StepTrainingHook):
     RE_LAYER = re.compile(r"""^(?:encoder|transformer)\.layer\.(\d+)\.""")
 
     transformer: Param[TransformerVocab]
-    """Freeze layers"""
+    """The model"""
 
     freeze_embeddings: Param[bool] = True
 
@@ -333,3 +333,31 @@ class LayerFreezer(StepTrainingHook):
                 if self.should_freeze(name):
                     logger.info("Freezing layer %s", name)
                     param.requires_grad = False
+
+
+class ModelContainer(Config):
+    model: nn.Module
+
+
+class DistributedModelHook(InitializationHook):
+    """Hook to distribute the model processing
+
+    When in multiprocessing/multidevice, use `torch.nn.parallel.DistributedDataParallel`,
+    otherwise use `torch.nn.DataParallel`.
+    """
+
+    transformer: Param[TransformerVocab]
+    """The model"""
+
+    def after(self, state: Context):
+        info = state.device_information
+        if isinstance(info, DistributedDeviceInformation):
+            logger.info("Using a distributed model with rank=%d", info.rank)
+            self.transformer.model = nn.parallel.DistributedDataParallel(
+                self.transformer.model, device_ids=[info.rank]
+            )
+        else:
+            n_gpus = torch.cuda.device_count()
+            if n_gpus > 1:
+                logger.info("Setting up DataParallel for transformer (%d GPUs)", n_gpus)
+                self.transformer.model = torch.nn.DataParallel(self.transformer.model)

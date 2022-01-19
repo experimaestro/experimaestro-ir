@@ -47,14 +47,10 @@ class BinaryCrossEntropyLoss(PointwiseLoss):
 
 
 class PointwiseTrainer(LossTrainer):
-    """Pointwise trainer
-
-    Attribute:
-
-        lossfn: Loss function to use (mse, mse-nil, l1, l1pos, smoothl1, cross_entropy, cross_entropy_logits, softmax, mean)
-    """
+    """Pointwise trainer"""
 
     lossfn: Param[PointwiseLoss] = MSELoss()
+    """Loss function to use (mse, mse-nil, l1, l1pos, smoothl1, cross_entropy, cross_entropy_logits, softmax, mean)"""
 
     def initialize(self, random: np.random.RandomState, ranker, context):
         super().initialize(random, ranker, context)

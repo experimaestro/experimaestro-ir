@@ -217,6 +217,10 @@ class BatchwiseRecords(BaseRecords):
 
     relevances: torch.Tensor
 
+    def __getitem__(self, ix: Union[slice, int]):
+        """Sub-sample"""
+        raise NotImplementedError(f"__getitem__() in {self.__class__}")
+
 
 class ProductRecords(BatchwiseRecords):
     """Computes the score for all the documents and queries

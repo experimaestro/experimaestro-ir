@@ -1,13 +1,14 @@
 # This package contains all rankers
 
+from experimaestro import tqdm
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Iterable, Iterator, List, Optional, final
+from typing import Dict, Iterable, Iterator, List, Optional, Tuple, final
 import torch
 import numpy as np
 from experimaestro import Param, Config, Option, documentation, Meta
-from datamaestro_text.data.ir import AdhocIndex as Index, AdhocDocuments
-from xpmir.letor import Device, Random
+from datamaestro_text.data.ir import AdhocDocument, AdhocIndex as Index, AdhocDocuments
+from xpmir.letor import Device, DeviceInformation, Random
 from xpmir.letor.batchers import Batcher
 from xpmir.letor.context import TrainerContext
 from xpmir.letor.records import Document, BaseRecords, ProductRecords, Query
@@ -109,6 +110,9 @@ class LearnableScorer(Scorer):
         """Put the model in training mode"""
         self.train(False)
 
+    def to(self, device):
+        pass
+
     @final
     def initialize(self, random: Optional[np.random.RandomState]):
         """Initialize a learnable scorer
@@ -173,15 +177,13 @@ class Retriever(Config):
         """Returns the document collection object"""
         raise NotImplementedError()
 
-    def retrieveTopics(
-        self, queries: Dict[str, str]
-    ) -> Dict[str, List[ScoredDocument]]:
+    def retrieve_all(self, queries: Dict[str, str]) -> Dict[str, List[ScoredDocument]]:
         """Retrieves for a set of documents
 
         By default, iterate using `self.retrieve`, but this leaves some room open
         for optimization"""
         results = {}
-        for key, text in queries.items():
+        for key, text in tqdm(list(queries.items())):
             results[key] = self.retrieve(text)
         return results
 
@@ -200,7 +202,7 @@ class Retriever(Config):
     def getReranker(
         self, scorer: Scorer, batch_size: int, batcher: Batcher = Batcher(), device=None
     ):
-        """Retrieves a two stage re-ranker
+        """Returns a two stage re-ranker from this retriever and a scorer
 
         Arguments:
             device: Device for the ranker or None if no change should be made
@@ -212,24 +214,6 @@ class Retriever(Config):
             batcher=batcher,
             device=device,
         )
-
-
-class FullRetriever(Retriever):
-    """Retrieves all the documents of the collection
-
-    This can be used to build a small validation set on a subset of the collection - in that
-    case, the scorer can be used through a TwoStageRetriever
-    """
-
-    documents: Param[AdhocDocuments]
-
-    def retrieve(self, query: str, content=False) -> List[ScoredDocument]:
-        if content:
-            return [
-                ScoredDocument(doc.docid, 0.0, doc.text)
-                for doc in self.documents.iter()
-            ]
-        return [ScoredDocument(docid, 0.0, None) for docid in self.documents.iter_ids()]
 
 
 class TwoStageRetriever(Retriever):
@@ -245,9 +229,8 @@ class TwoStageRetriever(Retriever):
     retriever: Param[Retriever]
     scorer: Param[Scorer]
     batchsize: Param[int] = 0
-    batcher: Param[Batcher] = Batcher()
-    device: Option[Optional[Device]] = None
-    topk: Param[int] = 1500
+    batcher: Meta[Batcher] = Batcher()
+    device: Meta[Optional[Device]] = None
 
     def initialize(self):
         self.retriever.initialize()
@@ -256,7 +239,7 @@ class TwoStageRetriever(Retriever):
 
         # Compute with the scorer
         if self.device is not None:
-            self.scorer.to(self.device(logger))
+            self.scorer.to(self.device.value)
 
     def _retrieve(
         self,
@@ -279,4 +262,4 @@ class TwoStageRetriever(Retriever):
         )
 
         _scoredDocuments.sort(reverse=True)
-        return _scoredDocuments[: self.topk]
+        return _scoredDocuments

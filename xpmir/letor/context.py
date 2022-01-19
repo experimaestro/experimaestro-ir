@@ -16,7 +16,9 @@ from typing import (
     TYPE_CHECKING,
 )
 from shutil import rmtree
+from xpmir.context import Context, InitializationHook
 from xpmir.utils import easylog
+from xpmir.letor import DeviceInformation
 from xpmir.letor.metrics import Metric, Metrics
 from experimaestro.utils import cleanupdir
 from contextlib import contextmanager
@@ -117,9 +119,6 @@ class TrainState:
             os.link(self.path / name, path / name)
 
 
-HookType = TypeVar("HookType")
-
-
 class TrainingHook(Config):
     """Base class for all training hooks"""
 
@@ -136,11 +135,17 @@ class StepTrainingHook(TrainingHook):
         pass
 
 
-class LearnContext:
-    """The global learning context"""
+class InitializationTrainingHook(InitializationHook):
+    """Base class for hooks called at each epoch (before/after)"""
+
+    def after(self, state: "TrainerContext"):
+        pass
+
+    def before(self, state: "TrainerContext"):
+        pass
 
 
-class TrainerContext:
+class TrainerContext(Context):
     """Contains all the information about the training context
     for a spefic
 
@@ -155,9 +160,6 @@ class TrainerContext:
     _losses: Optional[List[Loss]]
     """Regularization losses to be added to the main loss"""
 
-    hooksmap: Dict[Type, List[TrainingHook]]
-    """Map of hooks"""
-
     _scope: List[str]
     """Scope for metric names"""
 
@@ -165,6 +167,7 @@ class TrainerContext:
 
     def __init__(
         self,
+        device_information: DeviceInformation,
         logpath: Path,
         path: Path,
         max_epoch: int,
@@ -173,20 +176,16 @@ class TrainerContext:
         ranker: "LearnableScorer",
         optimizer: "ScheduledOptimizer",
     ):
+        super().__init__(device_information)
         self.path = path
         self.logpath = logpath
         self.max_epoch = max_epoch
         self.steps_per_epoch = steps_per_epoch
         self._writer = None
         self._scope = []
-        self.hooksmap = DefaultDict(lambda: [])
         self._losses = None
 
         self.state = TrainState(ranker, trainer, optimizer)
-
-    def add_hook(self, hook):
-        for cls in hook.__class__.__mro__:
-            self.hooksmap[cls].append(hook)
 
     @property
     def writer(self):
@@ -269,14 +268,6 @@ class TrainerContext:
             cleanupdir(path)
             self.state.copy_model(path)
 
-    def hooks(self, cls: Type[HookType]) -> List[HookType]:
-        """Returns all the hooks"""
-        return self.hooksmap.get(cls, [])  # type: ignore
-
-    def call_hooks(self, cls: Type, method: Callable, *args, **kwargs):
-        for hook in self.hooks(cls):
-            method(hook, *args, **kwargs)
-
     def add_loss(self, loss: Loss):
         assert self._losses is not None, "This call should be in the losses context"
         self._losses.append(loss)
@@ -305,7 +296,7 @@ class TrainerContext:
     def add_metric(self, metric: Metric):
         assert self.metrics is not None, "Not within an optimization step"
         if self._scope:
-            metric.key = "/".join(self._scope) + "/" + metric.key
+            metric.key = "/".join(s for s in self._scope if s) + "/" + metric.key
         self.metrics.add(metric)
 
     @contextmanager

@@ -2,13 +2,18 @@ from typing import List, Optional, Tuple
 from experimaestro import Config, Param
 import torch.nn as nn
 import torch
+from xpmir.context import Context, InitializationHook
+from xpmir.letor import DistributedDeviceInformation
 from xpmir.letor.samplers import PairwiseSampler, PairwiseInBatchNegativesSampler
+from transformers import AutoModelForMaskedLM
 from xpmir.neural import TorchLearnableScorer
 from xpmir.text.huggingface import TransformerVocab
 from xpmir.text.encoders import TextEncoder
 from xpmir.letor.trainers.batchwise import BatchwiseTrainer
 from xpmir.neural.dual import DotDense, FlopsRegularizer
-from transformers import AutoModelForMaskedLM
+from xpmir.utils import easylog
+
+logger = easylog()
 
 
 class Aggregation(Config):
@@ -22,7 +27,7 @@ class MaxAggregation(Aggregation):
 
     def __call__(self, logits, mask):
         values, _ = torch.max(
-            torch.log(1 + torch.relu(logits) * mask.to(logits.device).unsqueeze(-1)),
+            torch.log1p(torch.relu(logits) * mask.to(logits.device).unsqueeze(-1)),
             dim=1,
         )
         return values
@@ -33,9 +38,21 @@ class SumAggregation(Aggregation):
 
     def __call__(self, logits, mask):
         return torch.sum(
-            torch.log(1 + torch.relu(logits) * mask.to(logits.device).unsqueeze(-1)),
+            torch.log1p(torch.relu(logits) * mask.to(logits.device).unsqueeze(-1)),
             dim=1,
         )
+
+
+class SpladeTextEncoderModel(nn.Module):
+    def __init__(self, encoder, aggregation):
+        super().__init__()
+        self.encoder = encoder
+        self.aggregation = aggregation
+
+    def forward(self, tokenized):
+        out = self.encoder(tokenized, all_outputs=True)
+        out = self.aggregation(out.logits, tokenized.mask)
+        return out
 
 
 class SpladeTextEncoder(TextEncoder):
@@ -47,16 +64,44 @@ class SpladeTextEncoder(TextEncoder):
 
     def initialize(self):
         self.encoder.initialize(automodel=AutoModelForMaskedLM)
+        self.model = SpladeTextEncoderModel(self.encoder, self.aggregation)
 
     def forward(self, texts: List[str]) -> torch.Tensor:
         """Returns a batch x vocab tensor"""
         tokenized = self.encoder.batch_tokenize(texts, mask=True, maxlen=self.maxlen)
-        out = self.encoder(tokenized, all_outputs=True)
-        out = self.aggregation(out.logits, tokenized.mask)
+        out = self.model(tokenized)
         return out
 
     def static(self):
         return False
+
+
+class DistributedSpladeTextEncoderHook(InitializationHook):
+    """Hook to distribute the model processing
+
+    When in multiprocessing/multidevice, use `torch.nn.parallel.DistributedDataParallel`,
+    otherwise use `torch.nn.DataParallel`.
+    """
+
+    splade: Param[SpladeTextEncoder]
+    """The model"""
+
+    def after(self, state: Context):
+        info = state.device_information
+        if isinstance(info, DistributedDeviceInformation):
+            logger.info("Using a distributed model with rank=%d", info.rank)
+            self.splade.model = nn.parallel.DistributedDataParallel(
+                self.splade.model, device_ids=[info.rank]
+            )
+        else:
+            n_gpus = torch.cuda.device_count()
+            if n_gpus > 1:
+                logger.info(
+                    "Setting up DataParallel for Splade text encoder (%d GPUs)", n_gpus
+                )
+                self.splade.model = torch.nn.DataParallel(self.splade.model)
+            else:
+                logger.warning("Only one GPU detected, not using data parallel")
 
 
 def _splade(lambda_q: float, lambda_d: float, aggregation: Aggregation):

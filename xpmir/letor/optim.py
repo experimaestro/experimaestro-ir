@@ -91,7 +91,7 @@ class DuplicateParameterFilter:
 
 
 class ScheduledOptimizer:
-    def __init__(
+    def initialize(
         self,
         param_optimizers: List[ParameterOptimizer],
         num_training_steps: int,

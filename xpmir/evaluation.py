@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import DefaultDict, List
+from typing import DefaultDict, Dict, List
 from datamaestro_text.data.ir import Adhoc, AdhocAssessments
 from experimaestro import tqdm, Task, Param, pathgenerator, Annotated
 from datamaestro_text.data.ir.trec import (
@@ -58,17 +58,13 @@ class BaseEvaluation(Task):
 
 def get_run(retriever: Retriever, dataset: Adhoc):
     """Evaluate a retriever on a dataset"""
-    topics = list(dataset.topics.iter())
-
-    run = {}
-    for query in tqdm(topics):
-        scoreddocs = {}
-        run[query.qid] = scoreddocs
-
-        for rank, sd in enumerate(retriever.retrieve(query.text)):
-            scoreddocs[sd.docid] = sd.score
-
-    return run
+    results = retriever.retrieve_all(
+        {topic.qid: topic.text for topic in dataset.topics.iter()}
+    )
+    return {
+        qid: {sd.docid: sd.score for sd in scoredocs}
+        for qid, scoredocs in results.items()
+    }
 
 
 def evaluate(retriever: Retriever, dataset: Adhoc, measures: List[str], details=False):

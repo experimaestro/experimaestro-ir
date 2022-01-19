@@ -32,5 +32,22 @@ Trainers are responsible for defining the the way to train
 a learnable scorer.
 
 .. autoxpmconfig:: xpmir.letor.trainers.Trainer
+
 .. autoxpmconfig:: xpmir.letor.trainers.pointwise.PointwiseTrainer
+
+
+Pairwise
+********
+
 .. autoxpmconfig:: xpmir.letor.trainers.pairwise.PairwiseTrainer
+
+
+.. autoxpmconfig:: xpmir.letor.trainers.pairwise.PairwiseLoss
+
+
+
+
+Misc
+====
+
+.. autoxpmconfig:: xpmir.letor.Random

@@ -14,9 +14,15 @@ from datamaestro_text.data.ir import AdhocDocumentStore
 from xpmir.rankers import Retriever, ScoredDocument
 from xpmir.letor.batchers import Batcher
 from xpmir.text.encoders import TextEncoder
-from xpmir.letor import Device, DEFAULT_DEVICE
-from xpmir.utils import batchiter, easylog
+from xpmir.letor import (
+    Device,
+    DEFAULT_DEVICE,
+    DeviceInformation,
+    DistributedDeviceInformation,
+)
+from xpmir.utils import batchiter, easylog, foreach
 from xpmir.documents.samplers import DocumentSampler
+from xpmir.context import Context, Hook, InitializationHook
 
 logger = easylog()
 
@@ -98,6 +104,7 @@ class IndexBackedFaiss(FaissIndex, Task):
     batchsize: Meta[int] = 1
     device: Meta[Device] = DEFAULT_DEVICE
     batcher: Meta[Batcher] = Batcher()
+    hooks: Param[List[Hook]] = []
 
     indexer: Param[FaissIndexFactory]
     """
@@ -105,6 +112,12 @@ class IndexBackedFaiss(FaissIndex, Task):
     """
 
     def execute(self):
+        self.device.execute(self._execute)
+
+    def _execute(self, device_information: DeviceInformation):
+        context = Context(device_information, hooks=self.hooks)
+        foreach(context.hooks(InitializationHook), lambda hook: hook.before(context))
+
         # Initializations
         self.encoder.initialize()
         index = self.indexer(self.encoder.dimension)
@@ -121,10 +134,16 @@ class IndexBackedFaiss(FaissIndex, Task):
             self.indexer.train(index, batch_encoder)
 
         # Index the collection
-        doc_iter = tqdm(
-            self.documents.iter_documents(), total=self.documents.documentcount
+        doc_iter = (
+            tqdm(self.documents.iter_documents(), total=self.documents.documentcount)
+            if device_information.main
+            else self.documents.iter_documents()
         )
-        self.encoder.to(self.device(logger)).eval()
+
+        self.encoder.to(device_information.device).eval()
+        foreach(context.hooks(InitializationHook), lambda hook: hook.after(context))
+
+        # Let's index !
         with torch.no_grad():
             for batch in batchiter(self.batchsize, doc_iter, index):
                 batcher.process(

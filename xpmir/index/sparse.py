@@ -94,7 +94,8 @@ class SparseRetriever(Retriever):
     topk: Param[int]
 
     def retrieve(self, query: str) -> List[ScoredDocument]:
-        """Search with DAAT strategy"""
+        """Search with document-at-a-time (DAAT) strategy"""
+
         # Build up iterators
         vector = self.encoder([query])[0].cpu()
         iterators: List[Iterator[Posting]] = []

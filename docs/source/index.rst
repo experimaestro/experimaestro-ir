@@ -9,6 +9,7 @@ Welcome to Experimaestro IR documentation!
    neural
    datasets
    misc
+   text/index
 
 
 Install

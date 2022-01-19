@@ -17,12 +17,19 @@ from experimaestro import (
 )
 import numpy as np
 from experimaestro.notifications import tqdm
+from xpmir.context import Hook, InitializationHook
 from xpmir.letor.batchers import RecoverableOOMError
 from xpmir.utils import EasyLogger, easylog, foreach
 from xpmir.evaluation import evaluate
-from xpmir.letor import DEFAULT_DEVICE, Device, Random
+from xpmir.letor import DEFAULT_DEVICE, Device, DeviceInformation, Random
 from xpmir.letor.trainers import Trainer
-from xpmir.letor.context import StepTrainingHook, TrainState, TrainerContext
+from xpmir.letor.context import (
+    InitializationTrainingHook,
+    StepTrainingHook,
+    TrainState,
+    TrainerContext,
+    TrainingHook,
+)
 from xpmir.letor.metrics import Metrics
 from xpmir.rankers import LearnableScorer, Retriever, ScoredDocument, Scorer
 from xpmir.letor.optim import ParameterOptimizer, ScheduledOptimizer
@@ -219,6 +226,9 @@ class Learner(Task, EasyLogger):
     device: Meta[Device] = DEFAULT_DEVICE
     """The device(s) to be used for the model"""
 
+    hooks: Param[List[Hook]] = []
+    """Global learning hooks"""
+
     def __validate__(self):
         assert self.optimizers, "At least one optimizer should be defined"
         return super().__validate__()
@@ -232,15 +242,36 @@ class Learner(Task, EasyLogger):
             }
         }
 
-    # The Trainer
     def execute(self):
+        self.device.execute(self.device_execute)
+
+    def device_execute(self, device_information: DeviceInformation):
         logger = logging.getLogger()
         logger.setLevel(logging.INFO)
         for handler in logger.handlers:
             handler.setLevel(logging.INFO)
 
+        self.optimizer = ScheduledOptimizer()
         self.only_cached = False
-        self._device = self.device(logger)
+        self.context = TrainerContext(
+            device_information,
+            self.logpath,
+            self.checkpointspath,
+            self.max_epochs,
+            self.steps_per_epoch,
+            self.trainer,
+            self.scorer,
+            self.optimizer,
+        )
+
+        for hook in self.hooks:
+            self.context.add_hook(hook)
+
+        # Call hooks
+        foreach(
+            self.context.hooks(InitializationHook),
+            lambda hook: hook.before(self.context),
+        )
 
         # Sets the random seed
         seed = self.random.state.randint((2 ** 32) - 1)
@@ -252,29 +283,23 @@ class Learner(Task, EasyLogger):
         self.logger.info("Scorer initialization")
         self.scorer.initialize(self.random.state)
 
-        # Initialize the optimizer
-        num_training_steps = self.max_epochs * self.steps_per_epoch
-        self.optimizer = ScheduledOptimizer(
-            self.optimizers, num_training_steps, self.scorer, self.use_fp16
-        )
-
         # Initialize the context and the listeners
-        self.context = TrainerContext(
-            self.logpath,
-            self.checkpointspath,
-            self.max_epochs,
-            self.steps_per_epoch,
-            self.trainer,
-            self.scorer,
-            self.optimizer,
-        )
         self.trainer.initialize(self.random.state, self.context)
         for key, listener in self.listeners.items():
             listener.initialize(key, self, self.context)
 
-        self.logger.info("Moving to device %s", self._device)
-        self.scorer.to(self._device)
-        self.trainer.to(self._device)
+        self.logger.info("Moving to device %s", device_information.device)
+        self.scorer.to(device_information.device)
+        self.trainer.to(device_information.device)
+        num_training_steps = self.max_epochs * self.steps_per_epoch
+        self.optimizer.initialize(
+            self.optimizers, num_training_steps, self.scorer, self.use_fp16
+        )
+
+        foreach(
+            self.context.hooks(InitializationHook),
+            lambda hook: hook.after(self.context),
+        )
 
         self.logger.info("Starting to train")
 
@@ -282,7 +307,7 @@ class Learner(Task, EasyLogger):
         state = None
 
         with tqdm(total=self.max_epochs) as tqdm_epochs:
-            for state in self.iter_train():
+            for state in self.iter_train(device_information):
                 # Report progress
                 tqdm_epochs.update(state.epoch - current)
                 current = state.epoch
@@ -331,7 +356,7 @@ class Learner(Task, EasyLogger):
                     listener.update_metrics(metrics)
                 self.context.writer.add_hparams(self.__tags__, metrics)
 
-    def iter_train(self) -> Iterator[TrainState]:
+    def iter_train(self, device_information) -> Iterator[TrainState]:
         """Train iteration"""
         # Try to load a checkpoint
 
@@ -374,7 +399,8 @@ class Learner(Task, EasyLogger):
 
                                 # Computes the gradient
                                 with torch.autocast(
-                                    self._device.type, enabled=self.use_fp16
+                                    device_information.device.type,
+                                    enabled=self.use_fp16,
                                 ):
                                     self.trainer.process_batch(batch)
 

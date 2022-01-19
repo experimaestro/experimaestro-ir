@@ -24,8 +24,6 @@ class DualVectorListener(TrainingHook):
 class DualVectorScorer(DualRepresentationScorer):
     """A scorer based on dual vectorial representations"""
 
-    pass
-
 
 class Dense(DualVectorScorer):
     """A scorer based on a pair of (query, document) dense vectors"""
@@ -41,6 +39,9 @@ class Dense(DualVectorScorer):
         self.encoder.initialize()
         if self.query_encoder:
             self.query_encoder.initialize()
+
+    def score_product(self, queries, documents, info: Optional[TrainerContext]):
+        return queries @ documents.T
 
     def score_pairs(self, queries, documents, info: TrainerContext):
         scores = (queries.unsqueeze(1) @ documents.unsqueeze(2)).squeeze(-1).squeeze(-1)
@@ -121,12 +122,19 @@ class FlopsRegularizer(DualVectorListener):
     lambda_d: Param[float]
     weight: Param[float] = 1.0
 
-    def __call__(self, info: TrainerContext, queries, documents):
-        q = queries.abs()
-        flops_q = (q.unsqueeze(1) @ q.unsqueeze(2)).sum()
+    @staticmethod
+    def compute(x: torch.Tensor):
+        # Computes the mean for each term
+        y = x.abs().mean(0)
+        # Returns the sum of squared means
+        return y, (y * y).sum()
 
-        d = documents.abs()
-        flops_d = (d.unsqueeze(1) @ d.unsqueeze(2)).sum()
+    def __call__(self, info: TrainerContext, queries, documents):
+        # queries and documents are length x dimension
+        # Assumes that all weights are positive
+
+        q, flops_q = FlopsRegularizer.compute(queries)
+        d, flops_d = FlopsRegularizer.compute(documents)
 
         flops = self.lambda_d * flops_d + self.lambda_q * flops_q
         info.add_loss(Loss("flops", flops, self.weight))
@@ -139,14 +147,15 @@ class FlopsRegularizer(DualVectorListener):
             info.metrics.add(
                 ScalarMetric(
                     "sparsity_q",
-                    (q != 0).sum().item() / (q.shape[0] * q.shape[1]),
+                    (queries != 0).sum().item() / (queries.shape[0] * queries.shape[1]),
                     len(q),
                 )
             )
             info.metrics.add(
                 ScalarMetric(
                     "sparsity_d",
-                    (d != 0).sum().item() / (d.shape[0] * d.shape[1]),
+                    (documents != 0).sum().item()
+                    / (documents.shape[0] * documents.shape[1]),
                     len(d),
                 )
             )
