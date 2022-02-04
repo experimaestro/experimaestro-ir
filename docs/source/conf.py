@@ -14,6 +14,15 @@
 # import sys
 # sys.path.insert(0, os.path.abspath('.'))
 
+# --- Allow not to depend on too many things when building the documentation
+
+import re
+from experimaestro.mkdocs.metaloader import DependencyInjectorFinder
+
+DependencyInjectorFinder.install(
+    re.compile(r"^(torch|faiss|pandas|bs4|pytorch_transformers|pytrec_eval|apex)($|\.)")
+)
+
 
 # -- Project information -----------------------------------------------------
 
