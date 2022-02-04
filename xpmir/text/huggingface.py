@@ -335,10 +335,6 @@ class LayerFreezer(StepTrainingHook):
                     param.requires_grad = False
 
 
-class ModelContainer(Config):
-    model: nn.Module
-
-
 class DistributedModelHook(InitializationHook):
     """Hook to distribute the model processing
 

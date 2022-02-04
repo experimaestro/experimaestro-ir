@@ -6,6 +6,8 @@ from . import Vocab
 
 
 class Encoder(Module):
+    """Base class for all word and text encoders"""
+
     def initialize(self):
         pass
 
@@ -42,6 +44,8 @@ class DualTextEncoder(Encoder):
 
 
 class ContextualizedTextEncoderOutput(NamedTuple):
+    """The output of a contextualized encoder"""
+
     ids: torch.Tensor
     """The token IDs"""
 

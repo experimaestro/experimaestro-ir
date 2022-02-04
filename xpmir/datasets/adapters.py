@@ -75,13 +75,14 @@ class RandomFold(Task):
     """Extracts a random subset of topics from a dataset
 
     Attributes:
-        seed: Random seed used to compute the fold
         sizes: Number of topics of each fold (or percentage if sums to 1)
         dataset: The Adhoc dataset from which a fold is extracted
         fold: Which fold to take
     """
 
     seed: Param[int]
+    """Random seed used to compute the fold"""
+
     sizes: Param[List[float]]
     dataset: Param[Adhoc]
     fold: Param[int]

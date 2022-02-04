@@ -1,13 +1,25 @@
 Samplers
 --------
 
+Samplers provide samples in the form of *records*. They all inherit from:
+
+.. autoxpmconfig:: xpmir.letor.samplers.Sampler
+.. autoclass:: xpmir.letor.samplers.SerializableIterator
 
 
+Pointwise
+=========
 
-Available samplers
-==================
+.. autoxpmconfig:: xpmir.letor.samplers.PointwiseSampler
+    :members: pointwise_iter
 
-.. autosummary:: xpmir.letor.samplers.Sampler
+.. autoxpmconfig:: xpmir.letor.samplers.PointwiseModelBasedSampler
+
+Pairwise
+=========
+
+.. autoxpmconfig:: xpmir.letor.samplers.PairwiseSampler
+.. autoxpmconfig:: xpmir.letor.samplers.PairwiseModelBasedSampler
 
 Records for training
 ====================

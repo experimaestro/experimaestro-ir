@@ -56,11 +56,19 @@ class SpladeTextEncoderModel(nn.Module):
 
 
 class SpladeTextEncoder(TextEncoder):
-    """Splade model (text encoder)"""
+    """Splade model
+
+    It is only a text encoder since the we use xpmir.neural.dual.DotDense
+    """
 
     encoder: Param[TransformerVocab]
+    """The encoder from Hugging Face"""
+
     aggregation: Param[Aggregation]
+    """How to aggregate the vectors"""
+
     maxlen: Param[Optional[int]] = None
+    """Max length for texts"""
 
     def initialize(self):
         self.encoder.initialize(automodel=AutoModelForMaskedLM)

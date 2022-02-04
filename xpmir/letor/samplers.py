@@ -38,6 +38,11 @@ ItType = TypeVar("ItType", covariant=True)
 
 
 class SerializableIterator(Iterator[ItType], Protocol[ItType]):
+    """An iterator that can be serialized through state dictionaries.
+
+    This is used when saving the sampler state
+    """
+
     def state_dict(self) -> Dict:
         ...
 
@@ -133,7 +138,7 @@ class SkippingIterator(Iterable[T]):
 
 
 class Sampler(Config, EasyLogger):
-    """"Abtract data sampler"""
+    """Abtract data sampler"""
 
     def initialize(self, random: np.random.RandomState):
         self.random = np.random.RandomState(random.randint(0, 2 ** 31))
@@ -147,10 +152,13 @@ class Sampler(Config, EasyLogger):
 
 class PointwiseSampler(Sampler):
     def pointwise_iter(self) -> SerializableIterator[PointwiseRecord]:
+        """Iteratable over pointwise records"""
         raise NotImplementedError(f"{self.__class__} should implement PointwiseRecord")
 
 
 class PairwiseSampler(Sampler):
+    """Abstract class for pairwise samplers which output a set of (query, positive, negative) triples"""
+
     def pairwise_iter(self) -> SerializableIterator[PairwiseRecord]:
         """Iterate over batches of size (# of queries) batch_size
 
@@ -161,6 +169,8 @@ class PairwiseSampler(Sampler):
 
 
 class BatchwiseSampler(Sampler):
+    """Batchwise samplers provide for each question a set of documents"""
+
     def batchwise_iter(self, batchsize: int) -> SerializableIterator[BatchwiseRecords]:
         """Iterate over batches of size (# of queries) batch_size
 

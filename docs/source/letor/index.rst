@@ -33,6 +33,9 @@ a learnable scorer.
 
 .. autoxpmconfig:: xpmir.letor.trainers.Trainer
 
+.. autoxpmconfig:: xpmir.letor.trainers.LossTrainer
+   :members: process_microbatch
+
 .. autoxpmconfig:: xpmir.letor.trainers.pointwise.PointwiseTrainer
 
 

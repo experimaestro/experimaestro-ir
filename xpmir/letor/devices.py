@@ -27,13 +27,7 @@ class DistributedDeviceInformation(DeviceInformation):
 
 
 class Device(Config):
-    """Device to use
-
-    Attributes:
-
-        gpu: use CUDA if available
-        gpu_determ: Use deterministic CUDA (CuDNN)
-    """
+    """Device to use, as well as specific option (e.g. parallelism)"""
 
     @cached_property
     def value(self):
@@ -60,6 +54,8 @@ def mp_launcher(rank, path, world_size, device, callback, taskenv):
 
 
 class CudaDevice(Device):
+    """CUDA device"""
+
     gpu_determ: Param[bool] = False
     """Sets the deterministic"""
 

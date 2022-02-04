@@ -65,3 +65,6 @@ html_static_path = ["_static"]
 intersphinx_mapping = {
     "datamaestro_text": (("../../../datamaestro_text/docs/build/html", None))
 }
+
+
+autodoc_default_options = {"show-inheritance": True}
