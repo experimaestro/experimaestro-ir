@@ -1,3 +1,4 @@
+Misc
+====
 
-Misc classes
-============
+.. autoxpmconfig:: xpmir.letor.Random

@@ -1,9 +1,10 @@
+from dataclasses import dataclass
 import logging
 import torch
 import json
 import math
 from pathlib import Path
-from typing import Dict, Iterator, List
+from typing import Any, Dict, Iterator, List, NamedTuple
 from datamaestro_text.data.ir import Adhoc
 from experimaestro import (
     Task,
@@ -24,7 +25,6 @@ from xpmir.evaluation import evaluate
 from xpmir.letor import DEFAULT_DEVICE, Device, DeviceInformation, Random
 from xpmir.letor.trainers import Trainer
 from xpmir.letor.context import (
-    InitializationTrainingHook,
     StepTrainingHook,
     TrainState,
     TrainerContext,
@@ -63,22 +63,30 @@ class LearnerListener(Config):
 class ValidationListener(LearnerListener):
     """Learning validation early-stopping
 
-    Computes a validation metric and stores the best result
-
-    Attributes:
-        warmup: Number of warmup epochs
-        validation: How to compute the validation metric
-        metrics: Dictionary whose keys are the metrics to record, and boolean
-            values whether the best performance checkpoint should be kept for
-            the associated metric
+    Computes a validation metric and stores the best result. If early_stop is
+    set (> 0), then it signals to the learner that the learning process can
+    stop.
     """
 
     metrics: Param[Dict[str, bool]] = {"map": True}
+    """Dictionary whose keys are the metrics to record, and boolean
+            values whether the best performance checkpoint should be kept for
+            the associated metric ([parseable by ir-measures](https://ir-measur.es/))"""
+
     dataset: Param[Adhoc]
+    """The dataset to use"""
+
     retriever: Param[Retriever]
+    """The retriever for validation"""
+
     warmup: Param[int] = -1
+    """How many epochs before actually computing the metric"""
+
     bestpath: Annotated[Path, pathgenerator("best")]
+    """Path to the best checkpoints"""
+
     info: Annotated[Path, pathgenerator("info.json")]
+    """Path to the JSON file that contains the metric values at each epoch"""
 
     validation_interval: Param[int] = 1
     """Epochs between each validation"""
@@ -177,6 +185,10 @@ class ValidationListener(LearnerListener):
         return self.should_stop()
 
 
+class LearnerOutput(NamedTuple):
+    listeners: Dict[str, Any]
+
+
 # Checkpoints
 class Learner(Task, EasyLogger):
     """Model Learner
@@ -185,21 +197,18 @@ class Learner(Task, EasyLogger):
     (1) the scorer defines the model (e.g. DRMM), and
     (2) the trainer defines how the model should be trained (e.g. pointwise, pairwise, etc.)
 
-    Attributes:
-
-        max_epoch: Maximum training epoch
-        checkpoint_interval: Number of epochs between each checkpoint
-        scorer: The scorer to learn
-        trainer: The trainer used to learn the parameters of the scorer
-        listeners: learning process listeners (e.g. validation or other metrics)
-        random: Random generator
+    When submitted, it returns a dictionary based on the `listeners`
     """
 
     # Training
     random: Param[Random]
+    """The random generator"""
 
     trainer: Param[Trainer]
+    """Specifies how to train the model"""
+
     scorer: Param[LearnableScorer]
+    """Defines the model that scores documents"""
 
     max_epochs: Param[int] = 1000
     """Maximum number of epochs"""
@@ -213,34 +222,41 @@ class Learner(Task, EasyLogger):
     optimizers: Param[List[ParameterOptimizer]]
     """The list of parameter optimizers"""
 
-    # Listen to learner
     listeners: Param[Dict[str, LearnerListener]]
+    """Listeners are in charge of handling the validation of the model, and saving the relevant checkpoints"""
 
-    # Checkpoints
     checkpoint_interval: Param[int] = 1
+    """Number of epochs between each checkpoint"""
 
-    # Paths
     logpath: Annotated[Path, pathgenerator("runs")]
+    """The path to the tensorboard logs"""
+
     checkpointspath: Annotated[Path, pathgenerator("checkpoints")]
+    """The path to the checkpoints"""
 
     device: Meta[Device] = DEFAULT_DEVICE
     """The device(s) to be used for the model"""
 
     hooks: Param[List[Hook]] = []
-    """Global learning hooks"""
+    """Global learning hooks
+
+
+    :class:`Initialization hooks <xpmir.context.InitializationHook>` are called
+    before and after the initialization of the trainer and listeners.
+    """
 
     def __validate__(self):
         assert self.optimizers, "At least one optimizer should be defined"
         return super().__validate__()
 
-    def taskoutputs(self):
+    def taskoutputs(self) -> LearnerOutput:
         """Object returned when submitting the task"""
-        return {
-            "listeners": {
+        return LearnerOutput(
+            listeners={
                 key: listener.taskoutputs(self)
                 for key, listener in self.listeners.items()
             }
-        }
+        )
 
     def execute(self):
         self.device.execute(self.device_execute)
@@ -274,7 +290,7 @@ class Learner(Task, EasyLogger):
         )
 
         # Sets the random seed
-        seed = self.random.state.randint((2 ** 32) - 1)
+        seed = self.random.state.randint((2**32) - 1)
         np.random.seed(seed)
         torch.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)

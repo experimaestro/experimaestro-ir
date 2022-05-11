@@ -14,18 +14,6 @@
 # import sys
 # sys.path.insert(0, os.path.abspath('.'))
 
-# --- Allow not to depend on too many things when building the documentation
-
-import re
-from experimaestro.mkdocs.metaloader import DependencyInjectorFinder
-
-DependencyInjectorFinder.install(
-    re.compile(
-        r"^(torch|faiss|pandas|bs4|pytorch_transformers|pytrec_eval|apex|pytorch\_lightning|transfomers)($|\.)"
-    )
-)
-
-
 # -- Project information -----------------------------------------------------
 
 project = "Experimaestro"
@@ -42,8 +30,15 @@ release = "0.8.0"
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
+    # Experimaestro extension
     "experimaestro.sphinx",
+    "datamaestro.sphinx",
+    # Read The Docs theme
     "sphinx_rtd_theme",
+    # Use Markdown parser
+    "myst_parser",
+    # auto documention
+    "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     # Link to other documentations
     "sphinx.ext.intersphinx",
@@ -74,8 +69,25 @@ html_static_path = ["_static"]
 
 
 intersphinx_mapping = {
-    "datamaestro_text": (("../../../datamaestro_text/docs/build/html", None))
+    "datamaestro_text": (
+        (
+            "https://datamaestro-text.readthedocs.io/en/latest/",
+            "../../../datamaestro_text/site/objects.inv",
+        )
+    )
 }
 
+# Autodoc options
 
 autodoc_default_options = {"show-inheritance": True}
+autodoc_mock_imports = [
+    "torch",
+    "faiss",
+    "pandas",
+    "bs4",
+    "pytorch_transformers",
+    "transformers",
+    "pytrec_eval",
+    "apex",
+    "pytorch_lightning",
+]

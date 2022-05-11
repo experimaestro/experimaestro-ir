@@ -61,9 +61,36 @@ class DualRepresentationScorer(TorchLearnableScorer):
         return self.encode(texts)
 
     def score_product(self, queries, documents, info: Optional[TrainerContext]):
+        """Computes the score of all possible pairs of query and document
+
+        Args:
+            queries (Any): The encoded queries
+            documents (Any): The encoded documents
+            info (Optional[TrainerContext]): The training context (if learning)
+
+        Returns:
+            torch.Tensor:
+                A tensor of dimension (N, P) where N is the number of queries
+                and P the number of documents
+        """
         raise NotImplementedError()
 
     def score_pairs(
         self, queries, documents, info: Optional[TrainerContext]
     ) -> torch.Tensor:
+        """Score the specified pairs of queries/documents.
+
+        There are as many queries as documents. The exact type of
+        queries and documents depends on the specific instance of the
+        dual representation scorer.
+
+        Args:
+            queries (Any): The list of encoded queries
+            documents (Any): The matching list of encoded documents
+            info (Optional[TrainerContext]): _description_
+
+        Returns:
+            torch.Tensor:
+                A tensor of dimension (N, 2) where N is the number of documents/queries
+        """
         raise NotImplementedError()

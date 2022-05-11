@@ -22,9 +22,16 @@ def get_evaluator(metrics: List[ir_measures.Metric], assessments: AdhocAssessmen
 
 
 class BaseEvaluation(Task):
+    """Base class for evaluation tasks"""
+
     measures: Param[List[Measure]] = [m.AP, m.P @ 20, m.nDCG, m.nDCG @ 20, m.RR]
+    """List of metrics"""
+
     aggregated: Annotated[Path, pathgenerator("aggregated.txt")]
+    """Path for aggregated results"""
+
     detailed: Annotated[Path, pathgenerator("detailed.dat")]
+    """Path for detailed results"""
 
     def config(self):
         return TrecAdhocResults(
@@ -97,15 +104,13 @@ class RunEvaluation(BaseEvaluation, Task):
 
 
 class Evaluate(BaseEvaluation, Task):
-    """Evaluate a retriever
-
-    Attributes:
-
-        metrics: the list of metrics
-    """
+    """Evaluate a retriever"""
 
     dataset: Param[Adhoc]
+    """The dataset for retrieval"""
+
     retriever: Param[Retriever]
+    """The retriever to evaluate"""
 
     def execute(self):
         self.retriever.initialize()

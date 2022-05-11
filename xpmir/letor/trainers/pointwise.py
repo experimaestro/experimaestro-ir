@@ -7,11 +7,15 @@ from experimaestro import Param, Config
 from xpmir.letor.records import PointwiseRecords
 from xpmir.letor.trainers import LossTrainer
 from xpmir.letor.context import TrainerContext
+from xpmir.rankers import LearnableScorer, ScorerOutputType
 
 
 class PointwiseLoss(Config):
     NAME = "?"
     weight: Param[float] = 1.0
+
+    def initialize(self, scorer: LearnableScorer):
+        pass
 
     def process(self, scores, targets, context: TrainerContext):
         value = self.compute(scores, targets)
@@ -31,16 +35,17 @@ class MSELoss(PointwiseLoss):
 class BinaryCrossEntropyLoss(PointwiseLoss):
     """Computes binary cross-entropy
 
-    Attributes:
-        logits: model outputs are logits (use a sigmoid)
+    Uses a BCE with logits if the scorer output type is
+    not a probability
     """
 
     NAME = "ce"
 
-    logits: Param[bool] = True
-
-    def __init__(self):
-        self.loss = nn.BCEWithLogitsLoss() if self.logits else nn.BCELoss()
+    def initialize(self, scorer: LearnableScorer):
+        if scorer.outputType == ScorerOutputType.PROBABILITY:
+            self.loss = nn.BCELoss()
+        else:
+            self.loss = nn.BCEWithLogitsLoss()
 
     def compute(self, rel_scores, target_relscores):
         return self.loss(rel_scores, (target_relscores > 0).float())
@@ -53,9 +58,10 @@ class PointwiseTrainer(LossTrainer):
     """Loss function to use (mse, mse-nil, l1, l1pos, smoothl1, cross_entropy, cross_entropy_logits, softmax, mean)"""
 
     def initialize(self, random: np.random.RandomState, ranker, context):
-        super().initialize(random, ranker, context)
+        super().initialize(random, context)
 
         self.sampler.initialize(self.random)
+        self.lossfn.initialize(ranker)
 
         self.random = random
         self.train_iter_core = self.sampler.record_iter()

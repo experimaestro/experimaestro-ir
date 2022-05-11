@@ -4,12 +4,14 @@ Welcome to Experimaestro IR documentation!
 .. toctree::
    :maxdepth: 2
 
-   indexbased
+   data/index
+   retrieval
+   evaluation
    letor/index
    neural
-   datasets
-   misc
+   hooks
    text/index
+   misc
 
 
 Install

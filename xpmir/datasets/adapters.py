@@ -72,24 +72,28 @@ def fold(ids: Iterable[str], dataset: Adhoc):
 
 
 class RandomFold(Task):
-    """Extracts a random subset of topics from a dataset
-
-    Attributes:
-        sizes: Number of topics of each fold (or percentage if sums to 1)
-        dataset: The Adhoc dataset from which a fold is extracted
-        fold: Which fold to take
-    """
+    """Extracts a random subset of topics from a dataset"""
 
     seed: Param[int]
     """Random seed used to compute the fold"""
 
     sizes: Param[List[float]]
+    """Number of topics of each fold (or percentage if sums to 1)"""
+
     dataset: Param[Adhoc]
+    """The Adhoc dataset from which a fold is extracted"""
+
     fold: Param[int]
+    """Which fold should be taken"""
+
     exclude: Param[Optional[AdhocTopics]]
+    """Exclude some topics from the random fold"""
 
     assessments: Annotated[Path, pathgenerator("assessments.tsv")]
+    """Generated assessments file"""
+
     topics: Annotated[Path, pathgenerator("topics.tsv")]
+    """Generated topics file"""
 
     def __validate__(self):
         assert self.fold < len(self.sizes)

@@ -29,7 +29,10 @@ class Dense(DualVectorScorer):
     """A scorer based on a pair of (query, document) dense vectors"""
 
     encoder: Param[TextEncoder]
+    """The document (and potentially query) encoder"""
+
     query_encoder: Param[Optional[TextEncoder]]
+    """The query encoder (optional, if not defined uses the query_encoder)"""
 
     def __validate__(self):
         super().__validate__()
@@ -110,10 +113,12 @@ class DotDense(Dense):
         super().__validate__()
         assert not self.encoder.static(), "The vocabulary should be learnable"
 
-    def encode_queries(self, texts):
+    def encode_queries(self, texts: List[str]):
+        """Encode the different queries"""
         return self._query_encoder(texts)
 
-    def encode_documents(self, texts):
+    def encode_documents(self, texts: List[str]):
+        """Encode the different documents"""
         return self.encoder(texts)
 
 

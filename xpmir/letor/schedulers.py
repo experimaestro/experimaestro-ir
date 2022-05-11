@@ -3,6 +3,8 @@ from experimaestro import Config, Param
 
 
 class Scheduler(Config):
+    """Base class for all optimizers schedulers"""
+
     def __call__(self, optimizer, num_training_steps: int, *, last_epoch=-1, **kwargs):
         raise NotImplementedError(f"Not implemented in {self.__class__}")
 
@@ -40,6 +42,14 @@ class LinearWithWarmup(Scheduler):
 
 
 class CosineWithWarmup(Scheduler):
+    """Cosine schedule with warmup
+
+    Uses the implementation of the transformer library
+
+    https://huggingface.co/docs/transformers/main_classes/optimizer_schedules#transformers.get_cosine_schedule_with_warmup
+
+    """
+
     num_warmup_steps: Param[int]
     """Number of warmup steps"""
 

@@ -126,13 +126,13 @@ class TrainingHook(Config):
 
 
 class StepTrainingHook(TrainingHook):
-    """Base class for hooks called at each epoch (before/after)"""
+    """Base class for hooks called at each step (before/after)"""
 
     def after(self, state: "TrainerContext"):
-        pass
+        """Called after a training step"""
 
     def before(self, state: "TrainerContext"):
-        pass
+        """Called before a training step"""
 
 
 class InitializationTrainingHook(InitializationHook):

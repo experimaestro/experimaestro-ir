@@ -20,6 +20,7 @@ Pairwise
 
 .. autoxpmconfig:: xpmir.letor.samplers.PairwiseSampler
 .. autoxpmconfig:: xpmir.letor.samplers.PairwiseModelBasedSampler
+.. autoxpmconfig:: xpmir.documents.samplers.BatchwiseRandomSpanSampler
 
 Records for training
 ====================

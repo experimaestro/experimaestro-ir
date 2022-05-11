@@ -27,7 +27,7 @@ def tas_balanced():
     )
 
 
-def spladev2():
+def spladev2() -> DotDense:
     """The Splade V2 model (from https://github.com/naver/splade)
 
     SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval,

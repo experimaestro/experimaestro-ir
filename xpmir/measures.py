@@ -30,6 +30,13 @@ class Measure(BaseMeasure):
 
 
 AP = Measure(identifier="AP")
+"""Average precision metric"""
+
 P = Measure(identifier="P")
+"""Precision at rank"""
+
 RR = Measure(identifier="RR")
+"""Reciprocical rank"""
+
 nDCG = Measure(identifier="nDCG")
+"""Normalized Discounted Cumulated Gain"""

@@ -142,8 +142,9 @@ class Collection(Dataset):
 class Datasets:
     """Simple wrapper holding related data pieces"""
 
-    def __init__(self, key, description):
+    def __init__(self, key, title, description):
         self.id = key
+        self.title = title
         self.description = description
         self.datasets = []
 
@@ -173,7 +174,11 @@ def build(repository):
 
         if cid == dataset_id:
             # If the corpus ID is the current dataset ID
-            module = Datasets(cid, ds.documentation()["desc"])
+            module = Datasets(
+                cid,
+                ds.documentation().get("pretty_name", cid),
+                ds.documentation()["desc"],
+            )
             datasets[cid] = module
             add(cid, Documents(repository, dataset_id, ds))
 

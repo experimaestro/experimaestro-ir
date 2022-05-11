@@ -16,9 +16,11 @@ class InitializationHook(Hook):
     """Base class for hooks before/after initialization"""
 
     def after(self, context: "Context"):
+        """Called after initialization"""
         pass
 
     def before(self, context: "Context"):
+        """Called before initialization"""
         pass
 
 

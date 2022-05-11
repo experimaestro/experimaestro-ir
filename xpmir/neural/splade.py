@@ -92,7 +92,7 @@ class DistributedSpladeTextEncoderHook(InitializationHook):
     """
 
     splade: Param[SpladeTextEncoder]
-    """The model"""
+    """The splade text encoder"""
 
     def after(self, state: Context):
         info = state.device_information

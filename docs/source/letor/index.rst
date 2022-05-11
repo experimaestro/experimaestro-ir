@@ -5,7 +5,19 @@ Learning to rank
    :maxdepth: 2
 
    samplers
+   trainers
    optimization
+
+
+Learning to rank is handled by various classes :
+
+- the learner is the main class that runs
+-
+
+The main class is the Learner task.
+
+.. autoxpmconfig:: xpmir.letor.learner.Learner
+
 
 Scorers
 =======
@@ -23,34 +35,3 @@ Retrievers
 Scores can be used as retrievers through
 
 .. autoxpmconfig:: xpmir.rankers.TwoStageRetriever
-
-
-Trainers
-========
-
-Trainers are responsible for defining the the way to train
-a learnable scorer.
-
-.. autoxpmconfig:: xpmir.letor.trainers.Trainer
-
-.. autoxpmconfig:: xpmir.letor.trainers.LossTrainer
-   :members: process_microbatch
-
-.. autoxpmconfig:: xpmir.letor.trainers.pointwise.PointwiseTrainer
-
-
-Pairwise
-********
-
-.. autoxpmconfig:: xpmir.letor.trainers.pairwise.PairwiseTrainer
-
-
-.. autoxpmconfig:: xpmir.letor.trainers.pairwise.PairwiseLoss
-
-
-
-
-Misc
-====
-
-.. autoxpmconfig:: xpmir.letor.Random

@@ -1,0 +1,46 @@
+Trainers
+========
+
+Trainers are responsible for defining the the way to train
+a learnable scorer.
+
+.. autoxpmconfig:: xpmir.letor.trainers.Trainer
+
+.. autoxpmconfig:: xpmir.letor.trainers.LossTrainer
+   :members: process_microbatch
+
+.. autoxpmconfig:: xpmir.letor.trainers.pointwise.PointwiseTrainer
+
+Pointwise
+********
+
+.. currentmodule:: xpmir.letor.trainers.pointwise
+
+Trainer
+-------
+
+.. autoxpmconfig:: PointwiseTrainer
+
+Losses
+------
+
+.. autoxpmconfig:: MSELoss
+.. autoxpmconfig:: BinaryCrossEntropyLoss
+
+
+Pairwise
+********
+
+Trainer
+-------
+
+.. autoxpmconfig:: xpmir.letor.trainers.pairwise.PairwiseTrainer
+
+Losses
+------
+
+.. autoxpmconfig:: xpmir.letor.trainers.pairwise.PairwiseLoss
+.. autoxpmconfig:: xpmir.letor.trainers.pairwise.CrossEntropyLoss
+.. autoxpmconfig:: xpmir.letor.trainers.pairwise.SoftmaxLoss
+.. autoxpmconfig:: xpmir.letor.trainers.pairwise.LogSoftmaxLoss
+.. autoxpmconfig:: xpmir.letor.trainers.pairwise.HingeLoss

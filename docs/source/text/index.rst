@@ -1,5 +1,5 @@
-Text
-----
+Text Representation
+-------------------
 
 .. toctree::
    :maxdepth: 2
