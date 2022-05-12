@@ -90,4 +90,5 @@ autodoc_mock_imports = [
     "pytrec_eval",
     "apex",
     "pytorch_lightning",
+    "ir_datasets",
 ]
