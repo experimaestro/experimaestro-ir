@@ -16,9 +16,6 @@ class InteractionScorer(TorchLearnableScorer):
         vocab: The embedding model -- the vocab also defines how to tokenize text
         qlen: Maximum query length (this can be even shortened by the model)
         dlen: Maximum document length (this can be even shortened by the model)
-        add_runscore:
-            Whether the base predictor score should be added to the
-            model score
     """
 
     vocab: Param[Vocab]

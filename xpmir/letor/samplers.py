@@ -141,7 +141,7 @@ class Sampler(Config, EasyLogger):
     """Abtract data sampler"""
 
     def initialize(self, random: np.random.RandomState):
-        self.random = np.random.RandomState(random.randint(0, 2 ** 31))
+        self.random = np.random.RandomState(random.randint(0, 2**31))
 
     def state_dict(self) -> Dict:
         raise NotImplementedError(f"state_dict() not implemented in {self.__class__}")
@@ -360,8 +360,12 @@ class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
         return topics
 
     def sample(self, samples: List[Tuple[str, int, float]]):
-        docid, rel, score = samples[self.random.randint(0, len(samples))]
-        text = self.index.document_text(docid)
+        text = None
+        while text is None:
+            docid, rel, score = samples[self.random.randint(0, len(samples))]
+            text = self.index.document_text(docid)
+            if text is None:
+                logger.warning(f"Document {docid} has no content")
         return Document(docid, text, score)
 
     def pairwise_iter(self) -> SerializableIterator[PairwiseRecord]:

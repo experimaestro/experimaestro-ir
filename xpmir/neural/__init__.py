@@ -52,12 +52,21 @@ class DualRepresentationScorer(TorchLearnableScorer):
         )
 
     def encode(self, texts: Iterable[str]):
+        """Encode a list of texts (document or query)
+
+        The return value is model dependent"""
         raise NotImplementedError()
 
     def encode_documents(self, texts: Iterable[str]):
+        """Encode a list of texts (document or query)
+
+        The return value is model dependent"""
         return self.encode(texts)
 
     def encode_queries(self, texts: Iterable[str]):
+        """Encode a list of texts (document or query)
+
+        The return value is model dependent"""
         return self.encode(texts)
 
     def score_product(self, queries, documents, info: Optional[TrainerContext]):

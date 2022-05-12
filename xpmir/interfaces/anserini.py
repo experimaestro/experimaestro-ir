@@ -264,6 +264,9 @@ class AnseriniRetriever(Retriever):
         """Returns the associated index (if any)"""
         return self.index
 
-    def retrieve(self, query: str) -> List[ScoredDocument]:
+    def retrieve(self, query: str, content=False) -> List[ScoredDocument]:
         hits = self.searcher.search(query, k=self.k)
-        return [ScoredDocument(hit.docid, hit.score, hit.contents) for hit in hits]
+        return [
+            ScoredDocument(hit.docid, hit.score, hit.contents if content else None)
+            for hit in hits
+        ]

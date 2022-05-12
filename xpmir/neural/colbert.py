@@ -41,25 +41,28 @@ class Colbert(InteractionScorer):
         SIGIR 2020, Xi'An, China
 
     For the standard Colbert model, use BERT as the vocab(ulary)
-
-    Attributes:
-
-        compression_size: Projection layer for the last layer (or 0 if None)
-        similarity: The similarity used to compute
-        linear_dim: Size of the linear layer
-        masktoken: whether to mask PAD tokens
-        doctoken: whether to add a document token
-        querytoken: whether to add a query token
     """
 
     version: Constant[int] = 2
+    """Current version of the code (changes when a bug is found)"""
+
     masktoken: Param[bool] = True
+    """Whether a [MASK] token should be used instead of padding"""
+
     querytoken: Param[bool] = True
+    """Whether a specific query token should be used as a prefix to the question"""
+
     doctoken: Param[bool] = True
-    linear_dim: Param[int] = 128
+    """Whether a specific document token should be used as a prefix to the document"""
+
     similarity: Annotated[Similarity, default(CosineDistance())]
+    """Which similarity to use"""
+
+    linear_dim: Param[int] = 128
+    """Size of the last linear layer (before computing inner products)"""
 
     compression_size: Param[int] = 128
+    """Projection layer for the last layer (or 0 if None)"""
 
     def __validate__(self):
         super().__validate__()
@@ -93,13 +96,6 @@ class Colbert(InteractionScorer):
 
         return self.similarity(queries, documents)
 
-
-def colbert(train):
-    """Experiment with full Colbert pipeline: given a training corpus,
-    train the model and returns a retriever"""
-
-    # 200K iterations
-    raise NotImplementedError()
-
-    model = Colbert()
-    return model
+    @staticmethod
+    def paper_model(self):
+        return Colbert()

@@ -157,6 +157,7 @@ class PairwiseTrainer(LossTrainer):
         context: TrainerContext,
     ):
         super().initialize(random, context)
+        self.lossfn.initialize(self.ranker)
         foreach(context.hooks(PairwiseLoss), lambda loss: loss.initialize(self.ranker))
         self.sampler.initialize(random)
         self.sampler_iter = self.sampler.pairwise_iter()

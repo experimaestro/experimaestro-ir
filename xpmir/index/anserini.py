@@ -49,7 +49,7 @@ class Index(AdhocIndex):
 
     def document_text(self, docid):
         doc = self.index_reader.doc(docid)
-        return doc.contents()
+        return doc.contents() if doc is not None else None
 
     @cached_property
     def terms(self):
