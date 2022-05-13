@@ -1,7 +1,7 @@
 # Experimaestro
 
-experimaestro>=0.10.0
-datamaestro_text>=2022.1.11
+xperimaestro>=0.10.4
+datamaestro_text>=2022.5.12
 
 # --- SKIP_DOCBUILD ---
 
