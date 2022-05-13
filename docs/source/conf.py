@@ -14,6 +14,12 @@
 # import sys
 # sys.path.insert(0, os.path.abspath('.'))
 
+# --- Set build mode
+import builtins
+
+builtins.__sphinx_build__ = True
+
+
 # -- Project information -----------------------------------------------------
 
 project = "Experimaestro"

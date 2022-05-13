@@ -1,5 +1,3 @@
 sphinx>4.0
 sphinx_rtd_theme
 myst-parser
-ir_datasets
-ir_measures

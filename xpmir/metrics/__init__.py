@@ -102,8 +102,11 @@ class XPMIRProvider(ir_measures.providers.Provider):
         return XPMIREvaluator(measures, qrels)
 
 
-# Extend the default pipeline from
-DefaultPipeline = ir_measures.providers.FallbackProvider(
-    ir_measures.DefaultPipeline.providers + [XPMIRProvider()]
-)
-evaluator = DefaultPipeline.evaluator
+# Extend the default pipeline from ir_measures
+import builtins
+
+if not builtins.__sphinx_build__:
+    DefaultPipeline = ir_measures.providers.FallbackProvider(
+        ir_measures.DefaultPipeline.providers + [XPMIRProvider()]
+    )
+    evaluator = DefaultPipeline.evaluator

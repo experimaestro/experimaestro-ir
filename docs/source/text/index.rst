@@ -14,3 +14,4 @@ as contextual word embeddings and document embeddings.
 
 .. autoxpmconfig:: xpmir.text.Vocab
 .. autoxpmconfig:: xpmir.text.encoders.TextEncoder
+.. autoxpmconfig:: xpmir.text.encoders.DualTextEncoder
