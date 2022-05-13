@@ -91,4 +91,5 @@ autodoc_mock_imports = [
     "apex",
     "pytorch_lightning",
     "ir_datasets",
+    "ir_measures",
 ]
