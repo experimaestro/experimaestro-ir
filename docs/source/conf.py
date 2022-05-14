@@ -15,6 +15,7 @@
 # sys.path.insert(0, os.path.abspath('.'))
 
 # --- Set build mode
+
 import builtins
 
 builtins.__sphinx_build__ = True
@@ -75,12 +76,7 @@ html_static_path = ["_static"]
 
 
 intersphinx_mapping = {
-    "datamaestro_text": (
-        (
-            "https://datamaestro-text.readthedocs.io/en/latest/",
-            "../../../datamaestro_text/site/objects.inv",
-        )
-    )
+    "datamaestro_text": "https://datamaestro-text.readthedocs.io/en/latest/",
 }
 
 # Autodoc options
