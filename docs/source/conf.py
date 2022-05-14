@@ -76,7 +76,7 @@ html_static_path = ["_static"]
 
 
 intersphinx_mapping = {
-    "datamaestro_text": "https://datamaestro-text.readthedocs.io/en/latest/",
+    "datamaestro_text": "https://datamaestro-text.readthedocs.io/en/latest/objects.inv",
 }
 
 # Autodoc options
