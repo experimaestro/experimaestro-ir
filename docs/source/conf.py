@@ -85,7 +85,7 @@ intersphinx_mapping = {
 
 autodoc_default_options = {"show-inheritance": True}
 autodoc_mock_imports = [
-    "torch",
+    # "torch",
     "faiss",
     "pandas",
     "bs4",
@@ -97,3 +97,37 @@ autodoc_mock_imports = [
     "ir_datasets",
     "ir_measures",
 ]
+
+
+import mock
+import sys
+import logging
+
+
+def side_effect(*args, **kwargs):
+    logging.error("Side effect %s / %s", args, kwargs)
+
+
+for name in [
+    "torch",
+    "torch.nn",
+    "torch.distributed",
+    "torch.optim",
+    "torch.nn.functional",
+    "torch.functional",
+    "torch.multiprocessing",
+    "torch.utils",
+    "torch.utils.tensorboard",
+    "torch.utils.tensorboard.writer",
+    "torch.optim.lr_scheduler",
+]:
+    sys.modules[name] = mock.Mock(side_effect=side_effect)
+
+import torch.nn as nn
+
+
+class TorchModule:
+    to = None
+
+
+nn.Module = TorchModule
