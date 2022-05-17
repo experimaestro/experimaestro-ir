@@ -17,12 +17,18 @@ class Optimizer(Config):
 
 
 class Adam(Optimizer):
+    """Wrapper for Adam optimizer in PyTorch"""
+
     lr: Param[float] = 1e-3
+    """Learning rate"""
+
+    weight_decay: Param[float] = 0.0
+    """Weight decay (L2)"""
 
     def __call__(self, parameters):
         from torch.optim import Adam
 
-        return Adam(parameters, lr=self.lr)
+        return Adam(parameters, lr=self.lr, weight_decay=self.weight_decay)
 
 
 class AdamW(Optimizer):

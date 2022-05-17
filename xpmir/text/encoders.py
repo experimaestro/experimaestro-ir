@@ -40,6 +40,7 @@ class DualTextEncoder(Encoder):
         raise NotImplementedError()
 
     def forward(self, texts: List[Tuple[str, str]]):
+        """Computes the representation of a list of pair of texts"""
         raise NotImplementedError(f"forward in {self.__clas__}")
 
 

@@ -14,4 +14,6 @@ as contextual word embeddings and document embeddings.
 
 .. autoxpmconfig:: xpmir.text.Vocab
 .. autoxpmconfig:: xpmir.text.encoders.TextEncoder
+   :members: forward
 .. autoxpmconfig:: xpmir.text.encoders.DualTextEncoder
+   :members: forward

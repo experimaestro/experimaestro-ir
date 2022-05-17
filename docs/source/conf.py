@@ -15,6 +15,8 @@
 # sys.path.insert(0, os.path.abspath('.'))
 
 # --- Set build mode
+# Used to notify python modules that we are building
+# a documentation
 
 import builtins
 

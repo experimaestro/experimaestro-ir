@@ -6,7 +6,7 @@
 version: 2
 
 
-# Build documentation with MkDocs
+# Build documentation with sphinx
 sphinx:
    configuration: docs/source/conf.py
 
@@ -15,9 +15,11 @@ build:
   tools:
     python: "3.9"
 
-# Install the package
+# Install the packages
 python:
   install:
     - method: pip
       path: .
+      extra_requirements:
+        - docs
     - requirements: docs/requirements.txt

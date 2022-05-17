@@ -110,3 +110,5 @@ if not builtins.__sphinx_build__:
         ir_measures.DefaultPipeline.providers + [XPMIRProvider()]
     )
     evaluator = DefaultPipeline.evaluator
+else:
+    evaluator = None

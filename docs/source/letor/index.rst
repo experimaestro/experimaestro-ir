@@ -11,8 +11,8 @@ Learning to rank
 
 Learning to rank is handled by various classes :
 
-- the learner is the main class that runs
--
+- the learner is the main class that runs the full process
+- trainers that iterate over batches of data
 
 The main class is the Learner task.
 
@@ -32,6 +32,4 @@ scorers, some are have learnable parameters.
 Retrievers
 ==========
 
-Scores can be used as retrievers through
-
-.. autoxpmconfig:: xpmir.rankers.TwoStageRetriever
+Scores can be used as retrievers through a :py:class:`xpmir.rankers.TwoStageRetriever`
