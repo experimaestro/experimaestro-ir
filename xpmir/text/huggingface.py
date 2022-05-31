@@ -7,7 +7,7 @@ import torch.nn as nn
 from experimaestro import Param
 from xpmir.context import Context, InitializationHook
 from xpmir.letor import DistributedDeviceInformation
-from xpmir.letor.context import StepTrainingHook, TrainState
+from xpmir.letor.context import InitializationTrainingHook, StepTrainingHook, TrainState
 from xpmir.text.encoders import (
     ContextualizedTextEncoder,
     ContextualizedTextEncoderOutput,
@@ -289,7 +289,7 @@ class DualTransformerEncoder(TransformerVocab, DualTextEncoder):
         return self.model.config.hidden_size
 
 
-class LayerFreezer(StepTrainingHook):
+class LayerFreezer(InitializationTrainingHook):
     """This training hook class can be used to freeze some of the transformer layers"""
 
     RE_LAYER = re.compile(r"""^(?:encoder|transformer)\.layer\.(\d+)\.""")
@@ -297,13 +297,18 @@ class LayerFreezer(StepTrainingHook):
     transformer: Param[TransformerVocab]
     """The model"""
 
-    freeze_embeddings: Param[bool] = True
+    freeze_embeddings: Param[bool] = False
+    """Whether embeddings should be frozen"""
 
-    frozen: Param[int]
+    frozen: Param[int] = 0
     """Number of frozen layers (can be negative, i.e. -1 meaning until the last layer excluded, etc. / 0 means no layer)"""
 
     def __init__(self):
         self._initialized = False
+
+    def __validate__(self):
+        if not self.freeze_embeddings and self.frozen == 0:
+            raise AssertionError("The layer freezer would do nothing")
 
     @cached_property
     def nlayers(self):
@@ -326,7 +331,7 @@ class LayerFreezer(StepTrainingHook):
 
         return False
 
-    def before(self, state: TrainState):
+    def after(self, state: TrainState):
         if not self._initialized:
             self._initialized = True
             for name, param in self.transformer.model.named_parameters():

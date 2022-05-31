@@ -12,9 +12,10 @@ from experimaestro.utils import cleanupdir
 from xpmir.datasets.adapters import RandomFold, RetrieverBasedCollection
 from xpmir.evaluation import Evaluate
 from xpmir.interfaces.anserini import AnseriniRetriever, IndexCollection
-from xpmir.letor import CudaDevice, Device, Random
+from xpmir.letor.devices import CudaDevice, Device
+from xpmir.letor import Random
 from xpmir.letor.learner import Learner, ValidationListener
-from xpmir.letor.optim import Adam
+from xpmir.letor.optim import Adamp
 from xpmir.letor.samplers import PairwiseInBatchNegativesSampler, TripletBasedSampler
 from xpmir.letor.schedulers import CosineWithWarmup, LinearWithWarmup
 from xpmir.index.faiss import IndexBackedFaiss, FaissRetriever, FlatIPIndexer

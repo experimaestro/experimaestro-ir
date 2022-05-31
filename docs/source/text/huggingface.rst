@@ -1,16 +1,19 @@
 Huggingface Transformers
 ========================
 
+.. currentmodule:: xpmir.text.huggingface
+
 Encoders
 ========
 
-.. autoxpmconfig:: xpmir.text.huggingface.TransformerVocab
+.. autoxpmconfig:: TransformerVocab
 
-.. autoxpmconfig:: xpmir.text.huggingface.IndependentTransformerVocab
-
+.. autoxpmconfig:: IndependentTransformerVocab
+.. autoxpmconfig:: ContextualizedTextEncoderAdapter
+.. autoxpmconfig:: DualTransformerEncoder
 
 Hooks
 =====
 
-.. autoxpmconfig:: xpmir.text.huggingface.LayerFreezer
-.. autoxpmconfig:: xpmir.text.huggingface.DistributedModelHook
+.. autoxpmconfig:: LayerFreezer
+.. autoxpmconfig:: DistributedModelHook

@@ -24,6 +24,7 @@ Trainer
 Losses
 ------
 
+.. autoxpmconfig:: PointwiseLoss
 .. autoxpmconfig:: MSELoss
 .. autoxpmconfig:: BinaryCrossEntropyLoss
 

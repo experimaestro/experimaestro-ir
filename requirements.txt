@@ -7,7 +7,7 @@ datamaestro_text>=2022.5.12
 # --- SKIP_DOCBUILD ---
 
 # Information retrieval libraries
-ir-measures>=0.2.1
+ir-measures>=0.3.0
 ir_datasets
 
 # Torch addons
