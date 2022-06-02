@@ -17,6 +17,7 @@ Learning to rank is handled by various classes :
 The main class is the Learner task.
 
 .. autoxpmconfig:: xpmir.letor.learner.Learner
+.. autonamedtuple:: xpmir.letor.learner.LearnerOutput
 
 
 Scorers

@@ -53,6 +53,8 @@ extensions = [
     "sphinx.ext.intersphinx",
     # Google style docstrings
     "sphinx.ext.napoleon",
+    # Named tuples
+    "sphinx_toolbox.more_autodoc.autonamedtuple",
 ]
 
 # Add any paths that contain templates here, relative to this directory.
