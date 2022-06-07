@@ -100,6 +100,6 @@ class DualRepresentationScorer(TorchLearnableScorer):
 
         Returns:
             torch.Tensor:
-                A tensor of dimension (N, 2) where N is the number of documents/queries
+                A tensor of dimension (N, 1) where N is the number of documents/queries
         """
         raise NotImplementedError()

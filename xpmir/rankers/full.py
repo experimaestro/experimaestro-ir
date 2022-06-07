@@ -4,6 +4,7 @@ import torch
 from . import Retriever, AdhocDocuments, ScoredDocument, Scorer, AdhocDocument
 from xpmir.neural.dual import DualRepresentationScorer
 from xpmir.letor.batchers import Batcher
+from xpmir.letor import Device
 
 
 class FullRetriever(Retriever):
