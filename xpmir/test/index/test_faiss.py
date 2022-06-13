@@ -7,8 +7,6 @@ from pathlib import Path
 from datamaestro_text.data.ir import AdhocDocument, AdhocDocumentStore
 import torch
 from xpmir.index.faiss import (
-    HNSWSQIndexer,
-    FlatIPIndexer,
     IndexBackedFaiss,
     FaissIndex,
     FaissRetriever,
@@ -16,8 +14,7 @@ from xpmir.index.faiss import (
 from xpmir.documents.samplers import DocumentSampler, HeadDocumentSampler
 from xpmir.letor.records import Document
 from xpmir.text.encoders import TextEncoder
-
-HeadDocumentSampler()
+import logging
 
 
 DOCUMENTS = OrderedDict(
@@ -52,6 +49,8 @@ class SampleAdhocDocumentStore(AdhocDocumentStore):
 
 class RandomTextEncoder(TextEncoder):
     DIMENSION = 13
+
+    # A default dict to always return the same embeddings
     MAP: Dict[str, torch.Tensor] = defaultdict(
         lambda: torch.randn(RandomTextEncoder.DIMENSION)
     )
@@ -68,48 +67,37 @@ class RandomTextEncoder(TextEncoder):
         return torch.cat([RandomTextEncoder.MAP[text].unsqueeze(0) for text in texts])
 
 
-indexerfactories = []
+indexspecs = ["Flat", "HNSW"]
 
 
-def registerindexer(method):
-    indexerfactories.append(method)
-    return method
-
-
-@registerindexer
-def flatip(sampler):
-    return FlatIPIndexer()
-
-
-@registerindexer
-def hnswq(sampler):
-    return HNSWSQIndexer(sampler=sampler, graph_neighbors=2)
-
-
-@pytest.mark.parametrize("indexerfactory", indexerfactories)
-def test_faiss_indexation(tmp_path: Path, indexerfactory):
+@pytest.mark.parametrize("indexspec", indexspecs)
+def test_faiss_indexation(tmp_path: Path, indexspec):
     # Experimaestro context
-    import experimaestro.taskglobals as tg
+    from experimaestro.taskglobals import Env
 
-    tg.taskpath = tmp_path / "task"
-    tg.taskpath.mkdir()
+    Env.taskpath = tmp_path / "task"
+    Env.taskpath.mkdir()
     context = DirectoryContext(tmp_path)
 
     # Build the FAISS index
     documents = SampleAdhocDocumentStore()
     sampler = HeadDocumentSampler(documents=documents, max_ratio=0.5)
-    indexer = indexerfactory(sampler)
     encoder = RandomTextEncoder()
     builder = IndexBackedFaiss(
-        indexer=indexer, encoder=encoder, normalize=False, documents=documents
+        indexspec=indexspec,
+        encoder=encoder,
+        normalize=False,
+        sampler=sampler,
+        documents=documents,
     )
     builder_instance = builder.instance(context=context)
     builder_instance.execute()
 
-    # Retrieve
+    # Retrieve with the index
     retriever = FaissRetriever(encoder=encoder, topk=10, index=builder).instance(
         context=context
     )
+    retriever.initialize()
     x_docs = retriever.encoder([d.text for d in DOCUMENTS.values()])
     scores = x_docs @ x_docs.T
 
@@ -118,6 +106,7 @@ def test_faiss_indexation(tmp_path: Path, indexerfactory):
         scoredDocuments.sort(reverse=True)
 
         expected = list(scores[ix].sort().indices.numpy()[::-1])
+        logging.warning("%s vs %s", scores[ix], scoredDocuments)
         observed = [int(sd.docid) for sd in scoredDocuments]
 
         assert expected == observed

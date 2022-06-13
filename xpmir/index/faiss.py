@@ -4,7 +4,7 @@ https://github.com/facebookresearch/faiss
 """
 
 from pathlib import Path
-from typing import Callable, Iterator, List, Tuple
+from typing import Callable, Iterator, List, Optional, Tuple
 from experimaestro import Config, initializer
 import torch
 import numpy as np
@@ -18,7 +18,6 @@ from xpmir.letor import (
     Device,
     DEFAULT_DEVICE,
     DeviceInformation,
-    DistributedDeviceInformation,
 )
 from xpmir.utils import batchiter, easylog, foreach
 from xpmir.documents.samplers import DocumentSampler
@@ -34,27 +33,59 @@ except ModuleNotFoundError:
 
 
 class FaissIndex(Config):
+    """FAISS Index"""
+
     normalize: Param[bool]
+    """Whether vectors should be normalized (L2)"""
+
     faiss_index: Annotated[Path, pathgenerator("faiss.dat")]
+    """Path to the file containing the index"""
+
     documents: Param[AdhocDocumentStore]
+    """The set of documents"""
 
 
-class FaissIndexFactory(Config):
-    """The index type, see https://github.com/facebookresearch/faiss/wiki/Faiss-indexes for the list."""
+class IndexBackedFaiss(FaissIndex, Task):
+    """Constructs a FAISS index backed up by an index
 
-    def __call__(self, dimension: int) -> faiss.Index:
-        raise NotImplementedError
+    During executions, InitializationHooks are used (pre/post)
 
+    Attributes:
 
-class FlatIPIndexer(FaissIndexFactory):
-    """Exact Search for Inner Product"""
+    index: The index that contains the raw documents and their ids
+    encoder: The text encoder for documents
+    batchsize: How many documents are processed at once
 
-    def __call__(self, dimension: int):
-        return faiss.IndexFlatIP(dimension)
+    """
 
+    encoder: Param[TextEncoder]
+    """Encoder for texts"""
 
-class TrainableIndexFactory(FaissIndexFactory):
-    sampler: Param[DocumentSampler]
+    batchsize: Meta[int] = 1
+    """The batch size used when computing representations of documents"""
+
+    device: Meta[Device] = DEFAULT_DEVICE
+    """The device used by the encoder"""
+
+    batcher: Meta[Batcher] = Batcher()
+    """The way to prepare batches of documents"""
+
+    hooks: Param[List[Hook]] = []
+    """An optional list of hooks"""
+
+    indexspec: Param[str]
+    """The index type as a factory string
+
+    See https://github.com/facebookresearch/faiss/wiki/Faiss-indexes for the full list of indices
+    """
+
+    sampler: Param[Optional[DocumentSampler]]
+    """Optional document sampler when training the index -- by default, all the documents from the collection are used"""
+
+    def full_sampler(self) -> Tuple[int, Iterator[str]]:
+        """Returns an iterator over the full set of documents"""
+        iter = (d.text for d in self.documents.iter_documents())
+        return self.documents.count or 0, iter
 
     def train(
         self,
@@ -62,7 +93,9 @@ class TrainableIndexFactory(FaissIndexFactory):
         batch_encoder: Callable[[Iterator[str]], Iterator[torch.Tensor]],
     ):
         logger.info("Building index")
-        count, iter = self.sampler()
+        count, iter = (
+            self.sampler() if self.sampler is not None else self.full_sampler()
+        )
         doc_iter = tqdm(iter, total=count)
 
         # Collect batches
@@ -76,62 +109,30 @@ class TrainableIndexFactory(FaissIndexFactory):
         logger.info("Training index")
         index.train(xt)
 
-
-class HNSWSQIndexer(TrainableIndexFactory):
-    graph_neighbors: Param[int]
-
-    def __call__(self, dimension: int):
-        return faiss.IndexHNSWSQ(
-            dimension,
-            faiss.ScalarQuantizer.QT_fp16,
-            self.graph_neighbors,
-            faiss.METRIC_INNER_PRODUCT,
-        )
-
-
-class IndexBackedFaiss(FaissIndex, Task):
-    """Constructs a FAISS index backed up by an index
-
-    Attributes:
-
-    index: The index that contains the raw documents and their ids
-    encoder: The text encoder for documents
-    batchsize: How many documents are processed at once
-
-    """
-
-    encoder: Param[TextEncoder]
-    batchsize: Meta[int] = 1
-    device: Meta[Device] = DEFAULT_DEVICE
-    batcher: Meta[Batcher] = Batcher()
-    hooks: Param[List[Hook]] = []
-
-    indexer: Param[FaissIndexFactory]
-    """
-    The index type, see https://github.com/facebookresearch/faiss/wiki/Faiss-indexes for the list.
-    """
-
     def execute(self):
         self.device.execute(self._execute)
 
     def _execute(self, device_information: DeviceInformation):
+        # Initialization hooks
         context = Context(device_information, hooks=self.hooks)
         foreach(context.hooks(InitializationHook), lambda hook: hook.before(context))
 
         # Initializations
         self.encoder.initialize()
-        index = self.indexer(self.encoder.dimension)
+        index = faiss.index_factory(
+            self.encoder.dimension, self.indexspec, faiss.METRIC_INNER_PRODUCT
+        )
         batcher = self.batcher.initialize(self.batchsize)
 
         # Train the
-        if isinstance(self.indexer, TrainableIndexFactory):
+        if not index.is_trained:
             logging.info("Training FAISS index (%d documents)", index.ntotal)
 
             def batch_encoder(doc_iter: Iterator[str]):
                 for batch in batchiter(self.batchsize, doc_iter, index):
                     yield self.encoder(batch)
 
-            self.indexer.train(index, batch_encoder)
+            self.train(index, batch_encoder)
 
         # Index the collection
         doc_iter = (
@@ -141,6 +142,8 @@ class IndexBackedFaiss(FaissIndex, Task):
         )
 
         self.encoder.to(device_information.device).eval()
+
+        # Initialization hooks (after)
         foreach(context.hooks(InitializationHook), lambda hook: hook.after(context))
 
         # Let's index !

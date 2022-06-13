@@ -160,11 +160,16 @@ class SparseRetrieverIndexBuilder(Task):
     """
 
     documents: Param[AdhocDocumentStore]
+    """Set of documents to index"""
+
     encoder: Param[TextEncoder]
+    """The encoder"""
 
     batcher: Meta[Batcher] = Batcher()
+    """Batcher used when computing representations"""
+
     batch_size: Param[int]
-    threshold: Param[float] = 0
+    """Size of batches"""
 
     device: Meta[Device] = DEFAULT_DEVICE
 
@@ -175,6 +180,8 @@ class SparseRetrieverIndexBuilder(Task):
     info_path: Annotated[Path, pathgenerator("info.bin")]
 
     def config(self):
+        """Returns a sparse retriever index that can be used by a SparseRetriever to search efficiently
+        for documents"""
         return SparseRetrieverIndex(
             index_path=self.index_path,
             info_path=self.info_path,
