@@ -248,16 +248,15 @@ class SparseRetrieverIndexBuilder(Task):
 
         for docid, v in zip((d.internal_docid for d in batch), vectors):
             assert docid is not None
-            vabs = v.abs()
-            for i in range(len(v)):
-                if vabs[i] > 0:
-                    while len(self.termsinfo) < i + 1:
-                        self.termsinfo.append(TermInfo())
-                    ti = self.termsinfo[i]
-                    ti.docids.append(docid)
-                    ti.values.append(v[i])
-                    if len(ti.docids) >= self.max_postings:
-                        self.flush(ti, index_out)
+            for ix in torch.nonzero(v):
+                ix = int(ix)
+                while len(self.termsinfo) < ix + 1:
+                    self.termsinfo.append(TermInfo())
+                ti = self.termsinfo[ix]
+                ti.docids.append(docid)
+                ti.values.append(v[ix])
+                if len(ti.docids) >= self.max_postings:
+                    self.flush(ti, index_out)
 
     def flush(self, ti: TermInfo, index_out: BinaryIO):
         """Flush term postings"""

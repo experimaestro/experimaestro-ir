@@ -21,6 +21,9 @@ class SampleAdhocDocumentStore(AdhocDocumentStore):
     def documentcount(self):
         return len(self.documents)
 
+    def document(self, internal_docid: int) -> AdhocDocument:
+        return self.documents[str(internal_docid)]
+
     def document_text(self, docid: str) -> str:
         """Returns the text of the document given its id"""
         return self.documents[docid].text
