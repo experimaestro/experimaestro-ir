@@ -1,3 +1,4 @@
+from typing import Dict
 from torch.utils.tensorboard.writer import SummaryWriter
 
 

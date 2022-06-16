@@ -99,7 +99,7 @@ class RunEvaluation(BaseEvaluation, Task):
     assessments: Param[AdhocAssessments]
 
     def execute(self):
-        run = ir_measures.read_trec_run(self.run.path, assessments)
+        run = ir_measures.read_trec_run(self.run.path, self.assessments)
         return self._execute(run)
 
 
