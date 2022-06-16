@@ -1,15 +1,15 @@
-from typing import Tuple, Iterator
+from typing import Optional, Tuple, Iterator
 from experimaestro import Config, Param
 import torch
 import re
 import numpy as np
 from datamaestro_text.data.ir import AdhocDocumentStore
+from xpmir.letor import Random
 from xpmir.letor.records import Document, ProductRecords, Query
 from xpmir.letor.samplers import (
     BatchwiseSampler,
     RandomSerializableIterator,
     SerializableIterator,
-    BatchwiseRecords,
 )
 
 
@@ -43,6 +43,43 @@ class HeadDocumentSampler(DocumentSampler):
     def iter(self, count):
         for ix, document in zip(range(count), self.documents.iter_documents()):
             yield document.text
+
+
+class RandomDocumentSampler(DocumentSampler):
+    """A basic sampler that iterates over the first documents
+
+    Either max_count or max_ratio should be non null
+    """
+
+    max_count: Param[int] = 0
+    """Maximum number of documents (if 0, no limit)"""
+
+    max_ratio: Param[float] = 0
+    """Maximum ratio of documents (if 0, no limit)"""
+
+    random: Param[Optional[Random]]
+    """Random sampler"""
+
+    def __validate__(self):
+        assert self.max_count > 0 or self.max_ratio > 0
+
+    def __call__(self) -> Tuple[int, Iterator[str]]:
+        # Compute the number of documents to sample
+        count = (self.max_ratio or 1) * self.documents.documentcount
+
+        if self.max_count > 0:
+            count = min(self.max_count, count)
+        count = int(count)
+        return count, self.iter(count)
+
+    def iter(self, count) -> Iterator[str]:
+        """Iterate over the documents"""
+        state = np.random.RandomState() if self.random is None else self.random.state
+        docids = state.choice(
+            np.arange(self.documents.documentcount), size=count, replace=False
+        )
+        for docid in docids:
+            yield self.documents.document(int(docid)).text
 
 
 class BatchwiseRandomSpanSampler(DocumentSampler, BatchwiseSampler):

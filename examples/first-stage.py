@@ -3,6 +3,7 @@ from pathlib import Path
 import os
 from typing import List, Optional
 
+
 from datamaestro import prepare_dataset
 from datamaestro_text.transforms.ir import ShuffledTrainingTripletsLines
 from experimaestro import experiment, tag, tagspath, copyconfig, setmeta
@@ -10,26 +11,27 @@ from experimaestro.click import click, forwardoption
 from experimaestro.launchers.slurm import SlurmLauncher
 from experimaestro.utils import cleanupdir
 from xpmir.datasets.adapters import RandomFold, RetrieverBasedCollection
+from xpmir.documents.samplers import RandomDocumentSampler
 from xpmir.evaluation import Evaluate
 from xpmir.interfaces.anserini import AnseriniRetriever, IndexCollection
 from xpmir.letor.devices import CudaDevice, Device
 from xpmir.letor import Random
 from xpmir.letor.learner import Learner, ValidationListener
-from xpmir.letor.optim import Adamp
+from xpmir.letor.optim import Adam
 from xpmir.letor.samplers import PairwiseInBatchNegativesSampler, TripletBasedSampler
-from xpmir.letor.schedulers import CosineWithWarmup, LinearWithWarmup
-from xpmir.index.faiss import IndexBackedFaiss, FaissRetriever, FlatIPIndexer
+from xpmir.letor.schedulers import CosineWithWarmup
+from xpmir.index.faiss import IndexBackedFaiss, FaissRetriever
 from xpmir.index.sparse import (
     SparseRetriever,
-    SparseRetrieverIndex,
     SparseRetrieverIndexBuilder,
 )
+from xpmir.rankers import Scorer
+from xpmir.rankers.full import FullRetriever
 from xpmir.letor.trainers import Trainer, pointwise
 from xpmir.letor.trainers.batchwise import BatchwiseTrainer, SoftmaxCrossEntropy
 from xpmir.letor.batchers import PowerAdaptativeBatcher
 import xpmir.letor.trainers.pairwise as pairwise
-from xpmir.neural.dual import DenseDocumentEncoder, DenseQueryEncoder, DotDense
-from xpmir.rankers import FullRetriever, RandomScorer, Scorer
+from xpmir.neural.dual import Dense, DenseDocumentEncoder, DenseQueryEncoder, DotDense
 from xpmir.letor.optim import ParameterOptimizer
 from xpmir.rankers.standard import BM25
 from xpmir.neural.splade import DistributedSpladeTextEncoderHook, spladeV2
@@ -61,14 +63,14 @@ def evaluate(token=None, launcher=None, **kwargs):
 @click.option(
     "--slurm-gpu-qos", help="Slurm QOS for GPU", type=str, default="5-00:00:00"
 )
-@click.option("--debug", is_flag=True, help="Print debug information")
 @click.option("--gpu", is_flag=True, help="Use GPU")
+@click.option("--debug", is_flag=True, help="Print debug information")
+@click.option("--port", type=int, default=12345, help="Port for monitoring")
+@click.option("--fqdn", is_flag=True, help="Use qualified host name")
 @click.option(
     "--batch-size", type=int, default=None, help="Batch size (validation and test)"
 )
 @click.option("--small", is_flag=True, help="Use small datasets")
-@click.option("--port", type=int, default=12345, help="Port for monitoring")
-@click.option("--fqdn", is_flag=True, help="Use qualified host name")
 @click.argument("workdir", type=Path)
 @click.command()
 def cli(
@@ -94,9 +96,6 @@ def cli(
     # Number of topics in the validation set
     VAL_SIZE = 500
 
-    # Number of batches per epoch (# samples = BATCHES_PER_EPOCH * batch_size)
-    BATCHES_PER_EPOCH = 32
-
     if small:
         VAL_SIZE = 10
         validation_interval = 1
@@ -107,6 +106,7 @@ def cli(
 
         batch_size = 16
         splade_batch_size = 16
+        num_warmup_steps = 1000
 
         retTopK = 10
 
@@ -115,6 +115,9 @@ def cli(
 
         early_stop = 0
 
+        # FAISS index building
+        indexspec = "OPQ4_16,IVF256_HNSW32,PQ4"
+        faiss_max_traindocs = 15_000
     else:
         # How many document to re-rank
         topK = 1000
@@ -128,6 +131,11 @@ def cli(
         # Batch size
         splade_batch_size = batch_size or 48
         batch_size = batch_size or 124
+        num_warmup_steps = 1000
+
+        # Faiss index spec
+        indexspec = "OPQ4_16,IVF65536_HNSW32,PQ4"
+        faiss_max_traindocs = 800_000  # around 1/10th of the full dataset
 
         # Validation interval (every 256 epochs = 256 epoch * 128 steps/epoch = every 32768 steps)
         validation_interval = 2**8
@@ -153,6 +161,7 @@ def cli(
 
     # Sets the working directory and the name of the xp
     if scheduler == "slurm":
+        # TODO: this code repeats in all experiments and should be a configuration file
         import socket
 
         host = socket.getfqdn() if fqdn else socket.gethostname()
@@ -196,11 +205,18 @@ def cli(
         gpulauncher = None
         gpulauncher_mem64 = None
         gpulauncher2x = None
+        gpulauncher4x = None
 
     name = "splade-small" if small else "splade"
+
+    # Starts the experiment
     with experiment(workdir, name, host=host, port=port, launcher=launcher) as xp:
         if gpulauncher:
+            # TODO: here also, should be moved to another place
             gpulauncher.setNotificationURL(launcher.notificationURL)
+            gpulauncher2x.setNotificationURL(launcher.notificationURL)
+            gpulauncher4x.setNotificationURL(launcher.notificationURL)
+
         if scheduler is None:
             token = xp.token("main", 1)
         else:
@@ -250,19 +266,22 @@ def cli(
 
         tasb = tas_balanced()
         tasb_index = IndexBackedFaiss(
-            indexer=FlatIPIndexer(),
+            indexspec=indexspec,
             device=device,
             normalize=False,
             documents=documents,
+            sampler=RandomDocumentSampler(
+                documents=documents, max_count=faiss_max_traindocs
+            ),  # Just use a fraction of the dataset for training
             encoder=DenseDocumentEncoder(scorer=tasb),
-            batchsize=32768,
+            batchsize=1024 if gpu else 128,  # Adaptative batcher won't work on CPU
             batcher=PowerAdaptativeBatcher(),
             hooks=[
                 setmeta(
                     DistributedModelHook(transformer=tasb.query_encoder.encoder), True
                 )
             ],
-        ).submit(launcher=gpulauncher_mem64)
+        ).submit(launcher=gpulauncher4x)
         tasb_retriever = FaissRetriever(
             index=tasb_index, topk=retTopK, encoder=DenseQueryEncoder(scorer=tasb)
         )
@@ -324,7 +343,7 @@ def cli(
             # Learn the model
             validation = ValidationListener(
                 dataset=ds_val,
-                retriever=base_retriever_val.getReranker(
+                retriever=base_retriever_val.getReranker(  # type: ignore
                     scorer, valtopK, PowerAdaptativeBatcher()
                 ),
                 early_stop=early_stop,
@@ -349,7 +368,7 @@ def cli(
             # Evaluate the neural model
             for key, test in tests.items():
                 # Build the retrieval
-                best = outputs["listeners"]["bestval"]["RR@10"]
+                best = outputs.listeners["bestval"]["RR@10"]
                 retriever = create_retriever(best)
 
                 evaluations[key].append(
@@ -361,20 +380,18 @@ def cli(
                     )
                 )
 
-        # Launch Splade
-        def reranker_retriever(best):
-            return base_retriever.getReranker(
-                best, test_batch_size, device=device, batcher=PowerAdaptativeBatcher()
-            )
-
-        def faiss_retriever(best):
+        def faiss_retriever(best: Dense):
+            """BUild a FAISS-based retriever"""
             tasb_index = IndexBackedFaiss(
-                indexer=FlatIPIndexer(),
+                indexspec=indexspec,
                 device=device,
                 normalize=False,
                 documents=documents,
+                sampler=RandomDocumentSampler(
+                    documents=documents, max_count=faiss_max_traindocs
+                ),
                 encoder=DenseDocumentEncoder(scorer=best),
-                batchsize=1024,
+                batchsize=1024 if gpu else 128,  # Adaptative batcher won't work on CPU
                 batcher=PowerAdaptativeBatcher(),
             ).submit()
             return FaissRetriever(
@@ -384,7 +401,7 @@ def cli(
         distilbert = tag("distilbert-base-uncased")
 
         ibn_sampler = PairwiseInBatchNegativesSampler(sampler=train_sampler)
-        scheduler = CosineWithWarmup(num_warmup_steps=1000)
+        scheduler = CosineWithWarmup(num_warmup_steps=num_warmup_steps)
 
         # Train splade
         spladev2, flops = spladeV2(1e-1, 1e-1)
@@ -408,21 +425,21 @@ def cli(
 
         # Train Dense
 
-        distilbert_encoder = TransformerEncoder(model_id=distilbert, trainable=True)
-        siamese = DotDense(
-            query_encoder=distilbert_encoder.with_maxlength(30),
-            encoder=distilbert_encoder.with_maxlength(200),
-        ).tag("model", "siamese")
-        adam_7 = [
-            ParameterOptimizer(
-                optimizer=Adam(lr=tag(7e-6)).tag("optim", "Adam"),
-                scheduler=CosineWithWarmup(num_warmup_steps=1000),
-            )
-        ]
-        batchwise_trainer = BatchwiseTrainer(
-            batch_size=batch_size, sampler=ibn_sampler, lossfn=SoftmaxCrossEntropy()
-        )
-        run(siamese, batchwise_trainer, adam_7, faiss_retriever, launcher=gpulauncher2x)
+        # distilbert_encoder = TransformerEncoder(model_id=distilbert, trainable=True)
+        # siamese = DotDense(
+        #     query_encoder=distilbert_encoder.with_maxlength(30),
+        #     encoder=distilbert_encoder.with_maxlength(200),
+        # ).tag("model", "siamese")
+        # adam_7 = [
+        #     ParameterOptimizer(
+        #         optimizer=Adam(lr=tag(7e-6)).tag("optim", "Adam"),
+        #         scheduler=CosineWithWarmup(num_warmup_steps=num_warmup_steps),
+        #     )
+        # ]
+        # batchwise_trainer = BatchwiseTrainer(
+        #     batch_size=batch_size, sampler=ibn_sampler, lossfn=SoftmaxCrossEntropy()
+        # )
+        # run(siamese, batchwise_trainer, adam_7, faiss_retriever, launcher=gpulauncher2x)
 
         # Wait that experiments complete
         xp.wait()

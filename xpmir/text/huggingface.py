@@ -340,6 +340,7 @@ class LayerFreezer(InitializationTrainingHook):
                     param.requires_grad = False
 
 
+# TODO: make the class more generic (but involves changing the models or moving this to the training part)
 class DistributedModelHook(InitializationHook):
     """Hook to distribute the model processing
 

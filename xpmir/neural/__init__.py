@@ -1,6 +1,8 @@
+import itertools
 from typing import Generic, Iterable, List, Optional, TypeVar
 import torch
 import torch.nn as nn
+from xpmir.letor.batchers import Sliceable
 
 from xpmir.letor.context import TrainerContext
 from xpmir.letor.records import BaseRecords
@@ -57,17 +59,47 @@ class DualRepresentationScorer(TorchLearnableScorer):
         The return value is model dependent"""
         raise NotImplementedError()
 
-    def encode_documents(self, texts: Iterable[str]):
+    def encode_documents(self, texts: Iterable[str]) -> Sliceable:
         """Encode a list of texts (document or query)
 
         The return value is model dependent"""
         return self.encode(texts)
 
-    def encode_queries(self, texts: Iterable[str]):
+    def encode_queries(self, texts: Iterable[str]) -> Sliceable:
         """Encode a list of texts (document or query)
 
-        The return value is model dependent"""
+        The return value is model dependent, but should be sliceable
+
+        By default, uses `merge`
+        """
         return self.encode(texts)
+
+    def merge_queries(self, list):
+        """Merge query batches encoded with `encode_queries`
+
+        By default, uses `merge`
+        """
+        return self.merge(list)
+
+    def merge_documents(self, list):
+        """Merge query batches encoded with `encode_documents`"""
+        return self.merge(list)
+
+    def merge(self, objects):
+        """Merge objects
+
+        - for tensors, uses torch.cat
+        - for lists, concatenate all of them
+        """
+        assert isinstance(objects, List), "Merging can only be done with lists"
+
+        if isinstance(objects[0], torch.Tensor):
+            return torch.cat(objects)
+
+        if isinstance(objects[0], List):
+            return list(itertools.chain(objects))
+
+        raise RuntimeError(f"Cannot deal with objects of type {type(list[0])}")
 
     def score_product(self, queries, documents, info: Optional[TrainerContext]):
         """Computes the score of all possible pairs of query and document

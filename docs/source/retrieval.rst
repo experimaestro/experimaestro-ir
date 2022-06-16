@@ -4,7 +4,10 @@ Retrieval
 Models
 ------
 
+.. autoclass:: xpmir.rankers.ScoredDocument
+
 .. autoxpmconfig:: xpmir.rankers.Retriever
+    :members: initialize, collection, getindex, retrieve_all, retrieve
 
 Standard IR models
 ------------------

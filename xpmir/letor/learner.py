@@ -322,7 +322,9 @@ class Learner(Task, EasyLogger):
         current = 0
         state = None
 
-        with tqdm(total=self.max_epochs) as tqdm_epochs:
+        with tqdm(
+            total=self.max_epochs, desc=f"Training ({self.max_epochs} epochs)"
+        ) as tqdm_epochs:
             for state in self.iter_train(device_information):
                 # Report progress
                 tqdm_epochs.update(state.epoch - current)

@@ -12,6 +12,7 @@ from typing import (
     overload,
 )
 from experimaestro import Config
+from numpy import isin
 from pytorch_lightning.utilities.memory import garbage_collection_cuda
 from xpmir.utils import easylog
 
@@ -58,6 +59,13 @@ class Processor(Protocol, Generic[T, ARGS, KWARGS]):
         ...
 
 
+class Reducer(Protocol, Generic[T, RT, ARGS, KWARGS]):
+    def __call__(
+        self, batch: Sliceable[T], value: RT, *args: ARGS, **kwargs: KWARGS
+    ) -> RT:
+        ...
+
+
 class BatcherWorker:
     def __init__(self, batch_size: int):
         self.batch_size = batch_size
@@ -67,9 +75,12 @@ class BatcherWorker:
         batch: Sliceable[T],
         process: IterativeProcessor[T, RT, ARGS, KWARGS],
         *args: ARGS,
-        **kwargs: KWARGS
+        **kwargs: KWARGS,
     ) -> RT:
-        # Just do nothing
+        """Process a batch with replay
+
+        Replay = if an error occurs, the full batch is re-processed
+        """
         return process(iter([batch]), 1, *args, **kwargs)
 
     def process(
@@ -78,13 +89,36 @@ class BatcherWorker:
         process: Processor[T, ARGS, KWARGS],
         *args: ARGS,
         raise_oom=False,
-        **kwargs: KWARGS
+        **kwargs: KWARGS,
     ) -> None:
-        """Attributes:
+        """Process a batch
 
-        raise_oom: Raise an OOM exception when an OOM is recoverable
+        If a recoverable OOM error occurs, the processing continues but do not
+        reprocess previously processed samples.
+
+        Arguments:
+
+            raise_oom: Raise an OOM exception when an OOM is recoverable
         """
         process(batch, *args, **kwargs)
+
+    def reduce(
+        self,
+        batch: Sliceable[T],
+        reducer: Reducer[T, RT, ARGS, KWARGS],
+        initialvalue: RT,
+        *args: ARGS,
+        raise_oom=False,
+        **kwargs: KWARGS,
+    ) -> RT:
+        """Attributes:
+
+        Arguments:
+            batch: The data to process
+            reducer: The reducer function, whose two first arguments are a slice of T and the reduced value, and that returns a new value
+            raise_oom: Raise an OOM exception when an OOM is recoverable instead of continuing
+        """
+        return reducer(batch, initialvalue, *args, **kwargs)
 
 
 def is_cublas_alloc_failed(exception):
@@ -140,14 +174,14 @@ class PowerAdaptativeBatcherWorker(BatcherWorker):
         batch: Sliceable[T],
         process: IterativeProcessor[T, RT, ARGS, KWARGS],
         *args: ARGS,
-        **kwargs: KWARGS
+        **kwargs: KWARGS,
     ) -> RT:
         while True:
             ranges = self.get_ranges(len(batch))
-            flag, rt = self._run(
+            rt = self._run(
                 lambda: process(self.iter(batch, ranges), len(ranges), *args, **kwargs)
             )
-            if flag:
+            if not isinstance(rt, RecoverableOOMError):
                 return rt
 
     def process(
@@ -156,22 +190,51 @@ class PowerAdaptativeBatcherWorker(BatcherWorker):
         process: Processor[T, ARGS, KWARGS],
         *args: ARGS,
         raise_oom=False,
-        **kwargs: KWARGS
+        **kwargs: KWARGS,
     ) -> None:
         ix = 0
         while ix < len(batch):
             s = slice(ix, ix + self.batch_size)
-            flag, rt = self._run(lambda: process(batch[s], *args, **kwargs))
-            if flag:
+            rt = self._run(lambda: process(batch[s], *args, **kwargs))
+            if not isinstance(rt, RecoverableOOMError):
                 ix += self.batch_size
+            elif raise_oom:
+                raise rt
+
+    def reduce(
+        self,
+        batch: Sliceable[T],
+        reducer: Reducer[T, RT, ARGS, KWARGS],
+        value: RT,
+        *args: ARGS,
+        raise_oom=False,
+        **kwargs: KWARGS,
+    ) -> RT:
+        """
+        Reduce a batch using the process function
+
+        Args:
+            batch: A batch
+            reducer: A function that
+
+        raise_oom: Raise an OOM exception when an OOM is recoverable
+        """
+        ix = 0
+        while ix < len(batch):
+            s = slice(ix, ix + self.batch_size)
+            rt = self._run(lambda: reducer(batch[s], value, *args, **kwargs))
+            if not isinstance(rt, RecoverableOOMError):
+                ix += self.batch_size
+                value = rt
             elif raise_oom:
                 raise RecoverableOOMError()
 
-    def _run(self, process: Callable[[], RT]) -> Tuple[bool, Union[RT, None]]:
+        return value
 
+    def _run(self, process: Callable[[], RT]) -> Union[RecoverableOOMError, RT]:
         try:
             # Perform a process
-            return True, process()
+            return process()
         except RuntimeError as exception:
             if is_oom_error(exception):
                 garbage_collection_cuda()
@@ -188,7 +251,7 @@ class PowerAdaptativeBatcherWorker(BatcherWorker):
                 logger.info(
                     "Adaptative batcher: reducing batch size to %d", self.batch_size
                 )
-                return False, None
+                return RecoverableOOMError(f"Reducing batch size to {self.batch_size}")
             else:
                 # Other exception
                 raise

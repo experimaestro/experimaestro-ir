@@ -176,7 +176,21 @@ class AdhocDocumentSubset(AdhocDocuments):
     """ID-based topic selection"""
 
     base: Param[AdhocDocumentStore]
+    """The full document store"""
+
     docids_path: Meta[Path]
+    """Path to the file containing the document IDs"""
+
+    def __len__(self):
+        return len(self.docids)
+
+    def __getitem__(self, range):
+        docids = self.docids[range]
+        if isinstance(docids, List):
+            return AdhocDocumentSubsetSlice(
+                self, docids, range(len(self.docids))[range]
+            )
+        return AdhocDocument(docids, self.base.document_text(docids), range)
 
     @cached_property
     def docids(self) -> List[str]:
@@ -191,6 +205,33 @@ class AdhocDocumentSubset(AdhocDocuments):
         for docid in self.iter_ids():
             content = self.base.document_text(docid)
             yield AdhocDocument(docid, content)
+
+
+class AdhocDocumentSubsetSlice:
+    def __init__(
+        self, subset: AdhocDocumentSubset, docids: List[str], internal_ids: List[int]
+    ):
+        self.subset = subset
+        self.docids = docids
+        self.internal_ids = internal_ids
+
+    def __iter__(self):
+        for internal_docid, docid in zip(self.internal_ids, self.docids):
+            yield AdhocDocument(
+                docid,
+                self.subset.base.document_text(docid),
+                internal_docid=internal_docid,
+            )
+
+    def __len__(self):
+        return len(self.docids)
+
+    def __getitem__(self, ix):
+        docid = self.docids[ix]
+        internal_docid = self.internal_ids[ix]
+        return AdhocDocument(
+            docid, self.subset.base.document_text(docid), internal_docid=internal_docid
+        )
 
 
 class RetrieverBasedCollection(Task):

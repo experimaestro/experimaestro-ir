@@ -96,18 +96,20 @@ class IndexBackedFaiss(FaissIndex, Task):
         count, iter = (
             self.sampler() if self.sampler is not None else self.full_sampler()
         )
-        doc_iter = tqdm(iter, total=count)
+        doc_iter = tqdm(
+            iter, total=count, desc="Collecting the representation of documents (train)"
+        )
 
-        # Collect batches
-        batches = []
+        # Collect batches (in memory)
+        logger.info("Collecting the representation of %d documents", count)
+        sample = np.ndarray((count, self.encoder.dimension), dtype=np.float32)
+        ix = 0
         for batch in batch_encoder(doc_iter):
-            batches.append(batch.cpu().numpy())
+            sample[ix : (ix + len(batch))] = batch.cpu().numpy()
+            ix += len(batch)
 
-        xt = np.ascontiguousarray(np.concatenate(batches, 0))
-        del batches
-
-        logger.info("Training index")
-        index.train(xt)
+        logger.info("Training index (%d samples)", count)
+        index.train(sample)
 
     def execute(self):
         self.device.execute(self._execute)
@@ -117,6 +119,8 @@ class IndexBackedFaiss(FaissIndex, Task):
         context = Context(device_information, hooks=self.hooks)
         foreach(context.hooks(InitializationHook), lambda hook: hook.before(context))
 
+        step_iter = tqdm(total=2, desc="Building the FAISS index")
+
         # Initializations
         self.encoder.initialize()
         index = faiss.index_factory(
@@ -124,37 +128,54 @@ class IndexBackedFaiss(FaissIndex, Task):
         )
         batcher = self.batcher.initialize(self.batchsize)
 
-        # Train the
+        # Change the device of the encoder
+        self.encoder.to(device_information.device).eval()
+
+        # Train the index
         if not index.is_trained:
-            logging.info("Training FAISS index (%d documents)", index.ntotal)
+            with torch.no_grad():
+                logging.info("Training FAISS index (%d documents)", index.ntotal)
 
-            def batch_encoder(doc_iter: Iterator[str]):
-                for batch in batchiter(self.batchsize, doc_iter, index):
-                    yield self.encoder(batch)
+                def batch_encoder(doc_iter: Iterator[str]):
+                    for batch in batchiter(self.batchsize, doc_iter):
+                        data = []
+                        batcher.process(batch, self.encode, data)
+                        yield torch.cat(data)
 
-            self.train(index, batch_encoder)
+                self.train(index, batch_encoder)
+
+        step_iter.update()
 
         # Index the collection
         doc_iter = (
-            tqdm(self.documents.iter_documents(), total=self.documents.documentcount)
+            tqdm(
+                self.documents.iter_documents(),
+                total=self.documents.documentcount,
+                desc="Indexing the collection",
+            )
             if device_information.main
             else self.documents.iter_documents()
         )
-
-        self.encoder.to(device_information.device).eval()
 
         # Initialization hooks (after)
         foreach(context.hooks(InitializationHook), lambda hook: hook.after(context))
 
         # Let's index !
         with torch.no_grad():
-            for batch in batchiter(self.batchsize, doc_iter, index):
+            for batch in batchiter(self.batchsize, doc_iter):
                 batcher.process(
                     [document.text for document in batch], self.index_documents, index
                 )
 
         logging.info("Writing FAISS index (%d documents)", index.ntotal)
         faiss.write_index(index, str(self.faiss_index))
+        step_iter.update()
+
+    def encode(self, batch: List[str], data: List):
+        x = self.encoder(batch)
+        if self.normalize:
+            x /= x.norm(2, keepdim=True, dim=1)
+        data.append(x)
 
     def index_documents(self, batch: List[str], index):
         x = self.encoder(batch)

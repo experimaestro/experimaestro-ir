@@ -6,7 +6,7 @@ from typing import Iterator, List, BinaryIO, NamedTuple, Tuple
 from experimaestro import Annotated, Config, Task, Param, Meta, pathgenerator, tqdm
 from datamaestro_text.data.ir import AdhocDocument, AdhocDocumentStore
 from xpmir.letor.batchers import Batcher
-from xpmir.utils import batchiter
+from xpmir.utils import batchiter, easylog
 from xpmir.letor import Device, DEFAULT_DEVICE
 from xpmir.text.encoders import TextEncoder
 from xpmir.rankers import Retriever, ScoredDocument
@@ -14,6 +14,9 @@ import array
 import pickle
 import mmap
 import heapq
+
+
+logger = easylog()
 
 
 class InternalScoredDocument:
@@ -30,8 +33,13 @@ class InternalScoredDocument:
 
 class Posting(NamedTuple):
     index: int
+    """The iterator index"""
+
     docid: int
+    """The document ID"""
+
     value: float
+    """The value"""
 
     def __lt__(self, other: "Posting"):
         return self.docid < other.docid
@@ -55,13 +63,14 @@ class SparseRetrieverIndex(Config):
 
     def __postinit__(self):
         with self.info_path.open("rb") as fp:
-            pickle.load(fp)
             self.starts, self.lengths = pickle.load(fp)
 
-        self.index_mm = mmap.mmap(self.index_path.open("r+b").fileno(), 0)
+        self.mm_file = self.index_path.open("r+b")
 
-    def iter_postings(self, ix: int) -> Iterator[Posting]:
-        for start, length in zip(self.starts[ix], self.lengths[ix]):
+        self.index_mm = mmap.mmap(self.mm_file.fileno(), 0)
+
+    def iter_postings(self, index: int, term_ix: int) -> Iterator[Posting]:
+        for start, length in zip(self.starts[term_ix], self.lengths[term_ix]):
             # Read from mmap
             self.index_mm.seek(start)
             docids, values = docidArray(), valuesArray()
@@ -70,7 +79,7 @@ class SparseRetrieverIndex(Config):
 
             # Output postings
             for docid, value in zip(docids, values):
-                yield Posting(ix, docid, value)
+                yield Posting(index, docid, value)
 
 
 class TopDocuments:
@@ -98,10 +107,14 @@ class SparseRetriever(Retriever):
 
         # Build up iterators
         vector = self.encoder([query])[0].cpu()
+        query_values = []
         iterators: List[Iterator[Posting]] = []
-        for ix, value in enumerate(vector):
-            if value != 0:
-                iterators.append(self.index.iter_postings(ix))
+
+        iterator_index = 0
+        for ix in torch.nonzero(vector):
+            iterators.append(self.index.iter_postings(iterator_index, int(ix)))
+            query_values.append(vector[ix])
+            iterator_index += 1
 
         # Build a heap for iterators / postings
         pheap = [next(iter) for iter in iterators]
@@ -114,15 +127,17 @@ class SparseRetriever(Retriever):
         current = InternalScoredDocument(-1, 0)
         while pheap:
             tip = pheap[0]
+            v = tip.value * query_values[tip.index]
             if tip.docid == current.docid:
-                current.score += tip.value
+                current.score += v
             else:
                 top.add(current)
-                current = InternalScoredDocument(tip.docid, tip.value)
+                current = InternalScoredDocument(tip.docid, v)
 
             # Fetch next
             try:
-                heapq.heapreplace(pheap, next(iterators[tip.index]))
+                new_one = next(iterators[tip.index])
+                heapq.heapreplace(pheap, new_one)
             except StopIteration:
                 # Remove this iteator
                 heapq.heappop(pheap)
@@ -189,10 +204,6 @@ class SparseRetrieverIndexBuilder(Task):
         )
 
     def __init__(self):
-        #: Holds the full list of document IDs
-        self.docids = []
-        self.internal_docid = 0
-
         # In memory index
         self.termsinfo: List[TermInfo] = []
         self.postings = 0
@@ -201,14 +212,17 @@ class SparseRetrieverIndexBuilder(Task):
 
     def execute(self):
         # Encode all documents
+        self.encoder.initialize()
         batcher = self.batcher.initialize(self.batch_size)
 
         doc_iter = tqdm(
-            self.documents.iter_documents(), total=self.documents.documentcount
+            self.documents.iter_documents(),
+            total=self.documents.documentcount,
+            desc="Building the index",
         )
 
         with self.index_path.open("wb") as index_out:
-            self.encoder.to(self.device()).eval()
+            self.encoder.to(self.device.value).eval()
             with torch.no_grad():
                 for batch in batchiter(self.batch_size, doc_iter):
                     batcher.process(batch, self.encode_documents, index_out)
@@ -218,10 +232,10 @@ class SparseRetrieverIndexBuilder(Task):
                 if len(ti.docids) > 0:
                     self.flush(ti, index_out)
 
+        logger.info("Dumping the index to %s", self.info_path)
         with self.info_path.open("wb") as fp:
             pickle.dump(
                 (
-                    self.docids,
                     [ti.starts for ti in self.termsinfo],
                     [ti.lengths for ti in self.termsinfo],
                 ),
@@ -230,23 +244,20 @@ class SparseRetrieverIndexBuilder(Task):
 
     def encode_documents(self, batch: List[AdhocDocument], index_out: BinaryIO):
         # Assumes for now dense vectors
-        self.internal_docid = 0
         vectors = self.encoder([d.text for d in batch]).cpu()
 
-        for docid, v in zip((d.docid for d in batch), vectors):
-            self.docids.append(docid)
+        for docid, v in zip((d.internal_docid for d in batch), vectors):
+            assert docid is not None
             vabs = v.abs()
             for i in range(len(v)):
                 if vabs[i] > 0:
-                    while len(self.termsinfo) < i:
+                    while len(self.termsinfo) < i + 1:
                         self.termsinfo.append(TermInfo())
                     ti = self.termsinfo[i]
-                    ti.docids.append(self.internal_docid)
+                    ti.docids.append(docid)
                     ti.values.append(v[i])
                     if len(ti.docids) >= self.max_postings:
                         self.flush(ti, index_out)
-
-            self.internal_docid += 1
 
     def flush(self, ti: TermInfo, index_out: BinaryIO):
         """Flush term postings"""
@@ -254,5 +265,7 @@ class SparseRetrieverIndexBuilder(Task):
         ti.lengths.append(len(ti.docids))
         ti.docids.tofile(index_out)
         ti.values.tofile(index_out)
-        self.index_pos += len(ti.docids)
+        self.index_pos += (
+            len(ti.docids) * ti.docids.itemsize + len(ti.values) * ti.values.itemsize
+        )
         ti.reset()

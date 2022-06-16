@@ -111,8 +111,12 @@ class IndexCollection(Index):
             """Generic collection handler, supposes that we can iterate documents"""
 
             def _generator(out):
+                logging.info(
+                    "Starting the iterator over the documents (%d documents)",
+                    documents.documentcount,
+                )
                 for document in xpmtqdm(
-                    documents.iter(), unit="documents", total=documents.count
+                    documents.iter(), unit="documents", total=documents.documentcount
                 ):
                     # Generate document
                     json.dump({"id": document.docid, "contents": document.text}, out)

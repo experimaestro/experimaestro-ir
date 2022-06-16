@@ -1,5 +1,5 @@
 import sys
-from typing import Dict, Iterator, List, Tuple
+from typing import Iterator, List, Tuple
 import torch
 from torch import nn
 from torch.functional import Tensor
@@ -7,8 +7,6 @@ import torch.nn.functional as F
 from experimaestro import Config, default, Annotated, Param, deprecate
 from xpmir.letor.records import Document, PairwiseRecord, PairwiseRecords
 from xpmir.letor.context import Loss
-from xpmir.letor.trainers.pairwise import PairwiseLoss
-from xpmir.letor.trainers.pointwise import PointwiseLoss
 from xpmir.letor.trainers import TrainerContext, LossTrainer, TrainingHook
 from xpmir.utils import batchiter, foreach
 from .samplers import DistillationPairwiseSampler, PairwiseDistillationSample

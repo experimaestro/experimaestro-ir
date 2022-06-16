@@ -269,7 +269,9 @@ class TrainerContext(Context):
             self.state.copy_model(path)
 
     def add_loss(self, loss: Loss):
-        assert self._losses is not None, "This call should be in the losses context"
+        assert (
+            self._losses is not None
+        ), "This should be called in the context where loss is computed"
         self._losses.append(loss)
 
     @contextmanager

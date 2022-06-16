@@ -126,7 +126,7 @@ class LearnableScorer(Scorer):
         if self.checkpoint is None:
             # Sets the current random seed
             if random is not None:
-                seed = random.randint((2 ** 32) - 1)
+                seed = random.randint((2**32) - 1)
                 torch.manual_seed(seed)
                 torch.cuda.manual_seed_all(seed)
             self._initialize(random)
@@ -181,7 +181,13 @@ class Retriever(Config):
         """Retrieves for a set of documents
 
         By default, iterate using `self.retrieve`, but this leaves some room open
-        for optimization"""
+        for optimization
+
+        Args:
+
+            queries: A dictionary where the key is the ID of the query, and the value
+                is the text
+        """
         results = {}
         for key, text in tqdm(list(queries.items())):
             results[key] = self.retrieve(text)

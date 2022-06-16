@@ -1,7 +1,8 @@
-from typing import List, Optional, Tuple, Dict
+from typing import List, Optional, Tuple, Dict, Any
 from experimaestro import Param, Meta
 import torch
 from . import Retriever, AdhocDocuments, ScoredDocument, Scorer, AdhocDocument
+from xpmir.letor import Device
 from xpmir.neural.dual import DualRepresentationScorer
 from xpmir.letor.batchers import Batcher
 from xpmir.letor import Device
@@ -42,7 +43,11 @@ class FullRetrieverRescorer(Retriever):
     """Scores all the documents from a collection"""
 
     documents: Param[AdhocDocuments]
+    """The set of documents to consider"""
+
     scorer: Param[DualRepresentationScorer]
+    """The scorer (a dual representation scorer)"""
+
     batchsize: Param[int] = 0
     batcher: Meta[Batcher] = Batcher()
     device: Meta[Optional[Device]] = None
@@ -67,51 +72,66 @@ class FullRetrieverRescorer(Retriever):
     def encode_queries(
         self,
         queries: List[Tuple[str, str]],
-        encoded: List[Tuple[List[str], torch.Tensor]],
+        encoded: List[Any],
     ):
-        encoded.append(
-            (
-                [key for key, _ in queries],
-                self.scorer.encode_queries([text for _, text in queries]).to("cpu"),
-            )
-        )
+        """Encode queries
+
+        Args:
+            queries (List[Tuple[str, str]]): The input queries (id/text)
+            encoded (List[Tuple[List[str], torch.Tensor]]): Full list of topics
+        """
+        encoded.append(self.scorer.encode_queries([text for _, text in queries]))
+        return encoded
 
     def score(
         self,
         documents: List[AdhocDocument],
-        queries: List[Tuple[List[str], torch.Tensor]],
-        scored_documents: Dict[str, List[ScoredDocument]],
+        queries: List,
+        scored_documents: List[List[ScoredDocument]],
     ):
+        # Encode documents
         docids = [d.docid for d in documents]
         encoded = self.scorer.encode_documents(d.text for d in documents)
 
-        for qids, enc_queries in queries:
+        # Process query by query (TODO: improve the process)
+        new_scores = []
+        for ix in range(len(queries)):
+            query = queries[ix : (ix + 1)]
+
             # Returns a query x document matrix
-            scores = self.scorer.score_product(
-                enc_queries.to(encoded.device), encoded, None
-            ).to("cpu")
+            scores = self.scorer.score_product(query.to(encoded.device), encoded, None)
 
             # Adds up to the lists
-            for ix, d_scores in enumerate(scores):
-                for jx, score in enumerate(d_scores):
-                    scored_documents.setdefault(qids[ix], []).append(
-                        ScoredDocument(docids[jx], float(score))
-                    )
+            scores = scores.flatten().detach()
+            r = []
+            for ix, score in enumerate(scores):
+                r.append(ScoredDocument(docids[ix], float(score)))
+            new_scores.append(r)
+
+        scored_documents.extend(new_scores)
+
+    def retrieve(self, query: str):
+        # Only use retrieve_all
+        return self.retrieve_all({"_": query})["_"]
 
     def retrieve_all(self, queries: Dict[str, str]) -> Dict[str, List[ScoredDocument]]:
         self.scorer.eval()
         all_queries = list(queries.items())
 
         with torch.no_grad():
-            # Encode queries
-            enc_queries = []
-            self.query_batcher.process(all_queries, self.encode_queries, enc_queries)
+            # Encode all queries
+            enc_queries = self.query_batcher.reduce(
+                all_queries, self.encode_queries, []
+            )
+            enc_queries = self.scorer.merge_queries(enc_queries)
 
             # Encode documents and score them
-            scored_documents: Dict[str, List[ScoredDocument]] = {}
-            self.query_batcher.process(self.documents, enc_queries, scored_documents)
+            scored_documents_list: List[List[ScoredDocument]] = []
+            self.document_batcher.process(
+                self.documents, self.score, enc_queries, scored_documents_list
+            )
 
-        return scored_documents
-
-    def retrieve(self, query: str):
-        return self.retrieve_all({"_": query})["_"]
+        return {
+            qid: scored_documents
+            for (qid, _), scored_documents in zip(all_queries, scored_documents_list)
+        }

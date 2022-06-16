@@ -70,6 +70,7 @@ class CudaDevice(Device):
         """Called by experimaestro to substitute object at run time"""
         if not torch.cuda.is_available():
             if not self.cpu_fallback:
+                # Not accepting fallbacks
                 raise AssertionError("No GPU available")
             logger.error("No GPU available. Falling back on CPU.")
             return torch.device("cpu")
