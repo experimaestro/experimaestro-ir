@@ -2,6 +2,7 @@ from typing import List, Optional, Tuple
 from experimaestro import Config, Param
 import torch.nn as nn
 import torch
+from experimaestro import initializer
 from xpmir.context import Context, InitializationHook
 from xpmir.letor import DistributedDeviceInformation
 from xpmir.letor.samplers import PairwiseSampler, PairwiseInBatchNegativesSampler
@@ -58,7 +59,8 @@ class SpladeTextEncoderModel(nn.Module):
 class SpladeTextEncoder(TextEncoder):
     """Splade model
 
-    It is only a text encoder since the we use xpmir.neural.dual.DotDense
+    It is only a text encoder since the we use `xpmir.neural.dual.DotDense`
+    as the scorer class
     """
 
     encoder: Param[TransformerVocab]
@@ -70,6 +72,7 @@ class SpladeTextEncoder(TextEncoder):
     maxlen: Param[Optional[int]] = None
     """Max length for texts"""
 
+    @initializer
     def initialize(self):
         self.encoder.initialize(automodel=AutoModelForMaskedLM)
         self.model = SpladeTextEncoderModel(self.encoder, self.aggregation)
@@ -79,6 +82,10 @@ class SpladeTextEncoder(TextEncoder):
         tokenized = self.encoder.batch_tokenize(texts, mask=True, maxlen=self.maxlen)
         out = self.model(tokenized)
         return out
+
+    @property
+    def dimension(self):
+        return self.encoder.model.config.vocab_size
 
     def static(self):
         return False

@@ -66,7 +66,7 @@ class CudaDevice(Device):
     """Use distributed computation (DDP) when `distributed` is `True` and the number of GPUs greater than 1"""
 
     @cached_property
-    def device(self):
+    def value(self):
         """Called by experimaestro to substitute object at run time"""
         if not torch.cuda.is_available():
             if not self.cpu_fallback:

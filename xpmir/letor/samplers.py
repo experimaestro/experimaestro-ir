@@ -9,7 +9,6 @@ from typing import (
     Optional,
     Tuple,
     TypeVar,
-    Protocol,
 )
 import numpy as np
 from datamaestro_text.data.ir import Adhoc, TrainingTriplets
@@ -27,6 +26,7 @@ from xpmir.letor.records import (
 from xpmir.rankers import Retriever, ScoredDocument
 from xpmir.utils import EasyLogger, easylog
 from xpmir.index import Index
+from xpmir.compat import Protocol
 
 logger = easylog()
 

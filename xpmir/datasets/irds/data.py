@@ -63,8 +63,8 @@ class AdhocAssessments(ir.AdhocAssessments, IRDSId):
 class AdhocDocuments(ir.AdhocDocumentStore, IRDSId):
     def iter(self) -> Iterator[ir.AdhocDocument]:
         """Returns an iterator over adhoc documents"""
-        for doc in self.dataset.docs_iter():
-            yield ir.AdhocDocument(doc.doc_id, doc.text)
+        for int_docid, doc in enumerate(self.dataset.docs_iter()):
+            yield ir.AdhocDocument(doc.doc_id, doc.text, internal_docid=int_docid)
 
     @property
     def documentcount(self):

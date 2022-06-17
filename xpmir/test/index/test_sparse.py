@@ -19,9 +19,9 @@ def test_sparse_indexation(tmp_path: Path):
 
     # Build the FAISS index
     documents = SampleAdhocDocumentStore(num_docs=100)
-    encoder = SparseRandomTextEncoder(dim=1000, sparsity=0.99)
+    encoder = SparseRandomTextEncoder(dim=1000, sparsity=0.7)
     builder = SparseRetrieverIndexBuilder(
-        encoder=encoder, documents=documents, max_postings=1000, batch_size=5
+        encoder=encoder, documents=documents, max_postings=10, batch_size=5
     )
     builder_instance = builder.instance(context=context)
     builder_instance.execute()
@@ -40,8 +40,12 @@ def test_sparse_indexation(tmp_path: Path):
         x = x_docs[:, ix]
         nz = torch.nonzero(x)
         for jx, posting in enumerate(index_instance.iter_postings(0, ix)):
-            assert posting.docid == nz[jx]
-            assert x[nz[jx]] == posting.value
+            assert (
+                posting.docid == nz[jx]
+            ), f"Error for posting {jx} of term {ix} (docid)"
+            assert (
+                x[nz[jx]] == posting.value
+            ), f"Error for posting {jx} of term {ix} (value)"
 
     # Retrieve with the index
     topk = 10

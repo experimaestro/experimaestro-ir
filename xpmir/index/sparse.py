@@ -1,8 +1,10 @@
 """Index for sparse models"""
 
+from dataclasses import dataclass
 import torch
+import numpy as np
 from pathlib import Path
-from typing import Iterator, List, BinaryIO, NamedTuple, Tuple
+from typing import Callable, Iterator, List, BinaryIO, NamedTuple, Tuple
 from experimaestro import Annotated, Config, Task, Param, Meta, pathgenerator, tqdm
 from datamaestro_text.data.ir import AdhocDocument, AdhocDocumentStore
 from xpmir.letor.batchers import Batcher
@@ -14,6 +16,10 @@ import array
 import pickle
 import mmap
 import heapq
+from numba import typed
+
+import numba
+from numba.experimental import jitclass
 
 
 logger = easylog()
@@ -53,6 +59,13 @@ def valuesArray():
     return array.array("f")
 
 
+DOCID_TYPE = np.int64
+VALUE_TYPE = np.float32
+
+DOCID_ITEMSIZE = np.dtype(DOCID_TYPE).itemsize
+VALUE_ITEMSIZE = np.dtype(VALUE_TYPE).itemsize
+
+
 class SparseRetrieverIndex(Config):
     index_path: Meta[Path]
     info_path: Meta[Path]
@@ -70,13 +83,16 @@ class SparseRetrieverIndex(Config):
         self.index_mm = mmap.mmap(self.mm_file.fileno(), 0)
 
     def iter_postings(self, index: int, term_ix: int) -> Iterator[Posting]:
+
         for start, length in zip(self.starts[term_ix], self.lengths[term_ix]):
             # Read from mmap
             self.index_mm.seek(start)
-            docids, values = docidArray(), valuesArray()
-            docids.frombytes(self.index_mm.read(docids.itemsize * length))
-            values.frombytes(self.index_mm.read(values.itemsize * length))
-
+            docids = np.frombuffer(
+                self.index_mm.read(DOCID_ITEMSIZE * length), dtype=DOCID_TYPE
+            )  #  .read(docids.itemsize * length))
+            values = np.frombuffer(
+                self.index_mm.read(VALUE_ITEMSIZE * length), dtype=VALUE_TYPE
+            )  #  .read(values.itemsize * length))
             # Output postings
             for docid, value in zip(docids, values):
                 yield Posting(index, docid, value)
@@ -154,17 +170,26 @@ class SparseRetriever(Retriever):
         ]
 
 
-class TermInfo:
-    """In memory term information"""
-
-    def __init__(self):
-        self.starts = array.array("I")
-        self.lengths = array.array("I")
-        self.reset()
-
-    def reset(self):
-        self.docids = docidArray()
-        self.values = valuesArray()
+@jitclass(
+    [
+        ("max_postings", numba.int64),
+        ("values", numba.float32[:, :]),
+        ("docids", numba.int64[:, :]),
+        ("npostings", numba.int64[:]),
+    ]
+)
+class Postings:
+    def __init__(self, nterms, max_postings):
+        self.max_postings = max_postings
+        self.values = np.zeros(
+            (nterms, max_postings), VALUE_TYPE
+        )  # term x max. postings
+        self.docids = np.zeros(
+            (nterms, max_postings), DOCID_TYPE
+        )  # term x max. postings
+        self.npostings = np.zeros(
+            nterms, np.int64
+        )  # How many posting are stored (per term)
 
 
 class SparseRetrieverIndexBuilder(Task):
@@ -203,16 +228,14 @@ class SparseRetrieverIndexBuilder(Task):
             documents=self.documents,
         )
 
-    def __init__(self):
-        # In memory index
-        self.termsinfo: List[TermInfo] = []
-        self.postings = 0
-
-        self.index_pos = 0
-
     def execute(self):
         # Encode all documents
+        logger.info(
+            f"Loading the encoder and transfering to the target device {self.device.value}"
+        )
         self.encoder.initialize()
+        self.encoder.to(self.device.value).eval()
+
         batcher = self.batcher.initialize(self.batch_size)
 
         doc_iter = tqdm(
@@ -221,50 +244,113 @@ class SparseRetrieverIndexBuilder(Task):
             desc="Building the index",
         )
 
+        # Prepare the terms informations
+        self.postings = Postings(self.encoder.dimension, self.max_postings)
+        self.posting_starts = [array.array("I") for _ in range(self.encoder.dimension)]
+        self.posting_lengths = [array.array("I") for _ in range(self.encoder.dimension)]
+
+        logger.info(f"Starting to index {self.documents.documentcount} documents")
         with self.index_path.open("wb") as index_out:
-            self.encoder.to(self.device.value).eval()
             with torch.no_grad():
                 for batch in batchiter(self.batch_size, doc_iter):
                     batcher.process(batch, self.encode_documents, index_out)
 
             # Build the final index
-            for ti in self.termsinfo:
-                if len(ti.docids) > 0:
-                    self.flush(ti, index_out)
+            for term_ix in np.nonzero(self.postings.npostings)[0]:
+                self.flush(term_ix, index_out)
 
         logger.info("Dumping the index to %s", self.info_path)
         with self.info_path.open("wb") as fp:
             pickle.dump(
-                (
-                    [ti.starts for ti in self.termsinfo],
-                    [ti.lengths for ti in self.termsinfo],
-                ),
+                (self.posting_starts, self.posting_lengths),
                 fp,
             )
 
     def encode_documents(self, batch: List[AdhocDocument], index_out: BinaryIO):
         # Assumes for now dense vectors
-        vectors = self.encoder([d.text for d in batch]).cpu()
-
-        for docid, v in zip((d.internal_docid for d in batch), vectors):
-            assert docid is not None
-            for ix in torch.nonzero(v):
-                ix = int(ix)
-                while len(self.termsinfo) < ix + 1:
-                    self.termsinfo.append(TermInfo())
-                ti = self.termsinfo[ix]
-                ti.docids.append(docid)
-                ti.values.append(v[ix])
-                if len(ti.docids) >= self.max_postings:
-                    self.flush(ti, index_out)
-
-    def flush(self, ti: TermInfo, index_out: BinaryIO):
-        """Flush term postings"""
-        ti.starts.append(self.index_pos)
-        ti.lengths.append(len(ti.docids))
-        ti.docids.tofile(index_out)
-        ti.values.tofile(index_out)
-        self.index_pos += (
-            len(ti.docids) * ti.docids.itemsize + len(ti.values) * ti.values.itemsize
+        vectors = self.encoder([d.text for d in batch]).cpu().numpy()
+        assert all(
+            d.internal_docid is not None for d in batch
+        ), f"No internal document ID provided by document store {type(self.documents)}"
+        buffer = encode_documents_numba(
+            vectors,
+            np.array([d.internal_docid for d in batch], dtype=np.int64),
+            self.postings,
         )
-        ti.reset()
+
+        for term_ix, docids, values in zip(
+            buffer.term_ix, buffer.docids, buffer.values
+        ):
+            self.posting_starts[term_ix].append(index_out.tell())
+            self.posting_lengths[term_ix].append(self.postings.max_postings)
+            docids.tofile(index_out)
+            values.tofile(index_out)
+
+    def flush(self, term_ix: int, index_out: BinaryIO):
+        """Flush term postings"""
+        npostings = self.postings.npostings[term_ix]
+        if npostings == 0:
+            return
+
+        self.posting_starts[term_ix].append(index_out.tell())
+        self.posting_lengths[term_ix].append(npostings)
+
+        self.postings.docids[term_ix, :npostings].tofile(index_out)
+        self.postings.values[term_ix, :npostings].tofile(index_out)
+
+        # Resets
+        self.postings.npostings[term_ix] = 0
+
+
+float_ndarray = numba.float32[:]
+int64_ndarray = numba.int64[:]
+
+
+@jitclass(
+    [
+        ("term_ix", numba.types.ListType(numba.uint64)),
+        ("values", numba.types.ListType(float_ndarray)),
+        ("docids", numba.types.ListType(int64_ndarray)),
+    ]
+)
+class Buffer:
+    def __init__(self):
+        self.term_ix = typed.List.empty_list(numba.uint64)
+        self.docids = typed.List.empty_list(int64_ndarray)
+        self.values = typed.List.empty_list(float_ndarray)
+
+    def add(self, term_ix, docids, values):
+        self.term_ix.append(term_ix)
+        self.docids.append(docids)
+        self.values.append(values)
+
+
+@numba.njit(parallel=True)
+def encode_documents_numba(vectors: np.ndarray, docids: np.array, postings: Postings):
+    #  -> List[Tuple[int, 'np.ndarray[int]', 'np.ndarray[float]']]:
+    buffer = Buffer()
+
+    for term_ix in numba.prange(vectors.shape[1]):
+        v = vectors[:, term_ix]
+        pos = postings.npostings[term_ix]
+        (nonzero,) = np.nonzero(v)
+        postings.npostings[term_ix] = (
+            postings.npostings[term_ix] + len(nonzero)
+        ) % postings.max_postings
+
+        for docix in nonzero:
+            # docix = docix.item()
+            postings.docids[term_ix, pos] = docids[docix]
+            postings.values[term_ix, pos] = v[docix]
+            pos += 1
+
+            if pos >= postings.max_postings:
+                with numba.objmode():
+                    buffer.add(
+                        term_ix,
+                        postings.docids[term_ix].copy(),
+                        postings.values[term_ix].copy(),
+                    )
+                pos = 0
+
+    return buffer
