@@ -40,7 +40,7 @@ class FullRetriever(Retriever):
 
 
 class FullRetrieverRescorer(Retriever):
-    """Scores all the documents from a collection"""
+    """Scores all the documents from a collection (for a dual representation scorer)"""
 
     documents: Param[AdhocDocuments]
     """The set of documents to consider"""
@@ -89,12 +89,22 @@ class FullRetrieverRescorer(Retriever):
         queries: List,
         scored_documents: List[List[ScoredDocument]],
     ):
+        """_summary_
+
+        scored_documents is filled with document batches, i.e. it contains
+        [ [s(q_0, d_0), ..., s(q_n, d0)], ..., [s(q_0, d_m), ..., s(q_n, d_m)] ]
+
+        Args:
+            documents (List[AdhocDocument]): _description_
+            queries (List): _description_
+            scored_documents (List[List[ScoredDocument]]): list of scores for each document and for each query (in this order)
+        """
         # Encode documents
         docids = [d.docid for d in documents]
         encoded = self.scorer.encode_documents(d.text for d in documents)
 
         # Process query by query (TODO: improve the process)
-        new_scores = []
+        new_scores = [[] for _ in range(len(docids))]
         for ix in range(len(queries)):
             query = queries[ix : (ix + 1)]
 
@@ -103,11 +113,10 @@ class FullRetrieverRescorer(Retriever):
 
             # Adds up to the lists
             scores = scores.flatten().detach()
-            r = []
-            for ix, score in enumerate(scores):
-                r.append(ScoredDocument(docids[ix], float(score)))
-            new_scores.append(r)
+            for docix, score in enumerate(scores):
+                new_scores[docix].append(ScoredDocument(docids[docix], float(score)))
 
+        # Add each result to the full document list
         scored_documents.extend(new_scores)
 
     def retrieve(self, query: str):
@@ -126,12 +135,10 @@ class FullRetrieverRescorer(Retriever):
             enc_queries = self.scorer.merge_queries(enc_queries)
 
             # Encode documents and score them
-            scored_documents_list: List[List[ScoredDocument]] = []
+            scored_documents: List[List[ScoredDocument]] = []
             self.document_batcher.process(
-                self.documents, self.score, enc_queries, scored_documents_list
+                self.documents, self.score, enc_queries, scored_documents
             )
 
-        return {
-            qid: scored_documents
-            for (qid, _), scored_documents in zip(all_queries, scored_documents_list)
-        }
+        qids = [qid for qid, _ in all_queries]
+        return {qid: [sd[ix] for sd in scored_documents] for ix, qid in enumerate(qids)}

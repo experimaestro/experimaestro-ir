@@ -35,6 +35,9 @@ class SampleAdhocDocumentStore(AdhocDocumentStore):
         """Converts an internal collection ID (integer) to an external ID"""
         return str(docid)
 
+    def __iter__(self):
+        return iter(self.documents.values())
+
 
 class VectorGenerator:
     def __init__(self, dimension, sparsity):

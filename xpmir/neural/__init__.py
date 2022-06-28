@@ -101,7 +101,9 @@ class DualRepresentationScorer(TorchLearnableScorer):
 
         raise RuntimeError(f"Cannot deal with objects of type {type(list[0])}")
 
-    def score_product(self, queries, documents, info: Optional[TrainerContext]):
+    def score_product(
+        self, queries, documents, info: Optional[TrainerContext]
+    ) -> torch.Tensor:
         """Computes the score of all possible pairs of query and document
 
         Args:

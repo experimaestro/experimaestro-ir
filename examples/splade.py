@@ -1,14 +1,14 @@
 import logging
 from pathlib import Path
 import os
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 
 from datamaestro import prepare_dataset
 from datamaestro_text.transforms.ir import ShuffledTrainingTripletsLines
 from experimaestro import experiment, tag, tagspath, copyconfig, setmeta
 from experimaestro.click import click, forwardoption
-from experimaestro.launchers.slurm import SlurmLauncher
+from experimaestro.launchers.slurm import SlurmLauncher, SlurmOptions
 from experimaestro.utils import cleanupdir
 from xpmir.datasets.adapters import RandomFold, RetrieverBasedCollection
 from xpmir.documents.samplers import RandomDocumentSampler
@@ -17,7 +17,7 @@ from xpmir.interfaces.anserini import AnseriniRetriever, IndexCollection
 from xpmir.letor.devices import CudaDevice, Device
 from xpmir.letor import Random
 from xpmir.letor.learner import Learner, ValidationListener
-from xpmir.letor.optim import Adam
+from xpmir.letor.optim import Adam, AdamW
 from xpmir.letor.samplers import PairwiseInBatchNegativesSampler, TripletBasedSampler
 from xpmir.letor.schedulers import CosineWithWarmup
 from xpmir.index.faiss import IndexBackedFaiss, FaissRetriever
@@ -25,7 +25,7 @@ from xpmir.index.sparse import (
     SparseRetriever,
     SparseRetrieverIndexBuilder,
 )
-from xpmir.rankers import Scorer
+from xpmir.rankers import RandomScorer, Scorer
 from xpmir.rankers.full import FullRetriever
 from xpmir.letor.trainers import Trainer, pointwise
 from xpmir.letor.trainers.batchwise import BatchwiseTrainer, SoftmaxCrossEntropy
@@ -60,11 +60,14 @@ def evaluate(token=None, launcher=None, **kwargs):
 @click.option(
     "--slurm-gpu-time", help="Slurm time for GPU", type=str, default="5-00:00:00"
 )
-@click.option(
-    "--slurm-gpu-qos", help="Slurm QOS for GPU", type=str, default="5-00:00:00"
-)
+@click.option("--slurm-partition", help="Slurm partition", type=str)
+@click.option("--slurm-gpu-qos", help="Slurm QOS for GPU", type=str)
+@click.option("--slurm-exclude", help="Excluded hosts", type=str)
 @click.option("--gpu", is_flag=True, help="Use GPU")
 @click.option("--debug", is_flag=True, help="Print debug information")
+@click.option(
+    "--env", help="Define one environment variable", type=(str, str), multiple=True
+)
 @click.option("--port", type=int, default=12345, help="Port for monitoring")
 @click.option("--fqdn", is_flag=True, help="Use qualified host name")
 @click.option(
@@ -74,6 +77,7 @@ def evaluate(token=None, launcher=None, **kwargs):
 @click.argument("workdir", type=Path)
 @click.command()
 def cli(
+    env: Dict[str, str],
     debug: bool,
     small: bool,
     scheduler: Optional[str],
@@ -85,7 +89,9 @@ def cli(
     fqdn: bool,
     slurm_gpu_account: Optional[str],
     slurm_gpu_time: str,
+    slurm_partition: str,
     slurm_gpu_qos: Optional[str],
+    slurm_exclude: Optional[str],
 ):
     """Runs an experiment"""
     logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
@@ -95,6 +101,9 @@ def cli(
 
     # Number of topics in the validation set
     VAL_SIZE = 500
+
+    # Number of steps per epoch
+    steps_per_epoch = 128
 
     if small:
         VAL_SIZE = 10
@@ -125,11 +134,14 @@ def cli(
         # How many documents to use for cross-validation
         valtopK = 200
 
-        # 2^14 epochs x 32 batch/epoch = 500K iterations
-        max_epochs = max_epochs or 2**14
+        # 2^10 epochs x 128 batch/epoch = 130K iterations
+        max_epochs = max_epochs or 2**10
+
+        # Validation interval (every 64 epochs = 64 * 128 steps = 8192 steps)
+        validation_interval = 2**6
 
         # Batch size
-        splade_batch_size = batch_size or 48
+        splade_batch_size = batch_size or 96
         batch_size = batch_size or 124
         num_warmup_steps = 1000
 
@@ -137,13 +149,10 @@ def cli(
         indexspec = "OPQ4_16,IVF65536_HNSW32,PQ4"
         faiss_max_traindocs = 800_000  # around 1/10th of the full dataset
 
-        # Validation interval (every 256 epochs = 256 epoch * 128 steps/epoch = every 32768 steps)
-        validation_interval = 2**8
-
         # Stop training if no improvement after 16 evaluations
         early_stop = validation_interval * 16
 
-        # Top-K when building
+        # Top-K when building the validation set
         retTopK = 50
 
     # Try to have just one batch at inference
@@ -165,40 +174,33 @@ def cli(
         import socket
 
         host = socket.getfqdn() if fqdn else socket.gethostname()
-        launcher = SlurmLauncher()
+        launcher = SlurmLauncher(
+            options=SlurmOptions(
+                partition=slurm_partition,
+                account=slurm_gpu_account,
+                qos=slurm_gpu_qos,
+                time=slurm_gpu_time,
+                exclude=slurm_exclude,
+            )
+        )
         # slurm: 1 GPU, 5 days time limit
         gpulauncher = (
             launcher.config(
                 gpus=1,
-                qos=slurm_gpu_qos,
-                account=slurm_gpu_account,
-                time=slurm_gpu_time,
             )
             if gpu
             else launcher
         )
         gpulauncher2x = (
             launcher.config(
-                gpus=2,
-                qos=slurm_gpu_qos,
-                account=slurm_gpu_account,
-                time=slurm_gpu_time,
+                gpus=1,
             )
             if gpu
             else launcher
         )
-        gpulauncher4x = (
-            launcher.config(
-                gpus=4,
-                qos=slurm_gpu_qos,
-                account=slurm_gpu_account,
-                time=slurm_gpu_time,
-            )
-            if gpu
-            else launcher
-        )
+        gpulauncher4x = launcher.config(gpus=1, mem_per_gpu=48) if gpu else launcher
         # GPU launcher with a lot of memory
-        gpulauncher_mem64 = gpulauncher.config(gpus=2, mem="64G") if gpu else launcher
+        gpulauncher_mem64 = gpulauncher.config(gpus=1, mem="64G") if gpu else launcher
     else:
         host = None
         launcher = None
@@ -211,12 +213,6 @@ def cli(
 
     # Starts the experiment
     with experiment(workdir, name, host=host, port=port, launcher=launcher) as xp:
-        if gpulauncher:
-            # TODO: here also, should be moved to another place
-            gpulauncher.setNotificationURL(launcher.notificationURL)
-            gpulauncher2x.setNotificationURL(launcher.notificationURL)
-            gpulauncher4x.setNotificationURL(launcher.notificationURL)
-
         if scheduler is None:
             token = xp.token("main", 1)
         else:
@@ -224,7 +220,10 @@ def cli(
             def token(value, task):
                 return task
 
+        # Set environment variables
         xp.setenv("JAVA_HOME", os.environ["JAVA_HOME"])
+        for key, value in env:
+            xp.setenv(key, value)
 
         # Misc
         device = CudaDevice() if gpu else Device()
@@ -246,6 +245,7 @@ def cli(
             return SparseRetriever(
                 index=index,
                 topk=test_batch_size,
+                batchsize=256,
                 encoder=DenseQueryEncoder(scorer=scorer),
             )
 
@@ -274,14 +274,14 @@ def cli(
                 documents=documents, max_count=faiss_max_traindocs
             ),  # Just use a fraction of the dataset for training
             encoder=DenseDocumentEncoder(scorer=tasb),
-            batchsize=1024 if gpu else 128,  # Adaptative batcher won't work on CPU
+            batchsize=2048 if gpu else 128,  # Adaptative batcher won't work on CPU
             batcher=PowerAdaptativeBatcher(),
             hooks=[
                 setmeta(
                     DistributedModelHook(transformer=tasb.query_encoder.encoder), True
                 )
             ],
-        ).submit(launcher=gpulauncher4x)
+        ).submit(launcher=gpulauncher)
         tasb_retriever = FaissRetriever(
             index=tasb_index, topk=retTopK, encoder=DenseQueryEncoder(scorer=tasb)
         )
@@ -314,6 +314,24 @@ def cli(
                 AnseriniRetriever(k=retTopK, index=test_index, model=basemodel),
             ],
         ).submit(launcher=gpulauncher_mem64)
+
+        # Computes the BM25 performance on the validation dataset
+        val_index = IndexCollection(
+            documents=ds_val.documents, storeContents=True
+        ).submit()
+        val_bm25_retriever = AnseriniRetriever(k=topK, index=val_index, model=basemodel)
+        val_evaluation_bm25 = evaluate(dataset=ds_val, retriever=val_bm25_retriever)
+        val_evaluation_random = evaluate(
+            dataset=ds_val,
+            retriever=val_bm25_retriever.getReranker(RandomScorer(random=random), 500),
+        )
+
+        print(
+            f"BM25 on validation: results are stored in {val_evaluation_bm25.results}"
+        )
+        print(
+            f"Random on validation: results are stored in {val_evaluation_random.results}"
+        )
 
         # Base retrievers for validation
         base_retriever_val = FullRetriever(documents=ds_val.documents)
@@ -353,6 +371,7 @@ def cli(
 
             learner = Learner(
                 trainer=trainer,
+                steps_per_epoch=steps_per_epoch,
                 use_fp16=True,
                 random=random,
                 scorer=scorer,
@@ -380,31 +399,11 @@ def cli(
                     )
                 )
 
-        def faiss_retriever(best: Dense):
-            """BUild a FAISS-based retriever"""
-            tasb_index = IndexBackedFaiss(
-                indexspec=indexspec,
-                device=device,
-                normalize=False,
-                documents=documents,
-                sampler=RandomDocumentSampler(
-                    documents=documents, max_count=faiss_max_traindocs
-                ),
-                encoder=DenseDocumentEncoder(scorer=best),
-                batchsize=1024 if gpu else 128,  # Adaptative batcher won't work on CPU
-                batcher=PowerAdaptativeBatcher(),
-            ).submit()
-            return FaissRetriever(
-                index=tasb_index, topk=10, encoder=DenseQueryEncoder(scorer=tasb)
-            )
-
-        distilbert = tag("distilbert-base-uncased")
-
         ibn_sampler = PairwiseInBatchNegativesSampler(sampler=train_sampler)
         scheduler = CosineWithWarmup(num_warmup_steps=num_warmup_steps)
 
         # Train splade
-        spladev2, flops = spladeV2(1e-1, 1e-1)
+        spladev2, flops = spladeV2(3e-4, 1e-4)
 
         batchwise_trainer_flops = BatchwiseTrainer(
             batch_size=splade_batch_size,
@@ -415,7 +414,11 @@ def cli(
         run(
             spladev2.tag("model", "splade-v2"),
             batchwise_trainer_flops,
-            [ParameterOptimizer(scheduler=scheduler, optimizer=Adam(lr=2e-5))],
+            [
+                ParameterOptimizer(
+                    scheduler=scheduler, optimizer=AdamW(lr=1e-5, weight_decay=1e-2)
+                )
+            ],
             lambda scorer: sparse_retriever(scorer, documents),
             hooks=[
                 setmeta(DistributedSpladeTextEncoderHook(splade=spladev2.encoder), True)
@@ -447,9 +450,10 @@ def cli(
         for key, dsevaluations in evaluations.items():
             print(f"=== {key}")
             for evaluation in dsevaluations:
-                print(
-                    f"Results for {evaluation.__xpm__.tags()}\n{evaluation.results.read_text()}\n"
-                )
+                if evaluation.results.is_file():
+                    print(
+                        f"Results for {evaluation.__xpm__.tags()}\n{evaluation.results.read_text()}\n"
+                    )
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@ from experimaestro import Param
 from experimaestro.xpmutils import DirectoryContext
 from xpmir.documents.samplers import DocumentSampler, HeadDocumentSampler
 from xpmir.index.faiss import FaissIndex, FaissRetriever, IndexBackedFaiss
-from xpmir.test.index.utils import SampleAdhocDocumentStore, SparseRandomTextEncoder
+from xpmir.test.utils import SampleAdhocDocumentStore, SparseRandomTextEncoder
 
 indexspecs = ["Flat", "HNSW"]
 

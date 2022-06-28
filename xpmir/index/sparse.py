@@ -1,10 +1,12 @@
 """Index for sparse models"""
 
 from dataclasses import dataclass
+import multiprocessing
+from experimaestro.core.arguments import Constant
 import torch
 import numpy as np
 from pathlib import Path
-from typing import Callable, Iterator, List, BinaryIO, NamedTuple, Tuple
+from typing import Callable, Dict, Iterator, List, BinaryIO, NamedTuple, Sized, Tuple
 from experimaestro import Annotated, Config, Task, Param, Meta, pathgenerator, tqdm
 from datamaestro_text.data.ir import AdhocDocument, AdhocDocumentStore
 from xpmir.letor.batchers import Batcher
@@ -17,14 +19,18 @@ import pickle
 import mmap
 import heapq
 from numba import typed
+import numba.extending
+import operator
 
 import numba
+from numba.typed import List as NumbaList
 from numba.experimental import jitclass
 
 
 logger = easylog()
 
 
+@jitclass([("docid", numba.int64), ("value", numba.float32)])
 class InternalScoredDocument:
     docid: int
     score: float
@@ -37,7 +43,8 @@ class InternalScoredDocument:
         return self.score < other.score
 
 
-class Posting(NamedTuple):
+@jitclass([("index", numba.int16), ("docid", numba.int64), ("value", numba.float32)])
+class Posting:
     index: int
     """The iterator index"""
 
@@ -47,16 +54,51 @@ class Posting(NamedTuple):
     value: float
     """The value"""
 
+    def __init__(self, index: int, docid: int, value: float):
+        self.index = index
+        self.docid = docid
+        self.value = value
+
     def __lt__(self, other: "Posting"):
         return self.docid < other.docid
 
 
-def docidArray():
-    return array.array("I")
+@numba.extending.overload(operator.lt)
+def operator_lt(a, b):
+    if Posting.class_type == a.class_type and Posting.class_type == b.class_type:
+
+        def gt(a, b):
+            return a.docid < b.docid
+
+        return gt
+    if (
+        InternalScoredDocument.class_type == a.class_type
+        and InternalScoredDocument.class_type == b.class_type
+    ):
+
+        def gt(a, b):
+            return a.score < b.score
+
+        return gt
 
 
-def valuesArray():
-    return array.array("f")
+@numba.extending.overload(operator.gt)
+def operator_gt(a, b):
+    if Posting.class_type == a.class_type and Posting.class_type == b.class_type:
+
+        def gt(a, b):
+            return a.docid > b.docid
+
+        return gt
+    if (
+        InternalScoredDocument.class_type == a.class_type
+        and InternalScoredDocument.class_type == b.class_type
+    ):
+
+        def gt(a, b):
+            return a.score > b.score
+
+        return gt
 
 
 DOCID_TYPE = np.int64
@@ -66,42 +108,87 @@ DOCID_ITEMSIZE = np.dtype(DOCID_TYPE).itemsize
 VALUE_ITEMSIZE = np.dtype(VALUE_TYPE).itemsize
 
 
+def read_postings(
+    index_mm: mmap.mmap, start: int, length: int
+) -> Tuple[np.ndarray, np.ndarray]:
+    index_mm.seek(start)
+    docids = np.frombuffer(index_mm.read(DOCID_ITEMSIZE * length), dtype=DOCID_TYPE)
+    values = np.frombuffer(index_mm.read(VALUE_ITEMSIZE * length), dtype=VALUE_TYPE)
+    return docids, values
+
+
+@jitclass(
+    [
+        ("index", numba.int16),
+        ("docids", numba.int64[:]),
+        ("values", numba.float32[:]),
+        ("ix", numba.int64),
+    ]
+)
+class PostingIterator:
+    def __init__(self, index: int, docids: np.ndarray, values: np.ndarray):
+        self.index = index
+        self.docids = docids
+        self.values = values
+        self.ix = 0
+
+    def has_next(self):
+        return self.ix < len(self.docids)
+
+    def next(self):
+        if not self.has_next():
+            raise Exception("No more element in the interator")
+        ix = self.ix
+        self.ix += 1
+        return Posting(self.index, int(self.docids[ix]), float(self.values[ix]))
+
+
 class SparseRetrieverIndex(Config):
-    index_path: Meta[Path]
+    docids_path: Meta[Path]
+    values_path: Meta[Path]
     info_path: Meta[Path]
     documents: Param[AdhocDocumentStore]
 
-    starts: List[array.array]
-    lengths: List[array.array]
+    starts: array.array
+    lengths: array.array
 
-    def __postinit__(self):
+    def initialize(self, in_memory: bool):
         with self.info_path.open("rb") as fp:
-            self.starts, self.lengths = pickle.load(fp)
+            self.starts = pickle.load(fp)
 
-        self.mm_file = self.index_path.open("r+b")
+        if in_memory:
+            self.values = np.fromfile(self.values_path, dtype=VALUE_TYPE)
+            self.docids = np.fromfile(self.docids_path, dtype=DOCID_TYPE)
+        else:
+            self.values = np.memmap(self.values_path, mode="r", dtype=VALUE_TYPE)
+            self.docids = np.memmap(self.docids_path, mode="r", dtype=DOCID_TYPE)
 
-        self.index_mm = mmap.mmap(self.mm_file.fileno(), 0)
+        numentries = self.starts[-1]
 
-    def iter_postings(self, index: int, term_ix: int) -> Iterator[Posting]:
+        assert len(self.values) == numentries, f"{len(self.values)} != {numentries}"
+        assert len(self.docids) == numentries, f"{len(self.docids)} != {numentries}"
 
-        for start, length in zip(self.starts[term_ix], self.lengths[term_ix]):
-            # Read from mmap
-            self.index_mm.seek(start)
-            docids = np.frombuffer(
-                self.index_mm.read(DOCID_ITEMSIZE * length), dtype=DOCID_TYPE
-            )  #  .read(docids.itemsize * length))
-            values = np.frombuffer(
-                self.index_mm.read(VALUE_ITEMSIZE * length), dtype=VALUE_TYPE
-            )  #  .read(values.itemsize * length))
-            # Output postings
-            for docid, value in zip(docids, values):
-                yield Posting(index, docid, value)
+    def postings(self, index: int, term_ix: int) -> PostingIterator:
+        start, end = self.starts[term_ix : (term_ix + 2)]
+        pi = PostingIterator(index, self.docids[start:end], self.values[start:end])
+        return pi
 
 
+@jitclass(
+    [
+        ("topk", numba.int32),
+        (
+            "dheap",
+            numba.types.ListType(InternalScoredDocument.class_type.instance_type),
+        ),
+    ]
+)
 class TopDocuments:
     def __init__(self, topk: int):
         self.topk = topk
-        self.dheap: List[InternalScoredDocument] = []
+        self.dheap: List[InternalScoredDocument] = typed.List.empty_list(
+            InternalScoredDocument(0, 0.0)
+        )
 
     def add(self, current: InternalScoredDocument):
         if current.docid == -1:
@@ -113,55 +200,124 @@ class TopDocuments:
             heapq.heapreplace(self.dheap, current)
 
 
+@numba.njit(cache=True, parallel=False)
+def retrieve(topk: int, query_values: List[float], iterators: List[PostingIterator]):
+    # Build a heap for iterators / postings
+    pheap = [it.next() for it in iterators]
+    heapq.heapify(pheap)
+
+    # Document heap
+    top = TopDocuments(topk)
+
+    # While we have posting to process
+    current = InternalScoredDocument(-1, 0)
+    while pheap:
+        tip = pheap[0]
+        v = tip.value * query_values[tip.index]
+        if tip.docid == current.docid:
+            current.score += v
+        else:
+            top.add(current)
+            current = InternalScoredDocument(tip.docid, v)
+
+        # Fetch next
+        if iterators[tip.index].has_next():
+            heapq.heapreplace(pheap, iterators[tip.index].next())
+        else:
+            heapq.heappop(pheap)
+
+    # Add last document
+    top.add(current)
+
+    # Sort and returns
+    top.dheap.sort(reverse=True)
+    return top
+
+
+@numba.njit(cache=True, parallel=True)
+def retrieve_all(
+    topk: int,
+    all_query_values: List[List[float]],
+    all_iterators: List[List[PostingIterator]],
+):
+    results = NumbaList()
+
+    for ix in numba.prange(len(all_query_values)):
+        query_values = all_query_values[ix]
+        iterators = all_iterators[ix]
+        results.append((ix, retrieve(topk, query_values, iterators)))
+
+    results.sort(key=lambda t: t[0])
+    return [r[1] for r in results]
+
+
 class SparseRetriever(Retriever):
     index: Param[SparseRetrieverIndex]
     encoder: Param[TextEncoder]
     topk: Param[int]
+
+    batcher: Meta[Batcher] = Batcher()
+    """The way to prepare batches of queries (when using retrieve_all)"""
+
+    batchsize: Meta[int]
+    """Size of batches (when using retrieve_all)"""
+
+    in_memory: Meta[bool] = False
+    """Whether the index should be fully loaded in memory (otherwise, uses virtual memory)"""
+
+    def initialize(self):
+        # TODO: initialize without parameters should be transparent
+        super().initialize()
+        self.encoder.initialize()
+        self.index.initialize(self.in_memory)
+
+    def retrieve_all(self, queries: Dict[str, str]) -> Dict[str, List[ScoredDocument]]:
+        def reducer(
+            batch: List[Tuple[str, str]], results: Dict[str, List[ScoredDocument]]
+        ):
+            encoded = self.encoder([text for _, text in batch]).cpu()
+            all_query_values: List[List[float]] = NumbaList()
+            all_iterators: List[List[PostingIterator]] = NumbaList()
+            for vector in encoded:
+                iterators, query_values = self.build_iterators(vector)
+                all_query_values.append(query_values)
+                all_iterators.append(iterators)
+
+            tops = retrieve_all(self.topk, all_query_values, all_iterators)
+            for (key, _), top in zip(batch, tops):
+                results[key] = self.toptolist(top)
+            return results
+
+        batcher = self.batcher.initialize(self.batchsize)
+        with tqdm(list(queries.items()), desc="Retrieve documents") as it:
+            for batch in batchiter(self.batchsize, it):
+                results = batcher.reduce(batch, reducer, {})
+
+        return results
 
     def retrieve(self, query: str) -> List[ScoredDocument]:
         """Search with document-at-a-time (DAAT) strategy"""
 
         # Build up iterators
         vector = self.encoder([query])[0].cpu()
-        query_values = []
-        iterators: List[Iterator[Posting]] = []
+        iterators, query_values = self.build_iterators(vector)
+
+        top = retrieve(self.topk, query_values, iterators)
+        return self.toptolist(top)
+
+    def build_iterators(self, vector: torch.Tensor):
+        query_values: List[float] = NumbaList()
+        iterators: List[PostingIterator] = NumbaList()
 
         iterator_index = 0
         for ix in torch.nonzero(vector):
-            iterators.append(self.index.iter_postings(iterator_index, int(ix)))
-            query_values.append(vector[ix])
+            iterators.append(self.index.postings(iterator_index, int(ix)))
+            query_values.append(float(vector[ix]))
             iterator_index += 1
 
-        # Build a heap for iterators / postings
-        pheap = [next(iter) for iter in iterators]
-        heapq.heapify(pheap)
+        return iterators, query_values
 
-        # Document heap
-        top = TopDocuments(self.topk)
-
-        # While we have posting to process
-        current = InternalScoredDocument(-1, 0)
-        while pheap:
-            tip = pheap[0]
-            v = tip.value * query_values[tip.index]
-            if tip.docid == current.docid:
-                current.score += v
-            else:
-                top.add(current)
-                current = InternalScoredDocument(tip.docid, v)
-
-            # Fetch next
-            try:
-                new_one = next(iterators[tip.index])
-                heapq.heapreplace(pheap, new_one)
-            except StopIteration:
-                # Remove this iteator
-                heapq.heappop(pheap)
-
-        # Add last document
-        top.add(current)
-
-        top.dheap.sort(reverse=True)
+    def toptolist(self, top: TopDocuments):
         return [
             ScoredDocument(
                 self.index.documents.docid_internal2external(d.docid), d.score, None
@@ -216,14 +372,19 @@ class SparseRetrieverIndexBuilder(Task):
     max_postings: Meta[int] = 16384
     """Maximum number of postings (per term) before flushing to disk"""
 
-    index_path: Annotated[Path, pathgenerator("index.bin")]
+    values_path: Annotated[Path, pathgenerator("values.bin")]
+    docids_path: Annotated[Path, pathgenerator("docids.bin")]
     info_path: Annotated[Path, pathgenerator("info.bin")]
+
+    version: Constant[int] = 2
+    """Version 2: rewrite the index file so terms have contiguous blocks"""
 
     def config(self):
         """Returns a sparse retriever index that can be used by a SparseRetriever to search efficiently
         for documents"""
         return SparseRetrieverIndex(
-            index_path=self.index_path,
+            values_path=self.values_path,
+            docids_path=self.docids_path,
             info_path=self.info_path,
             documents=self.documents,
         )
@@ -246,23 +407,62 @@ class SparseRetrieverIndexBuilder(Task):
 
         # Prepare the terms informations
         self.postings = Postings(self.encoder.dimension, self.max_postings)
-        self.posting_starts = [array.array("I") for _ in range(self.encoder.dimension)]
+        self.posting_starts = [array.array("L") for _ in range(self.encoder.dimension)]
         self.posting_lengths = [array.array("I") for _ in range(self.encoder.dimension)]
 
         logger.info(f"Starting to index {self.documents.documentcount} documents")
-        with self.index_path.open("wb") as index_out:
-            with torch.no_grad():
-                for batch in batchiter(self.batch_size, doc_iter):
-                    batcher.process(batch, self.encode_documents, index_out)
 
-            # Build the final index
-            for term_ix in np.nonzero(self.postings.npostings)[0]:
-                self.flush(term_ix, index_out)
+        path = self.values_path.parent / "temporary.bin"
+        starts = array.array("L")
+        try:
+            with path.open("wb") as index_out:
+                with torch.no_grad():
+                    for batch in batchiter(self.batch_size, doc_iter):
+                        batcher.process(batch, self.encode_documents, index_out)
+
+                # Build the final index
+                for term_ix in np.nonzero(self.postings.npostings)[0]:
+                    self.flush(term_ix, index_out)
+
+            logger.info("Rewriting the index file")
+
+            with self.values_path.open("wb") as values_out, self.docids_path.open(
+                "wb"
+            ) as docids_out, path.open("r+b") as mm_file:
+                index_mm = mmap.mmap(mm_file.fileno(), 0)
+
+                start = 0
+                starts.append(0)
+                for ix, (_starts, _lengths) in enumerate(
+                    zip(self.posting_starts, self.posting_lengths)
+                ):
+                    # Set start of term
+                    length = sum(_lengths)
+                    start += length
+                    starts.append(start)
+
+                    # Read and write
+                    docids = np.ndarray((length,), dtype=DOCID_TYPE)
+                    values = np.ndarray((length,), dtype=VALUE_TYPE)
+                    offset = 0
+                    for term_start, term_length in zip(_starts, _lengths):
+                        _docids, _values = read_postings(
+                            index_mm, term_start, term_length
+                        )
+                        docids[offset : offset + term_length] = _docids
+                        values[offset : offset + term_length] = _values
+                        offset += term_length
+
+                    # Output to file
+                    docids.tofile(docids_out)
+                    values.tofile(values_out)
+        finally:
+            path.unlink()
 
         logger.info("Dumping the index to %s", self.info_path)
         with self.info_path.open("wb") as fp:
             pickle.dump(
-                (self.posting_starts, self.posting_lengths),
+                starts,
                 fp,
             )
 
@@ -325,7 +525,7 @@ class Buffer:
         self.values.append(values)
 
 
-@numba.njit(parallel=True)
+@numba.njit(cache=True, parallel=True)
 def encode_documents_numba(vectors: np.ndarray, docids: np.array, postings: Postings):
     #  -> List[Tuple[int, 'np.ndarray[int]', 'np.ndarray[float]']]:
     buffer = Buffer()

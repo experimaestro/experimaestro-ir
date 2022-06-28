@@ -225,6 +225,8 @@ class BatchwiseRecords(BaseRecords):
 class ProductRecords(BatchwiseRecords):
     """Computes the score for all the documents and queries
 
+    The relevance matrix
+
     Attributes:
 
         _queries: The list of queries
@@ -233,7 +235,14 @@ class ProductRecords(BatchwiseRecords):
     """
 
     _queries: List[Query]
+    """The list of queries to score"""
+
     _documents: List[Document]
+    """The list of documents to score"""
+
+    relevances: torch.Tensor
+    """A 2D tensor (query x document) indicating the relevance of the each query/document pair"""
+
     is_product = True
 
     def __init__(self):
@@ -252,7 +261,7 @@ class ProductRecords(BatchwiseRecords):
         ), f"The number of queries {len(self._queries)} does not match the number of rows {relevances.shape[0]}"
         assert relevances.shape[1] == len(
             self._documents
-        ), f"The number of documents {len(self._documents)} does not match the number of rows {relevances.shape[1]}"
+        ), f"The number of documents {len(self._documents)} does not match the number of columns {relevances.shape[1]}"
         self.relevances = relevances
 
     def __len__(self):

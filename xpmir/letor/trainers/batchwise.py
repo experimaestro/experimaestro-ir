@@ -104,7 +104,6 @@ class BatchwiseTrainer(LossTrainer):
             sys.exit(1)
 
         # Reshape to get the pairs and compute the loss
-
         batch_scores = rel_scores.reshape(*batch.relevances.shape)
         self.lossfn.process(
             batch_scores, batch.relevances.to(batch_scores.device), self.context

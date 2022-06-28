@@ -1,4 +1,4 @@
-from typing import Iterable, Iterator, List, Optional, Set
+from typing import Iterable, Iterator, List, Optional, Set, Union
 from pathlib import Path
 from experimaestro import (
     Param,
@@ -184,13 +184,17 @@ class AdhocDocumentSubset(AdhocDocuments):
     def __len__(self):
         return len(self.docids)
 
-    def __getitem__(self, range):
-        docids = self.docids[range]
+    @property
+    def documentcount(self):
+        return len(self.docids)
+
+    def __getitem__(self, slice: Union[int, slice]):
+        docids = self.docids[slice]
         if isinstance(docids, List):
             return AdhocDocumentSubsetSlice(
-                self, docids, range(len(self.docids))[range]
+                self, docids, range(len(self.docids))[slice]
             )
-        return AdhocDocument(docids, self.base.document_text(docids), range)
+        return AdhocDocument(docids, self.base.document_text(docids), slice)
 
     @cached_property
     def docids(self) -> List[str]:

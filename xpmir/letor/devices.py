@@ -89,7 +89,7 @@ class CudaDevice(Device):
         # Seehttps://pytorch.org/tutorials/intermediate/ddp_tutorial.html
         n_gpus = torch.cuda.device_count()
         if n_gpus == 1 or not self.distributed:
-            callback(DeviceInformation(self.device, True))
+            callback(DeviceInformation(self.value, True))
         else:
             with tempfile.NamedTemporaryFile() as temporary:
                 logger.info("Setting up distributed CUDA computing (%d GPUs)", n_gpus)
@@ -98,7 +98,7 @@ class CudaDevice(Device):
                     args=(
                         temporary.name,
                         n_gpus,
-                        self.device,
+                        self.value,
                         callback,
                         TaskEnv.instance(),
                     ),
