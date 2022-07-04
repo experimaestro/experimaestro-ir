@@ -1,7 +1,6 @@
 """Index for sparse models"""
 
 from dataclasses import dataclass
-import multiprocessing
 from experimaestro.core.arguments import Constant
 import torch
 import numpy as np
@@ -29,8 +28,19 @@ from numba.experimental import jitclass
 
 logger = easylog()
 
+# Defines global types
+DOCID_TYPE = np.uint32
+DOCID_ITEMSIZE = np.dtype(DOCID_TYPE).itemsize
+DOCID_TYPE_NUMBA = numba.uint32
+DOCIDS_TYPE_NUMBA = DOCID_TYPE_NUMBA[:]
 
-@jitclass([("docid", numba.int64), ("value", numba.float32)])
+VALUE_TYPE = np.float32
+VALUE_ITEMSIZE = np.dtype(VALUE_TYPE).itemsize
+VALUE_TYPE_NUMBA = numba.float32
+VALUES_TYPE_NUMBA = VALUE_TYPE_NUMBA[:]
+
+
+@jitclass([("docid", DOCID_TYPE_NUMBA), ("value", VALUE_TYPE_NUMBA)])
 class InternalScoredDocument:
     docid: int
     score: float
@@ -43,7 +53,9 @@ class InternalScoredDocument:
         return self.score < other.score
 
 
-@jitclass([("index", numba.int16), ("docid", numba.int64), ("value", numba.float32)])
+@jitclass(
+    [("index", numba.int16), ("docid", DOCID_TYPE_NUMBA), ("value", VALUE_TYPE_NUMBA)]
+)
 class Posting:
     index: int
     """The iterator index"""
@@ -101,13 +113,6 @@ def operator_gt(a, b):
         return gt
 
 
-DOCID_TYPE = np.int64
-VALUE_TYPE = np.float32
-
-DOCID_ITEMSIZE = np.dtype(DOCID_TYPE).itemsize
-VALUE_ITEMSIZE = np.dtype(VALUE_TYPE).itemsize
-
-
 def read_postings(
     index_mm: mmap.mmap, start: int, length: int
 ) -> Tuple[np.ndarray, np.ndarray]:
@@ -119,9 +124,12 @@ def read_postings(
 
 @jitclass(
     [
+        # Iterator index
         ("index", numba.int16),
-        ("docids", numba.int64[:]),
-        ("values", numba.float32[:]),
+        # document IDs and values
+        ("docids", DOCIDS_TYPE_NUMBA),
+        ("values", VALUES_TYPE_NUMBA),
+        # Current iterator position
         ("ix", numba.int64),
     ]
 )
@@ -143,35 +151,82 @@ class PostingIterator:
         return Posting(self.index, int(self.docids[ix]), float(self.values[ix]))
 
 
-class SparseRetrieverIndex(Config):
-    docids_path: Meta[Path]
-    values_path: Meta[Path]
-    info_path: Meta[Path]
-    documents: Param[AdhocDocumentStore]
+# --- TAAT retrieval
 
-    starts: array.array
-    lengths: array.array
 
-    def initialize(self, in_memory: bool):
-        with self.info_path.open("rb") as fp:
-            self.starts = pickle.load(fp)
+@jitclass(
+    [
+        # Iterator index
+        ("index", numba.int16),
+        # document IDs and values
+        ("docids", DOCIDS_TYPE_NUMBA),
+        ("values", VALUES_TYPE_NUMBA),
+        # Current iterator position
+        ("ix", numba.int64),
+        # Current maximum
+        ("current_max_value", numba.float64),
+        # Min value
+        ("min_value", numba.float64),
+    ]
+)
+class ImpactPostingIterator:
+    def __init__(self, index: int, docids: np.ndarray, values: np.ndarray):
+        self.index = index
+        self.docids = docids
+        self.values = values
+        self.current_max_value = values.max()
+        self.min_value = values.min()
+        self.ix = 0
 
-        if in_memory:
-            self.values = np.fromfile(self.values_path, dtype=VALUE_TYPE)
-            self.docids = np.fromfile(self.docids_path, dtype=DOCID_TYPE)
+    def has_next(self):
+        return self.ix < len(self.docids)
+
+    def next(self):
+        if not self.has_next():
+            raise Exception("No more element in the interator")
+        ix = self.ix
+        self.ix += 1
+        return Posting(self.index, int(self.docids[ix]), float(self.values[ix]))
+
+
+@numba.njit(cache=True, parallel=False)
+def retrieve_ordered(
+    topk: int, query_values: List[float], iterators: List[ImpactPostingIterator]
+):
+    """Retrieve given that posting iterators are sorted by descending impact"""
+    # Build a heap for iterators / postings
+    pheap = [it.next() for it in iterators]
+    heapq.heapify(pheap)
+
+    # Document heap
+    top = TopDocuments(topk)
+
+    # While we have posting to process
+    current = InternalScoredDocument(-1, 0)
+    while pheap:
+        tip = pheap[0]
+        v = tip.value * query_values[tip.index]
+        if tip.docid == current.docid:
+            current.score += v
         else:
-            self.values = np.memmap(self.values_path, mode="r", dtype=VALUE_TYPE)
-            self.docids = np.memmap(self.docids_path, mode="r", dtype=DOCID_TYPE)
+            top.add(current)
+            current = InternalScoredDocument(tip.docid, v)
 
-        numentries = self.starts[-1]
+        # Fetch next
+        if iterators[tip.index].has_next():
+            heapq.heapreplace(pheap, iterators[tip.index].next())
+        else:
+            heapq.heappop(pheap)
 
-        assert len(self.values) == numentries, f"{len(self.values)} != {numentries}"
-        assert len(self.docids) == numentries, f"{len(self.docids)} != {numentries}"
+    # Add last document
+    top.add(current)
 
-    def postings(self, index: int, term_ix: int) -> PostingIterator:
-        start, end = self.starts[term_ix : (term_ix + 2)]
-        pi = PostingIterator(index, self.docids[start:end], self.values[start:end])
-        return pi
+    # Sort and returns
+    top.dheap.sort(reverse=True)
+    return top
+
+
+# --- DAAT retrieval
 
 
 @jitclass(
@@ -184,6 +239,8 @@ class SparseRetrieverIndex(Config):
     ]
 )
 class TopDocuments:
+    """Holder for top-K documents"""
+
     def __init__(self, topk: int):
         self.topk = topk
         self.dheap: List[InternalScoredDocument] = typed.List.empty_list(
@@ -251,6 +308,41 @@ def retrieve_all(
     return [r[1] for r in results]
 
 
+# --- Index and retriever
+
+
+class SparseRetrieverIndex(Config):
+    docids_path: Meta[Path]
+    values_path: Meta[Path]
+    info_path: Meta[Path]
+    documents: Param[AdhocDocumentStore]
+    ordered: Param[bool]
+
+    starts: array.array
+    lengths: array.array
+
+    def initialize(self, in_memory: bool):
+        with self.info_path.open("rb") as fp:
+            self.starts = pickle.load(fp)
+
+        if in_memory:
+            self.values = np.fromfile(self.values_path, dtype=VALUE_TYPE)
+            self.docids = np.fromfile(self.docids_path, dtype=DOCID_TYPE)
+        else:
+            self.values = np.memmap(self.values_path, mode="r", dtype=VALUE_TYPE)
+            self.docids = np.memmap(self.docids_path, mode="r", dtype=DOCID_TYPE)
+
+        numentries = self.starts[-1]
+
+        assert len(self.values) == numentries, f"{len(self.values)} != {numentries}"
+        assert len(self.docids) == numentries, f"{len(self.docids)} != {numentries}"
+
+    def postings(self, index: int, term_ix: int) -> PostingIterator:
+        start, end = self.starts[term_ix : (term_ix + 2)]
+        pi = PostingIterator(index, self.docids[start:end], self.values[start:end])
+        return pi
+
+
 class SparseRetriever(Retriever):
     index: Param[SparseRetrieverIndex]
     encoder: Param[TextEncoder]
@@ -289,9 +381,10 @@ class SparseRetriever(Retriever):
             return results
 
         batcher = self.batcher.initialize(self.batchsize)
+        results = {}
         with tqdm(list(queries.items()), desc="Retrieve documents") as it:
             for batch in batchiter(self.batchsize, it):
-                results = batcher.reduce(batch, reducer, {})
+                results = batcher.reduce(batch, reducer, results)
 
         return results
 
@@ -329,8 +422,8 @@ class SparseRetriever(Retriever):
 @jitclass(
     [
         ("max_postings", numba.int64),
-        ("values", numba.float32[:, :]),
-        ("docids", numba.int64[:, :]),
+        ("values", VALUE_TYPE_NUMBA[:, :]),
+        ("docids", DOCID_TYPE_NUMBA[:, :]),
         ("npostings", numba.int64[:]),
     ]
 )
@@ -367,6 +460,9 @@ class SparseRetrieverIndexBuilder(Task):
     batch_size: Param[int]
     """Size of batches"""
 
+    ordered_index: Param[bool]
+    """Ordered index: if not ordered, use DAAT strategy (WAND), otherwise, use fast top-k strategies"""
+
     device: Meta[Device] = DEFAULT_DEVICE
 
     max_postings: Meta[int] = 16384
@@ -376,8 +472,8 @@ class SparseRetrieverIndexBuilder(Task):
     docids_path: Annotated[Path, pathgenerator("docids.bin")]
     info_path: Annotated[Path, pathgenerator("info.bin")]
 
-    version: Constant[int] = 2
-    """Version 2: rewrite the index file so terms have contiguous blocks"""
+    version: Constant[int] = 3
+    """Version 3 of the index"""
 
     def config(self):
         """Returns a sparse retriever index that can be used by a SparseRetriever to search efficiently
@@ -387,6 +483,7 @@ class SparseRetrieverIndexBuilder(Task):
             docids_path=self.docids_path,
             info_path=self.info_path,
             documents=self.documents,
+            ordered=self.ordered_index,
         )
 
     def execute(self):
@@ -454,6 +551,12 @@ class SparseRetrieverIndexBuilder(Task):
                         offset += term_length
 
                     # Output to file
+                    if self.ordered_index:
+                        # Sort by decreasing value
+                        sort_ix = np.argsort(values)[::-1]
+                        docids = docids[sort_ix]
+                        values = values[sort_ix]
+
                     docids.tofile(docids_out)
                     values.tofile(values_out)
         finally:
@@ -502,32 +605,27 @@ class SparseRetrieverIndexBuilder(Task):
         self.postings.npostings[term_ix] = 0
 
 
-float_ndarray = numba.float32[:]
-int64_ndarray = numba.int64[:]
-
-
 @jitclass(
     [
         ("term_ix", numba.types.ListType(numba.uint64)),
-        ("values", numba.types.ListType(float_ndarray)),
-        ("docids", numba.types.ListType(int64_ndarray)),
+        ("docids", numba.types.ListType(DOCIDS_TYPE_NUMBA)),
+        ("values", numba.types.ListType(VALUES_TYPE_NUMBA)),
     ]
 )
 class Buffer:
     def __init__(self):
         self.term_ix = typed.List.empty_list(numba.uint64)
-        self.docids = typed.List.empty_list(int64_ndarray)
-        self.values = typed.List.empty_list(float_ndarray)
+        self.docids = typed.List.empty_list(DOCIDS_TYPE_NUMBA)
+        self.values = typed.List.empty_list(VALUES_TYPE_NUMBA)
 
-    def add(self, term_ix, docids, values):
+    def add(self, term_ix, docids: np.ndarray, values: np.ndarray):
         self.term_ix.append(term_ix)
         self.docids.append(docids)
         self.values.append(values)
 
 
 @numba.njit(cache=True, parallel=True)
-def encode_documents_numba(vectors: np.ndarray, docids: np.array, postings: Postings):
-    #  -> List[Tuple[int, 'np.ndarray[int]', 'np.ndarray[float]']]:
+def encode_documents_numba(vectors: np.ndarray, docids: np.ndarray, postings: Postings):
     buffer = Buffer()
 
     for term_ix in numba.prange(vectors.shape[1]):
@@ -539,7 +637,6 @@ def encode_documents_numba(vectors: np.ndarray, docids: np.array, postings: Post
         ) % postings.max_postings
 
         for docix in nonzero:
-            # docix = docix.item()
             postings.docids[term_ix, pos] = docids[docix]
             postings.values[term_ix, pos] = v[docix]
             pos += 1

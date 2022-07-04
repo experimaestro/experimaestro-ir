@@ -52,18 +52,9 @@ def evaluate(token=None, launcher=None, **kwargs):
 
 
 # --- Experiment
+
+
 @forwardoption.max_epochs(Learner, default=None)
-@click.option(
-    "--scheduler", type=click.Choice(["slurm"]), help="Use a scheduler (slurm)"
-)
-@click.option("--slurm-gpu-account", help="Slurm account for GPU", type=str)
-@click.option(
-    "--slurm-gpu-time", help="Slurm time for GPU", type=str, default="5-00:00:00"
-)
-@click.option("--slurm-partition", help="Slurm partition", type=str)
-@click.option("--slurm-gpu-qos", help="Slurm QOS for GPU", type=str)
-@click.option("--slurm-exclude", help="Excluded hosts", type=str)
-@click.option("--gpu", is_flag=True, help="Use GPU")
 @click.option("--debug", is_flag=True, help="Print debug information")
 @click.option(
     "--env", help="Define one environment variable", type=(str, str), multiple=True
@@ -81,17 +72,11 @@ def cli(
     debug: bool,
     small: bool,
     scheduler: Optional[str],
-    gpu: bool,
     port: int,
     workdir: str,
     max_epochs: int,
     batch_size: Optional[int],
     fqdn: bool,
-    slurm_gpu_account: Optional[str],
-    slurm_gpu_time: str,
-    slurm_partition: str,
-    slurm_gpu_qos: Optional[str],
-    slurm_exclude: Optional[str],
 ):
     """Runs an experiment"""
     logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
@@ -168,65 +153,22 @@ def cli(
             f"Number of epochs ({max_epochs}) is not a multiple of validation interval ({validation_interval})"
         )
 
-    # Sets the working directory and the name of the xp
-    if scheduler == "slurm":
-        # TODO: this code repeats in all experiments and should be a configuration file
-        import socket
-
-        host = socket.getfqdn() if fqdn else socket.gethostname()
-        launcher = SlurmLauncher(
-            options=SlurmOptions(
-                partition=slurm_partition,
-                account=slurm_gpu_account,
-                qos=slurm_gpu_qos,
-                time=slurm_gpu_time,
-                exclude=slurm_exclude,
-            )
-        )
-        # slurm: 1 GPU, 5 days time limit
-        gpulauncher = (
-            launcher.config(
-                gpus=1,
-            )
-            if gpu
-            else launcher
-        )
-        gpulauncher2x = (
-            launcher.config(
-                gpus=1,
-            )
-            if gpu
-            else launcher
-        )
-        gpulauncher4x = launcher.config(gpus=1, mem_per_gpu=48) if gpu else launcher
-        # GPU launcher with a lot of memory
-        gpulauncher_mem64 = gpulauncher.config(gpus=1, mem="64G") if gpu else launcher
-    else:
-        host = None
-        launcher = None
-        gpulauncher = None
-        gpulauncher_mem64 = None
-        gpulauncher2x = None
-        gpulauncher4x = None
-
     name = "splade-small" if small else "splade"
+
+    # Launchers
+    launcher = find_launcher(LauncherSpec(cpu_memory="16G"))
+    gpulauncher_mem48 = find_launcher(LauncherSpec(cuda_memory="48G"))
+    gpulauncher_mem64 = find_launcher(LauncherSpec(cpu_memory="64G"))
 
     # Starts the experiment
     with experiment(workdir, name, host=host, port=port, launcher=launcher) as xp:
-        if scheduler is None:
-            token = xp.token("main", 1)
-        else:
-
-            def token(value, task):
-                return task
-
         # Set environment variables
         xp.setenv("JAVA_HOME", os.environ["JAVA_HOME"])
         for key, value in env:
             xp.setenv(key, value)
 
         # Misc
-        device = CudaDevice() if gpu else Device()
+        device = CudaDevice()
         random = Random(seed=0)
 
         # Get a sparse retriever from a dual scorer

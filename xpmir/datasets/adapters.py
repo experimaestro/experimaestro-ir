@@ -103,7 +103,7 @@ class RandomFold(Task):
         seed: int,
         sizes: List[float],
         dataset: Param[Adhoc],
-        exclude: Param[AdhocTopics] = None,
+        exclude: Param[Optional[AdhocTopics]] = None,
         submit=True,
     ):
         """Creates folds
