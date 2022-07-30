@@ -156,9 +156,9 @@ def cli(
     name = "splade-small" if small else "splade"
 
     # Launchers
-    launcher = find_launcher(LauncherSpec(cpu_memory="16G"))
-    gpulauncher_mem48 = find_launcher(LauncherSpec(cuda_memory="48G"))
-    gpulauncher_mem64 = find_launcher(LauncherSpec(cpu_memory="64G"))
+    launcher = SlurmLauncher() if slurm else None
+    gpulauncher_mem48 = launcher.find_launcher(LauncherSpec(cuda_memory="48G"))
+    gpulauncher_mem64 = launcher.find_launcher(LauncherSpec(cpu_memory="64G"))
 
     # Starts the experiment
     with experiment(workdir, name, host=host, port=port, launcher=launcher) as xp:
