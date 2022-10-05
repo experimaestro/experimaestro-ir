@@ -45,7 +45,7 @@ def cli(port, workdir, dataset, debug):
         ).submit()
 
         # Search with BM25
-        bm25_retriever = AnseriniRetriever(k=1500, index=index, model=BM25()).tag(
+        bm25_retriever = AnseriniRetriever(k=1500, index=index, model=bm25).tag(
             "model", "bm25"
         )
 

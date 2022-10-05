@@ -1,6 +1,6 @@
 # Experimaestro
 
-experimaestro>=0.10.4
+experimaestro>=0.11.1
 datamaestro>=0.8.7
 datamaestro_text>=2022.6.16
 

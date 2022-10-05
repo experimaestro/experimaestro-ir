@@ -223,20 +223,22 @@ class Retriever(Config):
 
 
 class TwoStageRetriever(Retriever):
-    """Use on retriever to select the top-K documents which are the re-ranked given a scorer
-
-    Attributes:
-
-        retriever: The base retriever
-        scorer: The scorer used to re-rank the documents
-        batchsize: The batch size for the re-ranker
-    """
+    """Use on retriever to select the top-K documents which are the re-ranked given a scorer"""
 
     retriever: Param[Retriever]
+    """The base retriever"""
+
     scorer: Param[Scorer]
-    batchsize: Param[int] = 0
+    """The scorer used to re-rank the documents"""
+
+    batchsize: Meta[int] = 0
+    """The batch size for the re-ranker"""
+
     batcher: Meta[Batcher] = Batcher()
+    """How to provide batches of documents"""
+
     device: Meta[Optional[Device]] = None
+    """Device on which the model is run"""
 
     def initialize(self):
         self.retriever.initialize()

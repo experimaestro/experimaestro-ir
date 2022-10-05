@@ -50,7 +50,7 @@ setup(
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
     install_requires=install_requires,
-    extras_require={"neural": ["torch>=1.7", "tensorboard"]},
+    extras_require={"neural": ["torch>=1.10", "tensorboard"]},
     setup_requires=["setuptools_scm", "setuptools >=30.3.0"],
     entry_points={
         "datamaestro.repositories": {

@@ -2,6 +2,8 @@ import inspect
 import logging
 import os
 from pathlib import Path
+import re
+from subprocess import DEVNULL, PIPE, check_output, run
 import tempfile
 from threading import Thread
 from typing import BinaryIO, Callable, Iterator, List, TextIO, TypeVar, Union, Iterable
@@ -147,3 +149,27 @@ class EasyLogger:
             self.__class__.__LOGGER__ = logger
 
         return logger
+
+
+def find_java_home() -> str:
+    """Find JAVA HOME"""
+
+    # (1) Use environment variable
+    if java_home := os.environ.get("JAVA_HOME", None):
+        return java_home
+
+    # (2) Use java -XshowSettings:properties
+    try:
+        p = run(
+            ["java", "-XshowSettings:properties", "-version"],
+            check=True,
+            capture_output=True,
+        )
+        if m := re.search(rb".*\n\s+java.home = (.*)\n.*", p.stderr, re.MULTILINE):
+            return m[1].decode()
+
+    except Exception:
+        # silently ignore
+        pass
+
+    raise FileNotFoundError("Java home not found")

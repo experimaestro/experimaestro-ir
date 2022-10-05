@@ -1,6 +1,5 @@
 """Index for sparse models"""
 
-from dataclasses import dataclass
 from experimaestro.core.arguments import Constant
 import torch
 import numpy as np

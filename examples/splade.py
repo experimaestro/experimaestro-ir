@@ -6,6 +6,8 @@ from typing import Dict, List, Optional
 
 from datamaestro import prepare_dataset
 from datamaestro_text.transforms.ir import ShuffledTrainingTripletsLines
+from experimaestro.experimaestro.nodefinder import cpu, cuda_gpu, find_launcher
+
 from experimaestro import experiment, tag, tagspath, copyconfig, setmeta
 from experimaestro.click import click, forwardoption
 from experimaestro.launchers.slurm import SlurmLauncher, SlurmOptions
@@ -71,7 +73,6 @@ def cli(
     env: Dict[str, str],
     debug: bool,
     small: bool,
-    scheduler: Optional[str],
     port: int,
     workdir: str,
     max_epochs: int,
@@ -156,9 +157,14 @@ def cli(
     name = "splade-small" if small else "splade"
 
     # Launchers
-    launcher = SlurmLauncher() if slurm else None
-    gpulauncher_mem48 = launcher.find_launcher(LauncherSpec(cuda_memory="48G"))
-    gpulauncher_mem64 = launcher.find_launcher(LauncherSpec(cpu_memory="64G"))
+    launcher = find_launcher(LauncherSpec(cpu_memory="2G"))
+    gpulauncher_mem48 = find_launcher(
+        LauncherSpec(cuda_memory=["48G"]), LauncherSpec(cuda_memory=["24G", "24G"])
+    )
+
+    gpu_launcher_mem24 = find_launcher(cuda_gpu("24G"))
+    gpulauncher_mem48 = find_launcher((cuda_gpu(mem="24G") * 2 | cuda_gpu(mem="48G")))
+    launcher_mem64 = find_launcher(cpu(mem="64G"))
 
     # Starts the experiment
     with experiment(workdir, name, host=host, port=port, launcher=launcher) as xp:
@@ -177,13 +183,15 @@ def cli(
         documents = prepare_dataset("irds.msmarco-passage.documents")
 
         def sparse_retriever(scorer, documents):
+            """Builds a sparse retriever"""
             index = SparseRetrieverIndexBuilder(
                 batch_size=512,
                 batcher=PowerAdaptativeBatcher(),
                 encoder=DenseDocumentEncoder(scorer=scorer),
                 device=device,
                 documents=documents,
-            ).submit(launcher=gpulauncher)
+            ).submit(launcher=gpu_launcher_mem24)
+
             return SparseRetriever(
                 index=index,
                 topk=test_batch_size,
@@ -216,14 +224,14 @@ def cli(
                 documents=documents, max_count=faiss_max_traindocs
             ),  # Just use a fraction of the dataset for training
             encoder=DenseDocumentEncoder(scorer=tasb),
-            batchsize=2048 if gpu else 128,  # Adaptative batcher won't work on CPU
+            batchsize=2048,
             batcher=PowerAdaptativeBatcher(),
             hooks=[
                 setmeta(
                     DistributedModelHook(transformer=tasb.query_encoder.encoder), True
                 )
             ],
-        ).submit(launcher=gpulauncher)
+        ).submit(launcher=gpu_launcher)
         tasb_retriever = FaissRetriever(
             index=tasb_index, topk=retTopK, encoder=DenseQueryEncoder(scorer=tasb)
         )
@@ -255,7 +263,7 @@ def cli(
                 tasb_retriever,
                 AnseriniRetriever(k=retTopK, index=test_index, model=basemodel),
             ],
-        ).submit(launcher=gpulauncher_mem64)
+        ).submit(launcher=launcher_mem64)
 
         # Computes the BM25 performance on the validation dataset
         val_index = IndexCollection(
@@ -365,7 +373,7 @@ def cli(
             hooks=[
                 setmeta(DistributedSpladeTextEncoderHook(splade=spladev2.encoder), True)
             ],
-            launcher=gpulauncher4x,
+            launcher=gpulauncher_mem48,
         )
 
         # Train Dense
