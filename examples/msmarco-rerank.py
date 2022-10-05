@@ -224,7 +224,9 @@ def cli(debug, small, gpu, tags, port, workdir, max_epochs, batch_size):
                     Evaluate(
                         measures=measures,
                         dataset=test,
-                        retriever=base_retriever.getReranker(best, batch_size),
+                        retriever=base_retriever.getReranker(
+                            best, batch_size, device=device
+                        ),
                     ).submit(launcher=gpu_launcher)
                 )
 
