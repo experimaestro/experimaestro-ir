@@ -1,8 +1,6 @@
-from dataclasses import dataclass
 import logging
 import torch
 import json
-import math
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, NamedTuple
 from datamaestro_text.data.ir import Adhoc
@@ -15,6 +13,7 @@ from experimaestro import (
     Annotated,
     tqdm,
     Meta,
+    documentation,
 )
 import numpy as np
 from experimaestro.notifications import tqdm
@@ -47,8 +46,13 @@ class LearnerListener(Config):
         self.learner = learner
         self.context = context
 
-    def __call__(self, state) -> bool:
-        """Process and returns whether the training process should stop"""
+    @documentation
+    def __call__(self, state: TrainerContext) -> bool:
+        """Process and returns whether the training process should stop
+
+        Returns:
+            bool: True if the learning process should stop
+        """
         return False
 
     def update_metrics(self, metrics: Dict[str, float]):

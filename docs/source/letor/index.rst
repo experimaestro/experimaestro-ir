@@ -12,6 +12,7 @@ Learning to rank
 Learning to rank is handled by various classes :
 
 - the learner is the main class that runs the full process
+- learner listeners are used for validation
 - trainers that iterate over batches of data
 
 The main class is the Learner task.
@@ -19,6 +20,14 @@ The main class is the Learner task.
 .. autoxpmconfig:: xpmir.letor.learner.Learner
 .. autonamedtuple:: xpmir.letor.learner.LearnerOutput
 
+
+Listeners
+=========
+
+Listeners can be used to monitor the learning process
+
+.. autoxpmconfig:: xpmir.letor.learner.LearnerListener
+.. autoxpmconfig:: xpmir.letor.learner.ValidationListener
 
 Scorers
 =======

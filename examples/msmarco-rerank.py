@@ -21,6 +21,7 @@ from xpmir.letor.devices import CudaDevice
 from experimaestro.launcherfinder import cpu, cuda_gpu, find_launcher
 from experimaestro import experiment, tag, tagspath
 from experimaestro.click import click, forwardoption
+from experimaestro.launcherfinder.specs import duration
 from experimaestro.utils import cleanupdir
 
 from xpmir.utils import find_java_home
@@ -47,7 +48,7 @@ logging.basicConfig(level=logging.INFO)
 
 # --- Experiment
 @forwardoption.max_epochs(Learner, default=None)
-@click.option("--tags", type=List[str], help="Tags for selecting the launcher")
+@click.option("--tags", type=str, default="", help="Tags for selecting the launcher")
 @click.option("--debug", is_flag=True, help="Print debug information")
 @click.option("--gpu", is_flag=True, help="Use GPU")
 @click.option(
@@ -55,12 +56,21 @@ logging.basicConfig(level=logging.INFO)
 )
 @click.option("--small", is_flag=True, help="Use small datasets")
 @click.option(
+    "--host",
+    type=str,
+    default=None,
+    help="Server hostname (default to localhost, not suitable if your jobs are remote)",
+)
+@click.option(
     "--port", type=int, default=12345, help="Port for monitoring (default 12345)"
 )
 @click.argument("workdir", type=Path)
 @click.command()
-def cli(debug, small, gpu, tags, port, workdir, max_epochs, batch_size):
+def cli(debug, small, gpu, tags, host, port, workdir, max_epochs, batch_size):
     """Runs an experiment"""
+    tags = tags.split(",") if tags else []
+    max_epochs = int(max_epochs)
+
     logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
 
     # Number of topics in the validation set
@@ -78,7 +88,8 @@ def cli(debug, small, gpu, tags, port, workdir, max_epochs, batch_size):
     valtopK = 100
 
     # Our default launcher for light tasks
-    launcher = find_launcher(cpu(), tags=tags)
+    req_duration = duration("2 days")
+    launcher = find_launcher(cpu() & req_duration, tags=tags)
 
     if small:
         VAL_SIZE = 10
@@ -89,12 +100,14 @@ def cli(debug, small, gpu, tags, port, workdir, max_epochs, batch_size):
         max_epochs = max_epochs or 4
 
         # We request a GPU, and if none, a CPU
-        gpu_launcher = find_launcher(cuda_gpu(mem="4G") if gpu else cpu(), tags=tags)
+        gpu_launcher = find_launcher(
+            (cuda_gpu(mem="4G") if gpu else cpu()) & req_duration, tags=tags
+        )
     else:
         assert gpu, "Running full scale experiment without GPU is not recommended"
         batch_size = batch_size or 256
         max_epochs = max_epochs or 64
-        gpu_launcher = find_launcher(cuda_gpu(mem="14G"), tags=tags)
+        gpu_launcher = find_launcher(cuda_gpu(mem="14G") & req_duration, tags=tags)
 
     logging.info(
         f"Number of epochs {max_epochs}, validation interval {validation_interval}"
@@ -106,7 +119,7 @@ def cli(debug, small, gpu, tags, port, workdir, max_epochs, batch_size):
 
     # Sets the working directory and the name of the xp
     name = "msmarco-small" if small else "msmarco"
-    with experiment(workdir, name, port=port, launcher=launcher) as xp:
+    with experiment(workdir, name, host=host, port=port, launcher=launcher) as xp:
         # Needed by Pyserini
         xp.setenv("JAVA_HOME", find_java_home())
 
