@@ -99,7 +99,17 @@ class SerializableIteratorWrapper(Iterable[U], Generic[T, U]):
 
 
 class SkippingIterator(Iterable[T]):
-    """An iterator that skips the first entries and can output its state"""
+    """An iterator that skips the first entries and can output its state
+
+    When serialized (i.e. checkpointing), the iterator saves the current position.
+    This can be used when deserialized, to get back to the same (checkpointed) position.
+    """
+
+    position: int
+    """The current position (in number of items) of the iterator"""
+
+    count: int
+    """The target position (in case of deserialization)"""
 
     def __init__(self, iterable: Iterable[T]):
         self.position = 0
@@ -124,7 +134,7 @@ class SkippingIterator(Iterable[T]):
         if self.position < self.count:
             # Skip self.count items
             logger.info("Skipping %d records to match state (sampler)", self.count)
-            for _ in range(self.position - self.count):
+            for _ in range(self.count - self.position):
                 next(self.iter)
             self.position = self.count
 

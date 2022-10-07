@@ -46,7 +46,6 @@ class LearnerListener(Config):
         self.learner = learner
         self.context = context
 
-    @documentation
     def __call__(self, state: TrainerContext) -> bool:
         """Process and returns whether the training process should stop
 

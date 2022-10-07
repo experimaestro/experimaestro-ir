@@ -474,7 +474,7 @@ class SparseRetrieverIndexBuilder(Task):
     version: Constant[int] = 3
     """Version 3 of the index"""
 
-    def config(self):
+    def taskoutputs(self):
         """Returns a sparse retriever index that can be used by a SparseRetriever to search efficiently
         for documents"""
         return SparseRetrieverIndex(
