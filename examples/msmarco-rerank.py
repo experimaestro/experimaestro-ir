@@ -9,38 +9,35 @@
 #
 # Compares PCE and Softmax
 
-from copy import copy
 import dataclasses
 import logging
 from pathlib import Path
-from typing import Dict, List
 from datamaestro import prepare_dataset
 
 from datamaestro_text.transforms.ir import ShuffledTrainingTripletsLines
 from xpmir.letor.batchers import PowerAdaptativeBatcher
 from xpmir.letor.devices import CudaDevice
-from xpmir.pipelines.reranking import RerankingPipeline, reranker_pipeline
+from xpmir.pipelines.reranking import RerankingPipeline
 
 from experimaestro.launcherfinder import cpu, cuda_gpu, find_launcher
-from experimaestro import experiment, tag, tagspath
+from experimaestro import experiment
 from experimaestro.click import click, forwardoption
 from experimaestro.launcherfinder.specs import duration
 from experimaestro.utils import cleanupdir
 
 from xpmir.utils import find_java_home
 from xpmir.datasets.adapters import RandomFold
-from xpmir.evaluation import Evaluate, Evaluations, EvaluationsCollection
+from xpmir.evaluation import Evaluations, EvaluationsCollection
 from xpmir.interfaces.anserini import AnseriniRetriever, IndexCollection
 from xpmir.letor import Device, Random
-from xpmir.letor.learner import Learner, ValidationListener
-from xpmir.letor.optim import Adam, AdamW, Optimizer, ParameterOptimizer
+from xpmir.letor.learner import Learner
+from xpmir.letor.optim import AdamW, ParameterOptimizer
 from xpmir.letor.samplers import TripletBasedSampler
-from xpmir.letor.trainers import Trainer
 import xpmir.letor.trainers.pairwise as pairwise
 from xpmir.neural.interaction.drmm import Drmm
 from xpmir.neural.colbert import Colbert
 from xpmir.neural.jointclassifier import JointClassifier
-from xpmir.rankers import RandomScorer, Scorer
+from xpmir.rankers import RandomScorer
 from xpmir.rankers.standard import BM25
 from xpmir.text.huggingface import DualTransformerEncoder, TransformerVocab
 from xpmir.text.wordvec_vocab import WordvecUnkVocab
@@ -72,7 +69,6 @@ logging.basicConfig(level=logging.INFO)
 def cli(debug, small, gpu, tags, host, port, workdir, max_epochs, batch_size):
     """Runs an experiment"""
     tags = tags.split(",") if tags else []
-    max_epochs = int(max_epochs)
 
     logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
 
@@ -136,11 +132,11 @@ def cli(debug, small, gpu, tags, host, port, workdir, max_epochs, batch_size):
         measures = [AP, P @ 20, nDCG, nDCG @ 10, nDCG @ 20, RR, RR @ 10]
 
         # Creates the directory with tensorboard data
-        runspath = xp.resultspath / "runs"
-        cleanupdir(runspath)
-        runspath.mkdir(exist_ok=True, parents=True)
+        runs_path = xp.resultspath / "runs"
+        cleanupdir(runs_path)
+        runs_path.mkdir(exist_ok=True, parents=True)
         logging.info("Monitor learning with:")
-        logging.info("tensorboard --logdir=%s", runspath)
+        logging.info("tensorboard --logdir=%s", runs_path)
 
         # Datasets: train, validation and test
         documents = prepare_dataset("irds.msmarco-passage.documents")
@@ -149,6 +145,7 @@ def cli(debug, small, gpu, tags, host, port, workdir, max_epochs, batch_size):
         ds_val = RandomFold(
             dataset=dev, seed=123, fold=0, sizes=[VAL_SIZE], exclude=devsmall.topics
         ).submit()
+
         # We will evaluate on TREC DL 2019 and 2020, as well as on the msmarco-dev dataset
         tests: EvaluationsCollection = EvaluationsCollection(
             trec2019=Evaluations(
@@ -197,17 +194,19 @@ def cli(debug, small, gpu, tags, host, port, workdir, max_epochs, batch_size):
 
         # Compares PCE and Softmax
         reranker_pce = RerankingPipeline(
-            trainer=trainer(pairwise.PointwiseCrossEntropyLoss().tag("loss", "pce")),
-            optimizers=[
-                ParameterOptimizer(optimizer=AdamW(lr=1e-5, weight_decay=1e-2))
-            ],
-            steps_per_epoch=STEPS_PER_EPOCH,
-            max_epochs=max_epochs,
-            validation_dataset=ds_val,
-            base_retriever=base_retriever,
+            trainer(pairwise.PointwiseCrossEntropyLoss().tag("loss", "pce")),
+            AdamW(lr=1e-5, weight_decay=1e-2),
+            base_retriever,
+            STEPS_PER_EPOCH,
+            max_epochs,
+            ds_val,
+            {"RR@10": True, "AP": False},
+            batch_size,
+            tests,
+            device=device,
             base_retriever_val=base_retriever_val,
-            validation_interval=validation_interval,
-            validation_metrics={"RR@10": True, "AP": False},
+            launcher=gpu_launcher,
+            runs_path=runs_path,
         )
 
         reranker_softmax = dataclasses.replace(
@@ -242,9 +241,9 @@ def cli(debug, small, gpu, tags, host, port, workdir, max_epochs, batch_size):
         xp.wait()
 
         # Display metrics for each trained model
-        for key, dsevaluations in evaluations.items():
+        for key, dsevaluations in tests.collection.items():
             print(f"=== {key}")
-            for evaluation in dsevaluations:
+            for evaluation in dsevaluations.results:
                 print(
                     f"Results for {evaluation.__xpm__.tags()}\n{evaluation.results.read_text()}\n"
                 )

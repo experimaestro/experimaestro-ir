@@ -8,8 +8,7 @@ import re
 import subprocess
 import sys
 from typing import List
-from experimaestro import tqdm as xpmtqdm
-import itertools
+from experimaestro import tqdm as xpmtqdm, Task
 
 import datamaestro_text.data.ir.csv as ir_csv
 from datamaestro_text.data.ir.trec import (
@@ -52,8 +51,7 @@ def javacommand():
 @param("documents", type=AdhocDocuments)
 @param("threads", default=8, ignored=True)
 @pathoption("path", "index")
-@task(description="Index a documents")
-class IndexCollection(Index):
+class IndexCollection(Index, Task):
     """An [Anserini](https://github.com/castorini/anserini) index"""
 
     CLASSPATH = "io.anserini.index.IndexCollection"
@@ -251,7 +249,7 @@ class AnseriniRetriever(Retriever):
     model: Param[Model]
     k: Param[int] = 1500
 
-    def __postinit__(self):
+    def __post_init__(self):
         from pyserini.search import SimpleSearcher
 
         self.searcher = SimpleSearcher(str(self.index.path))

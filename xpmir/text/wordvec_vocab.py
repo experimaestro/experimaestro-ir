@@ -47,8 +47,8 @@ class WordvecVocab(Vocab, nn.Module):
     learn: Param[bool] = False
     random: Param[Optional[Random]]
 
-    def __postinit__(self):
-        # super().__postinit__()
+    def __post_init__(self):
+        # super().__post_init__()
         self._terms, self._weights = self.load()
         self._term2idx = {t: i for i, t in enumerate(self._terms)}
         matrix = self._weights
@@ -102,7 +102,6 @@ class WordvecVocab(Vocab, nn.Module):
         return self.embed(toks.ids + 1)  # +1 to handle padding at position -1
 
 
-@config()
 class WordvecUnkVocab(WordvecVocab):
     """Word-based embeddings with OOV
 
@@ -110,8 +109,8 @@ class WordvecUnkVocab(WordvecVocab):
     with random weights
     """
 
-    def __postinit__(self):
-        super().__postinit__()
+    def __post_init__(self):
+        super().__post_init__()
         self._terms = [None] + self._terms
         for term in self._term2idx:
             self._term2idx[term] += 1

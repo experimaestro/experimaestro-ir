@@ -71,10 +71,10 @@ class RerankingPipeline:
 
         # Sets default values if needed
         base_retriever_val = self.base_retriever_val or self.base_retriever
-        if self.runs_path is None:
-            runs_path = experiment.current().resultspath / "runs"
+        runs_path = self.runs_path or (experiment.current().resultspath / "runs")
 
         test_batch_size = self.test_batch_size or self.validation_batch_size
+        random = self.random or Random()
 
         # The validation listener will evaluate the full retriever
         # (1st stage + reranker) and keep the best performing model
@@ -93,7 +93,7 @@ class RerankingPipeline:
         learner = Learner(
             # Misc settings
             device=self.device,
-            random=self.random,
+            random=random,
             # How to train the model
             trainer=self.trainer,
             # The model to train

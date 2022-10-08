@@ -151,12 +151,12 @@ class EvaluationsCollection:
     to call the :py:meth:`evaluate_retriever`
     """
 
-    collections: Dict[str, Evaluations]
+    collection: Dict[str, Evaluations]
 
-    def __init__(self, **collections: Evaluations):
-        self.collections = collections
+    def __init__(self, **collection: Evaluations):
+        self.collection = collection
 
     def evaluate_retriever(self, retriever: Retriever):
         """Evaluate a retriever for all the evaluations in this collection (the tasks are submitted to experimaestro the scheduler)"""
-        for evaluations in self.collections.values():
+        for evaluations in self.collection.values():
             evaluations.evaluate_retriever(retriever)

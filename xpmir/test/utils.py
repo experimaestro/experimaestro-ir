@@ -11,7 +11,7 @@ class SampleAdhocDocumentStore(AdhocDocumentStore):
     id: Param[str] = ""
     num_docs: Param[int] = 200
 
-    def __postinit__(self):
+    def __post_init__(self):
         self.documents = OrderedDict(
             (str(ix), AdhocDocument(str(ix), f"Document {ix}", internal_docid=ix))
             for ix in range(self.num_docs)
@@ -62,7 +62,7 @@ class SparseRandomTextEncoder(TextEncoder):
     dim: Param[int]
     sparsity: Param[float] = 0.0
 
-    def __postinit__(self):
+    def __post_init__(self):
         super().__init__()
         if not (self.dim, self.sparsity) in SparseRandomTextEncoder.MAPS:
             SparseRandomTextEncoder.MAPS[(self.dim, self.sparsity)] = defaultdict(
