@@ -9,14 +9,17 @@
 #
 # Compares PCE and Softmax
 
+from copy import copy
+import dataclasses
 import logging
 from pathlib import Path
-from typing import List
+from typing import Dict, List
 from datamaestro import prepare_dataset
 
 from datamaestro_text.transforms.ir import ShuffledTrainingTripletsLines
 from xpmir.letor.batchers import PowerAdaptativeBatcher
 from xpmir.letor.devices import CudaDevice
+from xpmir.pipelines.reranking import RerankingPipeline, reranker_pipeline
 
 from experimaestro.launcherfinder import cpu, cuda_gpu, find_launcher
 from experimaestro import experiment, tag, tagspath
@@ -26,7 +29,7 @@ from experimaestro.utils import cleanupdir
 
 from xpmir.utils import find_java_home
 from xpmir.datasets.adapters import RandomFold
-from xpmir.evaluation import Evaluate
+from xpmir.evaluation import Evaluate, Evaluations, EvaluationsCollection
 from xpmir.interfaces.anserini import AnseriniRetriever, IndexCollection
 from xpmir.letor import Device, Random
 from xpmir.letor.learner import Learner, ValidationListener
@@ -147,11 +150,15 @@ def cli(debug, small, gpu, tags, host, port, workdir, max_epochs, batch_size):
             dataset=dev, seed=123, fold=0, sizes=[VAL_SIZE], exclude=devsmall.topics
         ).submit()
         # We will evaluate on TREC DL 2019 and 2020, as well as on the msmarco-dev dataset
-        tests = {
-            "trec2019": prepare_dataset("irds.msmarco-passage.trec-dl-2019"),
-            "trec2020": prepare_dataset("irds.msmarco-passage.trec-dl-2020"),
-            "msmarco-dev": devsmall,
-        }
+        tests: EvaluationsCollection = EvaluationsCollection(
+            trec2019=Evaluations(
+                prepare_dataset("irds.msmarco-passage.trec-dl-2019"), measures
+            ),
+            trec2020=Evaluations(
+                prepare_dataset("irds.msmarco-passage.trec-dl-2020"), measures
+            ),
+            msmarco_dev=Evaluations(devsmall, measures),
+        )
 
         # Build the MS Marco index and definition of first stage rankers
         index = IndexCollection(documents=documents, storeContents=True).submit()
@@ -173,88 +180,45 @@ def cli(debug, small, gpu, tags, host, port, workdir, max_epochs, batch_size):
         )
 
         # Evaluate BM25 as well as the random scorer (low baseline)
-        evaluations = {}
-        for key, test in tests.items():
-            evaluations[key] = [
-                Evaluate(
-                    measures=measures, dataset=test, retriever=bm25_retriever
-                ).submit(),
-                Evaluate(
-                    measures=measures,
-                    dataset=test,
-                    retriever=base_retriever.getReranker(
-                        random_scorer, batch_size, PowerAdaptativeBatcher()
-                    ),
-                ).submit(),
-            ]
+        tests.evaluate_retriever(bm25_retriever)
+        tests.evaluate_retriever(
+            base_retriever.getReranker(
+                random_scorer, batch_size, PowerAdaptativeBatcher()
+            )
+        )
 
-        def trainer(lossfn=None):
+        def trainer(lossfn):
             return pairwise.PairwiseTrainer(
-                lossfn=lossfn or pairwise.PointwiseCrossEntropyLoss(),
+                lossfn=lossfn,
                 sampler=train_sampler,
                 batcher=PowerAdaptativeBatcher(),
                 batch_size=batch_size,
             )
 
-        def run(scorer: Scorer, trainer: Trainer, optimizers: List[Optimizer]):
-            """Train a scorer with a given trainer, before evaluating"""
-
-            # The validation listener will evaluate the full retriever
-            # (1st stage + reranker) and keep the best performing model
-            # on the validation set
-            validation = ValidationListener(
-                dataset=ds_val,
-                retriever=base_retriever_val.getReranker(scorer, valtopK),
-                validation_interval=validation_interval,
-                metrics={"RR@10": True, "AP": False},
-            )
-
-            # The learner defines all what is needed
-            # to perform several gradient steps
-            learner = Learner(
-                # Misc settings
-                device=device,
-                random=random,
-                # How to train the model
-                trainer=trainer,
-                # The model to train
-                scorer=scorer,
-                # Optimization settings
-                steps_per_epoch=STEPS_PER_EPOCH,
-                optimizers=optimizers,
-                max_epochs=tag(max_epochs),
-                # The listeners (here, for validation)
-                listeners={"bestval": validation},
-            )
-            outputs = learner.submit(launcher=gpu_launcher)
-            (runspath / tagspath(learner)).symlink_to(learner.logpath)
-
-            # Evaluate the neural model
-            for key, test in tests.items():
-                best = outputs.listeners["bestval"]["RR@10"]
-
-                evaluations[key].append(
-                    Evaluate(
-                        measures=measures,
-                        dataset=test,
-                        retriever=base_retriever.getReranker(
-                            best, batch_size, device=device
-                        ),
-                    ).submit(launcher=gpu_launcher)
-                )
-
         # Compares PCE and Softmax
+        reranker_pce = RerankingPipeline(
+            trainer=trainer(pairwise.PointwiseCrossEntropyLoss().tag("loss", "pce")),
+            optimizers=[
+                ParameterOptimizer(optimizer=AdamW(lr=1e-5, weight_decay=1e-2))
+            ],
+            steps_per_epoch=STEPS_PER_EPOCH,
+            max_epochs=max_epochs,
+            validation_dataset=ds_val,
+            base_retriever=base_retriever,
+            base_retriever_val=base_retriever_val,
+            validation_interval=validation_interval,
+            validation_metrics={"RR@10": True, "AP": False},
+        )
 
-        optimizers = [ParameterOptimizer(optimizer=AdamW(lr=1e-5, weight_decay=1e-2))]
+        reranker_softmax = dataclasses.replace(
+            reranker_pce, trainer=trainer(pairwise.SoftmaxLoss().tag("loss", "softmax"))
+        )
 
-        for lossfn in (
-            pairwise.PointwiseCrossEntropyLoss().tag("loss", "pce"),
-            pairwise.SoftmaxLoss().tag("loss", "softmax"),
-        ):
+        for reranker in [reranker_pce, reranker_softmax]:
 
             # DRMM
             drmm = Drmm(vocab=glove, index=index).tag("model", "drmm")
-            run(drmm, trainer(lossfn=lossfn), optimizers)
+            reranker.run(drmm)
 
             # Train and evaluate Colbert
             colbert = Colbert(
@@ -264,13 +228,13 @@ def cli(debug, small, gpu, tags, host, port, workdir, max_epochs, batch_size):
                 querytoken=False,
                 dlen=512,
             ).tag("model", "colbert")
-            run(colbert, trainer(lossfn=lossfn), optimizers)
+            reranker.run(colbert)
 
             # Train and evaluate Vanilla BERT
             dual = JointClassifier(encoder=DualTransformerEncoder(trainable=True)).tag(
                 "model", "dual"
             )
-            run(dual, trainer(lossfn=lossfn), optimizers)
+            reranker.run(dual)
 
         # ---  End of the experiment
 

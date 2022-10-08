@@ -85,7 +85,10 @@ intersphinx_mapping = {
 
 # Autodoc options
 
-autodoc_default_options = {"show-inheritance": True}
+autodoc_default_options = {
+    "show-inheritance": True,
+}
+
 autodoc_mock_imports = [
     # "torch",
     "faiss",

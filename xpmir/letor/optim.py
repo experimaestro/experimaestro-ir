@@ -1,8 +1,9 @@
-from typing import Any, Callable, Iterator, List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Callable, Iterator, List, Optional, Tuple, TYPE_CHECKING, Union
 from experimaestro import Config, Param
 import torch
 from .schedulers import Scheduler
 from xpmir.utils import easylog
+from experimaestro.typingutils import get_list_component
 from xpmir.letor.metrics import ScalarMetric
 
 if TYPE_CHECKING:
@@ -192,3 +193,18 @@ class ScheduledOptimizer:
                     )
                 scheduler.step()
         self.scheduler_steps += 1
+
+
+Optimizers = Union[ParameterOptimizer, Optimizer, List[ParameterOptimizer]]
+"""Defines a set of optimizers"""
+
+
+def get_optimizers(optimizers: Optimizers):
+    """Returns a list of ParameterOptimizer"""
+    if isinstance(optimizers, list):
+        return optimizers
+
+    if isinstance(optimizers, ParameterOptimizer):
+        return [optimizers]
+
+    return [ParameterOptimizer(optimizer=optimizers)]

@@ -8,6 +8,11 @@ Evaluation
 
 .. autoxpmconfig:: xpmir.evaluation.Evaluate
 
+.. autoclass:: xpmir.evaluation.Evaluations
+    :members: evaluate_retriever, add
+
+.. autoclass:: xpmir.evaluation.EvaluationsCollection
+    :members: evaluate_retriever
 
 Metrics
 -------

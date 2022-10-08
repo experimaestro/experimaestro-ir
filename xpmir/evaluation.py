@@ -95,6 +95,8 @@ def evaluate(retriever: Retriever, dataset: Adhoc, measures: List[str], details=
 
 
 class RunEvaluation(BaseEvaluation, Task):
+    """Evaluate a run"""
+
     run: Param[TrecAdhocRun]
     assessments: Param[AdhocAssessments]
 
@@ -104,7 +106,7 @@ class RunEvaluation(BaseEvaluation, Task):
 
 
 class Evaluate(BaseEvaluation, Task):
-    """Evaluate a retriever"""
+    """Evaluate a retriever directly (without generating the run explicitely)"""
 
     dataset: Param[Adhoc]
     """The dataset for retrieval"""
@@ -116,3 +118,45 @@ class Evaluate(BaseEvaluation, Task):
         self.retriever.initialize()
         run = get_run(self.retriever, self.dataset)
         self._execute(run, self.dataset.assessments)
+
+
+class Evaluations:
+    """Holds experiment results for several models"""
+
+    dataset: Adhoc
+    measures: List[Measure]
+    results: List[BaseEvaluation]
+
+    def __init__(self, dataset: Adhoc, measures: List[Measure]):
+        self.dataset = dataset
+        self.measures = measures
+        self.results = []
+
+    def evaluate_retriever(self, retriever: Retriever):
+        """Evaluates a retriever"""
+        self.add(
+            Evaluate(
+                retriever=retriever, measures=self.measures, dataset=self.dataset
+            ).submit()
+        )
+
+    def add(self, *results: BaseEvaluation):
+        self.results.extend(results)
+
+
+class EvaluationsCollection:
+    """A collection of evaluation
+
+    This is useful to group all the evaluations to be conducted, and then
+    to call the :py:meth:`evaluate_retriever`
+    """
+
+    collections: Dict[str, Evaluations]
+
+    def __init__(self, **collections: Evaluations):
+        self.collections = collections
+
+    def evaluate_retriever(self, retriever: Retriever):
+        """Evaluate a retriever for all the evaluations in this collection (the tasks are submitted to experimaestro the scheduler)"""
+        for evaluations in self.collections.values():
+            evaluations.evaluate_retriever(retriever)

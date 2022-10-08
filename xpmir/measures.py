@@ -1,7 +1,7 @@
-from typing import Optional
+from typing import List, Optional
 import ir_measures as irm
 from experimaestro import Config, Param
-from datamaestro_text.data.ir import Measure as BaseMeasure
+from datamaestro_text.data.ir import Adhoc, Measure as BaseMeasure
 
 
 class Measure(BaseMeasure):

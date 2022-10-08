@@ -1,5 +1,5 @@
 import itertools
-from typing import Generic, Iterable, List, Optional, TypeVar
+from typing import Iterable, List, Optional
 import torch
 import torch.nn as nn
 from xpmir.letor.batchers import Sliceable
