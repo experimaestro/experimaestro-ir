@@ -1,10 +1,7 @@
-from pathlib import Path
 from typing import Iterable
-import ir_datasets
 from ir_datasets import registry, corpus_id, load
 
 from datamaestro.definitions import AbstractDataset, AbstractDataset
-from ir_datasets.formats.base import GenericDocPair
 from .data import (
     AdhocAssessments,
     AdhocRun,

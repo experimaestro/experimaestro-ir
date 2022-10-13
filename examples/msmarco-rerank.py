@@ -2,46 +2,39 @@
 # This files contains an example of an experiment that
 # trains second stage rankers (based on BM25) on MS Marco
 #
-# Trained and evaluated models:
-# - ColBERT
-# - BERT
-# - DRMM (with Glove)
+# Trains and evaluates monoBERT
 #
 # Compares PCE and Softmax
 
 import dataclasses
 import logging
 from pathlib import Path
+
+import xpmir.letor.trainers.pairwise as pairwise
 from datamaestro import prepare_dataset
-
 from datamaestro_text.transforms.ir import ShuffledTrainingTripletsLines
-from xpmir.letor.batchers import PowerAdaptativeBatcher
-from xpmir.letor.devices import CudaDevice
-from xpmir.pipelines.reranking import RerankingPipeline
-
-from experimaestro.launcherfinder import cpu, cuda_gpu, find_launcher
+from xpmir.neural.cross import CrossScorer
 from experimaestro import experiment
 from experimaestro.click import click, forwardoption
+from experimaestro.launcherfinder import cpu, cuda_gpu, find_launcher
 from experimaestro.launcherfinder.specs import duration
 from experimaestro.utils import cleanupdir
-
-from xpmir.utils import find_java_home
 from xpmir.datasets.adapters import RandomFold
 from xpmir.evaluation import Evaluations, EvaluationsCollection
 from xpmir.interfaces.anserini import AnseriniRetriever, IndexCollection
 from xpmir.letor import Device, Random
+from xpmir.letor.batchers import PowerAdaptativeBatcher
+from xpmir.letor.devices import CudaDevice
 from xpmir.letor.learner import Learner
-from xpmir.letor.optim import AdamW, ParameterOptimizer
+from xpmir.letor.optim import AdamW
 from xpmir.letor.samplers import TripletBasedSampler
-import xpmir.letor.trainers.pairwise as pairwise
-from xpmir.neural.interaction.drmm import Drmm
-from xpmir.neural.colbert import Colbert
+from xpmir.measures import AP, RR, P, nDCG
 from xpmir.neural.jointclassifier import JointClassifier
+from xpmir.pipelines.reranking import RerankingPipeline
 from xpmir.rankers import RandomScorer
 from xpmir.rankers.standard import BM25
-from xpmir.text.huggingface import DualTransformerEncoder, TransformerVocab
-from xpmir.text.wordvec_vocab import WordvecUnkVocab
-from xpmir.measures import AP, P, nDCG, RR
+from xpmir.text.huggingface import DualTransformerEncoder
+from xpmir.utils import find_java_home
 
 logging.basicConfig(level=logging.INFO)
 
@@ -125,8 +118,6 @@ def cli(debug, small, gpu, tags, host, port, workdir, max_epochs, batch_size):
         # Misc
         device = CudaDevice() if gpu else Device()
         random = Random(seed=0)
-        wordembs = prepare_dataset("edu.stanford.glove.6b.50")
-        glove = WordvecUnkVocab(data=wordembs, random=random)
         basemodel = BM25()
         random_scorer = RandomScorer(random=random).tag("model", "random")
         measures = [AP, P @ 20, nDCG, nDCG @ 10, nDCG @ 20, RR, RR @ 10]
@@ -214,23 +205,8 @@ def cli(debug, small, gpu, tags, host, port, workdir, max_epochs, batch_size):
         )
 
         for reranker in [reranker_pce, reranker_softmax]:
-
-            # DRMM
-            drmm = Drmm(vocab=glove, index=index).tag("model", "drmm")
-            reranker.run(drmm)
-
-            # Train and evaluate Colbert
-            colbert = Colbert(
-                vocab=TransformerVocab(trainable=True),
-                masktoken=False,
-                doctoken=False,
-                querytoken=False,
-                dlen=512,
-            ).tag("model", "colbert")
-            reranker.run(colbert)
-
             # Train and evaluate Vanilla BERT
-            dual = JointClassifier(encoder=DualTransformerEncoder(trainable=True)).tag(
+            dual = CrossScorer(encoder=DualTransformerEncoder(trainable=True)).tag(
                 "model", "dual"
             )
             reranker.run(dual)

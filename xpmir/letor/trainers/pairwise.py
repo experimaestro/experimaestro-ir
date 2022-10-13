@@ -1,3 +1,4 @@
+from dataclasses import InitVar
 import sys
 from typing import Dict, Iterator, Tuple
 import torch
@@ -90,6 +91,8 @@ class HingeLoss(PairwiseLoss):
 
 class BCEWithLogLoss(nn.Module):
     def __call__(self, log_probs, info: TrainerContext):
+        assert info.metrics is not None, "No metrics object in context"
+
         # Assumes target is a two column matrix (rel. / not rel.)
         rel_cost, nrel_cost = (
             -log_probs[:, 0].mean(),
@@ -149,7 +152,7 @@ class PairwiseTrainer(LossTrainer):
     sampler: Param[PairwiseSampler]
     """The pairwise sampler"""
 
-    sampler_iter: SerializableIterator[PairwiseRecord]
+    sampler_iter: InitVar[SerializableIterator[PairwiseRecord]]
 
     def initialize(
         self,

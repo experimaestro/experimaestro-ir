@@ -28,7 +28,7 @@ if os.environ.get("DOC_BUILDING", 0) == "1":
 
 setup(
     name="experimaestro-ir",
-    python_requires=">=3.7",
+    python_requires=">=3.8",
     description="Experimaestro common module for IR experiments",
     long_description=get_description(),
     long_description_content_type="text/markdown",
@@ -45,8 +45,6 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.7",
-        "Programming Language :: Python :: 3.8",
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
     install_requires=install_requires,

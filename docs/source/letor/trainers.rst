@@ -41,6 +41,8 @@ Losses
 ------
 
 .. autoxpmconfig:: xpmir.letor.trainers.pairwise.PairwiseLoss
+   :members: compute
+
 .. autoxpmconfig:: xpmir.letor.trainers.pairwise.CrossEntropyLoss
 .. autoxpmconfig:: xpmir.letor.trainers.pairwise.SoftmaxLoss
 .. autoxpmconfig:: xpmir.letor.trainers.pairwise.LogSoftmaxLoss

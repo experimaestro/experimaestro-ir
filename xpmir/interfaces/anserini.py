@@ -8,7 +8,7 @@ import re
 import subprocess
 import sys
 from typing import List
-from experimaestro import tqdm as xpmtqdm, Task
+from experimaestro import tqdm as xpmtqdm, Task, Meta
 
 import datamaestro_text.data.ir.csv as ir_csv
 from datamaestro_text.data.ir.trec import (
@@ -55,6 +55,12 @@ class IndexCollection(Index, Task):
     """An [Anserini](https://github.com/castorini/anserini) index"""
 
     CLASSPATH = "io.anserini.index.IndexCollection"
+
+    documents: Param[AdhocDocuments]
+    """The documents to index"""
+
+    thread: Meta[int] = 8
+    """Number of threads when indexing"""
 
     id: Param[str] = ""
     """Use an empty ID since identifier is determined by documents"""

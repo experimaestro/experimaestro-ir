@@ -13,16 +13,34 @@ logger = easylog()
 
 
 class DualVectorListener(TrainingHook):
-    """Regularizer called with the (vectorial) representation of queries and documents"""
+    """Listener called with the (vectorial) representation of queries and documents
+
+    The hook is called just after the computation of documents and queries representations.
+
+    This can be used for logging purposes, but more importantly, to add regularization
+    losses such as the :class:`FlopsRegularizer` regularizer.
+    """
 
     def __call__(
-        self, info: TrainerContext, queries: torch.Tensor, documents: torch.Tensor
+        self, context: TrainerContext, queries: torch.Tensor, documents: torch.Tensor
     ):
+        """Hook handler
+
+        Args:
+            context (TrainerContext): The training context
+            queries (torch.Tensor): The query vectors
+            documents (torch.Tensor): The document vectors
+
+        Raises:
+            NotImplementedError: _description_
+        """
         raise NotImplementedError(f"__call__ in {self.__class__}")
 
 
 class DualVectorScorer(DualRepresentationScorer):
     """A scorer based on dual vectorial representations"""
+
+    pass
 
 
 class Dense(DualVectorScorer):
@@ -55,7 +73,6 @@ class Dense(DualVectorScorer):
                 info.hooks(DualVectorListener),
                 lambda hook: hook(info, queries, documents),
             )
-        (queries, documents)
         return scores
 
     @property
@@ -123,9 +140,22 @@ class DotDense(Dense):
 
 
 class FlopsRegularizer(DualVectorListener):
+    r"""The FLOPS regularizer computes
+
+    .. math::
+
+        FLOPS(q,d) = \lambda_q FLOPS(q) + \lambda_d FLOPS(d)
+
+    where
+
+    .. math::
+        FLOPS(x) = \left( \frac{1}{d} \sum_{i=1}^d |x_i| \right)^2
+    """
     lambda_q: Param[float]
+    """Lambda for queries"""
+
     lambda_d: Param[float]
-    weight: Param[float] = 1.0
+    """Lambda for documents"""
 
     @staticmethod
     def compute(x: torch.Tensor):
@@ -137,12 +167,13 @@ class FlopsRegularizer(DualVectorListener):
     def __call__(self, info: TrainerContext, queries, documents):
         # queries and documents are length x dimension
         # Assumes that all weights are positive
+        assert info.metrics is not None
 
         q, flops_q = FlopsRegularizer.compute(queries)
         d, flops_d = FlopsRegularizer.compute(documents)
 
         flops = self.lambda_d * flops_d + self.lambda_q * flops_q
-        info.add_loss(Loss("flops", flops, self.weight))
+        info.add_loss(Loss("flops", flops, 1.0))
 
         info.metrics.add(ScalarMetric("flops", flops.item(), len(q)))
         info.metrics.add(ScalarMetric("flops_q", flops_q.item(), len(q)))

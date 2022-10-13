@@ -42,6 +42,8 @@ extensions = [
     # Experimaestro extension
     "experimaestro.sphinx",
     "datamaestro.sphinx",
+    # Math in docs with MathJax
+    "sphinx.ext.mathjax",
     # Read The Docs theme
     "sphinx_rtd_theme",
     # Use Markdown parser
@@ -55,6 +57,7 @@ extensions = [
     "sphinx.ext.napoleon",
     # Named tuples
     "sphinx_toolbox.more_autodoc.autonamedtuple",
+    # Code
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -99,7 +102,6 @@ autodoc_mock_imports = [
     "pytrec_eval",
     "apex",
     "pytorch_lightning",
-    "ir_datasets",
     "ir_measures",
 ]
 

@@ -10,12 +10,33 @@ Models that rely on a joint representation of the query and the document.
 .. autoxpmconfig:: xpmir.neural.cross.CrossScorer
 
 
-Dense models
-============
+Dual models
+===========
+
+Dual models compute a separate representation for documents
+and queries, which allows some speedup when computing scores
+of several documents and/or queries.
 
 
 .. autoxpmconfig:: xpmir.neural.DualRepresentationScorer
     :members: score_pairs, score_product
+.. autoxpmconfig:: xpmir.neural.dual.DualVectorScorer
+
+
+Hooks
+*****
+
+.. autoxpmconfig:: xpmir.neural.dual.DualVectorListener
+    :members: __call__
+
+
+.. autoxpmconfig:: xpmir.neural.dual.FlopsRegularizer
+
+
+Dense models
+============
+
+
 .. autoxpmconfig:: xpmir.neural.dual.Dense
 .. autoxpmconfig:: xpmir.neural.dual.DotDense
 .. autoxpmconfig:: xpmir.neural.dual.CosineDense
