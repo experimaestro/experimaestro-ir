@@ -38,7 +38,7 @@ class SparseIndex:
         )
 
         # Check index
-        self.index = builder.config()
+        self.index = builder.taskoutputs()
         self.index_instance = self.index.instance()
         self.topk = 10
 
