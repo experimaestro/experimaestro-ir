@@ -197,6 +197,7 @@ def cli(debug, small, gpu, tags, host, port, workdir, max_epochs, batch_size):
             device=device,
             base_retriever_val=base_retriever_val,
             launcher=gpu_launcher,
+            evaluate_launcher=gpu_launcher,
             runs_path=runs_path,
         )
 

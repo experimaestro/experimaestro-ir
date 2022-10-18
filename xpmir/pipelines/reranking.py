@@ -52,7 +52,13 @@ class RerankingPipeline:
 
     # Optional parameters
     test_batch_size: Optional[int] = None
+
     launcher: Optional[Launcher] = None
+    """Launcher for learning"""
+
+    evaluate_launcher: Optional[Launcher] = None
+    """Launcher for evaluating the models"""
+
     device: Optional[Device] = None
     random: Optional[Random] = None
     validation_interval = 1
@@ -115,4 +121,4 @@ class RerankingPipeline:
                 retriever = self.base_retriever.getReranker(
                     best, test_batch_size, device=self.device
                 )
-                self.tests.evaluate_retriever(retriever)
+                self.tests.evaluate_retriever(retriever, self.evaluate_launcher)

@@ -12,6 +12,8 @@ from xpmir.metrics import evaluator
 import ir_measures
 from xpmir.rankers import Retriever
 
+from experimaestro.launchers import Launcher
+
 
 def get_evaluator(metrics: List[ir_measures.Metric], assessments: AdhocAssessments):
     qrels = {
@@ -132,12 +134,12 @@ class Evaluations:
         self.measures = measures
         self.results = []
 
-    def evaluate_retriever(self, retriever: Retriever):
+    def evaluate_retriever(self, retriever: Retriever, launcher: Launcher):
         """Evaluates a retriever"""
         self.add(
             Evaluate(
                 retriever=retriever, measures=self.measures, dataset=self.dataset
-            ).submit()
+            ).submit(launcher=launcher)
         )
 
     def add(self, *results: BaseEvaluation):
@@ -156,7 +158,7 @@ class EvaluationsCollection:
     def __init__(self, **collection: Evaluations):
         self.collection = collection
 
-    def evaluate_retriever(self, retriever: Retriever):
+    def evaluate_retriever(self, retriever: Retriever, launcher: Launcher):
         """Evaluate a retriever for all the evaluations in this collection (the tasks are submitted to experimaestro the scheduler)"""
         for evaluations in self.collection.values():
-            evaluations.evaluate_retriever(retriever)
+            evaluations.evaluate_retriever(retriever, launcher)
