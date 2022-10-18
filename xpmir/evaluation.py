@@ -134,7 +134,7 @@ class Evaluations:
         self.measures = measures
         self.results = []
 
-    def evaluate_retriever(self, retriever: Retriever, launcher: Launcher):
+    def evaluate_retriever(self, retriever: Retriever, launcher: Launcher = None):
         """Evaluates a retriever"""
         self.add(
             Evaluate(
@@ -158,7 +158,7 @@ class EvaluationsCollection:
     def __init__(self, **collection: Evaluations):
         self.collection = collection
 
-    def evaluate_retriever(self, retriever: Retriever, launcher: Launcher):
+    def evaluate_retriever(self, retriever: Retriever, launcher: Launcher = None):
         """Evaluate a retriever for all the evaluations in this collection (the tasks are submitted to experimaestro the scheduler)"""
         for evaluations in self.collection.values():
             evaluations.evaluate_retriever(retriever, launcher)
