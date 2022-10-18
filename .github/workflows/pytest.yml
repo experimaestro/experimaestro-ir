@@ -27,7 +27,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install flake8 pytest pytest-timeout
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          pip install faiss-cpu
+          pip install faiss-cpu numba
           pip install '.'
       - name: Lint with flake8
         if: false
