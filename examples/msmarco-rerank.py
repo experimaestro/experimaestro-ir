@@ -187,20 +187,22 @@ def cli(debug, small, gpu, tags, host, port, workdir, max_epochs, batch_size):
         reranker_pce = RerankingPipeline(
             trainer(pairwise.PointwiseCrossEntropyLoss().tag("loss", "pce")),
             AdamW(lr=1e-5, weight_decay=1e-2),
-            base_retriever,
+            lambda scorer: scorer.getRetriever(
+                base_retriever, batch_size, PowerAdaptativeBatcher(), device=device
+            ),
             STEPS_PER_EPOCH,
             max_epochs,
             ds_val,
             {"RR@10": True, "AP": False},
-            batch_size,
             tests,
+            validation_retriever_factory=lambda scorer: scorer.getRetriever(
+                base_retriever_val, batch_size, PowerAdaptativeBatcher(), device=device
+            ),
             device=device,
-            base_retriever_val=base_retriever_val,
             launcher=gpu_launcher,
             evaluate_launcher=gpu_launcher,
             runs_path=runs_path,
         )
-
         reranker_softmax = dataclasses.replace(
             reranker_pce, trainer=trainer(pairwise.SoftmaxLoss().tag("loss", "softmax"))
         )

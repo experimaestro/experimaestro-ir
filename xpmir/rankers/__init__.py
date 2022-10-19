@@ -84,6 +84,26 @@ class Scorer(Config, EasyLogger):
         """Put the model in inference/evaluation mode"""
         pass
 
+    def getRetriever(
+        self,
+        retriever: "Retriever",
+        batch_size: int,
+        batcher: Batcher = Batcher(),
+        device=None,
+    ):
+        """Returns a two stage re-ranker from this retriever and a scorer
+
+        Arguments:
+            device: Device for the ranker or None if no change should be made
+        """
+        return TwoStageRetriever(
+            retriever=retriever,
+            scorer=self,
+            batchsize=batch_size,
+            batcher=batcher,
+            device=device,
+        )
+
 
 class RandomScorer(Scorer):
     """A random scorer"""
@@ -230,23 +250,6 @@ class Retriever(Config):
     def getindex(self) -> Index:
         """Returns the associated index (if any)"""
         raise NotImplementedError()
-
-    @documentation
-    def getReranker(
-        self, scorer: Scorer, batch_size: int, batcher: Batcher = Batcher(), device=None
-    ):
-        """Returns a two stage re-ranker from this retriever and a scorer
-
-        Arguments:
-            device: Device for the ranker or None if no change should be made
-        """
-        return TwoStageRetriever(
-            retriever=self,
-            scorer=scorer,
-            batchsize=batch_size,
-            batcher=batcher,
-            device=device,
-        )
 
 
 class TwoStageRetriever(Retriever):
