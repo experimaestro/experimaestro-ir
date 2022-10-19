@@ -124,14 +124,6 @@ class RandomScorer(Scorer):
 class AbstractLearnableScorer(Scorer):
     """Base class for all learnable scorer"""
 
-    pass
-
-
-class LearnableScorer(AbstractLearnableScorer):
-    """Learnable scorer
-
-    A scorer with parameters that can be learnt"""
-
     checkpoint: Meta[Optional[Path]]
     """A checkpoint path from which the model should be loaded (or None otherwise)"""
 
@@ -178,6 +170,12 @@ class LearnableScorer(AbstractLearnableScorer):
 
         self._initialized = True
 
+
+class LearnableScorer(AbstractLearnableScorer):
+    """Learnable scorer
+
+    A scorer with parameters that can be learnt"""
+
     def __call__(self, inputs: "BaseRecords", info: Optional[TrainerContext]):
         """Computes the score of all (query, document) pairs
 
@@ -211,6 +209,7 @@ class DuoLearnableScorer(AbstractLearnableScorer):
     """Base class for models that can score a triplet (query, document 1, document 2)"""
 
     def __call__(self, inputs: "PairwiseRecords", info: Optional[TrainerContext]):
+        """Returns scores for pairs of documents (given a query)"""
         raise NotImplementedError(f"abstract __call__ in {self.__class__}")
 
 
@@ -252,14 +251,17 @@ class Retriever(Config):
         raise NotImplementedError()
 
 
-class TwoStageRetriever(Retriever):
-    """Use on retriever to select the top-K documents which are the re-ranked given a scorer"""
+class AbstractTwoStageRetriever(Retriever):
+    """Abstract class for all two stage retrievers (i.e. scorers and duo-scorers)"""
 
     retriever: Param[Retriever]
     """The base retriever"""
 
     scorer: Param[Scorer]
     """The scorer used to re-rank the documents"""
+
+    top_k: Optional[Param[int]] = None
+    """The number of returned documents (if None, returns all the documents)"""
 
     batchsize: Meta[int] = 0
     """The batch size for the re-ranker"""
@@ -278,6 +280,10 @@ class TwoStageRetriever(Retriever):
         # Compute with the scorer
         if self.device is not None:
             self.scorer.to(self.device.value)
+
+
+class TwoStageRetriever(AbstractTwoStageRetriever):
+    """Use on retriever to select the top-K documents which are the re-ranked given a scorer"""
 
     def _retrieve(
         self,
@@ -300,4 +306,4 @@ class TwoStageRetriever(Retriever):
         )
 
         _scoredDocuments.sort(reverse=True)
-        return _scoredDocuments
+        return _scoredDocuments[: (self.top_k or 0)]
