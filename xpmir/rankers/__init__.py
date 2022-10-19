@@ -11,7 +11,14 @@ from datamaestro_text.data.ir import AdhocDocument, AdhocIndex as Index, AdhocDo
 from xpmir.letor import Device, DeviceInformation, Random
 from xpmir.letor.batchers import Batcher
 from xpmir.letor.context import TrainerContext
-from xpmir.letor.records import Document, BaseRecords, ProductRecords, Query
+from xpmir.letor.records import (
+    Document,
+    BaseRecords,
+    DuoRecords,
+    PairwiseRecords,
+    ProductRecords,
+    Query,
+)
 from xpmir.utils import EasyLogger, easylog
 
 logger = easylog()
@@ -41,10 +48,17 @@ class ScorerOutputType(Enum):
     """A probability, in ]0,1["""
 
 
+class LearnableModel(Config):
+    """All learnable models"""
+
+    pass
+
+
 class Scorer(Config, EasyLogger):
     """Query-document scorer
 
-    A model able to give a score to a list of documents given a query"""
+    A model able to give a score to a list of documents given a query
+    """
 
     outputType: ScorerOutputType = ScorerOutputType.REAL
 
@@ -87,7 +101,13 @@ class RandomScorer(Scorer):
         return scoredDocuments
 
 
-class LearnableScorer(Scorer):
+class AbstractLearnableScorer(Scorer):
+    """Base class for all learnable scorer"""
+
+    pass
+
+
+class LearnableScorer(AbstractLearnableScorer):
     """Learnable scorer
 
     A scorer with parameters that can be learnt"""
@@ -165,6 +185,13 @@ class LearnableScorer(Scorer):
             scoredDocuments.append(ScoredDocument(documents[i].docid, float(scores[i])))
 
         return scoredDocuments
+
+
+class DuoLearnableScorer(AbstractLearnableScorer):
+    """Base class for models that can score a triplet (query, document 1, document 2)"""
+
+    def __call__(self, inputs: "PairwiseRecords", info: Optional[TrainerContext]):
+        raise NotImplementedError(f"abstract __call__ in {self.__class__}")
 
 
 class Retriever(Config):

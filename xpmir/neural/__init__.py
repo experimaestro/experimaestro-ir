@@ -25,7 +25,7 @@ class TorchLearnableScorer(LearnableScorer, Module):
 
 
 class DualRepresentationScorer(TorchLearnableScorer):
-    """Neural scorer based on (at least a partially) independant representation
+    """Neural scorer based on (at least a partially) independent representation
     of the document and the question.
 
     This is the base class for all scorers that depend on a map
