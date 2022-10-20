@@ -43,6 +43,10 @@ class DuoCrossScorer(DuoLearnableScorer):
     """
 
     encoder: Param[TripletTextEncoder]
+    """The encoder to use for the Duobert model"""
+
+    aggregation: Param[str] = 'sum'
+    """The type of the aggregation function to use"""
 
     def  __validate__(self):
         assert not self.encoder.static(), "The vocabulary should be learnable"
@@ -62,7 +66,7 @@ class DuoCrossScorer(DuoLearnableScorer):
 
     
 
-    def rsv(self, query: str, documents: List[ScoredDocument], aggregation: str = 'sum') -> List[ScoredDocument]: 
+    def rsv(self, query: str, documents: List[ScoredDocument]) -> List[ScoredDocument]: 
         """Do the forward pass and then aggregate the scores for a document
         """
         query: Param[str]
@@ -70,9 +74,6 @@ class DuoCrossScorer(DuoLearnableScorer):
 
         documents: Param[List[ScoredDocument]]
         """The top K_2 documents which preselected by the monobert"""
-
-        aggregation: Optional[str] = 'sum'
-        """The type of the aggregation function to use"""
 
         def calculate_aggregation_score(input: torch.Tensor, k: int, aggregation: str) -> torch.Tensor:
             prob_factory = input.reshape(k, -1)
@@ -101,7 +102,7 @@ class DuoCrossScorer(DuoLearnableScorer):
 
         with torch.no_grad():
             scores = self(inputs, None).cpu() # len((k)*(k-1))
-            scores_aggregate = calculate_aggregation_score(scores, k, aggregation)
+            scores_aggregate = calculate_aggregation_score(scores, k, self.aggregation)
 
             # add the scored documents to the list
             scoredDocuments = []
