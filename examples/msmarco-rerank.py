@@ -171,7 +171,7 @@ def cli(debug, small, gpu, tags, host, port, workdir, max_epochs, batch_size):
         tests.evaluate_retriever(bm25_retriever)
         tests.evaluate_retriever(
             random_scorer.getRetriever(
-                base_retriever, batch_size, PowerAdaptativeBatcher()
+                bm25_retriever, batch_size, PowerAdaptativeBatcher()
             )
         )
 
