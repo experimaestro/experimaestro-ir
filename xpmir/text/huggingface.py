@@ -13,6 +13,7 @@ from xpmir.text.encoders import (
     ContextualizedTextEncoderOutput,
     DualTextEncoder,
     TextEncoder,
+    TripletTextEncoder
 )
 from xpmir.utils import easylog
 
@@ -288,6 +289,28 @@ class DualTransformerEncoder(TransformerVocab, DualTextEncoder):
     def dimension(self) -> int:
         return self.model.config.hidden_size
 
+class DualDuoBertTransformerEncoder(TransformerVocab, TripletTextEncoder):
+    """Encoder of the query-document-document pair of the [cls] token
+    Be like: [cls]query[sep]doc1[sep]doc2[sep] with 62 tokens for query
+    and 223 for each document.
+    """
+    maxlen: Param[Optional[int]] = None
+
+    def forward(self, texts: List[Tuple[str, str, str]]):
+        texts_concated = [query + '[SEP]' + doc1 + '[SEP]' + doc2 
+            for (query, doc1, doc2) in texts]
+        tokenized = self.batch_tokenize(texts_concated, maxlen=self.maxlen, mask=True)
+
+        with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
+            y = self.model(tokenized.ids,sattention_mask=tokenized.mask.to(self.device))
+
+        # Assumes that [CLS] is the first token
+        # shape of (len(texts),dimension)
+        return y.last_hidden_state[:, 0] 
+
+    @property
+    def dimension(self) -> int:
+        return self.model.config.hidden_size
 
 class LayerFreezer(InitializationTrainingHook):
     """This training hook class can be used to freeze some of the transformer layers"""
