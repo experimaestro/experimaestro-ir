@@ -14,7 +14,6 @@ from xpmir.letor.context import TrainerContext
 from xpmir.letor.records import (
     Document,
     BaseRecords,
-    DuoRecords,
     PairwiseRecords,
     ProductRecords,
     Query,

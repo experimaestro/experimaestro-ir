@@ -170,8 +170,8 @@ def cli(debug, small, gpu, tags, host, port, workdir, max_epochs, batch_size):
         # Evaluate BM25 as well as the random scorer (low baseline)
         tests.evaluate_retriever(bm25_retriever)
         tests.evaluate_retriever(
-            base_retriever.getReranker(
-                random_scorer, batch_size, PowerAdaptativeBatcher()
+            random_scorer.getRetriever(
+                bm25_retriever, batch_size, PowerAdaptativeBatcher()
             )
         )
 
