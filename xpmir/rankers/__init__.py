@@ -14,7 +14,6 @@ from xpmir.letor.context import TrainerContext
 from xpmir.letor.records import (
     Document,
     BaseRecords,
-    DuoRecords,
     PairwiseRecords,
     ProductRecords,
     Query,
@@ -307,3 +306,17 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
 
         _scoredDocuments.sort(reverse=True)
         return _scoredDocuments[: (self.top_k or 0)]
+
+class DuoTwoStageRetriever(AbstractTwoStageRetriever):
+    """The two stage retriever for duobert. The way of the inference is different from
+    the normal monobert.
+    """
+    def _retrieve(self,):
+        # TODO: implement the way to append the ranking documents to a list
+        # by using the rsv function of the scorer. The way to treat the batch is different.
+        raise NotImplementedError
+    
+    def retrieve(self, query:str):
+        # TODO: implement the way of sorting the documents to get the final result.
+        # given the query
+        raise NotImplementedError
