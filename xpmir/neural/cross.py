@@ -2,11 +2,12 @@ from errno import EROFS
 import torch
 import torch.nn as nn
 from experimaestro import Param
+from xpmir.letor.batchers import Batcher
 from xpmir.letor.context import TrainerContext
 from xpmir.letor.records import BaseRecords, PairwiseRecord, PairwiseRecords, Query, Document
 from xpmir.neural import TorchLearnableScorer
 from xpmir.text.encoders import DualTextEncoder, TripletTextEncoder
-from xpmir.rankers import DuoLearnableScorer, ScoredDocument
+from xpmir.rankers import DuoLearnableScorer, DuoTwoStageRetriever, LearnableScorer, Retriever, ScoredDocument
 from typing import List, Optional
 
 class CrossScorer(TorchLearnableScorer):
@@ -45,9 +46,6 @@ class DuoCrossScorer(DuoLearnableScorer):
     encoder: Param[TripletTextEncoder]
     """The encoder to use for the Duobert model"""
 
-    aggregation: Param[str] = 'sum'
-    """The type of the aggregation function to use"""
-
     def  __validate__(self):
         assert not self.encoder.static(), "The vocabulary should be learnable"
 
@@ -64,49 +62,21 @@ class DuoCrossScorer(DuoLearnableScorer):
         )
         return self.classifier(triplets).squeeze(1)
 
-    
-
-    def rsv(self, query: str, documents: List[ScoredDocument]) -> List[ScoredDocument]: 
-        """Do the forward pass and then aggregate the scores for a document
+    def getRetriever(
+        self, 
+        retriever: "Retriever",
+        batch_size: int,
+        batcher: Batcher = Batcher(),
+        top_k=None,
+        device=None
+    ):
+        """The given the base_retriever and return a two stage retriever specialized for Duobert
         """
-        query: Param[str]
-        """The query to retrieve by the model"""
-
-        documents: Param[List[ScoredDocument]]
-        """The top K_2 documents which preselected by the monobert"""
-
-        def calculate_aggregation_score(input: torch.Tensor, k: int, aggregation: str) -> torch.Tensor:
-            prob_factory = input.reshape(k, -1)
-            if aggregation == 'sum':
-                return torch.sum(prob_factory, dim = 1)
-            if aggregation == 'max':
-                return torch.max(prob_factory, dim = 1)
-            if aggregation == 'min': 
-                return torch.min(prob_factory, dim = 1)
-            if aggregation == 'binary':
-                return torch.sum(prob_factory > 0.5, dim = 1)
-            raise RuntimeError(f"{aggregation} not supported!")
-
-        inputs = PairwiseRecords()
-        for doc in documents:
-            assert doc.content is not None
-
-        qry = Query(None, query)
-        k = len(documents)
-        for i in range(k):
-            document_i = Document(documents[i].docid, documents[i].content, documents[i].score)
-            for j in range(k):
-                if i != j:
-                    document_j = Document(documents[j].docid, documents[j].content, documents[j].score)
-                    inputs.add(PairwiseRecord(qry, document_i, document_j))
-
-        with torch.no_grad():
-            scores = self(inputs, None).cpu() # len((k)*(k-1))
-            scores_aggregate = calculate_aggregation_score(scores, k, self.aggregation)
-
-            # add the scored documents to the list
-            scoredDocuments = []
-            for i in range(k):
-                scoredDocuments.append(ScoredDocument(documents[i].docid, float(scores_aggregate[i])))
-
-        return scoredDocuments
+        return DuoTwoStageRetriever(
+            retriever=retriever,
+            scorer=self,
+            batchsize=batch_size,
+            batcher=batcher,
+            device=device,
+            top_k=top_k
+        )

@@ -165,15 +165,25 @@ class PairwiseRecords(BaseRecords):
     # The scores of the retriever
     negatives: List[Document]
 
+    # The target of the Pairwise records in Duobert case
+    target: Optional[torch.Tensor] = None
+
     def __init__(self):
         self._queries = []
         self.positives = []
         self.negatives = []
+        self.target = None
 
     def add(self, record: PairwiseRecord):
         self._queries.append(record.query)
         self.positives.append(record.positive)
         self.negatives.append(record.negative)
+    
+    def set_target(self, target: torch.Tensor):
+        self.target = target
+
+    def get_target(self) -> torch.Tensor:
+        return self.target
 
     @property
     def queries(self):

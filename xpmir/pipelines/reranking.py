@@ -123,3 +123,6 @@ class RerankingPipeline:
                 best = outputs.listeners["bestval"][metric_name]
                 retriever = val_retriever_factory(best)
                 self.tests.evaluate_retriever(retriever, self.evaluate_launcher)
+
+        # return the output of the learner in order to get the information about the best retriever
+        return outputs 

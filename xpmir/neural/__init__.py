@@ -7,7 +7,7 @@ from xpmir.letor.batchers import Sliceable
 from xpmir.letor.context import TrainerContext
 from xpmir.letor.records import BaseRecords
 from xpmir.letor.optim import Module
-from xpmir.rankers import LearnableScorer
+from xpmir.rankers import AbstractLearnableScorer, LearnableScorer
 
 
 class TorchLearnableScorer(LearnableScorer, Module):

@@ -30,7 +30,7 @@ from xpmir.letor.context import (
     TrainingHook,
 )
 from xpmir.letor.metrics import Metrics
-from xpmir.rankers import LearnableScorer, Retriever, ScoredDocument, Scorer
+from xpmir.rankers import AbstractLearnableScorer, LearnableScorer, Retriever, ScoredDocument, Scorer
 from xpmir.letor.optim import ParameterOptimizer, ScheduledOptimizer
 
 logger = easylog()
@@ -210,7 +210,7 @@ class Learner(Task, EasyLogger):
     trainer: Param[Trainer]
     """Specifies how to train the model"""
 
-    scorer: Param[LearnableScorer]
+    scorer: Param[AbstractLearnableScorer]
     """Defines the model that scores documents"""
 
     max_epochs: Param[int] = 1000

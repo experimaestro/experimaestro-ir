@@ -14,6 +14,7 @@ from xpmir.letor.context import TrainerContext
 from xpmir.letor.records import (
     Document,
     BaseRecords,
+    PairwiseRecord,
     PairwiseRecords,
     ProductRecords,
     Query,
@@ -88,6 +89,7 @@ class Scorer(Config, EasyLogger):
         retriever: "Retriever",
         batch_size: int,
         batcher: Batcher = Batcher(),
+        top_k=None,
         device=None,
     ):
         """Returns a two stage re-ranker from this retriever and a scorer
@@ -101,6 +103,7 @@ class Scorer(Config, EasyLogger):
             batchsize=batch_size,
             batcher=batcher,
             device=device,
+            top_k=top_k
         )
 
 
@@ -259,7 +262,7 @@ class AbstractTwoStageRetriever(Retriever):
     scorer: Param[Scorer]
     """The scorer used to re-rank the documents"""
 
-    top_k: Optional[Param[int]] = None
+    top_k: Param[Optional[int]] = None
     """The number of returned documents (if None, returns all the documents)"""
 
     batchsize: Meta[int] = 0
@@ -305,18 +308,79 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
         )
 
         _scoredDocuments.sort(reverse=True)
-        return _scoredDocuments[: (self.top_k or 0)]
+        return _scoredDocuments[: (self.top_k or len(_scoredDocuments))]
 
 class DuoTwoStageRetriever(AbstractTwoStageRetriever):
     """The two stage retriever for duobert. The way of the inference is different from
     the normal monobert.
     """
-    def _retrieve(self,):
-        # TODO: implement the way to append the ranking documents to a list
-        # by using the rsv function of the scorer. The way to treat the batch is different.
-        raise NotImplementedError
+
+    def _retrieve(
+        self, 
+        query: str, 
+        batch: List[Tuple[ScoredDocument, ScoredDocument]],
+        scoredDocuments: List[float]
+    ):
+        """call the function rsv to get the information for each batch 
+        because of the batchsize is independent on k, we may seperate the 
+        triplets belongs to the same query into different batches.
+        """
+        scoredDocuments.append(self.rsv(query, batch))
     
-    def retrieve(self, query:str):
-        # TODO: implement the way of sorting the documents to get the final result.
-        # given the query
-        raise NotImplementedError
+    def retrieve(
+        self, 
+        query: str
+    ):
+        """call the _retrieve function by using the batcher and do an
+        aggregation of all the scores
+        """
+        # topk from the monobert
+        scoredDocuments_previous = self.retriever.retrieve(query, content=True) # list[ScoredDocument]
+
+        # transform them into the pairs.
+        pairs = []
+        for i in range(len(scoredDocuments_previous)):
+            for j in range(len(scoredDocuments_previous)):
+                if i != j:
+                    pairs.append(scoredDocuments_previous[i],scoredDocuments_previous[j])
+
+        # Scorer in evaluation mode
+        self.scorer.eval()
+
+        _scores_pairs = [] # the scores for each pair of documents
+        self._batcher.process(
+            pairs, self._retrieve, query, _scores_pairs
+        )
+
+        _scores_pairs = torch.Tensor(_scores_pairs).reshape(len(scoredDocuments_previous),-1)
+        _scores_per_document = torch.sum(_scores_pairs, dim = 1) # scores for each document.
+
+        # construct the ScoredDocument object from the score we just get.
+        scoredDocuments = []
+        for i in range(len(scoredDocuments_previous)):
+            scoredDocuments.append(
+                ScoredDocument(scoredDocuments_previous[i].docid, float(_scores_per_document[i]))
+            )
+        scoredDocuments.sort(reverse=True)
+        return scoredDocuments[: (self.top_k or len(scoredDocuments))]
+        
+
+    def rsv(
+            self, 
+            query: str, 
+            documents: List[Tuple[ScoredDocument, ScoredDocument]]
+    ) -> List[float]: 
+        """Given the query and documents in tuple
+        return the score for each triplets 
+        """
+        qry = Query(None, query)
+        inputs = PairwiseRecords()
+
+        for (doc1, doc2) in documents:
+            doc1 = Document(doc1.docid, doc1.content, doc1.score)
+            doc2 = Document(doc2.docid, doc2.content, doc2.score)
+            inputs.add(PairwiseRecord(qry, doc1, doc2))
+
+        with torch.no_grad():
+            scores = self(inputs, None).cpu().float() # shape (batchsizes)
+            return scores.tolist()

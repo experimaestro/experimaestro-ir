@@ -14,6 +14,7 @@ from xpmir.letor.trainers import TrainerContext, LossTrainer
 import numpy as np
 from xpmir.rankers import LearnableScorer, ScorerOutputType
 from xpmir.utils import foreach
+from xpmir.letor.trainers.pointwise import PointwiseLoss
 
 
 class PairwiseLoss(Config, nn.Module):
@@ -195,4 +196,79 @@ class PairwiseTrainer(LossTrainer):
             count = scores_by_record.shape[0] * (scores_by_record.shape[1] - 1)
             return (
                 scores_by_record[:, :1] > scores_by_record[:, 1:]
+            ).sum().float() / count
+
+class DuoLogProbaLoss(PairwiseLoss):
+    NAME = "DuoLogProbaLoss"
+
+    def compute(self, score: Tensor, target: Tensor, context: TrainerContext):
+        return torch.sum( - torch.log(torch.abs(1 - target - score))).float()
+
+    def process(self, scores: Tensor, target: Tensor ,context: TrainerContext):
+        value = self.compute(scores, target, context)
+        context.add_loss(Loss(f"pair-{self.NAME}", value, self.weight))
+
+
+
+class DuoPairwiseTrainer(LossTrainer):
+    """The pairwise trainer for duobert. The iter_batch method 
+    can be the same as the pairwiseTrainer
+    """
+    lossfn: Param[PairwiseLoss]
+    """The loss function"""
+
+    sampler: Param[PairwiseSampler]
+    """The pairwise sampler"""
+
+    sampler_iter: InitVar[SerializableIterator[PairwiseRecord]]
+
+    def initialize(
+        self, 
+        random: np.random.RandomState, 
+        context: TrainerContext
+    ):
+        super().initialize(random, context)
+        self.lossfn.initialize(self.ranker)
+        foreach(context.hooks(PairwiseLoss), lambda loss: loss.initialize(self.ranker))
+        self.sampler.initialize(random)
+        self.sampler_iter = self.sampler.pairwise_iter()
+
+    def iter_batches(self) -> Iterator[PairwiseRecords]:
+        while True:
+            batch = PairwiseRecords()
+            target = []
+            for _, record in zip(range(self.batch_size), self.sampler_iter):
+                # randomly swap the first and second document
+                if self.random.random() < 0.5:
+                    batch.add(record)
+                    target.append(1)
+                else: 
+                    batch.add(PairwiseRecord(record.query, record.negative, record.positive))
+                    target.append(0)
+            batch.set_target(torch.Tensor(target))
+            yield batch
+    
+    def train_batch(self, records: PairwiseRecords):
+        # Get the next batch and compute the scores for each query/document
+        # forward pass
+        rel_scores = self.ranker(records, self.context) # shape: (bs)
+
+        if torch.isnan(rel_scores).any() or torch.isinf(rel_scores).any():
+            self.logger.error("nan or inf relevance score detected. Aborting.")
+            sys.exit(1)
+
+        # Reshape to get the pairs and compute the loss
+        self.lossfn.process(rel_scores, records.get_target, self.context)
+
+        self.context.add_metric(
+            ScalarMetric(
+                "accuracy", float(self.acc(rel_scores, records.get_target).item()), len(rel_scores)
+            )
+        )
+
+    def acc(self, scores_by_record, target) -> Tensor:
+        with torch.no_grad():
+            count = scores_by_record.shape[0] # batch_size
+            return (
+                torch.abs(scores_by_record - (1 - target)) > 0.5
             ).sum().float() / count
