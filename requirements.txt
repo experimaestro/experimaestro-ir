@@ -4,6 +4,7 @@ experimaestro>=0.11.5
 datamaestro>=0.8.9
 datamaestro_text>=2022.6.16
 ir_datasets
+xpmir_rust>=0.1.0
 
 # --- SKIP_DOCBUILD ---
 
