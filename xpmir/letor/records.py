@@ -153,6 +153,15 @@ class PairwiseRecord:
         self.negative = negative
 
 
+class PairwiseRecordWithTarget(PairwiseRecord):
+    """A pairwise record is composed of a query, a positive and a negative document"""
+
+    target: int
+
+    def __init__(self, query: Query, positive: Document, negative: Document, target: int):
+        super().__init__(query,positive,negative)
+        self.target = target
+
 class PairwiseRecords(BaseRecords):
     """Pairwise records of queries associated with (positive, negative) pairs"""
 
@@ -165,26 +174,16 @@ class PairwiseRecords(BaseRecords):
     # The scores of the retriever
     negatives: List[Document]
 
-    # The target of the Pairwise records in Duobert case
-    target: Optional[torch.Tensor] = None
-
     def __init__(self):
         self._queries = []
         self.positives = []
         self.negatives = []
-        self.target = None
 
     def add(self, record: PairwiseRecord):
         self._queries.append(record.query)
         self.positives.append(record.positive)
         self.negatives.append(record.negative)
     
-    def set_target(self, target: torch.Tensor):
-        self.target = target
-
-    def get_target(self) -> torch.Tensor:
-        return self.target
-
     @property
     def queries(self):
         return itertools.chain(self._queries, self._queries)
@@ -216,6 +215,36 @@ class PairwiseRecords(BaseRecords):
             return records
 
         return PairwiseRecord(self._queries[ix], self.positives[ix], self.negatives[ix])
+
+class PairwiseRecordsWithTarget(PairwiseRecords):
+    # The target of the Pairwise records in Duobert case
+    target: List[int]
+
+    def __init__(self):
+        super().__init__()
+        self.target = []
+
+    def add(self, record: PairwiseRecordWithTarget):
+        self._queries.append(record.query)
+        self.positives.append(record.positive)
+        self.negatives.append(record.negative)
+        self.target.append(record.target)
+
+    def get_target(self):
+        return self.target
+    
+    def __getitem__(self, ix: Union[slice, int]):
+        if isinstance(ix, slice):
+            records = PairwiseRecordsWithTarget()
+            for i in range(ix.start, min(ix.stop, len(self._queries)), ix.step or 1):
+                records.add(
+                    PairwiseRecordWithTarget(
+                        self._queries[i], self.positives[i], self.negatives[i], self.target[i]
+                    )
+                )
+            return records
+
+        return PairwiseRecordWithTarget(self._queries[ix], self.positives[ix], self.negatives[ix], self.target[ix])
 
 
 class BatchwiseRecords(BaseRecords):

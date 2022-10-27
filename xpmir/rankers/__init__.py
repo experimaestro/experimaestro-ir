@@ -5,12 +5,15 @@ from enum import Enum
 from pathlib import Path
 from typing import Dict, Iterable, Iterator, List, Optional, Tuple, final
 import torch
+import torch.nn as nn
+
 import numpy as np
 from experimaestro import Param, Config, Option, documentation, Meta
 from datamaestro_text.data.ir import AdhocDocument, AdhocIndex as Index, AdhocDocuments
 from xpmir.letor import Device, DeviceInformation, Random
 from xpmir.letor.batchers import Batcher
 from xpmir.letor.context import TrainerContext
+from xpmir.letor.optim import Module
 from xpmir.letor.records import (
     Document,
     BaseRecords,
@@ -103,7 +106,7 @@ class Scorer(Config, EasyLogger):
             batchsize=batch_size,
             batcher=batcher,
             device=device,
-            top_k=top_k
+            top_k=top_k if top_k else None
         )
 
 
@@ -123,13 +126,18 @@ class RandomScorer(Scorer):
         return scoredDocuments
 
 
-class AbstractLearnableScorer(Scorer):
+class AbstractLearnableScorer(Scorer, Module):
     """Base class for all learnable scorer"""
 
     checkpoint: Meta[Optional[Path]]
     """A checkpoint path from which the model should be loaded (or None otherwise)"""
 
+
+    __call__ = nn.Module.__call__
+    to = nn.Module.to
+
     def __init__(self):
+        nn.Module.__init__(self)
         super().__init__()
         self._initialized = False
 
@@ -138,14 +146,14 @@ class AbstractLearnableScorer(Scorer):
 
     def train(self, mode=True):
         """Put the model in training mode"""
-        raise NotImplementedError("train() in {self.__class__}")
+        return nn.Module.train(self, mode)
 
     def eval(self):
         """Put the model in training mode"""
         self.train(False)
 
-    def to(self, device):
-        pass
+    # def to(self, device):
+    #     pass
 
     @final
     def initialize(self, random: Optional[np.random.RandomState]):
@@ -237,6 +245,7 @@ class Retriever(Config):
                 is the text
         """
         results = {}
+        print("topk in method retrieve_all()", self.top_k)
         for key, text in tqdm(list(queries.items())):
             results[key] = self.retrieve(text)
         return results
@@ -306,7 +315,7 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
         scoredDocuments = self._batcher.process(
             scoredDocuments, self._retrieve, query, _scoredDocuments
         )
-
+        print("print inside the TwoStageRetirever::retrieve()", self.top_k)
         _scoredDocuments.sort(reverse=True)
         return _scoredDocuments[: (self.top_k or len(_scoredDocuments))]
 
@@ -316,9 +325,9 @@ class DuoTwoStageRetriever(AbstractTwoStageRetriever):
     """
 
     def _retrieve(
-        self, 
-        query: str, 
+        self,  
         batch: List[Tuple[ScoredDocument, ScoredDocument]],
+        query: str,
         scoredDocuments: List[float]
     ):
         """call the function rsv to get the information for each batch 
@@ -337,16 +346,19 @@ class DuoTwoStageRetriever(AbstractTwoStageRetriever):
         # topk from the monobert
         scoredDocuments_previous = self.retriever.retrieve(query, content=True) # list[ScoredDocument]
 
+        print('monobert retrieved result: ', scoredDocuments_previous)
+
         # transform them into the pairs.
         pairs = []
         for i in range(len(scoredDocuments_previous)):
             for j in range(len(scoredDocuments_previous)):
                 if i != j:
-                    pairs.append(scoredDocuments_previous[i],scoredDocuments_previous[j])
+                    pairs.append((scoredDocuments_previous[i],scoredDocuments_previous[j]))
 
         # Scorer in evaluation mode
         self.scorer.eval()
-
+        print('\n\n\n\n','Number of the pairs in total: ',len(pairs),'\n\n\n\n\n')
+        print("One example of the pair: ",pairs[20],"\n\n\n\n")
         _scores_pairs = [] # the scores for each pair of documents
         self._batcher.process(
             pairs, self._retrieve, query, _scores_pairs
@@ -375,12 +387,12 @@ class DuoTwoStageRetriever(AbstractTwoStageRetriever):
         """
         qry = Query(None, query)
         inputs = PairwiseRecords()
-
-        for (doc1, doc2) in documents:
+        print('\n\n\n\n',"documents in rsv()",documents,'\n\n\n\n\n\n')
+        for doc1, doc2 in documents:
             doc1 = Document(doc1.docid, doc1.content, doc1.score)
             doc2 = Document(doc2.docid, doc2.content, doc2.score)
             inputs.add(PairwiseRecord(qry, doc1, doc2))
 
         with torch.no_grad():
-            scores = self(inputs, None).cpu().float() # shape (batchsizes)
+            scores = self.scorer(inputs, None).cpu().float() # shape (batchsizes)
             return scores.tolist()

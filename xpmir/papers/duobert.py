@@ -229,15 +229,16 @@ def cli(debug, small, gpu, tags, host, port, workdir, max_epochs, batch_size):
 
         # Here we have only one metric so we don't use a loop
         best_mono_scorer = outputs.listeners["bestval"]["RR@10"]
+        # We take only the first topK2 value retrieved by the monobert retriever
         best_mono_retriever = best_mono_scorer.getRetriever(
-            base_retriever, batch_size, PowerAdaptativeBatcher(), device=device
+            bm25_retriever, batch_size, PowerAdaptativeBatcher(), device=device, top_k = topK2
         )
 
         duobert_reranking = RerankingPipeline(
             duobert_trainer,
             Adam(lr=3e-6, weight_decay=1e-2),
             lambda score: score.getRetriever(
-                best_mono_retriever, batch_size, PowerAdaptativeBatcher(), top_k = topK2
+                best_mono_retriever, batch_size, PowerAdaptativeBatcher()
             ),
             STEPS_PER_EPOCH,
             max_epochs,
@@ -246,7 +247,7 @@ def cli(debug, small, gpu, tags, host, port, workdir, max_epochs, batch_size):
             tests,
             device=device,
             validation_retriever_factory=lambda score: score.getRetriever(
-                best_mono_retriever, batch_size, PowerAdaptativeBatcher(), top_k = valtopK2
+                best_mono_retriever, batch_size, PowerAdaptativeBatcher()
             ),
             launcher=gpu_launcher,
             evaluate_launcher=gpu_launcher,

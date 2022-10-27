@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from experimaestro import Config, default, Annotated, Param, deprecate
 from xpmir.letor.context import Loss
 from xpmir.letor.metrics import ScalarMetric
-from xpmir.letor.records import PairwiseRecord, PairwiseRecords
+from xpmir.letor.records import PairwiseRecord, PairwiseRecordWithTarget, PairwiseRecords, PairwiseRecordsWithTarget
 from xpmir.letor.samplers import PairwiseSampler, SerializableIterator
 from xpmir.letor.trainers import TrainerContext, LossTrainer
 import numpy as np
@@ -233,19 +233,15 @@ class DuoPairwiseTrainer(LossTrainer):
         self.sampler.initialize(random)
         self.sampler_iter = self.sampler.pairwise_iter()
 
-    def iter_batches(self) -> Iterator[PairwiseRecords]:
+    def iter_batches(self) -> Iterator[PairwiseRecordsWithTarget]:
         while True:
-            batch = PairwiseRecords()
-            target = []
+            batch = PairwiseRecordsWithTarget()
             for _, record in zip(range(self.batch_size), self.sampler_iter):
                 # randomly swap the first and second document
                 if self.random.random() < 0.5:
-                    batch.add(record)
-                    target.append(1)
+                    batch.add(PairwiseRecordWithTarget(record.query, record.positive, record.negative, 1))
                 else: 
-                    batch.add(PairwiseRecord(record.query, record.negative, record.positive))
-                    target.append(0)
-            batch.set_target(torch.Tensor(target))
+                    batch.add(PairwiseRecordWithTarget(record.query, record.negative, record.positive, 0))
             yield batch
     
     def train_batch(self, records: PairwiseRecords):
@@ -258,11 +254,11 @@ class DuoPairwiseTrainer(LossTrainer):
             sys.exit(1)
 
         # Reshape to get the pairs and compute the loss
-        self.lossfn.process(rel_scores, records.get_target, self.context)
+        self.lossfn.process(rel_scores, torch.Tensor(records.get_target()).to(torch.device("cuda:0")), self.context)
 
         self.context.add_metric(
             ScalarMetric(
-                "accuracy", float(self.acc(rel_scores, records.get_target).item()), len(rel_scores)
+                "accuracy", float(self.acc(rel_scores, torch.Tensor(records.get_target()).to(torch.device("cuda:0"))).item()), len(rel_scores)
             )
         )
 

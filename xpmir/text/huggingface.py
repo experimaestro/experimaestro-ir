@@ -302,7 +302,7 @@ class DualDuoBertTransformerEncoder(TransformerVocab, TripletTextEncoder):
         tokenized = self.batch_tokenize(texts_concated, maxlen=self.maxlen, mask=True)
 
         with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
-            y = self.model(tokenized.ids,sattention_mask=tokenized.mask.to(self.device))
+            y = self.model(tokenized.ids,attention_mask=tokenized.mask.to(self.device))
 
         # Assumes that [CLS] is the first token
         # shape of (len(texts),dimension)
