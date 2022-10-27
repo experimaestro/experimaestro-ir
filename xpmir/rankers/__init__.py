@@ -195,7 +195,7 @@ class LearnableScorer(AbstractLearnableScorer):
         """
         raise NotImplementedError(f"forward in {self.__class__}")
 
-    def rsv(self, query: str, documents: List[ScoredDocument]) -> List[ScoredDocument]:
+    def rsv(self, query: str, documents: List[ScoredDocument], content=False) -> List[ScoredDocument]:
         # Prepare the inputs and call the model
         inputs = ProductRecords()
         for doc in documents:
@@ -210,7 +210,9 @@ class LearnableScorer(AbstractLearnableScorer):
         # Returns the scored documents
         scoredDocuments = []
         for i in range(len(documents)):
-            scoredDocuments.append(ScoredDocument(documents[i].docid, float(scores[i])))
+            scoredDocuments.append(ScoredDocument(
+                documents[i].docid, float(scores[i]), documents[i].content if content else None
+            ))
 
         return scoredDocuments
 
@@ -218,7 +220,7 @@ class LearnableScorer(AbstractLearnableScorer):
 class DuoLearnableScorer(AbstractLearnableScorer):
     """Base class for models that can score a triplet (query, document 1, document 2)"""
 
-    def __call__(self, inputs: "PairwiseRecords", info: Optional[TrainerContext]):
+    def forward(self, inputs: "PairwiseRecords", info: Optional[TrainerContext]):
         """Returns scores for pairs of documents (given a query)"""
         raise NotImplementedError(f"abstract __call__ in {self.__class__}")
 
@@ -245,7 +247,6 @@ class Retriever(Config):
                 is the text
         """
         results = {}
-        print("topk in method retrieve_all()", self.top_k)
         for key, text in tqdm(list(queries.items())):
             results[key] = self.retrieve(text)
         return results
@@ -301,10 +302,11 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
         batch: List[ScoredDocument],
         query: str,
         scoredDocuments: List[ScoredDocument],
+        content:bool
     ):
-        scoredDocuments.extend(self.scorer.rsv(query, batch))
+        scoredDocuments.extend(self.scorer.rsv(query, batch, content))
 
-    def retrieve(self, query: str):
+    def retrieve(self, query: str, content=False):
         # Calls the retriever
         scoredDocuments = self.retriever.retrieve(query, content=True)
 
@@ -313,9 +315,9 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
 
         _scoredDocuments = []
         scoredDocuments = self._batcher.process(
-            scoredDocuments, self._retrieve, query, _scoredDocuments
+            scoredDocuments, self._retrieve, query, _scoredDocuments, content
         )
-        print("print inside the TwoStageRetirever::retrieve()", self.top_k)
+
         _scoredDocuments.sort(reverse=True)
         return _scoredDocuments[: (self.top_k or len(_scoredDocuments))]
 
@@ -334,7 +336,7 @@ class DuoTwoStageRetriever(AbstractTwoStageRetriever):
         because of the batchsize is independent on k, we may seperate the 
         triplets belongs to the same query into different batches.
         """
-        scoredDocuments.append(self.rsv(query, batch))
+        scoredDocuments.extend(self.rsv(query, batch))
     
     def retrieve(
         self, 
@@ -346,8 +348,6 @@ class DuoTwoStageRetriever(AbstractTwoStageRetriever):
         # topk from the monobert
         scoredDocuments_previous = self.retriever.retrieve(query, content=True) # list[ScoredDocument]
 
-        print('monobert retrieved result: ', scoredDocuments_previous)
-
         # transform them into the pairs.
         pairs = []
         for i in range(len(scoredDocuments_previous)):
@@ -357,8 +357,7 @@ class DuoTwoStageRetriever(AbstractTwoStageRetriever):
 
         # Scorer in evaluation mode
         self.scorer.eval()
-        print('\n\n\n\n','Number of the pairs in total: ',len(pairs),'\n\n\n\n\n')
-        print("One example of the pair: ",pairs[20],"\n\n\n\n")
+
         _scores_pairs = [] # the scores for each pair of documents
         self._batcher.process(
             pairs, self._retrieve, query, _scores_pairs
@@ -387,7 +386,6 @@ class DuoTwoStageRetriever(AbstractTwoStageRetriever):
         """
         qry = Query(None, query)
         inputs = PairwiseRecords()
-        print('\n\n\n\n',"documents in rsv()",documents,'\n\n\n\n\n\n')
         for doc1, doc2 in documents:
             doc1 = Document(doc1.docid, doc1.content, doc1.score)
             doc2 = Document(doc2.docid, doc2.content, doc2.score)

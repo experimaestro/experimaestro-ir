@@ -97,7 +97,7 @@ def cli(debug, small, gpu, tags, host, port, workdir, max_epochs, batch_size):
 
         # We request a GPU, and if none, a CPU
         gpu_launcher = find_launcher(
-            (cuda_gpu(mem="4G") if gpu else cpu()) & req_duration, tags=tags
+            (cuda_gpu(mem="12G") if gpu else cpu()) & req_duration, tags=tags
         )
     else:
         assert gpu, "Running full scale experiment without GPU is not recommended"
@@ -151,8 +151,7 @@ def cli(debug, small, gpu, tags, host, port, workdir, max_epochs, batch_size):
             ),
             trec2020=Evaluations(
                 prepare_dataset("irds.msmarco-passage.trec-dl-2020"), measures
-            ),
-            msmarco_dev=Evaluations(devsmall, measures),
+            )
         )
 
 

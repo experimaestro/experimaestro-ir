@@ -53,7 +53,7 @@ class DuoCrossScorer(DuoLearnableScorer):
         self.encoder.initialize()
         self.classifier = torch.nn.Linear(self.encoder.dimension, 1)
 
-    def __call__(self, inputs: PairwiseRecords, info: TrainerContext = None):
+    def forward(self, inputs: PairwiseRecords, info: TrainerContext = None):
         """Encode the query-document-document
         """
         triplets = self.encoder(
