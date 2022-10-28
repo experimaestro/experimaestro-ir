@@ -191,7 +191,7 @@ class SparseRetrieverIndexBuilder(Task):
         ), f"No internal document ID provided by document store {type(self.documents)}"
 
         vectors = self.encoder([d.text for d in batch]).cpu().numpy()
-        for vector, d in zip(vectors, batch, strict=True):
+        for vector, d in zip(vectors, batch):
             (nonzero_ix,) = vector.nonzero()
             self.indexer.add(
                 d.internal_docid, nonzero_ix.astype(np.uint64), vector[nonzero_ix]
