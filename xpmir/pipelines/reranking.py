@@ -62,7 +62,7 @@ class RerankingPipeline:
     random: Optional[Random] = None
     """Random generator"""
 
-    validation_interval = 1
+    validation_interval: Optional[int] = 1
     """Epochs between each validation"""
 
     validation_retriever_factory: Optional[RetrieverFactory] = None

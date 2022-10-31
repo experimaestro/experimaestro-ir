@@ -278,7 +278,6 @@ class DualTransformerEncoder(TransformerVocab, DualTextEncoder):
 
     def forward(self, texts: List[Tuple[str, str]]):
         tokenized = self.batch_tokenize(texts, maxlen=self.maxlen, mask=True)
-
         with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
             y = self.model(tokenized.ids, attention_mask=tokenized.mask.to(self.device))
 

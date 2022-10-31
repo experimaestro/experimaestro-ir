@@ -63,26 +63,26 @@ def cli(debug, small, gpu, tags, host, port, workdir, max_epochs, batch_size):
     logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
 
     # Number of topics in the validation set
-    VAL_SIZE = 500
+    VAL_SIZE = 250
 
     # Number of batches per epoch (# samples = STEPS_PER_EPOCH * batch_size)
     STEPS_PER_EPOCH = 32
 
     # Validation interval (in epochs)
-    validation_interval = 16
+    validation_interval = 32
 
     # How many document to re-rank for the monobert 
-    topK1 = 1000
+    topK1 = 500
     # How many documents to use for cross-validation in monobert
-    valtopK1 = 1000
+    valtopK1 = 500
 
     # How many document to pass from the monobert to duobert
-    topK2 = 50
+    topK2 = 30
     # How many document to use for cross-validation in duobert
-    valtopK2 = 50
+    valtopK2 = 30
 
     # Our default launcher for light tasks
-    req_duration = duration("2 days")
+    req_duration = duration("5 days")
     launcher = find_launcher(cpu() & req_duration, tags=tags)
 
     if small:
@@ -102,8 +102,8 @@ def cli(debug, small, gpu, tags, host, port, workdir, max_epochs, batch_size):
     else:
         assert gpu, "Running full scale experiment without GPU is not recommended"
         batch_size = batch_size or 128
-        max_epochs = max_epochs or 64
-        gpu_launcher = find_launcher(cuda_gpu(mem="14G") & req_duration, tags=tags)
+        max_epochs = max_epochs or 8192
+        gpu_launcher = find_launcher(cuda_gpu(mem="24G") & req_duration, tags=tags)
 
     logging.info(
         f"Number of epochs {max_epochs}, validation interval {validation_interval}"
@@ -190,8 +190,7 @@ def cli(debug, small, gpu, tags, host, port, workdir, max_epochs, batch_size):
                 batch_size=batch_size,
             )
         
-        # TODO: define the trainer for duobert
-        # Need to define a new DuoPairwiseTrainer() and a new Loss
+        # Define the trainer for the duobert 
         duobert_trainer = pairwise.DuoPairwiseTrainer(
             lossfn=pairwise.DuoLogProbaLoss().tag("loss","duo_proba"),
             sampler=train_sampler,
@@ -214,6 +213,7 @@ def cli(debug, small, gpu, tags, host, port, workdir, max_epochs, batch_size):
             validation_retriever_factory=lambda scorer: scorer.getRetriever(
                 base_retriever_val, batch_size, PowerAdaptativeBatcher(), device=device
             ),
+            validation_interval = validation_interval,
             launcher=gpu_launcher,
             evaluate_launcher=gpu_launcher,
             runs_path=runs_path,
@@ -236,8 +236,8 @@ def cli(debug, small, gpu, tags, host, port, workdir, max_epochs, batch_size):
         duobert_reranking = RerankingPipeline(
             duobert_trainer,
             Adam(lr=3e-6, weight_decay=1e-2),
-            lambda score: score.getRetriever(
-                best_mono_retriever, batch_size, PowerAdaptativeBatcher()
+            lambda scorer: scorer.getRetriever(
+                best_mono_retriever, batch_size, PowerAdaptativeBatcher(), device=device
             ),
             STEPS_PER_EPOCH,
             max_epochs,
@@ -245,17 +245,16 @@ def cli(debug, small, gpu, tags, host, port, workdir, max_epochs, batch_size):
             {"RR@10": True, "AP": False},
             tests,
             device=device,
-            validation_retriever_factory=lambda score: score.getRetriever(
-                best_mono_retriever, batch_size, PowerAdaptativeBatcher()
+            validation_retriever_factory=lambda scorer: scorer.getRetriever(
+                best_mono_retriever, batch_size, PowerAdaptativeBatcher(), device=device
             ),
+            validation_interval = validation_interval,
             launcher=gpu_launcher,
             evaluate_launcher=gpu_launcher,
             runs_path=runs_path,
         )
 
-        # TODO: implement the scorer for the duobert
-        # where to implement the different aggregation function for each document?
-        # where to control the number of tokens for each positve document and negaive documents?
+        # The scorer(model) for the duobert
         duobert_scorer = DuoCrossScorer(
             encoder = DualDuoBertTransformerEncoder(trainable=True)
         ).tag('duo-model','duobert')

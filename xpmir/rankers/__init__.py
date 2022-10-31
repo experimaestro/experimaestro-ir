@@ -152,9 +152,6 @@ class AbstractLearnableScorer(Scorer, Module):
         """Put the model in training mode"""
         self.train(False)
 
-    # def to(self, device):
-    #     pass
-
     @final
     def initialize(self, random: Optional[np.random.RandomState]):
         """Initialize a learnable scorer
