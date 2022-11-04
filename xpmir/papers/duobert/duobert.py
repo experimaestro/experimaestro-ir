@@ -7,6 +7,7 @@
 import dataclasses
 import logging
 from pathlib import Path
+from omegaconf import OmegaConf
 
 import xpmir.letor.trainers.pairwise as pairwise
 from datamaestro import prepare_dataset
@@ -17,6 +18,7 @@ from experimaestro.click import click, forwardoption
 from experimaestro.launcherfinder import cpu, cuda_gpu, find_launcher
 from experimaestro.launcherfinder.specs import duration
 from experimaestro.utils import cleanupdir
+from xpmir.configuration import omegaconf_argument
 from xpmir.datasets.adapters import RandomFold
 from xpmir.evaluation import Evaluations, EvaluationsCollection
 from xpmir.interfaces.anserini import AnseriniRetriever, IndexCollection
@@ -44,7 +46,7 @@ logging.basicConfig(level=logging.INFO)
 @click.option(
     "--batch-size", type=int, default=None, help="Batch size (validation and test)"
 )
-@click.option("--small", is_flag=True, help="Use small datasets")
+# @click.option("--small", is_flag=True, help="Use small datasets")
 @click.option(
     "--host",
     type=str,
@@ -54,9 +56,12 @@ logging.basicConfig(level=logging.INFO)
 @click.option(
     "--port", type=int, default=12345, help="Port for monitoring (default 12345)"
 )
+
+@omegaconf_argument("configuration", package=__package__)
 @click.argument("workdir", type=Path)
 @click.command()
-def cli(debug, small, gpu, tags, host, port, workdir, max_epochs, batch_size):
+
+def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_size):
     """Runs an experiment"""
     tags = tags.split(",") if tags else []
 
