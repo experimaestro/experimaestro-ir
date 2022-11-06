@@ -46,7 +46,7 @@ logging.basicConfig(level=logging.INFO)
 @click.option(
     "--batch-size", type=int, default=None, help="Batch size (validation and test)"
 )
-# @click.option("--small", is_flag=True, help="Use small datasets")
+
 @click.option(
     "--host",
     type=str,
@@ -60,55 +60,46 @@ logging.basicConfig(level=logging.INFO)
 @omegaconf_argument("configuration", package=__package__)
 @click.argument("workdir", type=Path)
 @click.command()
-
 def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_size):
     """Runs an experiment"""
     tags = tags.split(",") if tags else []
-
+    
     logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
 
     # Number of topics in the validation set
-    VAL_SIZE = 250
+    VAL_SIZE = configuration.Learner.validation_size
 
     # Number of batches per epoch (# samples = STEPS_PER_EPOCH * batch_size)
-    STEPS_PER_EPOCH = 32
+    STEPS_PER_EPOCH = configuration.Learner.steps_per_epoch
 
     # Validation interval (in epochs)
-    validation_interval = 32
+    validation_interval = configuration.Learner.validation_interval
 
     # How many document to re-rank for the monobert 
-    topK1 = 500
+    topK1 = configuration.Learner.Retriever_mono.k
     # How many documents to use for cross-validation in monobert
-    valtopK1 = 500
+    valtopK1 = configuration.Learner.Retriever_mono.val_k
 
     # How many document to pass from the monobert to duobert
-    topK2 = 30
+    topK2 = configuration.Retriever_duo.k
     # How many document to use for cross-validation in duobert
-    valtopK2 = 30
+    valtopK2 = configuration.Retriever_duo.val_k
 
     # Our default launcher for light tasks
-    req_duration = duration("5 days")
+    req_duration = duration("10 days")
     launcher = find_launcher(cpu() & req_duration, tags=tags)
 
-    if small:
-        VAL_SIZE = 10
-        validation_interval = 1
-        topK1 = 20
-        valtopK1 = 20
-        topK2 = 5
-        valtopK2 = 5
-        batch_size = batch_size or 16
-        max_epochs = max_epochs or 4
+    batch_size = batch_size or configuration.Learner.batch_size
+    max_epochs = max_epochs or configuration.Learner.max_epoch
 
+    if configuration.type == 'small':
         # We request a GPU, and if none, a CPU
         gpu_launcher = find_launcher(
             (cuda_gpu(mem="12G") if gpu else cpu()) & req_duration, tags=tags
         )
     else:
         assert gpu, "Running full scale experiment without GPU is not recommended"
-        batch_size = batch_size or 128
-        max_epochs = max_epochs or 8192
-        gpu_launcher = find_launcher(cuda_gpu(mem="24G") & req_duration, tags=tags)
+        gpu_launcher = find_launcher(cuda_gpu(mem="48G") & req_duration, tags=tags)
 
     logging.info(
         f"Number of epochs {max_epochs}, validation interval {validation_interval}"
@@ -117,9 +108,9 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
     assert (
         max_epochs % validation_interval == 0
     ), f"Number of epochs ({max_epochs}) is not a multiple of validation interval ({validation_interval})"
-
+    exit()
     # Sets the working directory and the name of the xp
-    name = "duobert-small" if small else "duobert"
+    name = "duobert-small" if configuration.type =='small' else "duobert"
     with experiment(workdir, name, host=host, port=port, launcher=launcher) as xp:
         # Needed by Pyserini
         xp.setenv("JAVA_HOME", find_java_home())

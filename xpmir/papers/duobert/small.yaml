@@ -1,0 +1,13 @@
+type: small
+Learner: 
+    validation_size: 10
+    steps_per_epoch: 32
+    validation_interval: 1
+    batch_size: 16
+    max_epoch: 4
+Retriever_mono: 
+    k: 20
+    val_k: 20
+Retriever_duo:
+    k: 5
+    val_k: 5
