@@ -1,8 +1,6 @@
 # Implementation of the experiments in the paper
-# Multi-Stage Document Ranking with BERT (Rodrigo Nogueira, Wei Yang, Kyunghyun Cho, Jimmy Lin). 2019.
-# https://arxiv.org/abs/1910.14424
-
-# An imitation of examples/msmarco-reranking.py
+# Passage Re-ranking with BERT, (Rodrigo Nogueira, Kyunghyun Cho). 2019
+# https://arxiv.org/abs/1901.04085
 
 import dataclasses
 import logging
@@ -59,8 +57,9 @@ logging.basicConfig(level=logging.INFO)
 
 # @omegaconf_argument("configuration", package=__package__)
 # works only with this one a the moment
-@omegaconf_argument("configuration", package='xpmir.papers.duobert')
+@omegaconf_argument("configuration", package='xpmir.papers.monobert')
 @click.argument("workdir", type=Path)
+
 @click.command()
 
 def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_size):
@@ -79,17 +78,12 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
     validation_interval = configuration.Learner.validation_interval
 
     # How many document to re-rank for the monobert 
-    topK1 = configuration.Retriever_mono.k
+    topK = configuration.Retriever_mono.k
     # How many documents to use for cross-validation in monobert
-    valtopK1 = configuration.Retriever_mono.val_k
-
-    # How many document to pass from the monobert to duobert
-    topK2 = configuration.Retriever_duo.k
-    # How many document to use for cross-validation in duobert
-    valtopK2 = configuration.Retriever_duo.val_k
+    valtopK = configuration.Retriever_mono.val_k
 
     # Our default launcher for light tasks
-    req_duration = duration("10 days")
+    req_duration = duration("5 days")
     launcher = find_launcher(cpu() & req_duration, tags=tags)
 
     batch_size = batch_size or configuration.Learner.batch_size
@@ -102,7 +96,7 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
         )
     else:
         assert gpu, "Running full scale experiment without GPU is not recommended"
-        gpu_launcher = find_launcher(cuda_gpu(mem="24G") & req_duration, tags=tags)
+        gpu_launcher = find_launcher(cuda_gpu(mem="48G") & req_duration, tags=tags)
 
     logging.info(
         f"Number of epochs {max_epochs}, validation interval {validation_interval}"
@@ -113,7 +107,7 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
     ), f"Number of epochs ({max_epochs}) is not a multiple of validation interval ({validation_interval})"
     
     # Sets the working directory and the name of the xp
-    name = "duobert-small" if configuration.type =='small' else "duobert"
+    name = "monobert-small" if configuration.type =='small' else "monobert"
     with experiment(workdir, name, host=host, port=port, launcher=launcher) as xp:
         # Needed by Pyserini
         xp.setenv("JAVA_HOME", find_java_home())
@@ -151,11 +145,10 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
             )
         )
 
-
         # Build the MS Marco index and definition of first stage rankers
         index = IndexCollection(documents=documents, storeContents=True).submit()
-        base_retriever = AnseriniRetriever(k=topK1, index=index, model=basemodel)
-        base_retriever_val = AnseriniRetriever(k=valtopK1, index=index, model=basemodel)
+        base_retriever = AnseriniRetriever(k=topK, index=index, model=basemodel)
+        base_retriever_val = AnseriniRetriever(k=valtopK, index=index, model=basemodel)
 
         # Defines how we sample train examples
         # (using the shuffled pre-computed triplets from MS Marco)
@@ -167,7 +160,7 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
         train_sampler = TripletBasedSampler(source=triplesid, index=index)
 
         # Search and evaluate with BM25
-        bm25_retriever = AnseriniRetriever(k=topK1, index=index, model=basemodel).tag(
+        bm25_retriever = AnseriniRetriever(k=topK, index=index, model=basemodel).tag(
             "model", "bm25"
         )
 
@@ -187,13 +180,6 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
                 batch_size=batch_size,
             )
         
-        # Define the trainer for the duobert 
-        duobert_trainer = pairwise.DuoPairwiseTrainer(
-            lossfn=pairwise.DuoLogProbaLoss().tag("loss","duo_proba"),
-            sampler=train_sampler,
-            batcher=PowerAdaptativeBatcher(),
-            batch_size=batch_size,
-        )
 
         monobert_reranking = RerankingPipeline(
             monobert_trainer,
@@ -204,7 +190,7 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
             STEPS_PER_EPOCH,
             max_epochs,
             ds_val,
-            {"RR@10": True, "AP": False, "nDCG": False},
+            {"RR@10": True, "AP": False,"nDCG": False},
             tests,
             device=device,
             validation_retriever_factory=lambda scorer: scorer.getRetriever(
@@ -216,48 +202,12 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
             runs_path=runs_path,
         )
 
-        monobert_scorer = CrossScorer(encoder=DualTransformerEncoder(trainable=True)).tag(
+        monobert_scorer = CrossScorer(encoder=DualTransformerEncoder(trainable=True, maxlen=512)).tag(
                 "model", "monobert"
             )
 
         # Run the monobert and use the result as the baseline for duobert
-        outputs = monobert_reranking.run(monobert_scorer)
-
-        # Here we have only one metric so we don't use a loop
-        best_mono_scorer = outputs.listeners["bestval"]["RR@10"]
-        # We take only the first topK2 value retrieved by the monobert retriever
-        best_mono_retriever = best_mono_scorer.getRetriever(
-            bm25_retriever, batch_size, PowerAdaptativeBatcher(), device=device, top_k = topK2
-        )
-
-        duobert_reranking = RerankingPipeline(
-            duobert_trainer,
-            Adam(lr=3e-6, weight_decay=1e-2),
-            lambda scorer: scorer.getRetriever(
-                best_mono_retriever, batch_size, PowerAdaptativeBatcher(), device=device
-            ),
-            STEPS_PER_EPOCH,
-            max_epochs,
-            ds_val,
-            {"RR@10": True, "AP": False, "nDCG": False},
-            tests,
-            device=device,
-            validation_retriever_factory=lambda scorer: scorer.getRetriever(
-                best_mono_retriever, batch_size, PowerAdaptativeBatcher(), device=device
-            ),
-            validation_interval = validation_interval,
-            launcher=gpu_launcher,
-            evaluate_launcher=gpu_launcher,
-            runs_path=runs_path,
-        )
-
-        # The scorer(model) for the duobert
-        duobert_scorer = DuoCrossScorer(
-            encoder = DualDuoBertTransformerEncoder(trainable=True)
-        ).tag('duo-model','duobert')
-
-        # Run the duobert
-        duobert_reranking.run(duobert_scorer)
+        monobert_reranking.run(monobert_scorer)
 
         # Waits that experiments complete
         xp.wait()

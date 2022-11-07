@@ -1,0 +1,10 @@
+type: normal
+Learner: 
+    validation_size: 250
+    steps_per_epoch: 32
+    validation_interval: 32
+    batch_size: 64
+    max_epoch: 4096
+Retriever_mono: 
+    k: 1000
+    val_k: 1000

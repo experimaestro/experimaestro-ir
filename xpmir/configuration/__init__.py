@@ -22,7 +22,7 @@ def omegaconf_argument(name: str, package: str=None):
     package: the path to stock the configuration files
     '''
     names = [] # list of available configurations
-    print(package)
+    
     for item in resources.contents(package):
         if resources.is_resource(package, item) and item.endswith('.yaml'):
             names.append(item.removesuffix(".yaml"))
