@@ -6,6 +6,7 @@ import dataclasses
 import logging
 from pathlib import Path
 from omegaconf import OmegaConf
+from xpmir.letor.schedulers import LinearWithWarmup
 
 import xpmir.letor.trainers.pairwise as pairwise
 from datamaestro import prepare_dataset
@@ -24,7 +25,7 @@ from xpmir.letor import Device, Random
 from xpmir.letor.batchers import PowerAdaptativeBatcher
 from xpmir.letor.devices import CudaDevice
 from xpmir.letor.learner import Learner
-from xpmir.letor.optim import Adam
+from xpmir.letor.optim import Adam, ParameterOptimizer
 from xpmir.letor.samplers import TripletBasedSampler
 from xpmir.measures import AP, RR, P, nDCG
 from xpmir.neural.jointclassifier import JointClassifier
@@ -82,8 +83,11 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
     # How many documents to use for cross-validation in monobert
     valtopK = configuration.Retriever_mono.val_k
 
+    # The numbers of the warmup steps during the training
+    num_warmup_steps = configuration.Learner.num_warmup_steps
+
     # Our default launcher for light tasks
-    req_duration = duration("5 days")
+    req_duration = duration("6 days")
     launcher = find_launcher(cpu() & req_duration, tags=tags)
 
     batch_size = batch_size or configuration.Learner.batch_size
@@ -107,7 +111,13 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
     ), f"Number of epochs ({max_epochs}) is not a multiple of validation interval ({validation_interval})"
     
     # Sets the working directory and the name of the xp
-    name = "monobert-small" if configuration.type =='small' else "monobert"
+    if configuration.type =='small':
+        name = 'monobert-small'
+    elif configuration.type =='medium':
+        name = 'monobert-medium'
+    else: 
+        name = 'monobert'
+
     with experiment(workdir, name, host=host, port=port, launcher=launcher) as xp:
         # Needed by Pyserini
         xp.setenv("JAVA_HOME", find_java_home())
@@ -180,10 +190,13 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
                 batch_size=batch_size,
             )
         
+        scheduler = LinearWithWarmup(num_warmup_steps=num_warmup_steps)
 
         monobert_reranking = RerankingPipeline(
             monobert_trainer,
-            Adam(lr=3e-6, weight_decay=1e-2),
+            ParameterOptimizer(
+                scheduler=scheduler, optimizer=Adam(lr=3e-6, weight_decay=1e-2)
+            ),
             lambda scorer: scorer.getRetriever(
                 base_retriever, batch_size, PowerAdaptativeBatcher(), device=device
             ),
@@ -202,7 +215,7 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
             runs_path=runs_path,
         )
 
-        monobert_scorer = CrossScorer(encoder=DualTransformerEncoder(trainable=True, maxlen=512)).tag(
+        monobert_scorer = CrossScorer(encoder=DualTransformerEncoder(trainable=True, maxlen=512, dropout=0.1)).tag(
                 "model", "monobert"
             )
 

@@ -41,6 +41,9 @@ class TransformerVocab(text.Vocab):
     layer: Param[int] = 0
     """Layer to use (0 is the last, -1 to use them all)"""
 
+    dropout: Param[Optional[float]] = 0
+    """Define a dropout for all the layers"""
+
     CLS: int
     SEP: int
 
@@ -55,11 +58,17 @@ class TransformerVocab(text.Vocab):
     def initialize(self, noinit=False, automodel=AutoModel):
         super().initialize(noinit=noinit)
 
+        config = AutoConfig.from_pretrained(self.model_id)
         if noinit:
-            config = AutoConfig.from_pretrained(self.model_id)
             self.model = automodel.from_config(config)
         else:
-            self.model = automodel.from_pretrained(self.model_id)
+            if self.dropout == 0:
+                self.model = automodel.from_pretrained(self.model_id)
+            else:
+                config.hidden_dropout_prob = self.dropout
+                config.attention_probs_dropout_prob = self.dropout
+                self.model = automodel.from_pretrained(self.model_id, config = config)
+
 
         # Loads the tokenizer
         self._tokenizer = AutoTokenizer.from_pretrained(self.model_id, use_fast=True)
