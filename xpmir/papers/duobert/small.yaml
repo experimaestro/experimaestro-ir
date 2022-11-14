@@ -1,4 +1,4 @@
-type: small
+type: duobert-small
 Learner: 
     validation_size: 10
     steps_per_epoch: 32

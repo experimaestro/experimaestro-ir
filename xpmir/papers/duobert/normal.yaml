@@ -1,13 +1,13 @@
-type: normal
+type: duobert
 Learner: 
-    validation_size: 250
+    validation_size: 500
     steps_per_epoch: 32
     validation_interval: 32
-    batch_size: 128
-    max_epoch: 8192
+    batch_size: 64
+    max_epoch: 3200
 Retriever_mono: 
-    k: 500
-    val_k: 500
+    k: 1000
+    val_k: 1000
 Retriever_duo:
-    k: 30
-    val_k: 30
+    k: 50
+    val_k: 50

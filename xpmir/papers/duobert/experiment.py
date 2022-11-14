@@ -113,7 +113,7 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
     ), f"Number of epochs ({max_epochs}) is not a multiple of validation interval ({validation_interval})"
     
     # Sets the working directory and the name of the xp
-    name = "duobert-small" if configuration.type =='small' else "duobert"
+    name = configuration.type
     with experiment(workdir, name, host=host, port=port, launcher=launcher) as xp:
         # Needed by Pyserini
         xp.setenv("JAVA_HOME", find_java_home())
@@ -148,6 +148,10 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
             ),
             trec2020=Evaluations(
                 prepare_dataset("irds.msmarco-passage.trec-dl-2020"), measures
+            ),
+            msmarco_dev=Evaluations(devsmall, measures),
+            trec_car=Evaluations(
+                prepare_dataset("irds.car.v1.5.test200"), measures
             )
         )
 
