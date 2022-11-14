@@ -39,7 +39,7 @@ Functionalities can be added by installing optional dependencies:
 ## Examples
 
 - [BM25 retrieval](./examples/bm25.py)
-- [MS Marco (DRMM and ColBERT)](./examples/msmarco.py)
+- [MS Marco (cross-encoder)](./examples/msmarco-rerank.py)
 
 ## Thanks
 
