@@ -241,6 +241,7 @@ class AdhocDocumentSubsetSlice:
 class RetrieverBasedCollection(Task):
     """Buils a subset of documents based on the output of a set of retrievers
     and on relevance assessment.
+    First get all the document based on the assessment then add the retrieved ones.
     """
 
     relevance_threshold: Param[float] = 0
@@ -310,6 +311,8 @@ class RetrieverBasedCollection(Task):
                 )
 
             # Retrieve and add
+            # already defined the numbers to retrieve inside the retriever, so
+            # don't need to worry about the threshold here
             for retriever in self.retrievers:
                 docids.update(sd.docid for sd in retriever.retrieve(topic.text))
 

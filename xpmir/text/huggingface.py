@@ -313,7 +313,7 @@ class DualDuoBertTransformerEncoder(TransformerVocab, TripletTextEncoder):
             y = self.model(tokenized.ids,attention_mask=tokenized.mask.to(self.device))
 
         # Assumes that [CLS] is the first token
-        # shape of (len(texts),dimension)
+        # shape of y.last_hidden_state: (1, len(texts), dimension)
         return y.last_hidden_state[:, 0] 
 
     @property

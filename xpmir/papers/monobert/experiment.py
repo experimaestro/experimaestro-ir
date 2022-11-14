@@ -100,7 +100,7 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
         )
     else:
         assert gpu, "Running full scale experiment without GPU is not recommended"
-        gpu_launcher = find_launcher(cuda_gpu(mem="48G") & req_duration, tags=tags)
+        gpu_launcher = find_launcher(cuda_gpu(mem="24G") & req_duration, tags=tags)
 
     logging.info(
         f"Number of epochs {max_epochs}, validation interval {validation_interval}"
@@ -111,12 +111,7 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
     ), f"Number of epochs ({max_epochs}) is not a multiple of validation interval ({validation_interval})"
     
     # Sets the working directory and the name of the xp
-    if configuration.type =='small':
-        name = 'monobert-small'
-    elif configuration.type =='medium':
-        name = 'monobert-medium'
-    else: 
-        name = 'monobert'
+    name = configuration.type
 
     with experiment(workdir, name, host=host, port=port, launcher=launcher) as xp:
         # Needed by Pyserini
@@ -152,6 +147,10 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
             ),
             trec2020=Evaluations(
                 prepare_dataset("irds.msmarco-passage.trec-dl-2020"), measures
+            ),
+            msmarco_dev=Evaluations(devsmall, measures),
+            trec_car=Evaluations(
+                prepare_dataset("irds.car.v1.5.test200"), measures
             )
         )
 
@@ -195,7 +194,7 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
         monobert_reranking = RerankingPipeline(
             monobert_trainer,
             ParameterOptimizer(
-                scheduler=scheduler, optimizer=Adam(lr=3e-6, weight_decay=1e-2)
+                scheduler=scheduler, optimizer=Adam(lr=configuration.Learner.lr, weight_decay=1e-2)
             ),
             lambda scorer: scorer.getRetriever(
                 base_retriever, batch_size, PowerAdaptativeBatcher(), device=device

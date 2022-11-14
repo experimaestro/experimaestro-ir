@@ -169,6 +169,7 @@ class FlopsRegularizer(DualVectorListener):
         # Assumes that all weights are positive
         assert info.metrics is not None
 
+        # q of shape (dimension), flops_q of shape (1)
         q, flops_q = FlopsRegularizer.compute(queries)
         d, flops_d = FlopsRegularizer.compute(documents)
 

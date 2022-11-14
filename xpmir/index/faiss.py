@@ -92,6 +92,14 @@ class IndexBackedFaiss(FaissIndex, Task):
         index: faiss.Index,
         batch_encoder: Callable[[Iterator[str]], Iterator[torch.Tensor]],
     ):
+        """train the index 
+
+        params
+        index: 
+        batch_encoder: 
+            function, input is a iterator of list of documents str, return the
+            encoded document vector(tensor of shape (bs*dimension))
+        """
         logger.info("Building index")
         count, iter = (
             self.sampler() if self.sampler is not None else self.full_sampler()
@@ -109,6 +117,7 @@ class IndexBackedFaiss(FaissIndex, Task):
             ix += len(batch)
 
         logger.info("Training index (%d samples)", count)
+        # Here we may use just a part of the document to train the index
         index.train(sample)
 
     def execute(self):
@@ -160,7 +169,8 @@ class IndexBackedFaiss(FaissIndex, Task):
         # Initialization hooks (after)
         foreach(context.hooks(InitializationHook), lambda hook: hook.after(context))
 
-        # Let's index !
+        # Let's index ! 
+        # We add index for all the documents
         with torch.no_grad():
             for batch in batchiter(self.batchsize, doc_iter):
                 batcher.process(
@@ -218,7 +228,7 @@ class FaissRetriever(Retriever):
             values, indices = self._index.search(encoded_query.cpu().numpy(), self.topk)
             return [
                 ScoredDocument(
-                    self.index.documents.docid_internal2external(int(ix)), value
+                    self.index.docid_internal2external(int(ix)), value # maybe it is better like this
                 )
                 for ix, value in zip(indices[0], values[0])
                 if ix >= 0
