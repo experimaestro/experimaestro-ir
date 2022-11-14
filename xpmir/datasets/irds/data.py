@@ -27,9 +27,9 @@ class AdhocTopics(ir.AdhocTopics, IRDSId):
         """Returns an iterator over topics"""
         ds = ir_datasets.load(self.irds)
 
-        from ir_datasets.formats.trec import TrecQuery
+        from ir_datasets.formats.trec import TrecQuery, CarQuery
 
-        if issubclass(ds.queries_cls(), (TrecQuery,)):
+        if issubclass(ds.queries_cls(), (TrecQuery, CarQuery)):
             for query in ds.queries_iter():
                 yield ir.AdhocTopic(query.query_id, query.title, {})
         else:
