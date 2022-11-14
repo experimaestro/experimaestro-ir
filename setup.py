@@ -5,7 +5,7 @@
 from pathlib import Path
 import os
 import re
-from setuptools import setup, find_packages
+from setuptools import setup
 
 
 def get_description():
