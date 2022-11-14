@@ -102,7 +102,7 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
         )
     else:
         assert gpu, "Running full scale experiment without GPU is not recommended"
-        gpu_launcher = find_launcher(cuda_gpu(mem="24G") & req_duration, tags=tags)
+        gpu_launcher = find_launcher(cuda_gpu(mem="40G") & req_duration, tags=tags)
 
     logging.info(
         f"Number of epochs {max_epochs}, validation interval {validation_interval}"
@@ -149,7 +149,7 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
             trec2020=Evaluations(
                 prepare_dataset("irds.msmarco-passage.trec-dl-2020"), measures
             ),
-            msmarco_dev=Evaluations(devsmall, measures),
+            # msmarco_dev=Evaluations(devsmall, measures),
             trec_car=Evaluations(
                 prepare_dataset("irds.car.v1.5.test200"), measures
             )
