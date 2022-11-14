@@ -51,6 +51,10 @@ class SpladeTextEncoderModel(nn.Module):
         self.aggregation = aggregation
 
     def forward(self, tokenized):
+        # We stock all the outputs in order to get the embedding matrix
+        # Here as the automodel is not the same as the normal AutoModel,
+        # So here the output has the attribute logits, the w_ij in the paper
+        # which is of shape (1, len(texts), vocab_size)
         out = self.encoder(tokenized, all_outputs=True)
         out = self.aggregation(out.logits, tokenized.mask)
         return out
@@ -120,13 +124,18 @@ class DistributedSpladeTextEncoderHook(InitializationHook):
 
 
 def _splade(lambda_q: float, lambda_d: float, aggregation: Aggregation):
+    # Unlike the cross-encoder, here the encoder returns the whole last layer
+    # In the paper we use the DistilBERT-based as the checkpoint
     encoder = TransformerVocab(model_id="distilbert-base-uncased", trainable=True)
+
+    # make use the output of the BERT and do an aggregation
     doc_encoder = SpladeTextEncoder(
         aggregation=aggregation, encoder=encoder, maxlen=200
     )
     query_encoder = SpladeTextEncoder(
         aggregation=SumAggregation(), encoder=encoder, maxlen=30
     )
+
     return DotDense(encoder=doc_encoder, query_encoder=query_encoder), FlopsRegularizer(
         lambda_q=lambda_q, lambda_d=lambda_d
     )

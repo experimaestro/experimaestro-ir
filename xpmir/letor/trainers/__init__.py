@@ -1,19 +1,13 @@
 from typing import Dict, Iterator, List
-from experimaestro import Option, Config, Param
-from experimaestro import tqdm
-import torch
+from experimaestro import Config, Param
 import torch.nn as nn
 import numpy as np
 from xpmir.letor.metrics import ScalarMetric
 from xpmir.letor.samplers import Sampler, SerializableIterator
 from xpmir.letor.records import BaseRecords
-from xpmir.rankers import LearnableScorer
 from xpmir.utils import EasyLogger, easylog
-from xpmir.letor.optim import Module, ParameterOptimizer
-from xpmir.letor import Device, DEFAULT_DEVICE
 from xpmir.letor.batchers import Batcher
 from xpmir.letor.context import (
-    Loss,
     TrainingHook,
     TrainerContext,
 )
@@ -125,5 +119,5 @@ class LossTrainer(Trainer):
             self.context.state.optimizer.scale(total_loss).backward()
 
     def train_batch(self, records):
-        """This method should report """
+        """This method should report"""
         raise NotImplementedError

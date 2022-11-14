@@ -74,11 +74,12 @@ class FullRetrieverRescorer(Retriever):
         queries: List[Tuple[str, str]],
         encoded: List[Any],
     ):
-        """Encode queries
+        """Encode queries and append the tensor of encoded queries to the encoded
 
         Args:
             queries (List[Tuple[str, str]]): The input queries (id/text)
-            encoded (List[Tuple[List[str], torch.Tensor]]): Full list of topics
+            encoded (List[Tuple[List[str], torch.Tensor]]): Full list of topics ??
+            it should be the List[torch.Tensor]
         """
         encoded.append(self.scorer.encode_queries([text for _, text in queries]))
         return encoded
@@ -90,9 +91,10 @@ class FullRetrieverRescorer(Retriever):
         scored_documents: List[List[ScoredDocument]],
     ):
         """_summary_
+        Every time the score process a batch of document together with whole set of queries
 
         scored_documents is filled with document batches, i.e. it contains
-        [ [s(q_0, d_0), ..., s(q_n, d0)], ..., [s(q_0, d_m), ..., s(q_n, d_m)] ]
+        [ [s(q_0, d_0), ..., s(q_n, d0)], ..., [s(q_0, d_m), ..., s(q_n, d_m)] ] --> list of m*n
 
         Args:
             documents (List[AdhocDocument]): _description_
@@ -124,15 +126,21 @@ class FullRetrieverRescorer(Retriever):
         return self.retrieve_all({"_": query})["_"]
 
     def retrieve_all(self, queries: Dict[str, str]) -> Dict[str, List[ScoredDocument]]:
+        """Input is a dictionary of query {id:text},
+           return the a dictionary of {query_id: List of ScoredDocuments under the query}
+        """
+
         self.scorer.eval()
         all_queries = list(queries.items())
 
         with torch.no_grad():
             # Encode all queries
+            # each time the batcher will just encode a batchsize of queries
+            # and then concat them together
             enc_queries = self.query_batcher.reduce(
                 all_queries, self.encode_queries, []
-            )
-            enc_queries = self.scorer.merge_queries(enc_queries)
+            ) 
+            enc_queries = self.scorer.merge_queries(enc_queries) # shape (len(queries), dimension)
 
             # Encode documents and score them
             scored_documents: List[List[ScoredDocument]] = []

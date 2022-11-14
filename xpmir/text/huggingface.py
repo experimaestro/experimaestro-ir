@@ -13,6 +13,7 @@ from xpmir.text.encoders import (
     ContextualizedTextEncoderOutput,
     DualTextEncoder,
     TextEncoder,
+    TripletTextEncoder
 )
 from xpmir.utils import easylog
 
@@ -40,6 +41,9 @@ class TransformerVocab(text.Vocab):
     layer: Param[int] = 0
     """Layer to use (0 is the last, -1 to use them all)"""
 
+    dropout: Param[Optional[float]] = 0
+    """Define a dropout for all the layers"""
+
     CLS: int
     SEP: int
 
@@ -54,11 +58,17 @@ class TransformerVocab(text.Vocab):
     def initialize(self, noinit=False, automodel=AutoModel):
         super().initialize(noinit=noinit)
 
+        config = AutoConfig.from_pretrained(self.model_id)
         if noinit:
-            config = AutoConfig.from_pretrained(self.model_id)
             self.model = automodel.from_config(config)
         else:
-            self.model = automodel.from_pretrained(self.model_id)
+            if self.dropout == 0:
+                self.model = automodel.from_pretrained(self.model_id)
+            else:
+                config.hidden_dropout_prob = self.dropout
+                config.attention_probs_dropout_prob = self.dropout
+                self.model = automodel.from_pretrained(self.model_id, config = config)
+
 
         # Loads the tokenizer
         self._tokenizer = AutoTokenizer.from_pretrained(self.model_id, use_fast=True)
@@ -277,7 +287,6 @@ class DualTransformerEncoder(TransformerVocab, DualTextEncoder):
 
     def forward(self, texts: List[Tuple[str, str]]):
         tokenized = self.batch_tokenize(texts, maxlen=self.maxlen, mask=True)
-
         with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
             y = self.model(tokenized.ids, attention_mask=tokenized.mask.to(self.device))
 
@@ -288,6 +297,28 @@ class DualTransformerEncoder(TransformerVocab, DualTextEncoder):
     def dimension(self) -> int:
         return self.model.config.hidden_size
 
+class DualDuoBertTransformerEncoder(TransformerVocab, TripletTextEncoder):
+    """Encoder of the query-document-document pair of the [cls] token
+    Be like: [cls]query[sep]doc1[sep]doc2[sep] with 62 tokens for query
+    and 223 for each document.
+    """
+    maxlen: Param[Optional[int]] = None
+
+    def forward(self, texts: List[Tuple[str, str, str]]):
+        texts_concated = [query + '[SEP]' + doc1 + '[SEP]' + doc2 
+            for (query, doc1, doc2) in texts]
+        tokenized = self.batch_tokenize(texts_concated, maxlen=self.maxlen, mask=True)
+
+        with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
+            y = self.model(tokenized.ids,attention_mask=tokenized.mask.to(self.device))
+
+        # Assumes that [CLS] is the first token
+        # shape of y.last_hidden_state: (1, len(texts), dimension)
+        return y.last_hidden_state[:, 0] 
+
+    @property
+    def dimension(self) -> int:
+        return self.model.config.hidden_size
 
 class LayerFreezer(InitializationTrainingHook):
     """This training hook class can be used to freeze some of the transformer layers"""

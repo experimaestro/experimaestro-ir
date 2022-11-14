@@ -24,7 +24,7 @@ from experimaestro.utils import cleanupdir
 from contextlib import contextmanager
 
 if TYPE_CHECKING:
-    from xpmir.rankers import LearnableScorer
+    from xpmir.rankers import AbstractLearnableScorer
     from xpmir.letor.optim import ScheduledOptimizer
     from xpmir.letor.trainers import Trainer
 
@@ -50,7 +50,7 @@ class TrainState:
 
     def __init__(
         self,
-        model: "LearnableScorer",
+        model: "AbstractLearnableScorer",
         trainer: "Trainer",
         optimizer: "ScheduledOptimizer",
         epoch=0,
@@ -173,7 +173,7 @@ class TrainerContext(Context):
         max_epoch: int,
         steps_per_epoch: int,
         trainer,
-        ranker: "LearnableScorer",
+        ranker: "AbstractLearnableScorer",
         optimizer: "ScheduledOptimizer",
     ):
         super().__init__(device_information)

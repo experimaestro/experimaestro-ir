@@ -1,0 +1,12 @@
+type: monobert-medium
+Learner: 
+    validation_size: 100
+    steps_per_epoch: 32
+    validation_interval: 16
+    batch_size: 64
+    max_epoch: 1024
+    num_warmup_steps: 5000
+    lr: 3.0e-6
+Retriever_mono: 
+    k: 500
+    val_k: 500

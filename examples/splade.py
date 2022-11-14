@@ -103,6 +103,7 @@ def cli(
         splade_batch_size = 16
         num_warmup_steps = 1000
 
+        # Top-K when building the validation set(tas-balanced)
         retTopK = 10
 
         # Validation interval (in epochs)
@@ -114,10 +115,10 @@ def cli(
         indexspec = "OPQ4_16,IVF256_HNSW32,PQ4"
         faiss_max_traindocs = 15_000
     else:
-        # How many document to re-rank
+        # How many document to re-rank(use for BM25)
         topK = 1000
 
-        # How many documents to use for cross-validation
+        # How many documents to use for cross-validation(for the two-stage reranker)
         valtopK = 200
 
         # 2^10 epochs x 128 batch/epoch = 130K iterations
@@ -138,7 +139,7 @@ def cli(
         # Stop training if no improvement after 16 evaluations
         early_stop = validation_interval * 16
 
-        # Top-K when building the validation set
+        # Top-K when building the validation set(tas-balance)
         retTopK = 50
 
     # Try to have just one batch at inference
@@ -157,9 +158,9 @@ def cli(
     name = "splade-small" if small else "splade"
 
     # Launchers
-    launcher = find_launcher(LauncherSpec(cpu_memory="2G"))
+    launcher = find_launcher(cuda_gpu(cpu_memory="2G"))
     gpulauncher_mem48 = find_launcher(
-        LauncherSpec(cuda_memory=["48G"]), LauncherSpec(cuda_memory=["24G", "24G"])
+        cuda_gpu(cuda_memory=["48G"]), cuda_gpu(cuda_memory=["24G", "24G"])
     )
 
     gpu_launcher_mem24 = find_launcher(cuda_gpu("24G"))
@@ -183,7 +184,9 @@ def cli(
         documents = prepare_dataset("irds.msmarco-passage.documents")
 
         def sparse_retriever(scorer, documents):
-            """Builds a sparse retriever"""
+            """Builds a sparse retriever
+            Used to evaluate the scorer
+            """
             index = SparseRetrieverIndexBuilder(
                 batch_size=512,
                 batcher=PowerAdaptativeBatcher(),
@@ -213,8 +216,10 @@ def cli(
 
         # Build a dev. collection for full-ranking
         # "Efficiently Teaching an Effective Dense Retriever with Balanced Topic Aware Sampling"
-
+        # TODO: Also make it as a baseline during the evaluation
         tasb = tas_balanced()
+
+        # task to train the tas_balanced encoder for the document list and generate an index for retrieval
         tasb_index = IndexBackedFaiss(
             indexspec=indexspec,
             device=device,
@@ -232,6 +237,9 @@ def cli(
                 )
             ],
         ).submit(launcher=gpu_launcher)
+
+        # A retriever if tas-balanced. We use the index of the faiss.
+        # Used it to create the validation dataset.
         tasb_retriever = FaissRetriever(
             index=tasb_index, topk=retTopK, encoder=DenseQueryEncoder(scorer=tasb)
         )
@@ -245,7 +253,7 @@ def cli(
         # MS Marco index
         test_index = index
 
-        # Base models
+        # Base models --> another baseline
         basemodel = BM25()
 
         # Creates the validation dataset
@@ -265,15 +273,17 @@ def cli(
             ],
         ).submit(launcher=launcher_mem64)
 
-        # Computes the BM25 performance on the validation dataset
+        # Computes the BM25(and random scorer) performance on the validation dataset
+        # baseline
         val_index = IndexCollection(
             documents=ds_val.documents, storeContents=True
         ).submit()
         val_bm25_retriever = AnseriniRetriever(k=topK, index=val_index, model=basemodel)
         val_evaluation_bm25 = evaluate(dataset=ds_val, retriever=val_bm25_retriever)
+        random_scorer = RandomScorer(random=random).tag('model','random')
         val_evaluation_random = evaluate(
             dataset=ds_val,
-            retriever=val_bm25_retriever.getReranker(RandomScorer(random=random), 500),
+            retriever=random_scorer.getRetriever(val_evaluation_bm25, batch_size = 500),
         )
 
         print(
@@ -284,9 +294,11 @@ def cli(
         )
 
         # Base retrievers for validation
+        # It retrieve all the document of the collection with score 0
         base_retriever_val = FullRetriever(documents=ds_val.documents)
 
         evaluations = {}
+        # Compute the performance for the bm25 on the test dataset
         for key, test in tests.items():
             evaluations[key] = [
                 evaluate(
@@ -313,7 +325,7 @@ def cli(
                 dataset=ds_val,
                 retriever=base_retriever_val.getReranker(  # type: ignore
                     scorer, valtopK, PowerAdaptativeBatcher()
-                ),
+                ), # a retriever which use the splade model to score all the documents and then do the retrieve
                 early_stop=early_stop,
                 validation_interval=validation_interval,
                 metrics={"RR@10": True, "AP": False, "nDCG@10": False},
@@ -337,8 +349,8 @@ def cli(
             # Evaluate the neural model
             for key, test in tests.items():
                 # Build the retrieval
-                best = outputs.listeners["bestval"]["RR@10"]
-                retriever = create_retriever(best)
+                best = outputs.listeners["bestval"]["RR@10"] # get the best trained model for the metrics RR@10
+                retriever = create_retriever(best) # create a retriever by using the model
 
                 evaluations[key].append(
                     evaluate(
@@ -348,19 +360,25 @@ def cli(
                         launcher=gpulauncher,
                     )
                 )
-
+        
+        # generator a batchwise sampler which is an Iterator of ProductRecords() 
         ibn_sampler = PairwiseInBatchNegativesSampler(sampler=train_sampler)
         scheduler = CosineWithWarmup(num_warmup_steps=num_warmup_steps)
 
-        # Train splade
+        # Define the model and the flop loss for regularization
+        # Model of class: DotDense(), 
+        # The parameters are the regularization coeff for the query and document
         spladev2, flops = spladeV2(3e-4, 1e-4)
 
+        # Define the trainer for training the splade in a Batchwise trainer
         batchwise_trainer_flops = BatchwiseTrainer(
             batch_size=splade_batch_size,
             sampler=ibn_sampler,
             lossfn=SoftmaxCrossEntropy(),
             hooks=[flops],
         )
+
+        # Train splade
         run(
             spladev2.tag("model", "splade-v2"),
             batchwise_trainer_flops,
