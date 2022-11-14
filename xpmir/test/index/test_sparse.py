@@ -3,7 +3,6 @@ from pathlib import Path
 import pytest
 import torch
 import numpy as np
-from tqdm import tqdm
 from xpmir.index.sparse import SparseRetriever, SparseRetrieverIndexBuilder
 from xpmir.test.utils import SampleAdhocDocumentStore, SparseRandomTextEncoder
 
@@ -19,9 +18,9 @@ def context(tmp_path: Path):
 
 class SparseIndex:
     def __init__(self, context, ordered_index: bool = False):
-        # Build the FAISS index
-        documents = SampleAdhocDocumentStore(num_docs=100)
-        self.encoder = SparseRandomTextEncoder(dim=1000, sparsity=0.7)
+        # Build the index
+        documents = SampleAdhocDocumentStore(num_docs=500)
+        self.encoder = SparseRandomTextEncoder(dim=1000, sparsity=0.8)
         builder = SparseRetrieverIndexBuilder(
             encoder=self.encoder,
             documents=documents,
@@ -29,6 +28,8 @@ class SparseIndex:
             batch_size=5,
             ordered_index=ordered_index,
         )
+
+        # Build the index
         builder_instance = builder.instance(context=context)
         builder_instance.execute()
 
@@ -43,14 +44,14 @@ class SparseIndex:
         self.topk = 10
 
 
-@pytest.fixture(params=[True, False])
+@pytest.fixture(params=[False])
 def sparse_index(context, request):
     return SparseIndex(context, ordered_index=request.param)
 
 
 def test_sparse_indexation(sparse_index: SparseIndex):
-    chosen_ix = np.random.choice(np.arange(len(sparse_index.x_docs.T)), 10)
-    for ix in chosen_ix:
+    for ix in np.random.choice(np.arange(len(sparse_index.x_docs.T)), 10):
+        # for ix in range(len(sparse_index.x_docs.T)):
         x = sparse_index.x_docs[:, ix]
 
         # nz indices are indices of documents
@@ -61,10 +62,7 @@ def test_sparse_indexation(sparse_index: SparseIndex):
             nz = nz[sorted_ix]
 
         sparse_index.index_instance.initialize(False)
-        it = sparse_index.index_instance.postings(0, ix)
-        jx = 0
-        while it.has_next():
-            posting = it.next()
+        for (jx, posting) in enumerate(sparse_index.index_instance.index.postings(ix)):
             assert (
                 posting.docid == nz[jx]
             ), f"Error for posting {jx} of term {ix} (docid)"
@@ -75,11 +73,11 @@ def test_sparse_indexation(sparse_index: SparseIndex):
             jx += 1
 
 
-@pytest.fixture(params=[True, False])
+@pytest.fixture(params=[False])
 def retriever(context, sparse_index: SparseIndex, request: bool):
     retriever = SparseRetriever(
         encoder=sparse_index.encoder,
-        topk=10,
+        topk=sparse_index.topk,
         batchsize=2,
         index=sparse_index.index,
         in_memory=request.param,
@@ -90,28 +88,40 @@ def retriever(context, sparse_index: SparseIndex, request: bool):
 
 
 def test_sparse_retrieve(sparse_index: SparseIndex, retriever):
-    # Retrieve with the index
-    scores = sparse_index.x_docs @ sparse_index.x_docs.T
+    # Computes the score directly
+    x_docs = sparse_index.x_docs.type(torch.float32)
+
+    # Choose a few documents
     chosen_ix = np.random.choice(np.arange(len(sparse_index.x_docs)), 10)
     for ix in chosen_ix:
         document = sparse_index.document_store.document(ix)
-        # , document in tqdm(enumerate(document_store.documents.values()), desc="Checking scores"):
 
+        # Use the retriever
         scoredDocuments = retriever.retrieve(document.text)
-        scoredDocuments.sort(reverse=True)
+        # scoredDocuments.sort(reverse=True)
+        # scoredDocuments = scoredDocuments[:retriever.topk]
 
-        sorted = scores[ix].sort(descending=True)
+        # Use the pre-computed scores
+        scores = x_docs[ix] @ x_docs.T
+        sorted = scores.sort(descending=True, stable=True)
+        indices = sorted.indices[: retriever.topk]
+        expected = list(indices.numpy())
 
-        expected = list(sorted.indices[: retriever.topk].numpy())
         observed = [int(sd.docid) for sd in scoredDocuments]
-        assert expected == observed
-
         expected_scores = sorted.values[: retriever.topk].numpy()
         observed_scores = np.array([float(sd.score) for sd in scoredDocuments])
-        np.testing.assert_allclose(expected_scores, observed_scores, 1e-5)
+
+        np.testing.assert_allclose(
+            expected_scores,
+            observed_scores,
+            1e-5,
+            err_msg=f"{ix} {expected} vs {observed}",
+        )
+        assert expected == observed
 
 
 def test_sparse_retrieve_all(retriever):
+    """Just verifies that the retriever is coherent with itself when retrieving many queries"""
     queries = {
         "q1": "Query 1",
         "q2": "Query 2",
@@ -123,5 +133,13 @@ def test_sparse_retrieve_all(retriever):
 
     for key, query in queries.items():
         query_results = retriever.retrieve(query)
-        assert [d.docid for d in all_results[key]] == [d.docid for d in query_results]
-        assert [d.score for d in all_results[key]] == [d.score for d in query_results]
+
+        observed = [d.docid for d in all_results[key]]
+        expected = [d.docid for d in query_results]
+        assert observed == expected
+
+        observed_scores = [d.score for d in all_results[key]]
+        expected_scores = [d.score for d in query_results]
+        np.testing.assert_allclose(
+            expected_scores, observed_scores, 1e-5, err_msg=f"{expected} vs {observed}"
+        )

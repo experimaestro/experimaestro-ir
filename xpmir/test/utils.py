@@ -51,6 +51,7 @@ class VectorGenerator:
 
         zeros = int(min(torch.poisson(self.num_zeros_rate).item(), self.dimension - 1))
         x[np.random.choice(np.arange(self.dimension), zeros)] = 0
+        x = x.abs()
         return x
 
 
@@ -68,6 +69,8 @@ class SparseRandomTextEncoder(TextEncoder):
             SparseRandomTextEncoder.MAPS[(self.dim, self.sparsity)] = defaultdict(
                 VectorGenerator(self.dim, self.sparsity)
             )
+
+        # Get the given map
         self.map = SparseRandomTextEncoder.MAPS[(self.dim, self.sparsity)]
 
     @property

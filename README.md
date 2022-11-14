@@ -3,7 +3,7 @@
 
 # Information Retrieval for experimaestro
 
-Information Retrieval module for [experimaestro](https://experimaestro.github.io/experimaestro-python/)
+Information Retrieval module for [experimaestro](https://experimaestro-python.readthedocs.io/)
 
 The full documentation can be read at [IR@experimaestro](https://experimaestro-ir.readthedocs.io/).
 
@@ -18,12 +18,15 @@ Functionalities can be added by installing optional dependencies:
 ## What's inside?
 
 - Collection management (using datamaestro)
-    - []
-- Subsampling topic/assessments
+    - Interface for the [IR datasets library](https://ir-datasets.com/)
+    - Splitting IR datasets
+    - Shuffling training triplets
 - Representation
     - Word Embeddings
     - HuggingFace transformers
-- Indexing and retrieval
+- Indices
+    - dense: [FAISS](https://github.com/facebookresearch/faiss) interface
+- Standard Indexing and Retrieval
     - Anserini
 - Learning to Rank
     - Pointwise
