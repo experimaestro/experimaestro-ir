@@ -1,6 +1,6 @@
 from pathlib import Path
-from typing import DefaultDict, Dict, List
-from datamaestro_text.data.ir import Adhoc, AdhocAssessments
+from typing import DefaultDict, Dict, List, Protocol, Union
+from datamaestro_text.data.ir import Adhoc, AdhocAssessments, AdhocDocuments
 from experimaestro import tqdm, Task, Param, pathgenerator, Annotated
 from datamaestro_text.data.ir.trec import (
     TrecAdhocRun,
@@ -122,6 +122,13 @@ class Evaluate(BaseEvaluation, Task):
         self._execute(run, self.dataset.assessments)
 
 
+class RetrieverFactory(Protocol):
+    """Generates a retriever for a given dataset"""
+
+    def __call__(self, dataset: AdhocDocuments) -> Retriever:
+        ...
+
+
 class Evaluations:
     """Holds experiment results for several models"""
 
@@ -134,8 +141,13 @@ class Evaluations:
         self.measures = measures
         self.results = []
 
-    def evaluate_retriever(self, retriever: Retriever, launcher: Launcher = None):
+    def evaluate_retriever(
+        self, retriever: Union[Retriever, RetrieverFactory], launcher: Launcher = None
+    ):
         """Evaluates a retriever"""
+        if not isinstance(retriever, Retriever):
+            retriever = retriever(self.dataset.documents)
+
         self.add(
             Evaluate(
                 retriever=retriever, measures=self.measures, dataset=self.dataset
@@ -158,7 +170,9 @@ class EvaluationsCollection:
     def __init__(self, **collection: Evaluations):
         self.collection = collection
 
-    def evaluate_retriever(self, retriever: Retriever, launcher: Launcher = None):
+    def evaluate_retriever(
+        self, retriever: Union[Retriever, RetrieverFactory], launcher: Launcher = None
+    ):
         """Evaluate a retriever for all the evaluations in this collection (the tasks are submitted to experimaestro the scheduler)"""
         for evaluations in self.collection.values():
             evaluations.evaluate_retriever(retriever, launcher)

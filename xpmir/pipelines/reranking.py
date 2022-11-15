@@ -1,18 +1,21 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Optional
+from typing import Dict, Optional, Protocol
 from experimaestro import tagspath, experiment
 from experimaestro.launchers import Launcher
-from datamaestro_text.data.ir import Adhoc
+from datamaestro_text.data.ir import Adhoc, AdhocDocuments
 from xpmir.letor.devices import Device
 from xpmir.letor import Random
-from xpmir.rankers import LearnableScorer, Retriever, Scorer
-from xpmir.evaluation import Evaluate, Evaluations, EvaluationsCollection
+from xpmir.rankers import LearnableScorer, Retriever
+from xpmir.evaluation import EvaluationsCollection
 from xpmir.letor.trainers import Trainer
 from xpmir.letor.optim import get_optimizers, Optimizers
 from xpmir.letor.learner import Learner, ValidationListener
 
-RetrieverFactory = Callable[[Scorer], Retriever]
+
+class RetrieverFactory(Protocol):
+    def __call__(self, scorer: LearnableScorer, documents: AdhocDocuments) -> Retriever:
+        ...
 
 
 @dataclass()
@@ -121,8 +124,8 @@ class RerankingPipeline:
         for metric_name, monitored in self.validation_metrics.items():
             if monitored:
                 best = outputs.listeners["bestval"][metric_name]
-                retriever = val_retriever_factory(best)
-                self.tests.evaluate_retriever(retriever, self.evaluate_launcher)
+                eval_factory = lambda documents: val_retriever_factory(best, documents)
+                self.tests.evaluate_retriever(eval_factory, self.evaluate_launcher)
 
         # return the output of the learner in order to get the information about the best retriever
-        return outputs 
+        return outputs

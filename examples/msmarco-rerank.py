@@ -187,7 +187,7 @@ def cli(debug, small, gpu, tags, host, port, workdir, max_epochs, batch_size):
         reranker_pce = RerankingPipeline(
             trainer(pairwise.PointwiseCrossEntropyLoss().tag("loss", "pce")),
             AdamW(lr=1e-5, weight_decay=1e-2),
-            lambda scorer: scorer.getRetriever(
+            lambda scorer, documents: scorer.getRetriever(
                 base_retriever, batch_size, PowerAdaptativeBatcher(), device=device
             ),
             STEPS_PER_EPOCH,
@@ -195,7 +195,7 @@ def cli(debug, small, gpu, tags, host, port, workdir, max_epochs, batch_size):
             ds_val,
             {"RR@10": True, "AP": False},
             tests,
-            validation_retriever_factory=lambda scorer: scorer.getRetriever(
+            validation_retriever_factory=lambda scorer, documents: scorer.getRetriever(
                 base_retriever_val, batch_size, PowerAdaptativeBatcher(), device=device
             ),
             device=device,
