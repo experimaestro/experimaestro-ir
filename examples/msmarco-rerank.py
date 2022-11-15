@@ -153,6 +153,25 @@ def cli(debug, small, gpu, tags, host, port, workdir, max_epochs, batch_size):
         base_retriever = AnseriniRetriever(k=topK, index=index, model=basemodel)
         base_retriever_val = AnseriniRetriever(k=valtopK, index=index, model=basemodel)
 
+        index_cars = IndexCollection(
+            documents=cars_documents, storeContents=True
+        ).submit()
+        base_retriever_cars = AnseriniRetriever(
+            k=topK, index=index_cars, model=basemodel
+        )
+        base_retrievers = {
+            "irds.car.v1.5.documents@irds": base_retriever_cars,
+            "irds.msmarco-passage.documents@irds": base_retriever,
+        }
+        factory = (
+            lambda scorer, documents: scorer.getRetriever(
+                base_retrievers[documents.id],
+                batch_size,
+                PowerAdaptativeBatcher(),
+                device=device,
+            ),
+        )
+
         # Defines how we sample train examples
         # (using the shuffled pre-computed triplets from MS Marco)
         train_triples = prepare_dataset("irds.msmarco-passage.train.docpairs")

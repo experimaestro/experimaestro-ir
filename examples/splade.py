@@ -36,7 +36,8 @@ import xpmir.letor.trainers.pairwise as pairwise
 from xpmir.neural.dual import Dense, DenseDocumentEncoder, DenseQueryEncoder, DotDense
 from xpmir.letor.optim import ParameterOptimizer
 from xpmir.rankers.standard import BM25
-from xpmir.neural.splade import DistributedSpladeTextEncoderHook, spladeV2
+from xpmir.neural.splade import spladeV2
+from xpmir.distributed import DistributedHook
 from xpmir.measures import AP, P, nDCG, RR
 from xpmir.neural.pretrained import tas_balanced
 from xpmir.text.huggingface import DistributedModelHook, TransformerEncoder
@@ -280,10 +281,10 @@ def cli(
         ).submit()
         val_bm25_retriever = AnseriniRetriever(k=topK, index=val_index, model=basemodel)
         val_evaluation_bm25 = evaluate(dataset=ds_val, retriever=val_bm25_retriever)
-        random_scorer = RandomScorer(random=random).tag('model','random')
+        random_scorer = RandomScorer(random=random).tag("model", "random")
         val_evaluation_random = evaluate(
             dataset=ds_val,
-            retriever=random_scorer.getRetriever(val_evaluation_bm25, batch_size = 500),
+            retriever=random_scorer.getRetriever(val_evaluation_bm25, batch_size=500),
         )
 
         print(
@@ -325,7 +326,7 @@ def cli(
                 dataset=ds_val,
                 retriever=base_retriever_val.getReranker(  # type: ignore
                     scorer, valtopK, PowerAdaptativeBatcher()
-                ), # a retriever which use the splade model to score all the documents and then do the retrieve
+                ),  # a retriever which use the splade model to score all the documents and then do the retrieve
                 early_stop=early_stop,
                 validation_interval=validation_interval,
                 metrics={"RR@10": True, "AP": False, "nDCG@10": False},
@@ -349,8 +350,12 @@ def cli(
             # Evaluate the neural model
             for key, test in tests.items():
                 # Build the retrieval
-                best = outputs.listeners["bestval"]["RR@10"] # get the best trained model for the metrics RR@10
-                retriever = create_retriever(best) # create a retriever by using the model
+                best = outputs.listeners["bestval"][
+                    "RR@10"
+                ]  # get the best trained model for the metrics RR@10
+                retriever = create_retriever(
+                    best
+                )  # create a retriever by using the model
 
                 evaluations[key].append(
                     evaluate(
@@ -360,13 +365,13 @@ def cli(
                         launcher=gpulauncher,
                     )
                 )
-        
-        # generator a batchwise sampler which is an Iterator of ProductRecords() 
+
+        # generator a batchwise sampler which is an Iterator of ProductRecords()
         ibn_sampler = PairwiseInBatchNegativesSampler(sampler=train_sampler)
         scheduler = CosineWithWarmup(num_warmup_steps=num_warmup_steps)
 
         # Define the model and the flop loss for regularization
-        # Model of class: DotDense(), 
+        # Model of class: DotDense(),
         # The parameters are the regularization coeff for the query and document
         spladev2, flops = spladeV2(3e-4, 1e-4)
 
@@ -388,9 +393,7 @@ def cli(
                 )
             ],
             lambda scorer: sparse_retriever(scorer, documents),
-            hooks=[
-                setmeta(DistributedSpladeTextEncoderHook(splade=spladev2.encoder), True)
-            ],
+            hooks=[setmeta(DistributedHook(models=[spladev2.encoder]), True)],
             launcher=gpulauncher_mem48,
         )
 

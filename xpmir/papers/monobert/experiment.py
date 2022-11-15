@@ -193,7 +193,7 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
                 optimizer=Adam(lr=configuration.Learner.lr, weight_decay=1e-2),
             ),
             lambda scorer, documents: scorer.getRetriever(
-                base_retriever, batch_size, PowerAdaptativeBatcher(), device=device
+                lambda scorer: scorer.getRetrieveraptativeBatcher(), device=device
             ),
             STEPS_PER_EPOCH,
             max_epochs,
@@ -202,7 +202,7 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
             tests,
             device=device,
             validation_retriever_factory=lambda scorer, documents: scorer.getRetriever(
-                base_retriever_val, batch_size, PowerAdaptativeBatcher(), device=device
+                lambda scorer: scorer.getRetrieverwerAdaptativeBatcher(), device=device
             ),
             validation_interval=validation_interval,
             launcher=gpu_launcher,
