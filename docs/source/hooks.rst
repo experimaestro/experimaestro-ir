@@ -26,3 +26,15 @@ Hooks can be used to modify the learning process
 
 .. autoxpmconfig:: StepTrainingHook
     :members: before, after
+
+
+
+GPU Hooks
+---------
+
+Hooks can be used to distribute a model over GPUs
+
+.. autoxpmconfig:: xpmir.distributed.DistributableModel
+    :members: distribute_models
+
+.. autoxpmconfig:: xpmir.distributed.DistributedHook

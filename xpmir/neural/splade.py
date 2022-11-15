@@ -3,6 +3,7 @@ from experimaestro import Config, Param
 import torch.nn as nn
 import torch
 from experimaestro import initializer
+from xpmir.distributed import DistributableModel
 from xpmir.context import Context, InitializationHook
 from xpmir.letor import DistributedDeviceInformation
 from xpmir.letor.samplers import PairwiseSampler, PairwiseInBatchNegativesSampler
@@ -60,7 +61,7 @@ class SpladeTextEncoderModel(nn.Module):
         return out
 
 
-class SpladeTextEncoder(TextEncoder):
+class SpladeTextEncoder(TextEncoder, DistributableModel):
     """Splade model
 
     It is only a text encoder since the we use `xpmir.neural.dual.DotDense`
@@ -94,33 +95,8 @@ class SpladeTextEncoder(TextEncoder):
     def static(self):
         return False
 
-
-class DistributedSpladeTextEncoderHook(InitializationHook):
-    """Hook to distribute the model processing
-
-    When in multiprocessing/multidevice, use `torch.nn.parallel.DistributedDataParallel`,
-    otherwise use `torch.nn.DataParallel`.
-    """
-
-    splade: Param[SpladeTextEncoder]
-    """The splade text encoder"""
-
-    def after(self, state: Context):
-        info = state.device_information
-        if isinstance(info, DistributedDeviceInformation):
-            logger.info("Using a distributed model with rank=%d", info.rank)
-            self.splade.model = nn.parallel.DistributedDataParallel(
-                self.splade.model, device_ids=[info.rank]
-            )
-        else:
-            n_gpus = torch.cuda.device_count()
-            if n_gpus > 1:
-                logger.info(
-                    "Setting up DataParallel for Splade text encoder (%d GPUs)", n_gpus
-                )
-                self.splade.model = torch.nn.DataParallel(self.splade.model)
-            else:
-                logger.warning("Only one GPU detected, not using data parallel")
+    def distribute_models(self, update):
+        self.model = update(self.model)
 
 
 def _splade(lambda_q: float, lambda_d: float, aggregation: Aggregation):
