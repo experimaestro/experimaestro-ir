@@ -6,13 +6,14 @@ import dataclasses
 import logging
 from pathlib import Path
 from omegaconf import OmegaConf
+from xpmir.distributed import DistributedHook
 from xpmir.letor.schedulers import LinearWithWarmup
 
 import xpmir.letor.trainers.pairwise as pairwise
 from datamaestro import prepare_dataset
 from datamaestro_text.transforms.ir import ShuffledTrainingTripletsLines
 from xpmir.neural.cross import CrossScorer, DuoCrossScorer
-from experimaestro import experiment
+from experimaestro import experiment, setmeta
 from experimaestro.click import click, forwardoption
 from experimaestro.launcherfinder import cpu, cuda_gpu, find_launcher
 from experimaestro.launcherfinder.specs import duration
@@ -90,6 +91,9 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
     batch_size = batch_size or configuration.Learner.batch_size
     max_epochs = max_epochs or configuration.Learner.max_epoch
 
+    # FIXME: uses CPU constraints rather than GPU
+    cpu_launcher_4g = find_launcher(cuda_gpu(mem="1G"))
+
     if configuration.type == "small":
         # We request a GPU, and if none, a CPU
         gpu_launcher = find_launcher(
@@ -97,7 +101,8 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
         )
     else:
         assert gpu, "Running full scale experiment without GPU is not recommended"
-        gpu_launcher = find_launcher((cuda_gpu(mem="24G")*3) & req_duration, tags=tags)
+        gpu_launcher = find_launcher((cuda_gpu(mem="24G")) & req_duration, tags=tags)
+        gpu_launcher_4 = find_launcher(cuda_gpu(mem="4G") & req_duration, tags=tags)
 
     logging.info(
         f"Number of epochs {max_epochs}, validation interval {validation_interval}"
@@ -130,7 +135,8 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
         logging.info("tensorboard --logdir=%s", runs_path)
 
         # Datasets: train, validation and test
-        documents = prepare_dataset("irds.msmarco-passage.documents")
+        documents = prepare_dataset("irds.msmarco-passage.documents") # for indexing 
+        cars_documents = prepare_dataset("irds.car.v1.5.documents") # for indexing
         devsmall = prepare_dataset("irds.msmarco-passage.dev.small")
         dev = prepare_dataset("irds.msmarco-passage.dev")
         ds_val = RandomFold(
@@ -151,8 +157,31 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
 
         # Build the MS Marco index and definition of first stage rankers
         index = IndexCollection(documents=documents, storeContents=True).submit()
-        base_retriever = AnseriniRetriever(k=topK, index=index, model=basemodel)
-        base_retriever_val = AnseriniRetriever(k=valtopK, index=index, model=basemodel)
+        base_retriever_ms = AnseriniRetriever(k=topK, index=index, model=basemodel)
+        base_retriever_ms_val = AnseriniRetriever(k=valtopK, index=index, model=basemodel)
+
+        # Build the TREC CARS index
+        index_cars = IndexCollection(documents=cars_documents, storeContents=True).submit(launcher = cpu_launcher_4g)
+        base_retriever_cars = AnseriniRetriever(k=topK, index=index_cars, model=basemodel)
+        base_retriever_cars_val = AnseriniRetriever(k=valtopK, index=index_cars, model=basemodel)
+
+        base_retrievers = {
+            'irds.car.v1.5.documents@irds': base_retriever_cars,
+            'irds.msmarco-passage.documents@irds': base_retriever_ms
+        }
+
+        base_retrievers_val = {
+            'irds.car.v1.5.documents@irds': base_retriever_cars_val,
+            'irds.msmarco-passage.documents@irds': base_retriever_ms_val
+        }
+
+        factory_retriever = lambda scorer, documents: scorer.getRetriever(
+            base_retrievers[documents.id], batch_size, PowerAdaptativeBatcher(), device=device
+        )
+
+        factory_retriever_val = lambda scorer, documents: scorer.getRetriever(
+            base_retrievers_val[documents.id], batch_size, PowerAdaptativeBatcher(), device=device
+        )
 
         # Defines how we sample train examples
         # (using the shuffled pre-computed triplets from MS Marco)
@@ -164,16 +193,31 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
         train_sampler = TripletBasedSampler(source=triplesid, index=index)
 
         # Search and evaluate with BM25
-        bm25_retriever = AnseriniRetriever(k=topK, index=index, model=basemodel).tag(
+        bm25_retriever_ms = AnseriniRetriever(k=topK, index=index, model=basemodel).tag(
+            "model", "bm25"
+        )
+        bm25_retriever_car = AnseriniRetriever(k=topK, index=index_cars, model=basemodel).tag(
             "model", "bm25"
         )
 
+        bm25_retriever = {
+            'irds.car.v1.5.documents@irds': bm25_retriever_car,
+            'irds.msmarco-passage.documents@irds': bm25_retriever_ms
+        }
+
+
+        # FIXME: Resolve the OoM by using a GPU. Recommend to rewrite the code in the ir_measures
         # Evaluate BM25 as well as the random scorer (low baseline)
-        tests.evaluate_retriever(bm25_retriever)
         tests.evaluate_retriever(
-            random_scorer.getRetriever(
-                bm25_retriever, batch_size, PowerAdaptativeBatcher()
-            )
+            lambda documents: bm25_retriever[documents.id], 
+            gpu_launcher_4
+        )
+
+        tests.evaluate_retriever(
+            lambda documents: random_scorer.getRetriever(
+                bm25_retriever[documents.id], batch_size, PowerAdaptativeBatcher()
+            ),
+            gpu_launcher_4
         )
 
         # define the trainer for monobert
@@ -186,33 +230,32 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
 
         scheduler = LinearWithWarmup(num_warmup_steps=num_warmup_steps)
 
+        monobert_scorer = CrossScorer(
+            encoder=DualTransformerEncoder(trainable=True, maxlen=512, dropout=0.1)
+        ).tag("model", "monobert")
+
         monobert_reranking = RerankingPipeline(
             monobert_trainer,
             ParameterOptimizer(
                 scheduler=scheduler,
                 optimizer=Adam(lr=configuration.Learner.lr, weight_decay=1e-2),
             ),
-            lambda scorer, documents: scorer.getRetriever(
-                lambda scorer: scorer.getRetrieveraptativeBatcher(), device=device
-            ),
+            factory_retriever,
             STEPS_PER_EPOCH,
             max_epochs,
             ds_val,
             {"RR@10": True, "AP": False, "nDCG": False},
             tests,
             device=device,
-            validation_retriever_factory=lambda scorer, documents: scorer.getRetriever(
-                lambda scorer: scorer.getRetrieverwerAdaptativeBatcher(), device=device
-            ),
+            validation_retriever_factory=factory_retriever_val,
             validation_interval=validation_interval,
             launcher=gpu_launcher,
             evaluate_launcher=gpu_launcher,
             runs_path=runs_path,
+            # hooks=[
+            #     setmeta(DistributedHook(models=[monobert_scorer.encoder]), True)
+            # ]
         )
-
-        monobert_scorer = CrossScorer(
-            encoder=DualTransformerEncoder(trainable=True, maxlen=512, dropout=0.1)
-        ).tag("model", "monobert")
 
         # Run the monobert and use the result as the baseline for duobert
         monobert_reranking.run(monobert_scorer)

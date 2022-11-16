@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional, Protocol
-from experimaestro import tagspath, experiment
+from typing import Dict, Optional, Protocol, List
+from experimaestro import tagspath, experiment, Param
 from experimaestro.launchers import Launcher
 from datamaestro_text.data.ir import Adhoc, AdhocDocuments
 from xpmir.letor.devices import Device
@@ -11,6 +11,7 @@ from xpmir.evaluation import EvaluationsCollection
 from xpmir.letor.trainers import Trainer
 from xpmir.letor.optim import get_optimizers, Optimizers
 from xpmir.letor.learner import Learner, ValidationListener
+from xpmir.context import Hook, InitializationHook
 
 
 class RetrieverFactory(Protocol):
@@ -72,6 +73,8 @@ class RerankingPipeline:
 
     runs_path: Optional[Path] = None
 
+    # hooks: Optional[List[Hook]] = []
+
     def run(self, scorer: LearnableScorer):
         """Train a the reranking part of a two-stage ranker
 
@@ -95,7 +98,7 @@ class RerankingPipeline:
         # on the validation set
         validation = ValidationListener(
             dataset=self.validation_dataset,
-            retriever=self.retriever_factory(scorer),
+            retriever=val_retriever_factory(scorer, self.validation_dataset.documents),
             validation_interval=self.validation_interval,
             metrics=self.validation_metrics,
         )
@@ -116,6 +119,8 @@ class RerankingPipeline:
             max_epochs=self.max_epochs,
             # The listeners (here, for validation)
             listeners={"bestval": validation},
+            # The hook used for evaluation
+            # hooks = self.hooks
         )
         outputs = learner.submit(launcher=self.launcher)
         (runs_path / tagspath(learner)).symlink_to(learner.logpath)
@@ -124,7 +129,7 @@ class RerankingPipeline:
         for metric_name, monitored in self.validation_metrics.items():
             if monitored:
                 best = outputs.listeners["bestval"][metric_name]
-                eval_factory = lambda documents: val_retriever_factory(best, documents)
+                eval_factory = lambda documents: self.retriever_factory(best, documents)
                 self.tests.evaluate_retriever(eval_factory, self.evaluate_launcher)
 
         # return the output of the learner in order to get the information about the best retriever

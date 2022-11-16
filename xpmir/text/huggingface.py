@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 from experimaestro import Param
 from xpmir.context import Context, InitializationHook
+from xpmir.distributed import DistributableModel
 from xpmir.letor import DistributedDeviceInformation
 from xpmir.letor.context import InitializationTrainingHook, StepTrainingHook, TrainState
 from xpmir.text.encoders import (
@@ -277,7 +278,7 @@ class ContextualizedTextEncoderAdapter(ContextualizedTextEncoder):
         return self.encoder.vocab_size
 
 
-class DualTransformerEncoder(TransformerVocab, DualTextEncoder):
+class DualTransformerEncoder(TransformerVocab, DualTextEncoder, DistributableModel):
     """Encodes the (query, document pair) using the [CLS] token
 
     maxlen: Maximum length of the query document pair (in tokens) or None if using the transformer limit
@@ -296,8 +297,11 @@ class DualTransformerEncoder(TransformerVocab, DualTextEncoder):
     @property
     def dimension(self) -> int:
         return self.model.config.hidden_size
+    
+    def distribute_models(self, update):
+        self.model = update(self.model)
 
-class DualDuoBertTransformerEncoder(TransformerVocab, TripletTextEncoder):
+class DualDuoBertTransformerEncoder(TransformerVocab, TripletTextEncoder, DistributableModel):
     """Encoder of the query-document-document pair of the [cls] token
     Be like: [cls]query[sep]doc1[sep]doc2[sep] with 62 tokens for query
     and 223 for each document.
@@ -319,6 +323,9 @@ class DualDuoBertTransformerEncoder(TransformerVocab, TripletTextEncoder):
     @property
     def dimension(self) -> int:
         return self.model.config.hidden_size
+
+    def distribute_models(self, update):
+        self.model = update(self.model)
 
 class LayerFreezer(InitializationTrainingHook):
     """This training hook class can be used to freeze some of the transformer layers"""
