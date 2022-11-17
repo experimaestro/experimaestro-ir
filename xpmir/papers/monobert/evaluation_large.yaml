@@ -1,0 +1,5 @@
+type: monobert-evaluation-large
+Learner:
+    batch_size: 64
+Retriever_mono: 
+    k: 1000

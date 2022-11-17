@@ -67,34 +67,19 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
 
     logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
 
-    # Number of topics in the validation set
-    VAL_SIZE = configuration.Learner.validation_size
-
-    # Number of batches per epoch (# samples = STEPS_PER_EPOCH * batch_size)
-    STEPS_PER_EPOCH = configuration.Learner.steps_per_epoch
-
-    # Validation interval (in epochs)
-    validation_interval = configuration.Learner.validation_interval
-
     # How many document to re-rank for the monobert
     topK = configuration.Retriever_mono.k
-    # How many documents to use for cross-validation in monobert
-    valtopK = configuration.Retriever_mono.val_k
-
-    # The numbers of the warmup steps during the training
-    num_warmup_steps = configuration.Learner.num_warmup_steps
 
     # Our default launcher for light tasks
     req_duration = duration("6 days")
     launcher = find_launcher(cpu() & req_duration, tags=tags)
 
     batch_size = batch_size or configuration.Learner.batch_size
-    max_epochs = max_epochs or configuration.Learner.max_epoch
 
     # FIXME: uses CPU constraints rather than GPU
-    cpu_launcher_4G = find_launcher(cuda_gpu(mem="4G"))
+    cpu_launcher_4g = find_launcher(cuda_gpu(mem="1G"))
 
-    if configuration.type == "monobert-small":
+    if configuration.type == "small":
         # We request a GPU, and if none, a CPU
         gpu_launcher = find_launcher(
             ((cuda_gpu(mem="12G")*2) if gpu else cpu()) & req_duration, tags=tags
@@ -102,14 +87,7 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
     else:
         assert gpu, "Running full scale experiment without GPU is not recommended"
         gpu_launcher = find_launcher((cuda_gpu(mem="24G")) & req_duration, tags=tags)
-
-    logging.info(
-        f"Number of epochs {max_epochs}, validation interval {validation_interval}"
-    )
-
-    assert (
-        max_epochs % validation_interval == 0
-    ), f"Number of epochs ({max_epochs}) is not a multiple of validation interval ({validation_interval})"
+        gpu_launcher_4 = find_launcher(cuda_gpu(mem="4G") & req_duration, tags=tags)
 
     # Sets the working directory and the name of the xp
     name = configuration.type
@@ -137,10 +115,6 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
         documents = prepare_dataset("irds.msmarco-passage.documents") # for indexing 
         cars_documents = prepare_dataset("irds.car.v1.5.documents") # for indexing
         devsmall = prepare_dataset("irds.msmarco-passage.dev.small")
-        dev = prepare_dataset("irds.msmarco-passage.dev")
-        ds_val = RandomFold(
-            dataset=dev, seed=123, fold=0, sizes=[VAL_SIZE], exclude=devsmall.topics
-        ).submit()
 
         # We will evaluate on TREC DL 2019 and 2020
         tests: EvaluationsCollection = EvaluationsCollection(
@@ -151,46 +125,21 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
                 prepare_dataset("irds.msmarco-passage.trec-dl-2020"), measures
             ),
             msmarco_dev=Evaluations(devsmall, measures),
-            # works not well on it shows the monobert is weak on zero-shot
             # trec_car=Evaluations(prepare_dataset("irds.car.v1.5.test200"), measures),
         )
 
         # Build the MS Marco index and definition of first stage rankers
         index = IndexCollection(documents=documents, storeContents=True).submit()
         base_retriever_ms = AnseriniRetriever(k=topK, index=index, model=basemodel)
-        base_retriever_ms_val = AnseriniRetriever(k=valtopK, index=index, model=basemodel)
 
         # Build the TREC CARS index
-        index_cars = IndexCollection(documents=cars_documents, storeContents=True).submit(launcher = cpu_launcher_4G)
+        index_cars = IndexCollection(documents=cars_documents, storeContents=True).submit(launcher = cpu_launcher_4g)
         base_retriever_cars = AnseriniRetriever(k=topK, index=index_cars, model=basemodel)
-        base_retriever_cars_val = AnseriniRetriever(k=valtopK, index=index_cars, model=basemodel)
 
         base_retrievers = {
             'irds.car.v1.5.documents@irds': base_retriever_cars,
             'irds.msmarco-passage.documents@irds': base_retriever_ms
         }
-
-        base_retrievers_val = {
-            'irds.car.v1.5.documents@irds': base_retriever_cars_val,
-            'irds.msmarco-passage.documents@irds': base_retriever_ms_val
-        }
-
-        factory_retriever = lambda scorer, documents: scorer.getRetriever(
-            base_retrievers[documents.id], batch_size, PowerAdaptativeBatcher(), device=device
-        )
-
-        factory_retriever_val = lambda scorer, documents: scorer.getRetriever(
-            base_retrievers_val[documents.id], batch_size, PowerAdaptativeBatcher(), device=device
-        )
-
-        # Defines how we sample train examples
-        # (using the shuffled pre-computed triplets from MS Marco)
-        train_triples = prepare_dataset("irds.msmarco-passage.train.docpairs")
-        triplesid = ShuffledTrainingTripletsLines(
-            seed=123,
-            data=train_triples,
-        ).submit()
-        train_sampler = TripletBasedSampler(source=triplesid, index=index)
 
         # Search and evaluate with BM25
         bm25_retriever_ms = AnseriniRetriever(k=topK, index=index, model=basemodel).tag(
@@ -206,59 +155,32 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
         }
 
 
-        # FIXME: Resolve the OoM by using a GPU for devsmall. Recommend to rewrite the code in the ir_measures
+        # FIXME: Resolve the OoM by using a GPU. Recommend to rewrite the code in the ir_measures
         # Evaluate BM25 as well as the random scorer (low baseline)
         tests.evaluate_retriever(
             lambda documents: bm25_retriever[documents.id], 
-            cpu_launcher_4G
+            gpu_launcher_4
         )
 
         tests.evaluate_retriever(
             lambda documents: random_scorer.getRetriever(
-                bm25_retriever[documents.id], batch_size, PowerAdaptativeBatcher()
+                base_retrievers[documents.id], batch_size, PowerAdaptativeBatcher()
             ),
-            cpu_launcher_4G
+            gpu_launcher_4
         )
 
         # define the trainer for monobert
-        monobert_trainer = pairwise.PairwiseTrainer(
-            lossfn=pairwise.PointwiseCrossEntropyLoss().tag("loss", "pce"),
-            sampler=train_sampler,
-            batcher=PowerAdaptativeBatcher(),
-            batch_size=batch_size,
-        )
-
-        scheduler = LinearWithWarmup(num_warmup_steps=num_warmup_steps)
 
         monobert_scorer = CrossScorer(
-            encoder=DualTransformerEncoder(trainable=True, maxlen=512, dropout=0.1)
-        ).tag("model", "monobert")
+            encoder=DualTransformerEncoder(model_id='castorini/monobert-large-msmarco',trainable=True, maxlen=512, dropout=0.1)
+        ).tag("model", "monobert-large")
 
-        monobert_reranking = RerankingPipeline(
-            monobert_trainer,
-            ParameterOptimizer(
-                scheduler=scheduler,
-                optimizer=Adam(lr=configuration.Learner.lr, weight_decay=1e-2),
+        tests.evaluate_retriever(
+            lambda documents: monobert_scorer.getRetriever(
+                base_retrievers[documents.id], batch_size, PowerAdaptativeBatcher()
             ),
-            factory_retriever,
-            STEPS_PER_EPOCH,
-            max_epochs,
-            ds_val,
-            {"RR@10": True, "AP": False, "nDCG": False},
-            tests,
-            device=device,
-            validation_retriever_factory=factory_retriever_val,
-            validation_interval=validation_interval,
-            launcher=gpu_launcher,
-            evaluate_launcher=gpu_launcher,
-            runs_path=runs_path,
-            hooks=[
-                setmeta(DistributedHook(models=[monobert_scorer.encoder]), True)
-            ]
+            gpu_launcher
         )
-
-        # Run the monobert and use the result as the baseline for duobert
-        monobert_reranking.run(monobert_scorer)
 
         # Waits that experiments complete
         xp.wait()

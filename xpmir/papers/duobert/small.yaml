@@ -5,6 +5,8 @@ Learner:
     validation_interval: 1
     batch_size: 16
     max_epoch: 4
+    num_warmup_steps: 20
+    lr: 3.0e-6
 Retriever_mono: 
     k: 20
     val_k: 20

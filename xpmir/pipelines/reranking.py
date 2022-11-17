@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Optional, Protocol, List
 from experimaestro import tagspath, experiment, Param
@@ -73,7 +73,7 @@ class RerankingPipeline:
 
     runs_path: Optional[Path] = None
 
-    # hooks: Optional[List[Hook]] = []
+    hooks: Optional[List[Hook]] = field(default_factory=lambda: [])
 
     def run(self, scorer: LearnableScorer):
         """Train a the reranking part of a two-stage ranker
@@ -120,7 +120,7 @@ class RerankingPipeline:
             # The listeners (here, for validation)
             listeners={"bestval": validation},
             # The hook used for evaluation
-            # hooks = self.hooks
+            hooks = self.hooks
         )
         outputs = learner.submit(launcher=self.launcher)
         (runs_path / tagspath(learner)).symlink_to(learner.logpath)
