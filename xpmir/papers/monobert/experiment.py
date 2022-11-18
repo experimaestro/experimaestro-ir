@@ -101,7 +101,7 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
         )
     else:
         assert gpu, "Running full scale experiment without GPU is not recommended"
-        gpu_launcher = find_launcher((cuda_gpu(mem="24G")) & req_duration, tags=tags)
+        gpu_launcher = find_launcher((cuda_gpu(mem="48G")) & req_duration, tags=tags)
 
     logging.info(
         f"Number of epochs {max_epochs}, validation interval {validation_interval}"
@@ -228,7 +228,7 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
             batch_size=batch_size,
         )
 
-        scheduler = LinearWithWarmup(num_warmup_steps=num_warmup_steps)
+        scheduler = LinearWithWarmup(num_warmup_steps=num_warmup_steps, min_factor=configuration.Learner.warmup_min_factor)
 
         monobert_scorer = CrossScorer(
             encoder=DualTransformerEncoder(trainable=True, maxlen=512, dropout=0.1)
@@ -252,9 +252,16 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
             launcher=gpu_launcher,
             evaluate_launcher=gpu_launcher,
             runs_path=runs_path,
-            hooks=[
-                setmeta(DistributedHook(models=[monobert_scorer.encoder]), True)
-            ]
+
+            # FIXME: The write and read of the model in the DataParallel has a .module. to resolve the problem,
+            # It should be better to create a adapter for the DistributedHook class for the DataParallel and 
+            # rewrite the function read and load
+            # Further, it should be better if we can implement the hooks in the form like 
+            # (models=[monobert_scorer]) where can paralize more things
+
+            # hooks=[
+            #     setmeta(DistributedHook(models=[monobert_scorer.encoder]), True)
+            # ]
         )
 
         # Run the monobert and use the result as the baseline for duobert

@@ -246,7 +246,7 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
             batch_size=batch_size,
         )
 
-        scheduler = LinearWithWarmup(num_warmup_steps=num_warmup_steps)
+        scheduler = LinearWithWarmup(num_warmup_steps=num_warmup_steps, min_factor=configuration.Learner.warmup_min_factor)
 
         monobert_scorer = CrossScorer(
             encoder=DualTransformerEncoder(trainable=True, maxlen=512, dropout=0.1)
@@ -359,9 +359,9 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
             launcher=gpu_launcher,
             evaluate_launcher=gpu_launcher,
             runs_path=runs_path,
-            hooks=[
-                setmeta(DistributedHook(models=[duobert_scorer.encoder]), True)
-            ]
+            # hooks=[
+            #     setmeta(DistributedHook(models=[duobert_scorer.encoder]), True)
+            # ]
         )
 
         # Run the duobert

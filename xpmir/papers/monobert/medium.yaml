@@ -6,6 +6,7 @@ Learner:
     batch_size: 64
     max_epoch: 1024
     num_warmup_steps: 5000
+    warmup_min_factor: 0
     lr: 3.0e-6
 Retriever_mono: 
     k: 500

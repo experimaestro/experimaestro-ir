@@ -12,7 +12,7 @@ from xpmir.letor.schedulers import LinearWithWarmup
 import xpmir.letor.trainers.pairwise as pairwise
 from datamaestro import prepare_dataset
 from datamaestro_text.transforms.ir import ShuffledTrainingTripletsLines
-from xpmir.neural.cross import CrossScorer, DuoCrossScorer
+from xpmir.neural.cross import CrossScorer, CrossScorerHuggingface, DuoCrossScorer
 from experimaestro import experiment, setmeta
 from experimaestro.click import click, forwardoption
 from experimaestro.launcherfinder import cpu, cuda_gpu, find_launcher
@@ -171,7 +171,7 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
 
         # define the trainer for monobert
 
-        monobert_scorer = CrossScorer(
+        monobert_scorer = CrossScorerHuggingface(
             encoder=DualTransformerEncoder(model_id='castorini/monobert-large-msmarco',trainable=True, maxlen=512, dropout=0.1)
         ).tag("model", "monobert-large")
 
