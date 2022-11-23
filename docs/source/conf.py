@@ -58,7 +58,7 @@ extensions = [
     # Named tuples
     "sphinx_toolbox.more_autodoc.autonamedtuple",
     # Code
-    "sphinx.ext.view_code",
+    "sphinx.ext.viewcode",
 ]
 
 # Add any paths that contain templates here, relative to this directory.
