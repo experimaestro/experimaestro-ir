@@ -1,4 +1,4 @@
-# Implementation of the experiments in the paper by training with msmarcos
+# Implementation of the experiments in the paper with trec car
 # Passage Re-ranking with BERT, (Rodrigo Nogueira, Kyunghyun Cho). 2019
 # https://arxiv.org/abs/1901.04085
 
@@ -6,7 +6,9 @@ import dataclasses
 import logging
 from pathlib import Path
 from omegaconf import OmegaConf
+from xpmir.datasets.adapters import ConcatFold
 from xpmir.distributed import DistributedHook
+from xpmir.letor.samplers import PairwiseModelBasedSampler
 from xpmir.letor.schedulers import LinearWithWarmup
 
 import xpmir.letor.trainers.pairwise as pairwise
@@ -18,8 +20,16 @@ from experimaestro.click import click, forwardoption
 from experimaestro.launcherfinder import cpu, cuda_gpu, find_launcher
 from experimaestro.launcherfinder.specs import duration
 from experimaestro.utils import cleanupdir
+from datamaestro_text.data.ir import (
+    Adhoc,
+    AdhocAssessments,
+    AdhocDocument,
+    AdhocDocumentStore,
+    AdhocDocuments,
+    AdhocTopics,
+)
+
 from xpmir.configuration import omegaconf_argument
-from xpmir.datasets.adapters import RandomFold
 from xpmir.evaluation import Evaluations, EvaluationsCollection
 from xpmir.interfaces.anserini import AnseriniRetriever, IndexCollection
 from xpmir.letor import Device, Random
@@ -27,7 +37,6 @@ from xpmir.letor.batchers import PowerAdaptativeBatcher
 from xpmir.letor.devices import CudaDevice
 from xpmir.letor.learner import Learner
 from xpmir.letor.optim import Adam, ParameterOptimizer
-from xpmir.letor.samplers import TripletBasedSampler
 from xpmir.measures import AP, RR, P, nDCG
 from xpmir.neural.jointclassifier import JointClassifier
 from xpmir.pipelines.reranking import RerankingPipeline
@@ -94,10 +103,10 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
     # FIXME: uses CPU constraints rather than GPU
     cpu_launcher_4G = find_launcher(cuda_gpu(mem="4G"))
 
-    if configuration.type == "monobert-small":
+    if configuration.type == "monobert-small" or 'monobert-small-car':
         # We request a GPU, and if none, a CPU
         gpu_launcher = find_launcher(
-            ((cuda_gpu(mem="12G")*2) if gpu else cpu()) & req_duration, tags=tags
+            (cuda_gpu(mem="12G") if gpu else cpu()) & req_duration, tags=tags
         )
     else:
         assert gpu, "Running full scale experiment without GPU is not recommended"
@@ -133,14 +142,19 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
         logging.info("Monitor learning with:")
         logging.info("tensorboard --logdir=%s", runs_path)
 
-        # Datasets: train, validation and test
+        # Datasets: train, validation and test 
         documents = prepare_dataset("irds.msmarco-passage.documents") # for indexing 
         cars_documents = prepare_dataset("irds.car.v1.5.documents") # for indexing
-        devsmall = prepare_dataset("irds.msmarco-passage.dev.small")
-        dev = prepare_dataset("irds.msmarco-passage.dev")
-        ds_val = RandomFold(
-            dataset=dev, seed=123, fold=0, sizes=[VAL_SIZE], exclude=devsmall.topics
-        ).submit()
+        # the training dataset used to prepare the pairwise sampler
+        dev_fold0 = prepare_dataset("irds.car.v1.5.train.fold0")
+        dev_fold1 = prepare_dataset("irds.car.v1.5.train.fold1")
+        dev_fold2 = prepare_dataset("irds.car.v1.5.train.fold2")
+        dev_fold3 = prepare_dataset("irds.car.v1.5.train.fold3")
+
+        dev = ConcatFold(datasets = [dev_fold0, dev_fold1, dev_fold2, dev_fold3]).submit(launcher = cpu_launcher_4G)
+        
+        # the training dataset for validation
+        ds_val = prepare_dataset("irds.car.v1.5.train.fold4")
 
         # We will evaluate on TREC DL 2019 and 2020
         tests: EvaluationsCollection = EvaluationsCollection(
@@ -150,15 +164,14 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
             trec2020=Evaluations(
                 prepare_dataset("irds.msmarco-passage.trec-dl-2020"), measures
             ),
-            msmarco_dev=Evaluations(devsmall, measures),
-            # works not well on it shows the monobert is weak on zero-shot
-            # trec_car=Evaluations(prepare_dataset("irds.car.v1.5.test200"), measures),
+            trec_car=Evaluations(prepare_dataset("irds.car.v1.5.test200"), measures),
         )
 
         # Build the MS Marco index and definition of first stage rankers
         index = IndexCollection(documents=documents, storeContents=True).submit()
         base_retriever_ms = AnseriniRetriever(k=topK, index=index, model=basemodel)
         base_retriever_ms_val = AnseriniRetriever(k=valtopK, index=index, model=basemodel)
+
 
         # Build the TREC CARS index
         index_cars = IndexCollection(documents=cars_documents, storeContents=True).submit(launcher = cpu_launcher_4G)
@@ -182,16 +195,7 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
         factory_retriever_val = lambda scorer, documents: scorer.getRetriever(
             base_retrievers_val[documents.id], batch_size, PowerAdaptativeBatcher(), device=device
         )
-
-        # Defines how we sample train examples
-        # (using the shuffled pre-computed triplets from MS Marco)
-        train_triples = prepare_dataset("irds.msmarco-passage.train.docpairs")
-        triplesid = ShuffledTrainingTripletsLines(
-            seed=123,
-            data=train_triples,
-        ).submit()
-        train_sampler = TripletBasedSampler(source=triplesid, index=index)
-
+        
         # Search and evaluate with BM25
         bm25_retriever_ms = AnseriniRetriever(k=topK, index=index, model=basemodel).tag(
             "model", "bm25"
@@ -204,6 +208,11 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
             'irds.car.v1.5.documents@irds': bm25_retriever_car,
             'irds.msmarco-passage.documents@irds': bm25_retriever_ms
         }
+
+        # Defines how we sample train examples
+        # TODO: The dataset for training by using the dev
+        # k=20 in the bm25_retriever is too large --> reduce it to 10
+        train_sampler = PairwiseModelBasedSampler(dataset = dev, retriever = bm25_retriever_car)
 
 
         # FIXME: Resolve the OoM by using a GPU for devsmall. Recommend to rewrite the code in the ir_measures

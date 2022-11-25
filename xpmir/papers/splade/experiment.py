@@ -101,8 +101,35 @@ def cli(
 
     # Number of steps in each epoch
     steps_per_epoch = configuration.Learner.steps_per_epoch
-
     
+    # Validation interval (in epochs)
+    validation_interval = configuration.Learner.validation_interval
+
+    # How many documents retrieved from the base retriever(bm25)
+    topK = configuration.base_retriever.topK
+
+    # How many documents to be process once to in the FullRetrieverScorer(batch_size)
+    batch_size_full_retriever = configuration.full_retriever.batch_size_full_retriever
+
+    # the max epochs to train
+    max_epochs = max_epochs or configuration.Learner.max_epochs
+
+    # the batch_size for training the splade model
+    splade_batch_size = batch_size or configuration.Learner.splade_batch_size
+    
+    # num_warmup_steps = 1000
+
+    # # Top-K when building the validation set(tas-balanced)
+    # retTopK = 10
+
+    # # Validation interval (in epochs)
+    # validation_interval = max_epochs // 4
+
+    # early_stop = 0
+
+    # # FAISS index building
+    # indexspec = "OPQ4_16,IVF256_HNSW32,PQ4"
+    # faiss_max_traindocs = 15_000
 
 
 

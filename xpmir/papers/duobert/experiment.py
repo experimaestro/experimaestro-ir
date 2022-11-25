@@ -158,11 +158,11 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
             trec2020=Evaluations(
                 prepare_dataset("irds.msmarco-passage.trec-dl-2020"), measures
             ),
-            # msmarco_dev=Evaluations(devsmall, measures),
+            msmarco_dev=Evaluations(devsmall, measures),
             # works not well on it shows the duobert is weak on zero-shot
-            trec_car=Evaluations(
-                prepare_dataset("irds.car.v1.5.test200"), measures
-            )
+            # trec_car=Evaluations(
+            #     prepare_dataset("irds.car.v1.5.test200"), measures
+            # )
         )
 
         # Build the MS Marco index and definition of first stage rankers
@@ -270,9 +270,9 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
             launcher=gpu_launcher,
             evaluate_launcher=gpu_launcher,
             runs_path=runs_path,
-            hooks=[
-                setmeta(DistributedHook(models=[monobert_scorer.encoder]), True)
-            ]
+            # hooks=[
+            #     setmeta(DistributedHook(models=[monobert_scorer.encoder]), True)
+            # ]
         )
 
         # Run the monobert and use the result as the baseline for duobert
@@ -338,7 +338,7 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
 
         # The scorer(model) for the duobert
         duobert_scorer = DuoCrossScorer(
-            encoder=DualDuoBertTransformerEncoder(trainable=True, maxlen=512, dropout=0.1)
+            encoder=DualDuoBertTransformerEncoder(trainable=True, dropout=0.1)
         ).tag("duo-model", "duobert")
 
         duobert_reranking = RerankingPipeline(

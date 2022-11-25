@@ -1,0 +1,14 @@
+type: monobert-small-car
+Learner: 
+    validation_size: 10
+    steps_per_epoch: 32
+    validation_interval: 1
+    batch_size: 16
+    max_epoch: 4
+    num_warmup_steps: 30
+    warmup_min_factor: 0
+    lr: 3.0e-6
+Retriever_mono: 
+    k: 20
+    val_k: 20
+

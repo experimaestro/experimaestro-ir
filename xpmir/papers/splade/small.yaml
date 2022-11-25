@@ -2,4 +2,12 @@ type: small
 Learner: 
     validation_size: 10
     steps_per_epoch: 128
-    
+    validation_interval: 1
+    splade_batch_size: 96
+    max_epochs: 4
+base_retriever: 
+    topK: 20
+tas_balance_retriever: 
+    retTopK: 10
+full_retriever:
+    batch_size_full_retriever: 20

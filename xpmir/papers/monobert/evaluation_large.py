@@ -12,7 +12,7 @@ from xpmir.letor.schedulers import LinearWithWarmup
 import xpmir.letor.trainers.pairwise as pairwise
 from datamaestro import prepare_dataset
 from datamaestro_text.transforms.ir import ShuffledTrainingTripletsLines
-from xpmir.neural.cross import CrossScorer, CrossScorerHuggingface, DuoCrossScorer
+from xpmir.neural.cross import CrossScorer, DuoCrossScorer
 from experimaestro import experiment, setmeta
 from experimaestro.click import click, forwardoption
 from experimaestro.launcherfinder import cpu, cuda_gpu, find_launcher
@@ -33,7 +33,7 @@ from xpmir.neural.jointclassifier import JointClassifier
 from xpmir.pipelines.reranking import RerankingPipeline
 from xpmir.rankers import RandomScorer, Retriever
 from xpmir.rankers.standard import BM25
-from xpmir.text.huggingface import DualDuoBertTransformerEncoder, DualTransformerEncoder
+from xpmir.text.huggingface import DualTransformerEncoder, CrossScorerHuggingface
 from xpmir.utils import find_java_home
 
 logging.basicConfig(level=logging.INFO)
@@ -86,7 +86,7 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
         )
     else:
         assert gpu, "Running full scale experiment without GPU is not recommended"
-        gpu_launcher = find_launcher((cuda_gpu(mem="24G")) & req_duration, tags=tags)
+        gpu_launcher = find_launcher((cuda_gpu(mem="48G")) & req_duration, tags=tags)
         gpu_launcher_4 = find_launcher(cuda_gpu(mem="4G") & req_duration, tags=tags)
 
     # Sets the working directory and the name of the xp
@@ -172,12 +172,13 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
         # define the trainer for monobert
 
         monobert_scorer = CrossScorerHuggingface(
-            encoder=DualTransformerEncoder(model_id='castorini/monobert-large-msmarco',trainable=True, maxlen=512, dropout=0.1)
+            # TODO: implement the CrossScorerHuggingface
+            ...
         ).tag("model", "monobert-large")
 
         tests.evaluate_retriever(
             lambda documents: monobert_scorer.getRetriever(
-                base_retrievers[documents.id], batch_size, PowerAdaptativeBatcher()
+                base_retrievers[documents.id], batch_size, PowerAdaptativeBatcher(), device = device
             ),
             gpu_launcher
         )

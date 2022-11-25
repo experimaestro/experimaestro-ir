@@ -60,11 +60,13 @@ class TokenizedTexts:
         ids: torch.LongTensor,
         lens: List[int],
         mask: torch.LongTensor,
+        token_type_ids: torch.LongTensor
     ):
         self.tokens = tokens
         self.ids = ids
         self.lens = lens
         self.mask = mask
+        self.token_type_ids = token_type_ids
 
 
 RT = TypeVar("RT")

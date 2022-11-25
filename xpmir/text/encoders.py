@@ -1,5 +1,6 @@
 from typing import List, NamedTuple, Optional, Tuple
 import torch
+import torch.nn as nn
 from experimaestro import Param
 from xpmir.letor.optim import Module
 from . import Vocab

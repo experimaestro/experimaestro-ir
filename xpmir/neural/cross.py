@@ -10,34 +10,6 @@ from xpmir.text.encoders import DualTextEncoder, TripletTextEncoder
 from xpmir.rankers import DuoLearnableScorer, DuoTwoStageRetriever, LearnableScorer, Retriever, ScoredDocument
 from typing import List, Optional
 
-class CrossScorerHuggingface(TorchLearnableScorer):
-    """Query-Document Representation Classifier
-
-    Based on a query-document representation representation (e.g. BERT [CLS] token).
-    AKA Cross-Encoder
-
-    The scorer for huggingface has already implemented the final classfier so we don't need it here.
-
-    Attributes:
-        encoder: Document (and query) encoder
-        query_encoder: Query encoder; if null, uses the document encoder
-    """
-
-    encoder: Param[DualTextEncoder]
-
-    def __validate__(self):
-        super().__validate__()
-        assert not self.encoder.static(), "The vocabulary should be learnable"
-
-    def _initialize(self, random):
-        self.encoder.initialize()
-
-    def forward(self, inputs: BaseRecords, info: TrainerContext = None):
-        # Encode queries and documents
-        pairs = self.encoder(
-            [(q.text, d.text) for q, d in zip(inputs.queries, inputs.documents)]
-        )
-        return pairs
 
 class CrossScorer(TorchLearnableScorer):
     """Query-Document Representation Classifier
@@ -64,7 +36,7 @@ class CrossScorer(TorchLearnableScorer):
         # Encode queries and documents
         pairs = self.encoder(
             [(q.text, d.text) for q, d in zip(inputs.queries, inputs.documents)]
-        )
+        ) # shape (batch_size * dimension)
         return self.classifier(pairs).squeeze(1)
 
 class DuoCrossScorer(DuoLearnableScorer):

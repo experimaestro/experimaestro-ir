@@ -19,6 +19,8 @@ from datamaestro_text.data.ir import (
     AdhocDocuments,
     AdhocTopics,
 )
+
+from itertools import chain
 from datamaestro_text.data.ir.trec import TrecAdhocAssessments
 from datamaestro_text.data.ir.csv import AdhocTopics as CSVAdhocTopics
 from xpmir.rankers import Retriever
@@ -69,6 +71,54 @@ def fold(ids: Iterable[str], dataset: Adhoc):
     topics = AdhocTopicFold(topics=dataset.topics, ids=ids)
     qrels = AdhocAssessmentFold(assessments=dataset.assessments, ids=ids)
     return Adhoc(topics=topics, assessments=qrels, documents=dataset.documents)
+
+
+class ConcatFold(Task):
+    """
+    Concatenation of several datasets to get a full dataset.
+    """
+
+    datasets: Param[List[Adhoc]]
+    """The list of Adhoc datasets to concatenate"""
+
+    assessments: Annotated[Path, pathgenerator("assessments.tsv")]
+    """Generated assessments file"""
+
+    topics: Annotated[Path, pathgenerator("topics.tsv")]
+    """Generated topics file"""
+
+
+    def config(self) -> Adhoc:
+        return Adhoc(
+            id="",  # No need to have a more specific id since it is generated
+            topics=CSVAdhocTopics(id="", path=self.topics),
+            assessments=TrecAdhocAssessments(id="", path=self.assessments),
+            documents=self.datasets[0].documents,
+        )
+
+    def execute(self):
+        topics = []
+        # concat the topics
+        for dataset in self.datasets: 
+            topics.extend([topic for topic in dataset.topics.iter()])
+        
+        # Write topics and assessments
+        ids = set()
+        self.topics.parent.mkdir(parents=True, exist_ok=True)
+        with self.topics.open("wt") as fp:
+            for topic in topics:
+                ids.add(topic.qid)
+                slash_t = '\t'
+                fp.write(f"""{topic.qid}\t{topic.text.replace(slash_t, ' ')}\n""")
+
+        with self.assessments.open("wt") as fp:
+            for dataset in self.datasets:
+                for qrels in dataset.assessments.iter():
+                    if qrels.qid in ids:
+                        for qrel in qrels.assessments:
+                            fp.write(f"""{qrels.qid} 0 {qrel.docno} {qrel.rel}\n""")
+
+
 
 
 class RandomFold(Task):
