@@ -9,6 +9,6 @@ Learner:
     warmup_min_factor: 0
     lr: 3.0e-6
 Retriever_mono: 
-    k: 20
-    val_k: 20
+    k: 10
+    val_k: 10
 
