@@ -7,15 +7,6 @@ import os
 import re
 from setuptools import setup
 
-
-def get_description():
-    """Get long description."""
-
-    with open("README.md", "r") as f:
-        desc = f.read()
-    return desc
-
-
 # Handles dependencies here
 basepath = Path(__file__).parent
 install_requires = (basepath / "requirements.txt").read_text()
