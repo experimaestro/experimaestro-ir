@@ -48,13 +48,13 @@ from xpmir.utils import find_java_home
 logging.basicConfig(level=logging.INFO)
 
 # --- Experiment
-@forwardoption.max_epochs(Learner, default=None)
-@click.option("--tags", type=str, default="", help="Tags for selecting the launcher")
+# @forwardoption.max_epochs(Learner, default=None)
+# @click.option("--tags", type=str, default="", help="Tags for selecting the launcher")
 @click.option("--debug", is_flag=True, help="Print debug information")
-@click.option("--gpu", is_flag=True, help="Use GPU")
-@click.option(
-    "--batch-size", type=int, default=None, help="Batch size (validation and test)"
-)
+# @click.option("--gpu", is_flag=True, help="Use GPU")
+# @click.option(
+#     "--batch-size", type=int, default=None, help="Batch size (validation and test)"
+# )
 @click.option(
     "--host",
     type=str,
@@ -70,9 +70,9 @@ logging.basicConfig(level=logging.INFO)
 @omegaconf_argument("configuration", package="xpmir.papers.monobert")
 @click.argument("workdir", type=Path)
 @click.command()
-def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_size):
+def cli(debug, configuration, host, port, workdir):
     """Runs an experiment"""
-    tags = tags.split(",") if tags else []
+    tags = configuration.Launcher.tags.split(",") if configuration.Launcher.tags else []
 
     logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
 
@@ -94,11 +94,11 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
     num_warmup_steps = configuration.Learner.num_warmup_steps
 
     # Our default launcher for light tasks
-    req_duration = duration("6 days")
+    req_duration = duration(configuration.Launcher.req_duration)
     launcher = find_launcher(cpu() & req_duration, tags=tags)
 
-    batch_size = batch_size or configuration.Learner.batch_size
-    max_epochs = max_epochs or configuration.Learner.max_epoch
+    batch_size = configuration.Learner.batch_size
+    max_epochs = configuration.Learner.max_epoch
 
     # FIXME: uses CPU constraints rather than GPU
     cpu_launcher_4G = find_launcher(cuda_gpu(mem="4G"))
@@ -146,12 +146,8 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
         documents = prepare_dataset("irds.msmarco-passage.documents") # for indexing 
         cars_documents = prepare_dataset("irds.car.v1.5.documents") # for indexing
         # the training dataset used to prepare the pairwise sampler
-        dev_fold0 = prepare_dataset("irds.car.v1.5.train.fold0")
-        dev_fold1 = prepare_dataset("irds.car.v1.5.train.fold1")
-        dev_fold2 = prepare_dataset("irds.car.v1.5.train.fold2")
-        dev_fold3 = prepare_dataset("irds.car.v1.5.train.fold3")
-
-        dev = ConcatFold(datasets = [dev_fold0, dev_fold1, dev_fold2, dev_fold3]).submit(launcher = cpu_launcher_4G)
+        folds = [prepare_dataset(f"irds.car.v1.5.train.fold{i}") for i in range(4)]
+        dev = ConcatFold(datasets = folds).submit(launcher = cpu_launcher_4G)
         
         # the training dataset for validation
         ds_val = prepare_dataset("irds.car.v1.5.train.fold4")

@@ -49,7 +49,7 @@ from xpmir.text.huggingface import DistributedModelHook, TransformerEncoder
 
 logging.basicConfig(level=logging.INFO)
 
-@forwardoption.max_epochs(Learner, default=None)
+# @forwardoption.max_epochs(Learner, default=None)
 @click.option("--tags", type=str, default="", help="Tags for selecting the launcher")
 @click.option("--debug", is_flag=True, help="Print debug information")
 @click.option(
@@ -66,9 +66,9 @@ logging.basicConfig(level=logging.INFO)
     help="Server hostname (default to localhost, not suitable if your jobs are remote)",
 )
 @click.option("--port", type=int, default=12345, help="Port for monitoring")
-@click.option(
-    "--batch-size", type=int, default=None, help="Batch size (validation and test)"
-)
+# @click.option(
+#     "--batch-size", type=int, default=None, help="Batch size (validation and test)"
+# )
 
 # @omegaconf_argument("configuration", package=__package__)
 # works only with this one a the moment
@@ -84,9 +84,7 @@ def cli(
     configuration, 
     host: str,
     port: int,
-    workdir: str,
-    max_epochs: int,
-    batch_size: Optional[int],
+    workdir: str
 ):
     """Runs an experiment"""
     tags = tags.split(",") if tags else []
@@ -112,10 +110,10 @@ def cli(
     batch_size_full_retriever = configuration.full_retriever.batch_size_full_retriever
 
     # the max epochs to train
-    max_epochs = max_epochs or configuration.Learner.max_epochs
+    max_epochs = configuration.Learner.max_epochs
 
     # the batch_size for training the splade model
-    splade_batch_size = batch_size or configuration.Learner.splade_batch_size
+    splade_batch_size = configuration.Learner.splade_batch_size
     
     # num_warmup_steps = 1000
 

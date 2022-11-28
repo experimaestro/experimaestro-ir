@@ -39,13 +39,13 @@ from xpmir.utils import find_java_home
 logging.basicConfig(level=logging.INFO)
 
 # --- Experiment
-@forwardoption.max_epochs(Learner, default=None)
-@click.option("--tags", type=str, default="", help="Tags for selecting the launcher")
+# @forwardoption.max_epochs(Learner, default=None)
+# @click.option("--tags", type=str, default="", help="Tags for selecting the launcher")
 @click.option("--debug", is_flag=True, help="Print debug information")
-@click.option("--gpu", is_flag=True, help="Use GPU")
-@click.option(
-    "--batch-size", type=int, default=None, help="Batch size (validation and test)"
-)
+# @click.option("--gpu", is_flag=True, help="Use GPU")
+# @click.option(
+#     "--batch-size", type=int, default=None, help="Batch size (validation and test)"
+# )
 @click.option(
     "--host",
     type=str,
@@ -61,9 +61,9 @@ logging.basicConfig(level=logging.INFO)
 @omegaconf_argument("configuration", package="xpmir.papers.monobert")
 @click.argument("workdir", type=Path)
 @click.command()
-def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_size):
+def cli(debug, configuration, host, port, workdir):
     """Runs an experiment"""
-    tags = tags.split(",") if tags else []
+    tags = configuration.Launcher.tags.split(",") if configuration.Launcher.tags else []
 
     logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
 
@@ -85,23 +85,22 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
     num_warmup_steps = configuration.Learner.num_warmup_steps
 
     # Our default launcher for light tasks
-    req_duration = duration("6 days")
+    req_duration = duration(configuration.Launcher.req_duration)
     launcher = find_launcher(cpu() & req_duration, tags=tags)
 
-    batch_size = batch_size or configuration.Learner.batch_size
-    max_epochs = max_epochs or configuration.Learner.max_epoch
+    batch_size = configuration.Learner.batch_size
+    max_epochs = configuration.Learner.max_epoch
 
     # FIXME: uses CPU constraints rather than GPU
     cpu_launcher_4G = find_launcher(cuda_gpu(mem="4G"))
 
-    if configuration.type == "monobert-small":
-        # We request a GPU, and if none, a CPU
-        gpu_launcher = find_launcher(
-            ((cuda_gpu(mem="12G")*2) if gpu else cpu()) & req_duration, tags=tags
-        )
-    else:
-        assert gpu, "Running full scale experiment without GPU is not recommended"
+    # we assigne a gpu, if not, a cpu
+    if configuration.Launcher.gpu: 
         gpu_launcher = find_launcher((cuda_gpu(mem="48G")) & req_duration, tags=tags)
+    else: 
+        gpu_launcher = find_launcher(
+            cpu() & req_duration, tags=tags
+        )
 
     logging.info(
         f"Number of epochs {max_epochs}, validation interval {validation_interval}"
