@@ -2,8 +2,11 @@ from typing import Callable, List, Optional, Tuple
 import itertools
 import torch
 from experimaestro import Config, Param, Meta
+from xpmir.rankers.full import FullRetrieverRescorer
 from xpmir.letor import DEFAULT_DEVICE, Device
+from xpmir.letor.batchers import Batcher
 from xpmir.neural import DualRepresentationScorer
+from xpmir.rankers import Retriever
 from xpmir.utils import easylog, foreach
 from xpmir.text.encoders import TextEncoder
 from xpmir.letor.context import Loss, TrainerContext, TrainingHook
@@ -137,6 +140,21 @@ class DotDense(Dense):
     def encode_documents(self, texts: List[str]):
         """Encode the different documents"""
         return self.encoder(texts)
+
+    def getRetriever(
+        self, 
+        retriever: "Retriever",
+        batch_size: int, 
+        batcher: Batcher,  
+        device=None
+    ):
+        return FullRetrieverRescorer(
+            documents=retriever.documents,
+            scorer=self,
+            batchsize=batch_size,
+            batcher=batcher,
+            device=device,
+        )
 
 
 class FlopsRegularizer(DualVectorListener):

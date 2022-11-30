@@ -103,14 +103,15 @@ def cli(debug, configuration, host, port, workdir):
     # FIXME: uses CPU constraints rather than GPU
     cpu_launcher_4G = find_launcher(cuda_gpu(mem="4G"))
 
-    if configuration.type == "monobert-small" or 'monobert-small-car':
-        # We request a GPU, and if none, a CPU
+    # we assigne a gpu, if not, a cpu
+    if configuration.Launcher.gpu: 
         gpu_launcher = find_launcher(
-            (cuda_gpu(mem="12G") if gpu else cpu()) & req_duration, tags=tags
+            (cuda_gpu(mem=configuration.Launcher.mem)) & req_duration, tags=tags
         )
-    else:
-        assert gpu, "Running full scale experiment without GPU is not recommended"
-        gpu_launcher = find_launcher((cuda_gpu(mem="48G")) & req_duration, tags=tags)
+    else: 
+        gpu_launcher = find_launcher(
+            cpu() & req_duration, tags=tags
+        )
 
     logging.info(
         f"Number of epochs {max_epochs}, validation interval {validation_interval}"
@@ -128,7 +129,7 @@ def cli(debug, configuration, host, port, workdir):
         xp.setenv("JAVA_HOME", find_java_home())
 
         # Misc
-        device = CudaDevice() if gpu else Device()
+        device = CudaDevice() if configuration.Launcher.gpu else Device()
         random = Random(seed=0)
         basemodel = BM25()
         # create a random scorer as the most naive baseline

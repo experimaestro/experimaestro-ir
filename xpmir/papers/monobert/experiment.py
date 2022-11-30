@@ -96,7 +96,7 @@ def cli(debug, configuration, host, port, workdir):
 
     # we assigne a gpu, if not, a cpu
     if configuration.Launcher.gpu: 
-        gpu_launcher = find_launcher((cuda_gpu(mem="48G")) & req_duration, tags=tags)
+        gpu_launcher = find_launcher((cuda_gpu(mem='8G')*2) & req_duration, tags=tags)
     else: 
         gpu_launcher = find_launcher(
             cpu() & req_duration, tags=tags
@@ -118,7 +118,7 @@ def cli(debug, configuration, host, port, workdir):
         xp.setenv("JAVA_HOME", find_java_home())
 
         # Misc
-        device = CudaDevice() if gpu else Device()
+        device = CudaDevice() if configuration.Launcher.gpu else Device()
         random = Random(seed=0)
         basemodel = BM25()
         # create a random scorer as the most naive baseline
@@ -141,7 +141,7 @@ def cli(debug, configuration, host, port, workdir):
             dataset=dev, seed=123, fold=0, sizes=[VAL_SIZE], exclude=devsmall.topics
         ).submit()
 
-        # We will evaluate on TREC DL 2019 and 2020
+        # We will evaluate on TREC DL 2019 and 2020 and msmarco_dev
         tests: EvaluationsCollection = EvaluationsCollection(
             trec2019=Evaluations(
                 prepare_dataset("irds.msmarco-passage.trec-dl-2019"), measures
@@ -258,9 +258,9 @@ def cli(debug, configuration, host, port, workdir):
             # Further, it should be better if we can implement the hooks in the form like 
             # (models=[monobert_scorer]) where can paralize more things
 
-            # hooks=[
-            #     setmeta(DistributedHook(models=[monobert_scorer.encoder]), True)
-            # ]
+            hooks=[
+                setmeta(DistributedHook(models=[monobert_scorer]), True)
+            ]
         )
 
         # Run the monobert and use the result as the baseline for duobert

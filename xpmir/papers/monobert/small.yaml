@@ -2,7 +2,7 @@ type: monobert-small
 Launcher: 
     gpu: true
     tags: 
-    req_duration: 6 days
+    req_duration: 2 days
     mem: 12G
 Learner: 
     validation_size: 10

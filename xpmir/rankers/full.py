@@ -25,18 +25,18 @@ class FullRetriever(Retriever):
             ]
         return [ScoredDocument(docid, 0.0, None) for docid in self.documents.iter_ids()]
 
-    def getReranker(
-        self, scorer: Scorer, batch_size: int, batcher: Batcher = Batcher(), device=None
-    ):
-        if isinstance(scorer, DualRepresentationScorer):
-            return FullRetrieverRescorer(
-                documents=self.documents,
-                scorer=scorer,
-                batchsize=batch_size,
-                batcher=batcher,
-                device=device,
-            )
-        return super().getReranker(scorer, batch_size, batcher, device)
+    # def getReranker(
+    #     self, scorer: Scorer, batch_size: int, batcher: Batcher = Batcher(), device=None
+    # ):
+    #     if isinstance(scorer, DualRepresentationScorer):
+    #         return FullRetrieverRescorer(
+    #             documents=self.documents,
+    #             scorer=scorer,
+    #             batchsize=batch_size,
+    #             batcher=batcher,
+    #             device=device,
+    #         )
+    #     return scorer.getRetriever(self, batch_size, batcher, device)
 
 
 class FullRetrieverRescorer(Retriever):

@@ -89,6 +89,8 @@ class ConcatFold(Task):
 
 
     def config(self) -> Adhoc:
+        dataset_document_id = set(dataset.document.id for dataset in self.datasets)
+        assert len(dataset_document_id) == 1, 'At the moment only one set of documents supported.'
         return Adhoc(
             id="",  # No need to have a more specific id since it is generated
             topics=CSVAdhocTopics(id="", path=self.topics),

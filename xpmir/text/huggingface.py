@@ -30,33 +30,33 @@ import xpmir.text as text
 
 logger = easylog()
 
-class CrossScorerHuggingface(TorchLearnableScorer):
-    """Query-Document Representation Classifier
+# class CrossScorerHuggingface(TorchLearnableScorer):
+#     """Query-Document Representation Classifier
 
-    Based on a query-document representation representation (e.g. BERT [CLS] token).
-    AKA Cross-Encoder
+#     Based on a query-document representation representation (e.g. BERT [CLS] token).
+#     AKA Cross-Encoder
 
-    The scorer for huggingface has already implemented the final classfier so we don't need it here.
+#     The scorer for huggingface has already implemented the final classfier so we don't need it here.
 
-    Attribute:
-        model_id: id for the huggingface model.
-    """
-    # TODO: modify the encoder here to get the model id directly. 
-    # Then load the model by using the SequenceModel...() to get the full information...
-    model_id: Param[str]
+#     Attribute:
+#         model_id: id for the huggingface model.
+#     """
+#     # TODO: modify the encoder here to get the model id directly. 
+#     # Then load the model by using the SequenceModel...() to get the full information...
+#     model_id: Param[str]
 
-    def __validate__(self):
-        super().__validate__()
+#     def __validate__(self):
+#         super().__validate__()
 
-    def _initialize(self, random):
-        # Initialize the model
-        # TODO: initialize the model
-        pass
+#     def _initialize(self, random):
+#         # Initialize the model
+#         # TODO: initialize the model
+#         pass
 
-    def forward(self, inputs: BaseRecords, info: TrainerContext = None):
-        # Encode queries and documents
-        # TODO: do a forward pass 
-        pass
+#     def forward(self, inputs: BaseRecords, info: TrainerContext = None):
+#         # Encode queries and documents
+#         # TODO: do a forward pass 
+#         pass
 
 
 class TransformerVocab(text.Vocab):
@@ -308,7 +308,7 @@ class ContextualizedTextEncoderAdapter(ContextualizedTextEncoder):
         return self.encoder.vocab_size
 
 
-class DualTransformerEncoder(TransformerVocab, DualTextEncoder, DistributableModel):
+class DualTransformerEncoder(TransformerVocab, DualTextEncoder):
     """Encodes the (query, document pair) using the [CLS] token
 
     maxlen: Maximum length of the query document pair (in tokens) or None if using the transformer limit
@@ -330,8 +330,8 @@ class DualTransformerEncoder(TransformerVocab, DualTextEncoder, DistributableMod
     def dimension(self) -> int:
         return self.model.config.hidden_size
     
-    def distribute_models(self, update):
-        self.model = update(self.model)
+    # def distribute_models(self, update):
+    #     self.model = update(self.model)
 
 class DualDuoBertTransformerEncoder(TransformerVocab, TripletTextEncoder, DistributableModel):
     """Encoder of the query-document-document pair of the [cls] token

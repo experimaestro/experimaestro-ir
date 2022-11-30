@@ -2,6 +2,7 @@ from errno import EROFS
 import torch
 import torch.nn as nn
 from experimaestro import Param
+from xpmir.distributed import DistributableModel
 from xpmir.letor.batchers import Batcher
 from xpmir.letor.context import TrainerContext
 from xpmir.letor.records import BaseRecords, PairwiseRecord, PairwiseRecords, Query, Document
@@ -11,7 +12,7 @@ from xpmir.rankers import DuoLearnableScorer, DuoTwoStageRetriever, LearnableSco
 from typing import List, Optional
 
 
-class CrossScorer(TorchLearnableScorer):
+class CrossScorer(TorchLearnableScorer, DistributableModel):
     """Query-Document Representation Classifier
 
     Based on a query-document representation representation (e.g. BERT [CLS] token).
@@ -38,6 +39,10 @@ class CrossScorer(TorchLearnableScorer):
             [(q.text, d.text) for q, d in zip(inputs.queries, inputs.documents)]
         ) # shape (batch_size * dimension)
         return self.classifier(pairs).squeeze(1)
+
+    def distribute_models(self, update):
+        self.encoder.model = update(self.encoder.model)
+
 
 class DuoCrossScorer(DuoLearnableScorer):
     """Query-document-document Representation classifier based on Bert

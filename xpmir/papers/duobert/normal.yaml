@@ -1,4 +1,9 @@
 type: duobert
+Launcher: 
+    gpu: true
+    tags: 
+    req_duration: 6 days
+    mem: 48G
 Learner: 
     validation_size: 500
     steps_per_epoch: 32

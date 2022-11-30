@@ -123,7 +123,6 @@ class PointwiseCrossEntropyLoss(PairwiseLoss):
     def initialize(self, ranker: LearnableScorer):
         super().initialize(ranker)
         self.rankerOutputType = ranker.outputType
-        print(ranker.outputType,'\n\n\n')
         if ranker.outputType == ScorerOutputType.REAL:
             self.loss = nn.BCEWithLogitsLoss()
         elif ranker.outputType == ScorerOutputType.PROBABILITY:
