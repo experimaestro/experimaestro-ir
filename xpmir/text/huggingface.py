@@ -333,7 +333,7 @@ class DualTransformerEncoder(TransformerVocab, DualTextEncoder):
     # def distribute_models(self, update):
     #     self.model = update(self.model)
 
-class DualDuoBertTransformerEncoder(TransformerVocab, TripletTextEncoder, DistributableModel):
+class DualDuoBertTransformerEncoder(TransformerVocab, TripletTextEncoder):
     """Encoder of the query-document-document pair of the [cls] token
     Be like: [cls]query[sep]doc1[sep]doc2[sep] with 62 tokens for query
     and 223 for each document.
@@ -341,7 +341,6 @@ class DualDuoBertTransformerEncoder(TransformerVocab, TripletTextEncoder, Distri
     def initialize(self, noinit=False, automodel=AutoModel):
         super().initialize(noinit, automodel)
         self.model.embeddings.token_type_embeddings = nn.Embedding(3, self.dimension)
-
 
     def batch_tokenize(self, 
         texts: List[Tuple[str, str, str]], 
@@ -430,8 +429,8 @@ class DualDuoBertTransformerEncoder(TransformerVocab, TripletTextEncoder, Distri
     def dimension(self) -> int:
         return self.model.config.hidden_size
 
-    def distribute_models(self, update):
-        self.model = update(self.model)
+    # def distribute_models(self, update):
+    #     self.model = update(self.model)
 
 class LayerFreezer(InitializationTrainingHook):
     """This training hook class can be used to freeze some of the transformer layers"""

@@ -44,7 +44,7 @@ class CrossScorer(TorchLearnableScorer, DistributableModel):
         self.encoder.model = update(self.encoder.model)
 
 
-class DuoCrossScorer(DuoLearnableScorer):
+class DuoCrossScorer(DuoLearnableScorer, DistributableModel):
     """Query-document-document Representation classifier based on Bert
     The encoder usually refer to the encoder of type DualDuoBertTransformerEncoder()
     """
@@ -67,6 +67,9 @@ class DuoCrossScorer(DuoLearnableScorer):
             for q, d_1, d_2 in zip(inputs.unique_queries, inputs.positives, inputs.negatives)]
         )
         return self.classifier(triplets).squeeze(1)
+    
+    def distribute_models(self, update):
+        self.encoder.model = update(self.encoder.model)
 
     def getRetriever(
         self, 

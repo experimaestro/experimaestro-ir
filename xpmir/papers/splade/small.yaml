@@ -1,6 +1,10 @@
 type: small
 Launcher:
+    gpu: true
     tags: 
+Indexation:
+    requirements: duration=2 days & cpu(mem=4G)
+    training_requirements: duration=2 days & cuda(mem=24G)
 Learner: 
     validation_size: 10
     steps_per_epoch: 128
@@ -11,6 +15,9 @@ Learner:
     validation_interval: 1
     early_stop: 0
     lr: 2.0e-5
+    requirements: duration=2 days & cuda(mem=8G) * 2
+Evaluation: 
+    requirements: duration=2 days & cuda(mem=8G)
 base_retriever: 
     topK: 20
 tas_balance_retriever: 

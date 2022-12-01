@@ -79,7 +79,6 @@ logging.basicConfig(level=logging.INFO)
 def cli(
     env: Dict[str, str],
     debug: bool,
-    gpu: bool,
     configuration, 
     host: str,
     port: int,
@@ -142,16 +141,14 @@ def cli(
     name = configuration.type
 
     # launchers 
-    req_duration = duration("6 days")
-
-    cpu_launcher_4G = find_launcher(cuda_gpu(mem="4G"))
-    launcher_basic = find_launcher(cpu() & req_duration, tags=tags)
-
-    gpu_launcher_index = find_launcher((cuda_gpu(mem='24G')) & req_duration, tags=tags)
-    gpu_launcher_learner = find_launcher((cuda_gpu(mem='48G')) & req_duration, tags=tags)
+    assert configuration.Launcher.gpu, 'It is recommend to do this on GPU'
+    cpu_launcher_index = find_launcher(configuration.Indexation.requirements)
+    gpu_launcher_index = find_launcher(configuration.Indexation.training_requirements, tags=tags)
+    gpu_launcher_learner = find_launcher(configuration.Learner.requirements, tags=tags)
+    gpu_launcher_evaluate = find_launcher(configuration.Evaluation.requirements, tags=tags)
 
     # Starts the experiment
-    with experiment(workdir, name, host=host, port=port, launcher=launcher_basic) as xp:
+    with experiment(workdir, name, host=host, port=port) as xp:
          # Set environment variables
         xp.setenv("JAVA_HOME", os.environ["JAVA_HOME"])
         for key, value in env:
@@ -191,10 +188,10 @@ def cli(
             encoder=DenseDocumentEncoder(scorer=tasb),
             batchsize=2048,
             batcher=PowerAdaptativeBatcher(),
-            # maybe use the generalized version for the hooks --> DistributedHook
+            # TODO: This may make the parts which we don't paralized on the DataParallel
             hooks=[
                 setmeta(
-                    DistributedModelHook(transformer=tasb.query_encoder.encoder), True
+                    DistributedHook(model=[tasb]), True
                 )
             ],
         ).submit(launcher=gpu_launcher_index)
@@ -230,14 +227,14 @@ def cli(
                 tasb_retriever,
                 AnseriniRetriever(k=retTopK, index=index, model=basemodel),
             ],
-        ).submit(launcher=gpu_launcher_learner)
+        ).submit(launcher=gpu_launcher_index)
 
         # compute the baseline performance on the test dataset.
         # Bm25 
         bm25_retriever = AnseriniRetriever(k=topK, index=index, model=basemodel)
         tests.evaluate_retriever(
             copyconfig(bm25_retriever).tag('model','bm25'), 
-            cpu_launcher_4G
+            cpu_launcher_index
         )
 
         # tas-balance
@@ -279,7 +276,6 @@ def cli(
             scorer: Scorer,
             trainer: Trainer,
             optimizers: List,
-            create_retriever,
             hooks=[],
             launcher=gpu_launcher_learner
         ):
@@ -313,9 +309,15 @@ def cli(
                 # the hooks
                 hooks=hooks,
             )
-            ...
-            # to be continue tomorrow
+            # submit the learner and build the symbolique link
+            outputs = learner.submit(launcher=launcher)
+            (runspath / tagspath(learner)).symlink_to(learner.logpath)
 
+            # return the best trained model here for only RR@10
+            best = outputs.listeners["bestval"]["RR@10"]
+
+            return best
+            
 
         # Get a sparse retriever from a dual scorer
         def sparse_retriever(scorer, documents):
@@ -332,12 +334,13 @@ def cli(
 
             return SparseRetriever(
                 index=index,
-                topk=topK,
+                topk=topK_eval_splade,
                 batchsize=256,
                 encoder=DenseQueryEncoder(scorer=scorer),
             )
 
-        run(
+        # Do the training process and then return the best model for splade
+        best_model = run(
             spladev2.tag("model", "splade-v2"),
             batchwise_trainer_flops,
             [
@@ -345,9 +348,16 @@ def cli(
                     scheduler=scheduler, optimizer=Adam(lr=configuration.Learner.lr)
                 )
             ],
-            lambda scorer: sparse_retriever(scorer, documents),
-            hooks=[setmeta(DistributedHook(models=[spladev2.encoder]), True)],
+            # TODO: modify to the model
+            hooks=[setmeta(DistributedHook(models=[spladev2]), True)],
             launcher=gpu_launcher_learner,
+        )
+
+        # evaluate the best model
+        splade_retriever = sparse_retriever(best_model, documents)
+        tests.evaluate_retriever(
+            splade_retriever, 
+            gpu_launcher_evaluate
         )
 
         # wait for all the experiments ends

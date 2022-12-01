@@ -4,6 +4,7 @@
 
 import dataclasses
 import logging
+import sys
 from pathlib import Path
 from omegaconf import OmegaConf
 from xpmir.distributed import DistributedHook
@@ -39,13 +40,11 @@ from xpmir.utils import find_java_home
 logging.basicConfig(level=logging.INFO)
 
 # --- Experiment
-# @forwardoption.max_epochs(Learner, default=None)
-# @click.option("--tags", type=str, default="", help="Tags for selecting the launcher")
+# $ python -m xpmir.paper.monobert.experiment experiment/ small + additional options
+# experiment/ : the path to the working directory
+# small: the default configuration
+# additional configuration: dotlist to modify the choice in the default configuration
 @click.option("--debug", is_flag=True, help="Print debug information")
-# @click.option("--gpu", is_flag=True, help="Use GPU")
-# @click.option(
-#     "--batch-size", type=int, default=None, help="Batch size (validation and test)"
-# )
 @click.option(
     "--host",
     type=str,
@@ -56,13 +55,18 @@ logging.basicConfig(level=logging.INFO)
     "--port", type=int, default=12345, help="Port for monitoring (default 12345)"
 )
 
-# @omegaconf_argument("configuration", package=__package__)
-# works only with this one a the moment
-@omegaconf_argument("configuration", package="xpmir.papers.monobert")
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+@omegaconf_argument("configuration", package=__package__)
 @click.argument("workdir", type=Path)
 @click.command()
-def cli(debug, configuration, host, port, workdir):
+
+def cli(debug, configuration, host, port, workdir, args):
     """Runs an experiment"""
+
+    # Merge the additional option to the existing 
+    conf_args = OmegaConf.from_dotlist(args)
+    configuration = OmegaConf.merge(configuration, conf_args)
+
     tags = configuration.Launcher.tags.split(",") if configuration.Launcher.tags else []
 
     logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
@@ -84,22 +88,18 @@ def cli(debug, configuration, host, port, workdir):
     # The numbers of the warmup steps during the training
     num_warmup_steps = configuration.Learner.num_warmup_steps
 
-    # Our default launcher for light tasks
-    req_duration = duration(configuration.Launcher.req_duration)
-    launcher = find_launcher(cpu() & req_duration, tags=tags)
-
     batch_size = configuration.Learner.batch_size
     max_epochs = configuration.Learner.max_epoch
 
-    # FIXME: uses CPU constraints rather than GPU
-    cpu_launcher_4G = find_launcher(cuda_gpu(mem="4G"))
+    gpu_launcher_index = find_launcher(configuration.Indexation.requirements)
 
     # we assigne a gpu, if not, a cpu
     if configuration.Launcher.gpu: 
-        gpu_launcher = find_launcher((cuda_gpu(mem='8G')*2) & req_duration, tags=tags)
+        gpu_launcher_learner = find_launcher(configuration.Learner.requirements, tags=tags)
+        gpu_launcher_evaluate = find_launcher(configuration.Evaluation.requirements, tags=tags)
     else: 
-        gpu_launcher = find_launcher(
-            cpu() & req_duration, tags=tags
+        gpu_launcher_learner = gpu_launcher_evaluate =find_launcher(
+            cpu(mem="4G") & duration('2 days'), tags=tags
         )
 
     logging.info(
@@ -113,7 +113,7 @@ def cli(debug, configuration, host, port, workdir):
     # Sets the working directory and the name of the xp
     name = configuration.type
 
-    with experiment(workdir, name, host=host, port=port, launcher=launcher) as xp:
+    with experiment(workdir, name, host=host, port=port) as xp:
         # Needed by Pyserini
         xp.setenv("JAVA_HOME", find_java_home())
 
@@ -160,7 +160,7 @@ def cli(debug, configuration, host, port, workdir):
         base_retriever_ms_val = AnseriniRetriever(k=valtopK, index=index, model=basemodel)
 
         # Build the TREC CARS index
-        index_cars = IndexCollection(documents=cars_documents, storeContents=True).submit(launcher = cpu_launcher_4G)
+        index_cars = IndexCollection(documents=cars_documents, storeContents=True).submit(launcher = gpu_launcher_index)
         base_retriever_cars = AnseriniRetriever(k=topK, index=index_cars, model=basemodel)
         base_retriever_cars_val = AnseriniRetriever(k=valtopK, index=index_cars, model=basemodel)
 
@@ -204,19 +204,17 @@ def cli(debug, configuration, host, port, workdir):
             'irds.msmarco-passage.documents@irds': bm25_retriever_ms
         }
 
-
-        # FIXME: Resolve the OoM by using a GPU for devsmall. Recommend to rewrite the code in the ir_measures
         # Evaluate BM25 as well as the random scorer (low baseline)
         tests.evaluate_retriever(
             lambda documents: bm25_retriever[documents.id], 
-            cpu_launcher_4G
+            gpu_launcher_index
         )
 
         tests.evaluate_retriever(
             lambda documents: random_scorer.getRetriever(
                 bm25_retriever[documents.id], batch_size, PowerAdaptativeBatcher()
             ),
-            cpu_launcher_4G
+            gpu_launcher_index
         )
 
         # define the trainer for monobert
@@ -248,16 +246,9 @@ def cli(debug, configuration, host, port, workdir):
             device=device,
             validation_retriever_factory=factory_retriever_val,
             validation_interval=validation_interval,
-            launcher=gpu_launcher,
-            evaluate_launcher=gpu_launcher,
+            launcher=gpu_launcher_learner,
+            evaluate_launcher=gpu_launcher_evaluate,
             runs_path=runs_path,
-
-            # FIXME: The write and read of the model in the DataParallel has a .module. to resolve the problem,
-            # It should be better to create a adapter for the DistributedHook class for the DataParallel and 
-            # rewrite the function read and load
-            # Further, it should be better if we can implement the hooks in the form like 
-            # (models=[monobert_scorer]) where can paralize more things
-
             hooks=[
                 setmeta(DistributedHook(models=[monobert_scorer]), True)
             ]

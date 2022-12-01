@@ -2,8 +2,8 @@ type: duobert
 Launcher: 
     gpu: true
     tags: 
-    req_duration: 6 days
-    mem: 48G
+Indexation:
+    requirements: duration=6 days & cpu(mem=4G)
 Learner: 
     validation_size: 500
     steps_per_epoch: 32
@@ -11,8 +11,11 @@ Learner:
     batch_size: 64
     max_epoch: 3200
     num_warmup_steps: 10000
-    warmup_min_factor: 0.1
+    warmup_min_factor: 0
     lr: 3.0e-6
+    requirements: duration=6 days & cuda(mem=24G)*2
+Evaluation: 
+    requirements: duration=6 days & cuda(mem=24G)
 Retriever_mono: 
     k: 1000
     val_k: 1000
