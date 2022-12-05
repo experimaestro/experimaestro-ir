@@ -3,7 +3,6 @@ import itertools
 import torch
 from experimaestro import Config, Param, Meta
 from xpmir.distributed import DistributableModel
-from xpmir.rankers.full import FullRetrieverRescorer
 from xpmir.letor import DEFAULT_DEVICE, Device
 from xpmir.letor.batchers import Batcher
 from xpmir.neural import DualRepresentationScorer
@@ -148,7 +147,8 @@ class DotDense(Dense, DistributableModel):
         batch_size: int, 
         batcher: Batcher,  
         device=None
-    ):
+    ):  
+        from xpmir.rankers.full import FullRetrieverRescorer
         return FullRetrieverRescorer(
             documents=retriever.documents,
             scorer=self,

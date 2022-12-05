@@ -164,7 +164,7 @@ class TransformerVocab(text.Vocab):
             r["input_ids"].to(self.device),
             r["length"],
             r.get("attention_mask", None),
-            r.get("token_type_ids", None).to(self.device) # if r["token_type_ids"] else None
+            r.get("token_type_ids", None) # if r["token_type_ids"] else None
         )
 
     def id2tok(self, idx):
@@ -321,7 +321,7 @@ class DualTransformerEncoder(TransformerVocab, DualTextEncoder):
     def forward(self, texts: List[Tuple[str, str]]):
         tokenized = self.batch_tokenize(texts, maxlen=self.maxlen, mask=True)
         with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
-            y = self.model(tokenized.ids, token_type_ids=tokenized.token_type_ids, attention_mask=tokenized.mask.to(self.device))
+            y = self.model(tokenized.ids, token_type_ids=tokenized.token_type_ids.to(self.device), attention_mask=tokenized.mask.to(self.device))
 
         # Assumes that [CLS] is the first token
         return y.last_hidden_state[:, 0]

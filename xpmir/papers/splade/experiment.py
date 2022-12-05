@@ -7,7 +7,7 @@ from pathlib import Path
 import os
 from typing import Dict, List, Optional
 
-
+from omegaconf import OmegaConf
 from datamaestro import prepare_dataset
 from datamaestro_text.transforms.ir import ShuffledTrainingTripletsLines
 from experimaestro.launcherfinder import cpu, cuda_gpu, find_launcher
@@ -42,7 +42,7 @@ import xpmir.letor.trainers.pairwise as pairwise
 from xpmir.neural.dual import Dense, DenseDocumentEncoder, DenseQueryEncoder, DotDense
 from xpmir.letor.optim import ParameterOptimizer
 from xpmir.rankers.standard import BM25
-from xpmir.neural.splade import DistributedSpladeTextEncoderHook, spladeV2
+from xpmir.neural.splade import spladeV2
 from xpmir.measures import AP, P, nDCG, RR
 from xpmir.neural.pretrained import tas_balanced
 from xpmir.text.huggingface import DistributedModelHook, TransformerEncoder
@@ -55,10 +55,10 @@ logging.basicConfig(level=logging.INFO)
 @click.option(
     "--env", help="Define one environment variable", type=(str, str), multiple=True
 )
-@click.option("--gpu", is_flag=True, help="Use GPU")
-@click.option(
-    "--batch-size", type=int, default=None, help="Batch size (validation and test)"
-)
+# @click.option("--gpu", is_flag=True, help="Use GPU")
+# @click.option(
+#     "--batch-size", type=int, default=None, help="Batch size (validation and test)"
+# )
 @click.option(
     "--host",
     type=str,
@@ -70,9 +70,8 @@ logging.basicConfig(level=logging.INFO)
 #     "--batch-size", type=int, default=None, help="Batch size (validation and test)"
 # )
 
-# @omegaconf_argument("configuration", package=__package__)
-# works only with this one a the moment
-@omegaconf_argument("configuration", package='xpmir.papers.splade')
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+@omegaconf_argument("configuration", package=__package__)
 @click.argument("workdir", type=Path)
 @click.command()
 
@@ -82,9 +81,14 @@ def cli(
     configuration, 
     host: str,
     port: int,
-    workdir: str
+    workdir: str,
+    args
 ):
     """Runs an experiment"""
+    # Merge the additional option to the existing 
+    conf_args = OmegaConf.from_dotlist(args)
+    configuration = OmegaConf.merge(configuration, conf_args)
+
     tags = configuration.Launcher.tags.split(",") if configuration.Launcher.tags else []
     
     logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
@@ -188,10 +192,9 @@ def cli(
             encoder=DenseDocumentEncoder(scorer=tasb),
             batchsize=2048,
             batcher=PowerAdaptativeBatcher(),
-            # TODO: This may make the parts which we don't paralized on the DataParallel
             hooks=[
                 setmeta(
-                    DistributedHook(model=[tasb]), True
+                    DistributedHook(models=[tasb]), True
                 )
             ],
         ).submit(launcher=gpu_launcher_index)
@@ -239,7 +242,7 @@ def cli(
 
         # tas-balance
         tests.evaluate_retriever(
-            copyconfig(tasb_retriever).tag('model','bm25'),
+            copyconfig(tasb_retriever).tag('model','tasb'),
             gpu_launcher_index
         )
 
@@ -324,12 +327,14 @@ def cli(
             """Builds a sparse retriever
             Used to evaluate the scorer
             """
+            # build a retriever for the documents
             index = SparseRetrieverIndexBuilder(
                 batch_size=512,
                 batcher=PowerAdaptativeBatcher(),
                 encoder=DenseDocumentEncoder(scorer=scorer),
                 device=device,
                 documents=documents,
+                ordered_index = False,
             ).submit(launcher=gpu_launcher_index)
 
             return SparseRetriever(
@@ -348,7 +353,6 @@ def cli(
                     scheduler=scheduler, optimizer=Adam(lr=configuration.Learner.lr)
                 )
             ],
-            # TODO: modify to the model
             hooks=[setmeta(DistributedHook(models=[spladev2]), True)],
             launcher=gpu_launcher_learner,
         )

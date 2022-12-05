@@ -179,11 +179,10 @@ def cli(
         device = CudaDevice()
         random = Random(seed=0)
 
-        # Get a sparse retriever from a dual scorer
-
         # Train / validation / test
         documents = prepare_dataset("irds.msmarco-passage.documents")
 
+        # Get a sparse retriever from a dual scorer
         def sparse_retriever(scorer, documents):
             """Builds a sparse retriever
             Used to evaluate the scorer
