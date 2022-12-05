@@ -1,13 +1,14 @@
-# Implementation of the experiments in the paper by training with msmarcos
+# Implementation of the experiments in the paper with trec car
 # Passage Re-ranking with BERT, (Rodrigo Nogueira, Kyunghyun Cho). 2019
 # https://arxiv.org/abs/1901.04085
 
 import dataclasses
 import logging
-import sys
 from pathlib import Path
 from omegaconf import OmegaConf
+from xpmir.datasets.adapters import ConcatFold
 from xpmir.distributed import DistributedHook
+from xpmir.letor.samplers import PairwiseModelBasedSampler
 from xpmir.letor.schedulers import LinearWithWarmup
 
 import xpmir.letor.trainers.pairwise as pairwise
@@ -19,8 +20,16 @@ from experimaestro.click import click, forwardoption
 from experimaestro.launcherfinder import cpu, cuda_gpu, find_launcher
 from experimaestro.launcherfinder.specs import duration
 from experimaestro.utils import cleanupdir
+from datamaestro_text.data.ir import (
+    Adhoc,
+    AdhocAssessments,
+    AdhocDocument,
+    AdhocDocumentStore,
+    AdhocDocuments,
+    AdhocTopics,
+)
+
 from xpmir.configuration import omegaconf_argument
-from xpmir.datasets.adapters import RandomFold
 from xpmir.evaluation import Evaluations, EvaluationsCollection
 from xpmir.interfaces.anserini import AnseriniRetriever, IndexCollection
 from xpmir.letor import Device, Random
@@ -28,7 +37,6 @@ from xpmir.letor.batchers import PowerAdaptativeBatcher
 from xpmir.letor.devices import CudaDevice
 from xpmir.letor.learner import Learner
 from xpmir.letor.optim import Adam, ParameterOptimizer
-from xpmir.letor.samplers import TripletBasedSampler
 from xpmir.measures import AP, RR, P, nDCG
 from xpmir.neural.jointclassifier import JointClassifier
 from xpmir.pipelines.reranking import RerankingPipeline
@@ -40,11 +48,13 @@ from xpmir.utils import find_java_home
 logging.basicConfig(level=logging.INFO)
 
 # --- Experiment
-# $ python -m xpmir.paper.monobert.experiment experiment/ small + additional options
-# experiment/ : the path to the working directory
-# small: the default configuration
-# additional configuration: dotlist to modify the choice in the default configuration
+# @forwardoption.max_epochs(Learner, default=None)
+# @click.option("--tags", type=str, default="", help="Tags for selecting the launcher")
 @click.option("--debug", is_flag=True, help="Print debug information")
+# @click.option("--gpu", is_flag=True, help="Use GPU")
+# @click.option(
+#     "--batch-size", type=int, default=None, help="Batch size (validation and test)"
+# )
 @click.option(
     "--host",
     type=str,
@@ -55,18 +65,13 @@ logging.basicConfig(level=logging.INFO)
     "--port", type=int, default=12345, help="Port for monitoring (default 12345)"
 )
 
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-@omegaconf_argument("configuration", package=__package__)
+# @omegaconf_argument("configuration", package=__package__)
+# works only with this one a the moment
+@omegaconf_argument("configuration", package="xpmir.papers.monobert")
 @click.argument("workdir", type=Path)
 @click.command()
-
-def cli(debug, configuration, host, port, workdir, args):
+def cli(debug, configuration, host, port, workdir):
     """Runs an experiment"""
-
-    # Merge the additional option to the existing 
-    conf_args = OmegaConf.from_dotlist(args)
-    configuration = OmegaConf.merge(configuration, conf_args)
-
     tags = configuration.Launcher.tags.split(",") if configuration.Launcher.tags else []
 
     logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
@@ -88,18 +93,24 @@ def cli(debug, configuration, host, port, workdir, args):
     # The numbers of the warmup steps during the training
     num_warmup_steps = configuration.Learner.num_warmup_steps
 
+    # Our default launcher for light tasks
+    req_duration = duration(configuration.Launcher.req_duration)
+    launcher = find_launcher(cpu() & req_duration, tags=tags)
+
     batch_size = configuration.Learner.batch_size
     max_epochs = configuration.Learner.max_epoch
 
-    gpu_launcher_index = find_launcher(configuration.Indexation.requirements)
+    # FIXME: uses CPU constraints rather than GPU
+    cpu_launcher_4G = find_launcher(cuda_gpu(mem="4G"))
 
     # we assigne a gpu, if not, a cpu
     if configuration.Launcher.gpu: 
-        gpu_launcher_learner = find_launcher(configuration.Learner.requirements, tags=tags)
-        gpu_launcher_evaluate = find_launcher(configuration.Evaluation.requirements, tags=tags)
+        gpu_launcher = find_launcher(
+            (cuda_gpu(mem=configuration.Launcher.mem)) & req_duration, tags=tags
+        )
     else: 
-        gpu_launcher_learner = gpu_launcher_evaluate =find_launcher(
-            cpu(mem="4G") & duration('2 days'), tags=tags
+        gpu_launcher = find_launcher(
+            cpu() & req_duration, tags=tags
         )
 
     logging.info(
@@ -113,7 +124,7 @@ def cli(debug, configuration, host, port, workdir, args):
     # Sets the working directory and the name of the xp
     name = configuration.type
 
-    with experiment(workdir, name, host=host, port=port) as xp:
+    with experiment(workdir, name, host=host, port=port, launcher=launcher) as xp:
         # Needed by Pyserini
         xp.setenv("JAVA_HOME", find_java_home())
 
@@ -132,16 +143,17 @@ def cli(debug, configuration, host, port, workdir, args):
         logging.info("Monitor learning with:")
         logging.info("tensorboard --logdir=%s", runs_path)
 
-        # Datasets: train, validation and test
+        # Datasets: train, validation and test 
         documents = prepare_dataset("irds.msmarco-passage.documents") # for indexing 
         cars_documents = prepare_dataset("irds.car.v1.5.documents") # for indexing
-        devsmall = prepare_dataset("irds.msmarco-passage.dev.small")
-        dev = prepare_dataset("irds.msmarco-passage.dev")
-        ds_val = RandomFold(
-            dataset=dev, seed=123, fold=0, sizes=[VAL_SIZE], exclude=devsmall.topics
-        ).submit()
+        # the training dataset used to prepare the pairwise sampler
+        folds = [prepare_dataset(f"irds.car.v1.5.train.fold{i}") for i in range(4)]
+        dev = ConcatFold(datasets = folds).submit(launcher = cpu_launcher_4G)
+        
+        # the training dataset for validation
+        ds_val = prepare_dataset("irds.car.v1.5.train.fold4")
 
-        # We will evaluate on TREC DL 2019 and 2020 and msmarco_dev
+        # We will evaluate on TREC DL 2019 and 2020
         tests: EvaluationsCollection = EvaluationsCollection(
             trec2019=Evaluations(
                 prepare_dataset("irds.msmarco-passage.trec-dl-2019"), measures
@@ -149,9 +161,7 @@ def cli(debug, configuration, host, port, workdir, args):
             trec2020=Evaluations(
                 prepare_dataset("irds.msmarco-passage.trec-dl-2020"), measures
             ),
-            msmarco_dev=Evaluations(devsmall, measures),
-            # works not well on it shows the monobert is weak on zero-shot
-            # trec_car=Evaluations(prepare_dataset("irds.car.v1.5.test200"), measures),
+            trec_car=Evaluations(prepare_dataset("irds.car.v1.5.test200"), measures),
         )
 
         # Build the MS Marco index and definition of first stage rankers
@@ -159,8 +169,9 @@ def cli(debug, configuration, host, port, workdir, args):
         base_retriever_ms = AnseriniRetriever(k=topK, index=index, model=basemodel)
         base_retriever_ms_val = AnseriniRetriever(k=valtopK, index=index, model=basemodel)
 
+
         # Build the TREC CARS index
-        index_cars = IndexCollection(documents=cars_documents, storeContents=True).submit(launcher = gpu_launcher_index)
+        index_cars = IndexCollection(documents=cars_documents, storeContents=True).submit(launcher = cpu_launcher_4G)
         base_retriever_cars = AnseriniRetriever(k=topK, index=index_cars, model=basemodel)
         base_retriever_cars_val = AnseriniRetriever(k=valtopK, index=index_cars, model=basemodel)
 
@@ -181,16 +192,7 @@ def cli(debug, configuration, host, port, workdir, args):
         factory_retriever_val = lambda scorer, documents: scorer.getRetriever(
             base_retrievers_val[documents.id], batch_size, PowerAdaptativeBatcher(), device=device
         )
-
-        # Defines how we sample train examples
-        # (using the shuffled pre-computed triplets from MS Marco)
-        train_triples = prepare_dataset("irds.msmarco-passage.train.docpairs")
-        triplesid = ShuffledTrainingTripletsLines(
-            seed=123,
-            data=train_triples,
-        ).submit()
-        train_sampler = TripletBasedSampler(source=triplesid, index=index)
-
+        
         # Search and evaluate with BM25
         bm25_retriever_ms = AnseriniRetriever(k=topK, index=index, model=basemodel).tag(
             "model", "bm25"
@@ -204,17 +206,24 @@ def cli(debug, configuration, host, port, workdir, args):
             'irds.msmarco-passage.documents@irds': bm25_retriever_ms
         }
 
+        # Defines how we sample train examples
+        # TODO: The dataset for training by using the dev
+        # k=20 in the bm25_retriever is too large --> reduce it to 10
+        train_sampler = PairwiseModelBasedSampler(dataset = dev, retriever = bm25_retriever_car)
+
+
+        # FIXME: Resolve the OoM by using a GPU for devsmall. Recommend to rewrite the code in the ir_measures
         # Evaluate BM25 as well as the random scorer (low baseline)
         tests.evaluate_retriever(
             lambda documents: bm25_retriever[documents.id], 
-            gpu_launcher_index
+            cpu_launcher_4G
         )
 
         tests.evaluate_retriever(
             lambda documents: random_scorer.getRetriever(
                 bm25_retriever[documents.id], batch_size, PowerAdaptativeBatcher()
             ),
-            gpu_launcher_index
+            cpu_launcher_4G
         )
 
         # define the trainer for monobert
@@ -246,12 +255,19 @@ def cli(debug, configuration, host, port, workdir, args):
             device=device,
             validation_retriever_factory=factory_retriever_val,
             validation_interval=validation_interval,
-            launcher=gpu_launcher_learner,
-            evaluate_launcher=gpu_launcher_evaluate,
+            launcher=gpu_launcher,
+            evaluate_launcher=gpu_launcher,
             runs_path=runs_path,
-            hooks=[
-                setmeta(DistributedHook(models=[monobert_scorer]), True)
-            ]
+
+            # FIXME: The write and read of the model in the DataParallel has a .module. to resolve the problem,
+            # It should be better to create a adapter for the DistributedHook class for the DataParallel and 
+            # rewrite the function read and load
+            # Further, it should be better if we can implement the hooks in the form like 
+            # (models=[monobert_scorer]) where can paralize more things
+
+            # hooks=[
+            #     setmeta(DistributedHook(models=[monobert_scorer.encoder]), True)
+            # ]
         )
 
         # Run the monobert and use the result as the baseline for duobert

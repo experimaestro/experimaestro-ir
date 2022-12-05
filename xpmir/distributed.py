@@ -46,10 +46,21 @@ class DistributedHook(InitializationHook):
             n_gpus = torch.cuda.device_count()
             if n_gpus > 1:
                 logger.info(
-                    "Setting up DataParallel for Splade text encoder (%d GPUs)", n_gpus
+                    "Setting up DataParallel for text encoder (%d GPUs)", n_gpus
                 )
-                return torch.nn.DataParallel(model)
+                return DataParallel(model)
             else:
                 logger.warning("Only one GPU detected, not using data parallel")
 
         return model
+
+class DataParallel(torch.nn.DataParallel):
+    """This adapter aims to resolve the problem that in the DataParallel, 
+    it generate the '.module.' in the read and write. Need to rewrite the 
+    load_state and write_state"""
+    
+    module: nn.Module
+    """The model to put on multi dataset."""
+
+    def state_dict(self, **kwargs):
+        return self.module.state_dict(**kwargs)

@@ -228,7 +228,7 @@ class FaissRetriever(Retriever):
             values, indices = self._index.search(encoded_query.cpu().numpy(), self.topk)
             return [
                 ScoredDocument(
-                    self.index.docid_internal2external(int(ix)), value # maybe it is better like this
+                    self.index.docid_internal2external(int(ix)), float(value) # maybe it is better like this
                 )
                 for ix, value in zip(indices[0], values[0])
                 if ix >= 0

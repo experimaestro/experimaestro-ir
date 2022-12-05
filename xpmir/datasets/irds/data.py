@@ -30,6 +30,7 @@ class AdhocTopics(ir.AdhocTopics, IRDSId):
         from ir_datasets.formats.trec import TrecQuery
 
         if issubclass(ds.queries_cls(), (TrecQuery,)):
+
             for query in ds.queries_iter():
                 yield ir.AdhocTopic(query.query_id, query.title, {})
         else:
