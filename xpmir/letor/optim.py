@@ -32,7 +32,9 @@ class Adam(Optimizer):
     def __call__(self, parameters):
         from torch.optim import Adam
 
-        return Adam(parameters, lr=self.lr, weight_decay=self.weight_decay, eps=self.eps)
+        return Adam(
+            parameters, lr=self.lr, weight_decay=self.weight_decay, eps=self.eps
+        )
 
 
 class AdamW(Optimizer):
@@ -45,7 +47,9 @@ class AdamW(Optimizer):
     def __call__(self, parameters):
         from torch.optim import AdamW
 
-        return AdamW(parameters, lr=self.lr, weight_decay=self.weight_decay, eps=self.eps)
+        return AdamW(
+            parameters, lr=self.lr, weight_decay=self.weight_decay, eps=self.eps
+        )
 
 
 class Module(Config, torch.nn.Module):
@@ -57,8 +61,11 @@ class Module(Config, torch.nn.Module):
 
 class ParameterFilter(Config):
     """One abstract class which doesn't do the filtrage"""
+
     def __call__(self, name, params) -> bool:
+        """Returns true if the parameters should be optimized with the associated optimizer"""
         return True
+
 
 class RegexParameterFilter(ParameterFilter):
     """gives the name of the model to do the filtrage
@@ -74,9 +81,9 @@ class RegexParameterFilter(ParameterFilter):
         self.name = set()
 
     def __call__(self, name, params) -> bool:
-        if self.includes: 
+        if self.includes:
             for regex in self.includes:
-                if re.search(regex, name): 
+                if re.search(regex, name):
                     return True
             return False
         elif self.excludes:
@@ -85,7 +92,6 @@ class RegexParameterFilter(ParameterFilter):
                     return False
             return True
 
-            
 
 class ParameterOptimizer(Config):
     """Associates an optimizer with a list of parameters to optimize"""

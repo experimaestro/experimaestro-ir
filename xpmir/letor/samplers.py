@@ -148,7 +148,7 @@ class SkippingIterator(Iterable[T]):
 
 
 class Sampler(Config, EasyLogger):
-    """Abtract data sampler"""
+    """Abstract data sampler"""
 
     def initialize(self, random: np.random.RandomState):
         self.random = np.random.RandomState(random.randint(0, 2**31))
@@ -162,7 +162,7 @@ class Sampler(Config, EasyLogger):
 
 class PointwiseSampler(Sampler):
     def pointwise_iter(self) -> SerializableIterator[PointwiseRecord]:
-        """Iteratable over pointwise records"""
+        """Iterable over pointwise records"""
         raise NotImplementedError(f"{self.__class__} should implement PointwiseRecord")
 
 
