@@ -345,7 +345,7 @@ class DuoTwoStageRetriever(AbstractTwoStageRetriever):
         # topk from the monobert
         scoredDocuments_previous = self.retriever.retrieve(query, content=True) # list[ScoredDocument]
 
-        # transform them into the pairs.
+        # transform them into the pairs.(doc_1, doc_2)
         pairs = []
         for i in range(len(scoredDocuments_previous)):
             for j in range(len(scoredDocuments_previous)):

@@ -60,11 +60,13 @@ class TokenizedTexts:
         ids: torch.LongTensor,
         lens: List[int],
         mask: torch.LongTensor,
+        token_type_ids: torch.LongTensor
     ):
         self.tokens = tokens
         self.ids = ids
         self.lens = lens
         self.mask = mask
+        self.token_type_ids = token_type_ids
 
 
 RT = TypeVar("RT")
@@ -154,7 +156,7 @@ class PairwiseRecord:
 
 
 class PairwiseRecordWithTarget(PairwiseRecord):
-    """A pairwise record is composed of a query, a positive and a negative document"""
+    """A pairwise record is composed of a query, a positive and a negative document, and the indetifier which says the one on the first is pos or neg"""
 
     target: int
 

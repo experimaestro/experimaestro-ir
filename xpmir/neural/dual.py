@@ -2,8 +2,11 @@ from typing import Callable, List, Optional, Tuple
 import itertools
 import torch
 from experimaestro import Config, Param, Meta
+from xpmir.distributed import DistributableModel
 from xpmir.letor import DEFAULT_DEVICE, Device
+from xpmir.letor.batchers import Batcher
 from xpmir.neural import DualRepresentationScorer
+from xpmir.rankers import Retriever
 from xpmir.utils import easylog, foreach
 from xpmir.text.encoders import TextEncoder
 from xpmir.letor.context import Loss, TrainerContext, TrainingHook
@@ -123,7 +126,7 @@ class CosineDense(Dense):
         return documents / documents.norm(dim=1, keepdim=True)
 
 
-class DotDense(Dense):
+class DotDense(Dense, DistributableModel):
     """Dual model based on inner product."""
 
     def __validate__(self):
@@ -138,6 +141,25 @@ class DotDense(Dense):
         """Encode the different documents"""
         return self.encoder(texts)
 
+    def getRetriever(
+        self, 
+        retriever: "Retriever",
+        batch_size: int, 
+        batcher: Batcher,  
+        device=None
+    ):  
+        from xpmir.rankers.full import FullRetrieverRescorer
+        return FullRetrieverRescorer(
+            documents=retriever.documents,
+            scorer=self,
+            batchsize=batch_size,
+            batcher=batcher,
+            device=device,
+        )
+
+    def distribute_models(self, update):
+        self.encoder.model = update(self.encoder.model)
+        self.query_encoder.encoder.model = update(self.query_encoder.encoder.model) 
 
 class FlopsRegularizer(DualVectorListener):
     r"""The FLOPS regularizer computes

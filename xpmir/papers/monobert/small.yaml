@@ -1,4 +1,9 @@
 type: monobert-small
+Launcher: 
+    gpu: true
+    tags: 
+Indexation:
+    requirements: duration=2 days & cpu(mem=4G)
 Learner: 
     validation_size: 10
     steps_per_epoch: 32
@@ -6,7 +11,11 @@ Learner:
     batch_size: 16
     max_epoch: 4
     num_warmup_steps: 30
+    warmup_min_factor: 0.1
     lr: 3.0e-6
+    requirements: duration=2 days & cuda(mem=8G) * 2
+Evaluation: 
+    requirements: duration=2 days & cuda(mem=8G)
 Retriever_mono: 
     k: 20
     val_k: 20

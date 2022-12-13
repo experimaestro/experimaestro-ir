@@ -1,7 +1,3 @@
-# Implementation of the experiments in the paper
-# SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval, (Thibault Formal, Carlos Lassance, Benjamin Piwowarski, Stéphane Clinchant), 2021
-# https://arxiv.org/abs/2109.10086
-
 import logging
 from pathlib import Path
 import os
@@ -163,18 +159,11 @@ def cli(
         random = Random(seed=0)
 
         # prepare the dataset 
-        documents = prepare_dataset("irds.msmarco-passage.documents") # all the documents for msmarco
-        dev = prepare_dataset("irds.msmarco-passage.dev")
-        devsmall = prepare_dataset("irds.msmarco-passage.dev.small") # development
-        train_triples = prepare_dataset("irds.msmarco-passage.train.docpairs") # pair for pairwise learner
+        documents_trec_covid = prepare_dataset('irds.beir.trec-covid.documents') # the dataset for trec_covid
+        
 
         # Index for msmarcos
-        index = IndexCollection(documents=documents, storeContents=True).submit()
-
-        triplesid = ShuffledTrainingTripletsLines(
-            seed=123,
-            data=train_triples,
-        ).submit()
+        index_trec_covid = IndexCollection(documents=documents_trec_covid, storeContents=True).submit()
 
         # Build a dev. collection for full-ranking (validation)
         # "Efficiently Teaching an Effective Dense Retriever with Balanced Topic Aware Sampling"
@@ -185,9 +174,9 @@ def cli(
             indexspec=indexspec,
             device=device,
             normalize=False,
-            documents=documents,
+            documents=documents_trec_covid,
             sampler=RandomDocumentSampler(
-                documents=documents, max_count=faiss_max_traindocs
+                documents=documents_trec_covid, max_count=80_000
             ),  # Just use a fraction of the dataset for training
             encoder=DenseDocumentEncoder(scorer=tasb),
             batchsize=2048,
@@ -202,7 +191,7 @@ def cli(
         # A retriever if tas-balanced. We use the index of the faiss.
         # Used it to create the validation dataset.
         tasb_retriever = FaissRetriever(
-            index=tasb_index, topk=retTopK, encoder=DenseQueryEncoder(scorer=tasb)
+            index=tasb_index, topk=20, encoder=DenseQueryEncoder(scorer=tasb)
         )
 
         # also the bm25 for creating the validation set.
@@ -211,33 +200,18 @@ def cli(
         # define the evaluation measures and dataset.
         measures = [AP, P @ 20, nDCG, nDCG @ 10, nDCG @ 20, RR, RR @ 10]
         tests: EvaluationsCollection = EvaluationsCollection(
-            trec2019=Evaluations(
-                prepare_dataset("irds.msmarco-passage.trec-dl-2019"), measures
-            ),
-            trec2020=Evaluations(
-                prepare_dataset("irds.msmarco-passage.trec-dl-2020"), measures
-            ),
-            msmarco_dev=Evaluations(devsmall, measures)
+            trec_covid=Evaluations(
+                prepare_dataset("irds.beir.trec-covid"), measures
+            )
         )
 
-        # building the validation dataset.
-        # Based on the existing dataset and the top retrieved doc from tas-balanced and bm25
-        ds_val = RetrieverBasedCollection(
-            dataset=RandomFold(
-                dataset=dev, seed=123, fold=0, sizes=[VAL_SIZE], exclude=devsmall.topics
-            ).submit(),
-            retrievers=[
-                tasb_retriever,
-                AnseriniRetriever(k=retTopK, index=index, model=basemodel),
-            ],
-        ).submit(launcher=gpu_launcher_index)
 
         # compute the baseline performance on the test dataset.
         # Bm25 
-        bm25_retriever = AnseriniRetriever(k=topK, index=index, model=basemodel)
+        bm25_retriever_trec = AnseriniRetriever(k=20, index=index_trec_covid, model=basemodel)
+        
         tests.evaluate_retriever(
-            copyconfig(bm25_retriever).tag('model','bm25'), 
-            cpu_launcher_index
+            copyconfig(bm25_retriever_trec).tag('model','bm25')
         )
 
         # tas-balance
@@ -245,125 +219,8 @@ def cli(
             copyconfig(tasb_retriever).tag('model','tasb'),
             gpu_launcher_index
         )
-
-        # define the path to store the result for tensorboard
-        runspath = xp.resultspath / "runs"
-        cleanupdir(runspath)
-        runspath.mkdir(exist_ok=True, parents=True)
-
-        # generator a batchwise sampler which is an Iterator of ProductRecords()
-        train_sampler = TripletBasedSampler(source=triplesid, index=index) # the pairwise sampler from the dataset.
-        ibn_sampler = PairwiseInBatchNegativesSampler(sampler=train_sampler) # generating the batchwise from the pairwise
         
-        # scheduler for trainer
-        scheduler = LinearWithWarmup(num_warmup_steps=num_warmup_steps)
-
-        # Define the model and the flop loss for regularization
-        # Model of class: DotDense()
-        # The parameters are the regularization coeff for the query and document
-        spladev2, flops = spladeV2(3e-4, 1e-4)
-
-        # Base retrievers for validation
-        # It retrieve all the document of the collection with score 0
-        base_retriever_full = FullRetriever(documents=ds_val.documents)
-
-        batchwise_trainer_flops = BatchwiseTrainer(
-            batch_size=splade_batch_size,
-            sampler=ibn_sampler,
-            lossfn=SoftmaxCrossEntropy(),
-            hooks=[flops],
-        )
-
-        # run the learner and do the evaluation with the best result
-        def run(
-            scorer: Scorer,
-            trainer: Trainer,
-            optimizers: List,
-            hooks=[],
-            launcher=gpu_launcher_learner
-        ):
-            # establish the validation listener
-            validation = ValidationListener(
-                dataset=ds_val,
-                retriever=scorer.getRetriever(
-                    base_retriever_full, batch_size_full_retriever, PowerAdaptativeBatcher(), device=device
-                ),  # a retriever which use the splade model to score all the documents and then do the retrieve
-                early_stop=early_stop,
-                validation_interval=validation_interval,
-                metrics={"RR@10": True, "AP": False, "nDCG@10": False},
-            )
-
-            # the learner for the splade
-            learner = Learner(
-                # Misc settings
-                random=random,
-                device=device,
-                # How to train the model
-                trainer=trainer,
-                # the model to be trained
-                scorer=scorer,
-                # Optimization settings
-                optimizers=get_optimizers(optimizers),
-                steps_per_epoch=steps_per_epoch,
-                use_fp16=True,
-                max_epochs=tag(max_epochs),
-                # the listener for the validation
-                listeners={"bestval": validation},
-                # the hooks
-                hooks=hooks,
-            )
-            # submit the learner and build the symbolique link
-            outputs = learner.submit(launcher=launcher)
-            (runspath / tagspath(learner)).symlink_to(learner.logpath)
-
-            # return the best trained model here for only RR@10
-            best = outputs.listeners["bestval"]["RR@10"]
-
-            return best
             
-
-        # Get a sparse retriever from a dual scorer
-        def sparse_retriever(scorer, documents):
-            """Builds a sparse retriever
-            Used to evaluate the scorer
-            """
-            # build a retriever for the documents
-            index = SparseRetrieverIndexBuilder(
-                batch_size=512,
-                batcher=PowerAdaptativeBatcher(),
-                encoder=DenseDocumentEncoder(scorer=scorer),
-                device=device,
-                documents=documents,
-                ordered_index = False,
-            ).submit(launcher=gpu_launcher_index)
-
-            return SparseRetriever(
-                index=index,
-                topk=topK_eval_splade,
-                batchsize=256,
-                encoder=DenseQueryEncoder(scorer=scorer),
-            )
-
-        # Do the training process and then return the best model for splade
-        best_model = run(
-            spladev2.tag("model", "splade-v2"),
-            batchwise_trainer_flops,
-            [
-                ParameterOptimizer(
-                    scheduler=scheduler, optimizer=Adam(lr=configuration.Learner.lr)
-                )
-            ],
-            hooks=[setmeta(DistributedHook(models=[spladev2]), True)],
-            launcher=gpu_launcher_learner,
-        )
-
-        # evaluate the best model
-        splade_retriever = sparse_retriever(best_model, documents)
-        tests.evaluate_retriever(
-            splade_retriever, 
-            gpu_launcher_evaluate
-        )
-
         # wait for all the experiments ends
         xp.wait()
 

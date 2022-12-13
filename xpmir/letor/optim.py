@@ -5,6 +5,7 @@ from .schedulers import Scheduler
 from xpmir.utils import easylog
 from experimaestro.typingutils import get_list_component
 from xpmir.letor.metrics import ScalarMetric
+import re
 
 if TYPE_CHECKING:
     from xpmir.letor.context import TrainerContext
@@ -26,10 +27,12 @@ class Adam(Optimizer):
     weight_decay: Param[float] = 0.0
     """Weight decay (L2)"""
 
+    eps: Param[float] = 1e-8
+
     def __call__(self, parameters):
         from torch.optim import Adam
 
-        return Adam(parameters, lr=self.lr, weight_decay=self.weight_decay)
+        return Adam(parameters, lr=self.lr, weight_decay=self.weight_decay, eps=self.eps)
 
 
 class AdamW(Optimizer):
@@ -37,11 +40,12 @@ class AdamW(Optimizer):
 
     lr: Param[float] = 1e-3
     weight_decay: Param[float] = 1e-2
+    eps: Param[float] = 1e-8
 
     def __call__(self, parameters):
         from torch.optim import AdamW
 
-        return AdamW(parameters, lr=self.lr, weight_decay=self.weight_decay)
+        return AdamW(parameters, lr=self.lr, weight_decay=self.weight_decay, eps=self.eps)
 
 
 class Module(Config, torch.nn.Module):
@@ -52,9 +56,36 @@ class Module(Config, torch.nn.Module):
 
 
 class ParameterFilter(Config):
+    """One abstract class which doesn't do the filtrage"""
     def __call__(self, name, params) -> bool:
         return True
 
+class RegexParameterFilter(ParameterFilter):
+    """gives the name of the model to do the filtrage
+    Precondition: Only and just one of the includes and excludes can be None"""
+
+    includes: Param[Optional[List[str]]]
+    """The str of params to be included from the model"""
+
+    excludes: Param[Optional[List[str]]]
+    """The str of params to be excludes from the model"""
+
+    def __init__(self):
+        self.name = set()
+
+    def __call__(self, name, params) -> bool:
+        if self.includes: 
+            for regex in self.includes:
+                if re.search(regex, name): 
+                    return True
+            return False
+        elif self.excludes:
+            for regex in self.excludes:
+                if re.search(regex, name):
+                    return False
+            return True
+
+            
 
 class ParameterOptimizer(Config):
     """Associates an optimizer with a list of parameters to optimize"""
@@ -76,11 +107,12 @@ class ParameterOptimizer(Config):
     ) -> torch.optim.Optimizer:
         """Returns a (pytorch) optimizer"""
         module = self.module or module
-        optimizer = self.optimizer(
+        params = [
             param
             for name, param in module.named_parameters()
             if (self.filter is None or self.filter(name, param)) and filter(name, param)
-        )
+        ]
+        optimizer = self.optimizer(params)
         return optimizer
 
 

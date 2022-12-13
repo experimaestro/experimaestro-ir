@@ -2,6 +2,7 @@ from errno import EROFS
 import torch
 import torch.nn as nn
 from experimaestro import Param
+from xpmir.distributed import DistributableModel
 from xpmir.letor.batchers import Batcher
 from xpmir.letor.context import TrainerContext
 from xpmir.letor.records import BaseRecords, PairwiseRecord, PairwiseRecords, Query, Document
@@ -10,7 +11,8 @@ from xpmir.text.encoders import DualTextEncoder, TripletTextEncoder
 from xpmir.rankers import DuoLearnableScorer, DuoTwoStageRetriever, LearnableScorer, Retriever, ScoredDocument
 from typing import List, Optional
 
-class CrossScorer(TorchLearnableScorer):
+
+class CrossScorer(TorchLearnableScorer, DistributableModel):
     """Query-Document Representation Classifier
 
     Based on a query-document representation representation (e.g. BERT [CLS] token).
@@ -35,10 +37,14 @@ class CrossScorer(TorchLearnableScorer):
         # Encode queries and documents
         pairs = self.encoder(
             [(q.text, d.text) for q, d in zip(inputs.queries, inputs.documents)]
-        )
+        ) # shape (batch_size * dimension)
         return self.classifier(pairs).squeeze(1)
 
-class DuoCrossScorer(DuoLearnableScorer):
+    def distribute_models(self, update):
+        self.encoder.model = update(self.encoder.model)
+
+
+class DuoCrossScorer(DuoLearnableScorer, DistributableModel):
     """Query-document-document Representation classifier based on Bert
     The encoder usually refer to the encoder of type DualDuoBertTransformerEncoder()
     """
@@ -61,6 +67,9 @@ class DuoCrossScorer(DuoLearnableScorer):
             for q, d_1, d_2 in zip(inputs.unique_queries, inputs.positives, inputs.negatives)]
         )
         return self.classifier(triplets).squeeze(1)
+    
+    def distribute_models(self, update):
+        self.encoder.model = update(self.encoder.model)
 
     def getRetriever(
         self, 
