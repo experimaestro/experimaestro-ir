@@ -64,7 +64,9 @@ class AdhocDocuments(ir.AdhocDocumentStore, IRDSId):
     def iter(self) -> Iterator[ir.AdhocDocument]:
         """Returns an iterator over adhoc documents"""
         for int_docid, doc in enumerate(self.dataset.docs_iter()):
-            yield ir.AdhocDocument(doc.doc_id, doc.text, internal_docid=int_docid)
+            yield ir.AdhocDocument(
+                doc.doc_id, self._doc_text(doc), internal_docid=int_docid
+            )
 
     @property
     def documentcount(self):
@@ -74,15 +76,24 @@ class AdhocDocuments(ir.AdhocDocumentStore, IRDSId):
     def store(self):
         return self.dataset.docs_store()
 
+    def _doc_text(self, doc) -> str:
+        if self.has_title and doc.title:
+            return f"{doc.title}\n{doc.text}"
+        return doc.text
+
     def document_text(self, docid: str) -> str:
-        return self.store.get(docid).text
+        return self._doc_text(self.store.get(docid))
 
     def docid_internal2external(self, ix: int):
         return self.dataset.docs_iter()[ix].doc_id
 
+    @cached_property
+    def has_title(self):
+        return "title" in self.dataset.docs_cls()._fields
+
     def document(self, ix):
         d = self.dataset.docs_iter()[ix]
-        return ir.AdhocDocument(d.doc_id, d.text)
+        return ir.AdhocDocument(d.doc_id, self._doc_text(d))
 
 
 class Adhoc(ir.Adhoc, IRDSId):
