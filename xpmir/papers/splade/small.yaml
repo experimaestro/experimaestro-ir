@@ -3,7 +3,7 @@ Launcher:
     gpu: true
     tags: 
 Indexation:
-    requirements: duration=2 days & cpu(mem=4G)
+    requirements: duration=2 days & cpu(mem=2G)
     training_requirements: duration=2 days & cuda(mem=8G)
 Learner: 
     validation_size: 10

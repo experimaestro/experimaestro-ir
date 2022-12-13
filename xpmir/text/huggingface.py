@@ -1,14 +1,13 @@
 from experimaestro.compat import cached_property
-from typing import Annotated, ClassVar, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 import logging
 import re
 import torch
 import torch.nn as nn
 from experimaestro import Param, Constant
 from xpmir.context import Context, InitializationHook
-from xpmir.distributed import DistributableModel
 from xpmir.letor import DistributedDeviceInformation
-from xpmir.letor.context import InitializationTrainingHook, StepTrainingHook, TrainState, TrainerContext
+from xpmir.letor.context import InitializationTrainingHook, TrainState, TrainerContext
 from xpmir.neural import TorchLearnableScorer
 from xpmir.text.encoders import (
     ContextualizedTextEncoder,

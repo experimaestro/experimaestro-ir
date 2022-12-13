@@ -202,12 +202,12 @@ class DuoLogProbaLoss(PairwiseLoss):
     NAME = "DuoLogProbaLoss"
 
     def compute(self, score: Tensor, target: Tensor, context: TrainerContext):
-        return torch.sum( - torch.log(torch.abs(1 - target - score))).float()
-
+        return self.loss(score, target)
+    
     def process(self, scores: Tensor, target: Tensor ,context: TrainerContext):
+        self.loss = nn.BCEWithLogitsLoss()
         value = self.compute(scores, target, context)
         context.add_loss(Loss(f"pair-{self.NAME}", value, self.weight))
-
 
 
 class DuoPairwiseTrainer(LossTrainer):
@@ -249,6 +249,9 @@ class DuoPairwiseTrainer(LossTrainer):
         # forward pass
         rel_scores = self.ranker(records, self.context) # shape: (bs)
 
+        # print(rel_scores)
+        # print(torch.Tensor(records.get_target()))
+
         if torch.isnan(rel_scores).any() or torch.isinf(rel_scores).any():
             self.logger.error("nan or inf relevance score detected. Aborting.")
             sys.exit(1)
@@ -266,5 +269,5 @@ class DuoPairwiseTrainer(LossTrainer):
         with torch.no_grad():
             count = scores_by_record.shape[0] # batch_size
             return (
-                torch.abs(scores_by_record - (1 - target)) > 0.5
+                torch.abs(scores_by_record - (1 - target)) > 0
             ).sum().float() / count

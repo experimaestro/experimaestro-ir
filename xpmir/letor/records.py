@@ -156,7 +156,7 @@ class PairwiseRecord:
 
 
 class PairwiseRecordWithTarget(PairwiseRecord):
-    """A pairwise record is composed of a query, a positive and a negative document"""
+    """A pairwise record is composed of a query, a positive and a negative document, and the indetifier which says the one on the first is pos or neg"""
 
     target: int
 

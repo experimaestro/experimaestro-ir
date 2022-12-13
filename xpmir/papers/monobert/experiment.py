@@ -27,7 +27,7 @@ from xpmir.letor import Device, Random
 from xpmir.letor.batchers import PowerAdaptativeBatcher
 from xpmir.letor.devices import CudaDevice
 from xpmir.letor.learner import Learner
-from xpmir.letor.optim import Adam, ParameterOptimizer
+from xpmir.letor.optim import Adam, AdamW, ParameterOptimizer, RegexParameterFilter
 from xpmir.letor.samplers import TripletBasedSampler
 from xpmir.measures import AP, RR, P, nDCG
 from xpmir.neural.jointclassifier import JointClassifier
@@ -233,10 +233,18 @@ def cli(debug, configuration, host, port, workdir, args):
 
         monobert_reranking = RerankingPipeline(
             monobert_trainer,
-            ParameterOptimizer(
-                scheduler=scheduler,
-                optimizer=Adam(lr=configuration.Learner.lr, weight_decay=1e-2),
-            ),
+            [
+                ParameterOptimizer(
+                    scheduler=scheduler,
+                    optimizer=AdamW(lr=configuration.Learner.lr, eps=1e-6),
+                    filter=RegexParameterFilter(includes=[r'\.bias$', r'\.LayerNorm\.'])
+                ),
+                ParameterOptimizer(
+                    scheduler=scheduler,
+                    optimizer=AdamW(lr=configuration.Learner.lr, weight_decay=1e-2, eps=1e-6), 
+                    filter=RegexParameterFilter(excludes=[r'\.bias$', r'\.LayerNorm\.'])
+                )
+            ],
             factory_retriever,
             STEPS_PER_EPOCH,
             max_epochs,

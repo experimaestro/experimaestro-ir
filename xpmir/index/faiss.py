@@ -221,6 +221,7 @@ class FaissRetriever(Retriever):
     def retrieve(self, query: str) -> List[ScoredDocument]:
         """Retrieves a documents, returning a list sorted by decreasing score"""
         with torch.no_grad():
+            self.encoder.eval() # pass the model to the evaluation model 
             encoded_query = self.encoder([query])
             if self.index.normalize:
                 encoded_query /= encoded_query.norm(2)
@@ -228,7 +229,7 @@ class FaissRetriever(Retriever):
             values, indices = self._index.search(encoded_query.cpu().numpy(), self.topk)
             return [
                 ScoredDocument(
-                    self.index.docid_internal2external(int(ix)), float(value) # maybe it is better like this
+                    self.index.docid_internal2external(int(ix)), float(value)
                 )
                 for ix, value in zip(indices[0], values[0])
                 if ix >= 0
