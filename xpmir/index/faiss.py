@@ -182,6 +182,7 @@ class IndexBackedFaiss(FaissIndex, Task):
         step_iter.update()
 
     def encode(self, batch: List[str], data: List):
+        batch = [text for text in batch if text != '']
         x = self.encoder(batch)
         if self.normalize:
             x /= x.norm(2, keepdim=True, dim=1)
