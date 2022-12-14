@@ -19,6 +19,9 @@
 # a documentation
 
 import builtins
+import mock
+import sys
+import logging
 
 builtins.__sphinx_build__ = True
 
@@ -107,11 +110,6 @@ autodoc_mock_imports = [
 ]
 
 
-import mock
-import sys
-import logging
-
-
 def side_effect(*args, **kwargs):
     logging.error("Side effect %s / %s", args, kwargs)
 
@@ -131,7 +129,7 @@ for name in [
 ]:
     sys.modules[name] = mock.Mock(side_effect=side_effect)
 
-import torch.nn as nn
+import torch.nn as nn  # noqa: E402
 
 
 class TorchModule:
