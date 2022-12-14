@@ -3,14 +3,14 @@
 from experimaestro import tqdm
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Iterable, Iterator, List, Optional, Tuple, final
+from typing import Dict, Iterable, List, Optional, Tuple, final
 import torch
 import torch.nn as nn
 
 import numpy as np
-from experimaestro import Param, Config, Option, documentation, Meta
-from datamaestro_text.data.ir import AdhocDocument, AdhocIndex as Index, AdhocDocuments
-from xpmir.letor import Device, DeviceInformation, Random
+from experimaestro import Param, Config, Meta
+from datamaestro_text.data.ir import AdhocIndex as Index
+from xpmir.letor import Device, Random
 from xpmir.letor.batchers import Batcher
 from xpmir.letor.context import TrainerContext
 from xpmir.letor.optim import Module
@@ -297,7 +297,8 @@ class AbstractTwoStageRetriever(Retriever):
 
 
 class TwoStageRetriever(AbstractTwoStageRetriever):
-    """Use on retriever to select the top-K documents which are the re-ranked given a scorer"""
+    """Use on retriever to select the top-K documents which are the re-ranked
+    given a scorer"""
 
     def _retrieve(
         self,

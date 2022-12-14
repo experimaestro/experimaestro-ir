@@ -1,8 +1,7 @@
 from typing import List, Optional, Tuple, Dict, Any
 from experimaestro import Param, Meta
 import torch
-from . import Retriever, AdhocDocuments, ScoredDocument, Scorer, AdhocDocument
-from xpmir.letor import Device
+from . import Retriever, AdhocDocuments, ScoredDocument, AdhocDocument
 from xpmir.neural.dual import DualRepresentationScorer
 from xpmir.letor.batchers import Batcher
 from xpmir.letor import Device
@@ -11,8 +10,9 @@ from xpmir.letor import Device
 class FullRetriever(Retriever):
     """Retrieves all the documents of the collection
 
-    This can be used to build a small validation set on a subset of the collection - in that
-    case, the scorer can be used through a TwoStageRetriever
+    This can be used to build a small validation set on a subset of the
+    collection - in that case, the scorer can be used through a
+    TwoStageRetriever
     """
 
     documents: Param[AdhocDocuments]
@@ -24,19 +24,6 @@ class FullRetriever(Retriever):
                 for doc in self.documents.iter()
             ]
         return [ScoredDocument(docid, 0.0, None) for docid in self.documents.iter_ids()]
-
-    # def getReranker(
-    #     self, scorer: Scorer, batch_size: int, batcher: Batcher = Batcher(), device=None
-    # ):
-    #     if isinstance(scorer, DualRepresentationScorer):
-    #         return FullRetrieverRescorer(
-    #             documents=self.documents,
-    #             scorer=scorer,
-    #             batchsize=batch_size,
-    #             batcher=batcher,
-    #             device=device,
-    #         )
-    #     return scorer.getRetriever(self, batch_size, batcher, device)
 
 
 class FullRetrieverRescorer(Retriever):
@@ -90,16 +77,19 @@ class FullRetrieverRescorer(Retriever):
         queries: List,
         scored_documents: List[List[ScoredDocument]],
     ):
-        """_summary_
-        Every time the score process a batch of document together with whole set of queries
+        """Score documents for a set of queries
 
-        scored_documents is filled with document batches, i.e. it contains
-        [ [s(q_0, d_0), ..., s(q_n, d0)], ..., [s(q_0, d_m), ..., s(q_n, d_m)] ] --> list of m*n
+        Every time the score process a batch of document together with whole set
+        of queries
+
+        scored_documents is filled with document batches, i.e. it contains [
+        [s(q_0, d_0), ..., s(q_n, d0)], ..., [s(q_0, d_m), ..., s(q_n, d_m)] ]
+        --> list of m*n
 
         Args:
-            documents (List[AdhocDocument]): _description_
-            queries (List): _description_
-            scored_documents (List[List[ScoredDocument]]): list of scores for each document and for each query (in this order)
+            documents (List[AdhocDocument]): _description_ queries (List): Lis
+            of queries scored_documents (List[List[ScoredDocument]]): list of
+            scores for each document and for each query (in this order)
         """
         # Encode documents
         docids = [d.docid for d in documents]
