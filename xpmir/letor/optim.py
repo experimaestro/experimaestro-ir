@@ -1,9 +1,8 @@
-from typing import Any, Callable, Iterator, List, Optional, Tuple, TYPE_CHECKING, Union
+from typing import Any, Callable, List, Optional, TYPE_CHECKING, Union
 from experimaestro import Config, Param
 import torch
 from .schedulers import Scheduler
 from xpmir.utils import easylog
-from experimaestro.typingutils import get_list_component
 from xpmir.letor.metrics import ScalarMetric
 import re
 
@@ -71,26 +70,34 @@ class RegexParameterFilter(ParameterFilter):
     """gives the name of the model to do the filtrage
     Precondition: Only and just one of the includes and excludes can be None"""
 
-    includes: Param[Optional[List[str]]]
+    includes: Param[Optional[List[str]]] = None
     """The str of params to be included from the model"""
 
-    excludes: Param[Optional[List[str]]]
+    excludes: Param[Optional[List[str]]] = None
     """The str of params to be excludes from the model"""
 
     def __init__(self):
         self.name = set()
 
+    def __validate__(self):
+        return self.includes or self.excludes
+
     def __call__(self, name, params) -> bool:
+        # Look first at included
         if self.includes:
             for regex in self.includes:
                 if re.search(regex, name):
                     return True
-            return False
-        elif self.excludes:
-            for regex in self.excludes:
-                if re.search(regex, name):
-                    return False
-            return True
+
+            # Include if not excluded
+            if not self.excludes:
+                return False
+
+        for regex in self.excludes:
+            if re.search(regex, name):
+                return False
+
+        return True
 
 
 class ParameterOptimizer(Config):
