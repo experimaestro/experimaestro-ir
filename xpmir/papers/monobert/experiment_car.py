@@ -104,14 +104,12 @@ def cli(debug, configuration, host, port, workdir):
     cpu_launcher_4G = find_launcher(cuda_gpu(mem="4G"))
 
     # we assigne a gpu, if not, a cpu
-    if configuration.Launcher.gpu: 
+    if configuration.Launcher.gpu:
         gpu_launcher = find_launcher(
             (cuda_gpu(mem=configuration.Launcher.mem)) & req_duration, tags=tags
         )
-    else: 
-        gpu_launcher = find_launcher(
-            cpu() & req_duration, tags=tags
-        )
+    else:
+        gpu_launcher = find_launcher(cpu() & req_duration, tags=tags)
 
     logging.info(
         f"Number of epochs {max_epochs}, validation interval {validation_interval}"
@@ -143,13 +141,13 @@ def cli(debug, configuration, host, port, workdir):
         logging.info("Monitor learning with:")
         logging.info("tensorboard --logdir=%s", runs_path)
 
-        # Datasets: train, validation and test 
-        documents = prepare_dataset("irds.msmarco-passage.documents") # for indexing 
-        cars_documents = prepare_dataset("irds.car.v1.5.documents") # for indexing
+        # Datasets: train, validation and test
+        documents = prepare_dataset("irds.msmarco-passage.documents")  # for indexing
+        cars_documents = prepare_dataset("irds.car.v1.5.documents")  # for indexing
         # the training dataset used to prepare the pairwise sampler
         folds = [prepare_dataset(f"irds.car.v1.5.train.fold{i}") for i in range(4)]
-        dev = ConcatFold(datasets = folds).submit(launcher = cpu_launcher_4G)
-        
+        dev = ConcatFold(datasets=folds).submit(launcher=cpu_launcher_4G)
+
         # the training dataset for validation
         ds_val = prepare_dataset("irds.car.v1.5.train.fold4")
 
@@ -167,63 +165,76 @@ def cli(debug, configuration, host, port, workdir):
         # Build the MS Marco index and definition of first stage rankers
         index = IndexCollection(documents=documents, storeContents=True).submit()
         base_retriever_ms = AnseriniRetriever(k=topK, index=index, model=basemodel)
-        base_retriever_ms_val = AnseriniRetriever(k=valtopK, index=index, model=basemodel)
-
+        base_retriever_ms_val = AnseriniRetriever(
+            k=valtopK, index=index, model=basemodel
+        )
 
         # Build the TREC CARS index
-        index_cars = IndexCollection(documents=cars_documents, storeContents=True).submit(launcher = cpu_launcher_4G)
-        base_retriever_cars = AnseriniRetriever(k=topK, index=index_cars, model=basemodel)
-        base_retriever_cars_val = AnseriniRetriever(k=valtopK, index=index_cars, model=basemodel)
+        index_cars = IndexCollection(
+            documents=cars_documents, storeContents=True
+        ).submit(launcher=cpu_launcher_4G)
+        base_retriever_cars = AnseriniRetriever(
+            k=topK, index=index_cars, model=basemodel
+        )
+        base_retriever_cars_val = AnseriniRetriever(
+            k=valtopK, index=index_cars, model=basemodel
+        )
 
         base_retrievers = {
-            'irds.car.v1.5.documents@irds': base_retriever_cars,
-            'irds.msmarco-passage.documents@irds': base_retriever_ms
+            "irds.car.v1.5.documents@irds": base_retriever_cars,
+            "irds.msmarco-passage.documents@irds": base_retriever_ms,
         }
 
         base_retrievers_val = {
-            'irds.car.v1.5.documents@irds': base_retriever_cars_val,
-            'irds.msmarco-passage.documents@irds': base_retriever_ms_val
+            "irds.car.v1.5.documents@irds": base_retriever_cars_val,
+            "irds.msmarco-passage.documents@irds": base_retriever_ms_val,
         }
 
         factory_retriever = lambda scorer, documents: scorer.getRetriever(
-            base_retrievers[documents.id], batch_size, PowerAdaptativeBatcher(), device=device
+            base_retrievers[documents.id],
+            batch_size,
+            PowerAdaptativeBatcher(),
+            device=device,
         )
 
         factory_retriever_val = lambda scorer, documents: scorer.getRetriever(
-            base_retrievers_val[documents.id], batch_size, PowerAdaptativeBatcher(), device=device
+            base_retrievers_val[documents.id],
+            batch_size,
+            PowerAdaptativeBatcher(),
+            device=device,
         )
-        
+
         # Search and evaluate with BM25
         bm25_retriever_ms = AnseriniRetriever(k=topK, index=index, model=basemodel).tag(
             "model", "bm25"
         )
-        bm25_retriever_car = AnseriniRetriever(k=topK, index=index_cars, model=basemodel).tag(
-            "model", "bm25"
-        )
+        bm25_retriever_car = AnseriniRetriever(
+            k=topK, index=index_cars, model=basemodel
+        ).tag("model", "bm25")
 
         bm25_retriever = {
-            'irds.car.v1.5.documents@irds': bm25_retriever_car,
-            'irds.msmarco-passage.documents@irds': bm25_retriever_ms
+            "irds.car.v1.5.documents@irds": bm25_retriever_car,
+            "irds.msmarco-passage.documents@irds": bm25_retriever_ms,
         }
 
         # Defines how we sample train examples
         # TODO: The dataset for training by using the dev
         # k=20 in the bm25_retriever is too large --> reduce it to 10
-        train_sampler = PairwiseModelBasedSampler(dataset = dev, retriever = bm25_retriever_car)
-
+        train_sampler = PairwiseModelBasedSampler(
+            dataset=dev, retriever=bm25_retriever_car
+        )
 
         # FIXME: Resolve the OoM by using a GPU for devsmall. Recommend to rewrite the code in the ir_measures
         # Evaluate BM25 as well as the random scorer (low baseline)
         tests.evaluate_retriever(
-            lambda documents: bm25_retriever[documents.id], 
-            cpu_launcher_4G
+            lambda documents: bm25_retriever[documents.id], cpu_launcher_4G
         )
 
         tests.evaluate_retriever(
             lambda documents: random_scorer.getRetriever(
                 bm25_retriever[documents.id], batch_size, PowerAdaptativeBatcher()
             ),
-            cpu_launcher_4G
+            cpu_launcher_4G,
         )
 
         # define the trainer for monobert
@@ -234,7 +245,10 @@ def cli(debug, configuration, host, port, workdir):
             batch_size=batch_size,
         )
 
-        scheduler = LinearWithWarmup(num_warmup_steps=num_warmup_steps, min_factor=configuration.Learner.warmup_min_factor)
+        scheduler = LinearWithWarmup(
+            num_warmup_steps=num_warmup_steps,
+            min_factor=configuration.Learner.warmup_min_factor,
+        )
 
         monobert_scorer = CrossScorer(
             encoder=DualTransformerEncoder(trainable=True, maxlen=512, dropout=0.1)
@@ -258,13 +272,11 @@ def cli(debug, configuration, host, port, workdir):
             launcher=gpu_launcher,
             evaluate_launcher=gpu_launcher,
             runs_path=runs_path,
-
             # FIXME: The write and read of the model in the DataParallel has a .module. to resolve the problem,
-            # It should be better to create a adapter for the DistributedHook class for the DataParallel and 
+            # It should be better to create a adapter for the DistributedHook class for the DataParallel and
             # rewrite the function read and load
-            # Further, it should be better if we can implement the hooks in the form like 
+            # Further, it should be better if we can implement the hooks in the form like
             # (models=[monobert_scorer]) where can paralize more things
-
             # hooks=[
             #     setmeta(DistributedHook(models=[monobert_scorer.encoder]), True)
             # ]

@@ -66,35 +66,35 @@ logging.basicConfig(level=logging.INFO)
 #     "--batch-size", type=int, default=None, help="Batch size (validation and test)"
 # )
 
+
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 @omegaconf_argument("configuration", package=__package__)
 @click.argument("workdir", type=Path)
 @click.command()
-
 def cli(
     env: Dict[str, str],
     debug: bool,
-    configuration, 
+    configuration,
     host: str,
     port: int,
     workdir: str,
-    args
+    args,
 ):
     """Runs an experiment"""
-    # Merge the additional option to the existing 
+    # Merge the additional option to the existing
     conf_args = OmegaConf.from_dotlist(args)
     configuration = OmegaConf.merge(configuration, conf_args)
 
     tags = configuration.Launcher.tags.split(",") if configuration.Launcher.tags else []
-    
+
     logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
-    
+
     # Number of topics in the validation set
     VAL_SIZE = configuration.Learner.validation_size
 
     # Number of steps in each epoch
     steps_per_epoch = configuration.Learner.steps_per_epoch
-    
+
     # Validation interval (in epochs)
     validation_interval = configuration.Learner.validation_interval
 
@@ -109,7 +109,7 @@ def cli(
 
     # the batch_size for training the splade model
     splade_batch_size = configuration.Learner.splade_batch_size
-    
+
     # The numbers of the warmup steps during the training
     num_warmup_steps = configuration.Learner.num_warmup_steps
 
@@ -140,16 +140,20 @@ def cli(
 
     name = configuration.type
 
-    # launchers 
-    assert configuration.Launcher.gpu, 'It is recommend to do this on GPU'
+    # launchers
+    assert configuration.Launcher.gpu, "It is recommend to do this on GPU"
     cpu_launcher_index = find_launcher(configuration.Indexation.requirements)
-    gpu_launcher_index = find_launcher(configuration.Indexation.training_requirements, tags=tags)
+    gpu_launcher_index = find_launcher(
+        configuration.Indexation.training_requirements, tags=tags
+    )
     gpu_launcher_learner = find_launcher(configuration.Learner.requirements, tags=tags)
-    gpu_launcher_evaluate = find_launcher(configuration.Evaluation.requirements, tags=tags)
+    gpu_launcher_evaluate = find_launcher(
+        configuration.Evaluation.requirements, tags=tags
+    )
 
     # Starts the experiment
     with experiment(workdir, name, host=host, port=port) as xp:
-         # Set environment variables
+        # Set environment variables
         xp.setenv("JAVA_HOME", os.environ["JAVA_HOME"])
         for key, value in env:
             xp.setenv(key, value)
@@ -158,16 +162,19 @@ def cli(
         device = CudaDevice() if configuration.Launcher.gpu else Device()
         random = Random(seed=0)
 
-        # prepare the dataset 
-        documents_trec_covid = prepare_dataset('irds.beir.trec-covid.documents') # the dataset for trec_covid
-        
+        # prepare the dataset
+        documents_trec_covid = prepare_dataset(
+            "irds.beir.trec-covid.documents"
+        )  # the dataset for trec_covid
 
         # Index for msmarcos
-        index_trec_covid = IndexCollection(documents=documents_trec_covid, storeContents=True).submit()
+        index_trec_covid = IndexCollection(
+            documents=documents_trec_covid, storeContents=True
+        ).submit()
 
         # Build a dev. collection for full-ranking (validation)
         # "Efficiently Teaching an Effective Dense Retriever with Balanced Topic Aware Sampling"
-        tasb = tas_balanced() # create a scorer from huggingface
+        tasb = tas_balanced()  # create a scorer from huggingface
 
         # task to train the tas_balanced encoder for the document list and generate an index for retrieval
         tasb_index = IndexBackedFaiss(
@@ -176,16 +183,12 @@ def cli(
             normalize=False,
             documents=documents_trec_covid,
             sampler=RandomDocumentSampler(
-                documents=documents_trec_covid, max_count=80_000
+                documents=documents_trec_covid, max_count=160_000, random=random
             ),  # Just use a fraction of the dataset for training
             encoder=DenseDocumentEncoder(scorer=tasb),
             batchsize=2048,
             batcher=PowerAdaptativeBatcher(),
-            hooks=[
-                setmeta(
-                    DistributedHook(models=[tasb]), True
-                )
-            ],
+            hooks=[setmeta(DistributedHook(models=[tasb]), True)],
         ).submit(launcher=gpu_launcher_index)
 
         # A retriever if tas-balanced. We use the index of the faiss.
@@ -200,27 +203,22 @@ def cli(
         # define the evaluation measures and dataset.
         measures = [AP, P @ 20, nDCG, nDCG @ 10, nDCG @ 20, RR, RR @ 10]
         tests: EvaluationsCollection = EvaluationsCollection(
-            trec_covid=Evaluations(
-                prepare_dataset("irds.beir.trec-covid"), measures
-            )
+            trec_covid=Evaluations(prepare_dataset("irds.beir.trec-covid"), measures)
         )
-
 
         # compute the baseline performance on the test dataset.
-        # Bm25 
-        bm25_retriever_trec = AnseriniRetriever(k=20, index=index_trec_covid, model=basemodel)
-        
-        tests.evaluate_retriever(
-            copyconfig(bm25_retriever_trec).tag('model','bm25')
+        # Bm25
+        bm25_retriever_trec = AnseriniRetriever(
+            k=20, index=index_trec_covid, model=basemodel
         )
+
+        tests.evaluate_retriever(copyconfig(bm25_retriever_trec).tag("model", "bm25"))
 
         # tas-balance
         tests.evaluate_retriever(
-            copyconfig(tasb_retriever).tag('model','tasb'),
-            gpu_launcher_index
+            copyconfig(tasb_retriever).tag("model", "tasb"), gpu_launcher_index
         )
-        
-            
+
         # wait for all the experiments ends
         xp.wait()
 
@@ -232,6 +230,7 @@ def cli(
                 print(
                     f"Results for {evaluation.__xpm__.tags()}\n{evaluation.results.read_text()}\n"
                 )
+
 
 if __name__ == "__main__":
     cli()

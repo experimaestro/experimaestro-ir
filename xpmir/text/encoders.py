@@ -44,9 +44,9 @@ class DualTextEncoder(Encoder):
         """Computes the representation of a list of pair of texts"""
         raise NotImplementedError(f"forward in {self.__class__}")
 
+
 class TripletTextEncoder(Encoder):
-    """The generic class for triplet encoders: query-document-document
-    """
+    """The generic class for triplet encoders: query-document-document"""
 
     @property
     def dimension(self) -> int:
@@ -55,7 +55,6 @@ class TripletTextEncoder(Encoder):
     def forward(self, texts: List[Tuple[str, str, str]]):
         """Computes the representation of a list of pair of texts"""
         raise NotImplementedError(f"forward in {self.__class__}")
-
 
 
 class ContextualizedTextEncoderOutput(NamedTuple):

@@ -54,16 +54,14 @@ logging.basicConfig(level=logging.INFO)
 @click.option(
     "--port", type=int, default=12345, help="Port for monitoring (default 12345)"
 )
-
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 @omegaconf_argument("configuration", package=__package__)
 @click.argument("workdir", type=Path)
 @click.command()
-
 def cli(debug, configuration, host, port, workdir, args):
     """Runs an experiment"""
 
-    # Merge the additional option to the existing 
+    # Merge the additional option to the existing
     conf_args = OmegaConf.from_dotlist(args)
     configuration = OmegaConf.merge(configuration, conf_args)
 
@@ -94,12 +92,16 @@ def cli(debug, configuration, host, port, workdir, args):
     gpu_launcher_index = find_launcher(configuration.Indexation.requirements)
 
     # we assigne a gpu, if not, a cpu
-    if configuration.Launcher.gpu: 
-        gpu_launcher_learner = find_launcher(configuration.Learner.requirements, tags=tags)
-        gpu_launcher_evaluate = find_launcher(configuration.Evaluation.requirements, tags=tags)
-    else: 
-        gpu_launcher_learner = gpu_launcher_evaluate =find_launcher(
-            cpu(mem="4G") & duration('2 days'), tags=tags
+    if configuration.Launcher.gpu:
+        gpu_launcher_learner = find_launcher(
+            configuration.Learner.requirements, tags=tags
+        )
+        gpu_launcher_evaluate = find_launcher(
+            configuration.Evaluation.requirements, tags=tags
+        )
+    else:
+        gpu_launcher_learner = gpu_launcher_evaluate = find_launcher(
+            cpu(mem="4G") & duration("2 days"), tags=tags
         )
 
     logging.info(
@@ -133,8 +135,8 @@ def cli(debug, configuration, host, port, workdir, args):
         logging.info("tensorboard --logdir=%s", runs_path)
 
         # Datasets: train, validation and test
-        documents = prepare_dataset("irds.msmarco-passage.documents") # for indexing 
-        cars_documents = prepare_dataset("irds.car.v1.5.documents") # for indexing
+        documents = prepare_dataset("irds.msmarco-passage.documents")  # for indexing
+        cars_documents = prepare_dataset("irds.car.v1.5.documents")  # for indexing
         devsmall = prepare_dataset("irds.msmarco-passage.dev.small")
         dev = prepare_dataset("irds.msmarco-passage.dev")
         ds_val = RandomFold(
@@ -157,29 +159,43 @@ def cli(debug, configuration, host, port, workdir, args):
         # Build the MS Marco index and definition of first stage rankers
         index = IndexCollection(documents=documents, storeContents=True).submit()
         base_retriever_ms = AnseriniRetriever(k=topK, index=index, model=basemodel)
-        base_retriever_ms_val = AnseriniRetriever(k=valtopK, index=index, model=basemodel)
+        base_retriever_ms_val = AnseriniRetriever(
+            k=valtopK, index=index, model=basemodel
+        )
 
         # Build the TREC CARS index
-        index_cars = IndexCollection(documents=cars_documents, storeContents=True).submit(launcher = gpu_launcher_index)
-        base_retriever_cars = AnseriniRetriever(k=topK, index=index_cars, model=basemodel)
-        base_retriever_cars_val = AnseriniRetriever(k=valtopK, index=index_cars, model=basemodel)
+        index_cars = IndexCollection(
+            documents=cars_documents, storeContents=True
+        ).submit(launcher=gpu_launcher_index)
+        base_retriever_cars = AnseriniRetriever(
+            k=topK, index=index_cars, model=basemodel
+        )
+        base_retriever_cars_val = AnseriniRetriever(
+            k=valtopK, index=index_cars, model=basemodel
+        )
 
         base_retrievers = {
-            'irds.car.v1.5.documents@irds': base_retriever_cars,
-            'irds.msmarco-passage.documents@irds': base_retriever_ms
+            "irds.car.v1.5.documents@irds": base_retriever_cars,
+            "irds.msmarco-passage.documents@irds": base_retriever_ms,
         }
 
         base_retrievers_val = {
-            'irds.car.v1.5.documents@irds': base_retriever_cars_val,
-            'irds.msmarco-passage.documents@irds': base_retriever_ms_val
+            "irds.car.v1.5.documents@irds": base_retriever_cars_val,
+            "irds.msmarco-passage.documents@irds": base_retriever_ms_val,
         }
 
         factory_retriever = lambda scorer, documents: scorer.getRetriever(
-            base_retrievers[documents.id], batch_size, PowerAdaptativeBatcher(), device=device
+            base_retrievers[documents.id],
+            batch_size,
+            PowerAdaptativeBatcher(),
+            device=device,
         )
 
         factory_retriever_val = lambda scorer, documents: scorer.getRetriever(
-            base_retrievers_val[documents.id], batch_size, PowerAdaptativeBatcher(), device=device
+            base_retrievers_val[documents.id],
+            batch_size,
+            PowerAdaptativeBatcher(),
+            device=device,
         )
 
         # Defines how we sample train examples
@@ -195,26 +211,25 @@ def cli(debug, configuration, host, port, workdir, args):
         bm25_retriever_ms = AnseriniRetriever(k=topK, index=index, model=basemodel).tag(
             "model", "bm25"
         )
-        bm25_retriever_car = AnseriniRetriever(k=topK, index=index_cars, model=basemodel).tag(
-            "model", "bm25"
-        )
+        bm25_retriever_car = AnseriniRetriever(
+            k=topK, index=index_cars, model=basemodel
+        ).tag("model", "bm25")
 
         bm25_retriever = {
-            'irds.car.v1.5.documents@irds': bm25_retriever_car,
-            'irds.msmarco-passage.documents@irds': bm25_retriever_ms
+            "irds.car.v1.5.documents@irds": bm25_retriever_car,
+            "irds.msmarco-passage.documents@irds": bm25_retriever_ms,
         }
 
         # Evaluate BM25 as well as the random scorer (low baseline)
         tests.evaluate_retriever(
-            lambda documents: bm25_retriever[documents.id], 
-            gpu_launcher_index
+            lambda documents: bm25_retriever[documents.id], gpu_launcher_index
         )
 
         tests.evaluate_retriever(
             lambda documents: random_scorer.getRetriever(
                 bm25_retriever[documents.id], batch_size, PowerAdaptativeBatcher()
             ),
-            gpu_launcher_index
+            gpu_launcher_index,
         )
 
         # define the trainer for monobert
@@ -225,7 +240,10 @@ def cli(debug, configuration, host, port, workdir, args):
             batch_size=batch_size,
         )
 
-        scheduler = LinearWithWarmup(num_warmup_steps=num_warmup_steps, min_factor=configuration.Learner.warmup_min_factor)
+        scheduler = LinearWithWarmup(
+            num_warmup_steps=num_warmup_steps,
+            min_factor=configuration.Learner.warmup_min_factor,
+        )
 
         monobert_scorer = CrossScorer(
             encoder=DualTransformerEncoder(trainable=True, maxlen=512, dropout=0.1)
@@ -237,13 +255,19 @@ def cli(debug, configuration, host, port, workdir, args):
                 ParameterOptimizer(
                     scheduler=scheduler,
                     optimizer=AdamW(lr=configuration.Learner.lr, eps=1e-6),
-                    filter=RegexParameterFilter(includes=[r'\.bias$', r'\.LayerNorm\.'])
+                    filter=RegexParameterFilter(
+                        includes=[r"\.bias$", r"\.LayerNorm\."]
+                    ),
                 ),
                 ParameterOptimizer(
                     scheduler=scheduler,
-                    optimizer=AdamW(lr=configuration.Learner.lr, weight_decay=1e-2, eps=1e-6), 
-                    filter=RegexParameterFilter(excludes=[r'\.bias$', r'\.LayerNorm\.'])
-                )
+                    optimizer=AdamW(
+                        lr=configuration.Learner.lr, weight_decay=1e-2, eps=1e-6
+                    ),
+                    filter=RegexParameterFilter(
+                        excludes=[r"\.bias$", r"\.LayerNorm\."]
+                    ),
+                ),
             ],
             factory_retriever,
             STEPS_PER_EPOCH,
@@ -257,9 +281,7 @@ def cli(debug, configuration, host, port, workdir, args):
             launcher=gpu_launcher_learner,
             evaluate_launcher=gpu_launcher_evaluate,
             runs_path=runs_path,
-            hooks=[
-                setmeta(DistributedHook(models=[monobert_scorer]), True)
-            ]
+            hooks=[setmeta(DistributedHook(models=[monobert_scorer]), True)],
         )
 
         # Run the monobert and use the result as the baseline for duobert

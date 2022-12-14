@@ -54,11 +54,12 @@ class DistributedHook(InitializationHook):
 
         return model
 
+
 class DataParallel(torch.nn.DataParallel):
-    """This adapter aims to resolve the problem that in the DataParallel, 
-    it generate the '.module.' in the read and write. Need to rewrite the 
+    """This adapter aims to resolve the problem that in the DataParallel,
+    it generate the '.module.' in the read and write. Need to rewrite the
     load_state and write_state"""
-    
+
     module: nn.Module
     """The model to put on multi dataset."""
 

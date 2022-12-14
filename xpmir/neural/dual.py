@@ -142,13 +142,10 @@ class DotDense(Dense, DistributableModel):
         return self.encoder(texts)
 
     def getRetriever(
-        self, 
-        retriever: "Retriever",
-        batch_size: int, 
-        batcher: Batcher,  
-        device=None
-    ):  
+        self, retriever: "Retriever", batch_size: int, batcher: Batcher, device=None
+    ):
         from xpmir.rankers.full import FullRetrieverRescorer
+
         return FullRetrieverRescorer(
             documents=retriever.documents,
             scorer=self,
@@ -159,7 +156,8 @@ class DotDense(Dense, DistributableModel):
 
     def distribute_models(self, update):
         self.encoder.model = update(self.encoder.model)
-        self.query_encoder.encoder.model = update(self.query_encoder.encoder.model) 
+        self.query_encoder.encoder.model = update(self.query_encoder.encoder.model)
+
 
 class FlopsRegularizer(DualVectorListener):
     r"""The FLOPS regularizer computes
