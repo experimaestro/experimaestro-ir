@@ -92,11 +92,11 @@ class IndexBackedFaiss(FaissIndex, Task):
         index: faiss.Index,
         batch_encoder: Callable[[Iterator[str]], Iterator[torch.Tensor]],
     ):
-        """train the index 
+        """train the index
 
         params
-        index: 
-        batch_encoder: 
+        index:
+        batch_encoder:
             function, input is a iterator of list of documents str, return the
             encoded document vector(tensor of shape (bs*dimension))
         """
@@ -169,7 +169,7 @@ class IndexBackedFaiss(FaissIndex, Task):
         # Initialization hooks (after)
         foreach(context.hooks(InitializationHook), lambda hook: hook.after(context))
 
-        # Let's index ! 
+        # Let's index !
         # We add index for all the documents
         with torch.no_grad():
             for batch in batchiter(self.batchsize, doc_iter):
@@ -182,7 +182,6 @@ class IndexBackedFaiss(FaissIndex, Task):
         step_iter.update()
 
     def encode(self, batch: List[str], data: List):
-        batch = [text for text in batch if text != '']
         x = self.encoder(batch)
         if self.normalize:
             x /= x.norm(2, keepdim=True, dim=1)
@@ -222,7 +221,7 @@ class FaissRetriever(Retriever):
     def retrieve(self, query: str) -> List[ScoredDocument]:
         """Retrieves a documents, returning a list sorted by decreasing score"""
         with torch.no_grad():
-            self.encoder.eval() # pass the model to the evaluation model 
+            self.encoder.eval()  # pass the model to the evaluation model
             encoded_query = self.encoder([query])
             if self.index.normalize:
                 encoded_query /= encoded_query.norm(2)

@@ -30,7 +30,13 @@ from xpmir.letor.context import (
     TrainingHook,
 )
 from xpmir.letor.metrics import Metrics
-from xpmir.rankers import AbstractLearnableScorer, LearnableScorer, Retriever, ScoredDocument, Scorer
+from xpmir.rankers import (
+    AbstractLearnableScorer,
+    LearnableScorer,
+    Retriever,
+    ScoredDocument,
+    Scorer,
+)
 from xpmir.letor.optim import ParameterOptimizer, ScheduledOptimizer
 
 logger = easylog()

@@ -120,7 +120,7 @@ class RerankingPipeline:
             # The listeners (here, for validation)
             listeners={"bestval": validation},
             # The hook used for evaluation
-            hooks = self.hooks
+            hooks=self.hooks,
         )
         outputs = learner.submit(launcher=self.launcher)
         (runs_path / tagspath(learner)).symlink_to(learner.logpath)

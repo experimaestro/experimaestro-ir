@@ -106,7 +106,7 @@ class Scorer(Config, EasyLogger):
             batchsize=batch_size,
             batcher=batcher,
             device=device,
-            top_k=top_k if top_k else None
+            top_k=top_k if top_k else None,
         )
 
 
@@ -131,7 +131,6 @@ class AbstractLearnableScorer(Scorer, Module):
 
     checkpoint: Meta[Optional[Path]]
     """A checkpoint path from which the model should be loaded (or None otherwise)"""
-
 
     __call__ = nn.Module.__call__
     to = nn.Module.to
@@ -192,7 +191,9 @@ class LearnableScorer(AbstractLearnableScorer):
         """
         raise NotImplementedError(f"forward in {self.__class__}")
 
-    def rsv(self, query: str, documents: List[ScoredDocument], content=False) -> List[ScoredDocument]:
+    def rsv(
+        self, query: str, documents: List[ScoredDocument], content=False
+    ) -> List[ScoredDocument]:
         # Prepare the inputs and call the model
         inputs = ProductRecords()
         for doc in documents:
@@ -207,9 +208,13 @@ class LearnableScorer(AbstractLearnableScorer):
         # Returns the scored documents
         scoredDocuments = []
         for i in range(len(documents)):
-            scoredDocuments.append(ScoredDocument(
-                documents[i].docid, float(scores[i]), documents[i].content if content else None
-            ))
+            scoredDocuments.append(
+                ScoredDocument(
+                    documents[i].docid,
+                    float(scores[i]),
+                    documents[i].content if content else None,
+                )
+            )
 
         return scoredDocuments
 
@@ -299,7 +304,7 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
         batch: List[ScoredDocument],
         query: str,
         scoredDocuments: List[ScoredDocument],
-        content:bool
+        content: bool,
     ):
         scoredDocuments.extend(self.scorer.rsv(query, batch, content))
 
@@ -318,68 +323,71 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
         _scoredDocuments.sort(reverse=True)
         return _scoredDocuments[: (self.top_k or len(_scoredDocuments))]
 
+
 class DuoTwoStageRetriever(AbstractTwoStageRetriever):
     """The two stage retriever for duobert. The way of the inference is different from
     the normal monobert.
     """
 
     def _retrieve(
-        self,  
+        self,
         batch: List[Tuple[ScoredDocument, ScoredDocument]],
         query: str,
-        scoredDocuments: List[float]
+        scoredDocuments: List[float],
     ):
-        """call the function rsv to get the information for each batch 
-        because of the batchsize is independent on k, we may seperate the 
+        """call the function rsv to get the information for each batch
+        because of the batchsize is independent on k, we may seperate the
         triplets belongs to the same query into different batches.
         """
         scoredDocuments.extend(self.rsv(query, batch))
-    
-    def retrieve(
-        self, 
-        query: str
-    ):
+
+    def retrieve(self, query: str):
         """call the _retrieve function by using the batcher and do an
         aggregation of all the scores
         """
         # topk from the monobert
-        scoredDocuments_previous = self.retriever.retrieve(query, content=True) # list[ScoredDocument]
+        scoredDocuments_previous = self.retriever.retrieve(
+            query, content=True
+        )  # list[ScoredDocument]
 
         # transform them into the pairs.(doc_1, doc_2)
         pairs = []
         for i in range(len(scoredDocuments_previous)):
             for j in range(len(scoredDocuments_previous)):
                 if i != j:
-                    pairs.append((scoredDocuments_previous[i],scoredDocuments_previous[j]))
+                    pairs.append(
+                        (scoredDocuments_previous[i], scoredDocuments_previous[j])
+                    )
 
         # Scorer in evaluation mode
         self.scorer.eval()
 
-        _scores_pairs = [] # the scores for each pair of documents
-        self._batcher.process(
-            pairs, self._retrieve, query, _scores_pairs
-        )
+        _scores_pairs = []  # the scores for each pair of documents
+        self._batcher.process(pairs, self._retrieve, query, _scores_pairs)
 
-        _scores_pairs = torch.Tensor(_scores_pairs).reshape(len(scoredDocuments_previous),-1)
-        _scores_per_document = torch.sum(_scores_pairs, dim = 1) # scores for each document.
+        _scores_pairs = torch.Tensor(_scores_pairs).reshape(
+            len(scoredDocuments_previous), -1
+        )
+        _scores_per_document = torch.sum(
+            _scores_pairs, dim=1
+        )  # scores for each document.
 
         # construct the ScoredDocument object from the score we just get.
         scoredDocuments = []
         for i in range(len(scoredDocuments_previous)):
             scoredDocuments.append(
-                ScoredDocument(scoredDocuments_previous[i].docid, float(_scores_per_document[i]))
+                ScoredDocument(
+                    scoredDocuments_previous[i].docid, float(_scores_per_document[i])
+                )
             )
         scoredDocuments.sort(reverse=True)
         return scoredDocuments[: (self.top_k or len(scoredDocuments))]
-        
 
     def rsv(
-            self, 
-            query: str, 
-            documents: List[Tuple[ScoredDocument, ScoredDocument]]
-    ) -> List[float]: 
+        self, query: str, documents: List[Tuple[ScoredDocument, ScoredDocument]]
+    ) -> List[float]:
         """Given the query and documents in tuple
-        return the score for each triplets 
+        return the score for each triplets
         """
         qry = Query(None, query)
         inputs = PairwiseRecords()
@@ -389,5 +397,5 @@ class DuoTwoStageRetriever(AbstractTwoStageRetriever):
             inputs.add(PairwiseRecord(qry, doc1, doc2))
 
         with torch.no_grad():
-            scores = self.scorer(inputs, None).cpu().float() # shape (batchsizes)
+            scores = self.scorer(inputs, None).cpu().float()  # shape (batchsizes)
             return scores.tolist()

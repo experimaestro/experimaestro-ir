@@ -14,7 +14,7 @@ from xpmir.text.encoders import (
     ContextualizedTextEncoderOutput,
     DualTextEncoder,
     TextEncoder,
-    TripletTextEncoder
+    TripletTextEncoder,
 )
 from xpmir.utils import easylog
 
@@ -40,7 +40,7 @@ logger = easylog()
 #     Attribute:
 #         model_id: id for the huggingface model.
 #     """
-#     # TODO: modify the encoder here to get the model id directly. 
+#     # TODO: modify the encoder here to get the model id directly.
 #     # Then load the model by using the SequenceModel...() to get the full information...
 #     model_id: Param[str]
 
@@ -54,7 +54,7 @@ logger = easylog()
 
 #     def forward(self, inputs: BaseRecords, info: TrainerContext = None):
 #         # Encode queries and documents
-#         # TODO: do a forward pass 
+#         # TODO: do a forward pass
 #         pass
 
 
@@ -73,8 +73,8 @@ class TransformerVocab(text.Vocab):
     dropout: Param[Optional[float]] = 0
     """Define a dropout for all the layers"""
 
-    CLS: int # id=101
-    SEP: int # id=102
+    CLS: int  # id=101
+    SEP: int  # id=102
 
     @cached_property
     def tokenizer(self):
@@ -96,8 +96,7 @@ class TransformerVocab(text.Vocab):
             else:
                 config.hidden_dropout_prob = self.dropout
                 config.attention_probs_dropout_prob = self.dropout
-                self.model = automodel.from_pretrained(self.model_id, config = config)
-
+                self.model = automodel.from_pretrained(self.model_id, config=config)
 
         # Loads the tokenizer
         self._tokenizer = AutoTokenizer.from_pretrained(self.model_id, use_fast=True)
@@ -163,7 +162,7 @@ class TransformerVocab(text.Vocab):
             r["input_ids"].to(self.device),
             r["length"],
             r.get("attention_mask", None),
-            r.get("token_type_ids", None) # if r["token_type_ids"] else None
+            r.get("token_type_ids", None),  # if r["token_type_ids"] else None
         )
 
     def id2tok(self, idx):
@@ -316,11 +315,15 @@ class DualTransformerEncoder(TransformerVocab, DualTextEncoder):
     maxlen: Param[Optional[int]] = None
 
     version: Constant[int] = 2
-    
+
     def forward(self, texts: List[Tuple[str, str]]):
         tokenized = self.batch_tokenize(texts, maxlen=self.maxlen, mask=True)
         with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
-            y = self.model(tokenized.ids, token_type_ids=tokenized.token_type_ids.to(self.device), attention_mask=tokenized.mask.to(self.device))
+            y = self.model(
+                tokenized.ids,
+                token_type_ids=tokenized.token_type_ids.to(self.device),
+                attention_mask=tokenized.mask.to(self.device),
+            )
 
         # Assumes that [CLS] is the first token
         return y.last_hidden_state[:, 0]
@@ -328,50 +331,53 @@ class DualTransformerEncoder(TransformerVocab, DualTextEncoder):
     @property
     def dimension(self) -> int:
         return self.model.config.hidden_size
-    
+
     # def distribute_models(self, update):
     #     self.model = update(self.model)
+
 
 class DualDuoBertTransformerEncoder(TransformerVocab, TripletTextEncoder):
     """Encoder of the query-document-document pair of the [cls] token
     Be like: [cls]query[sep]doc1[sep]doc2[sep] with 62 tokens for query
     and 223 for each document.
     """
+
     def initialize(self, noinit=False, automodel=AutoModel):
         super().initialize(noinit, automodel)
         self.model.embeddings.token_type_embeddings = nn.Embedding(3, self.dimension)
 
-    def batch_tokenize(self, 
-        texts: List[Tuple[str, str, str]], 
-        batch_first=True, 
-        maxlen=(64, 224, 224),  # for query, first document and second document respectively
-        mask=False
+    def batch_tokenize(
+        self,
+        texts: List[Tuple[str, str, str]],
+        batch_first=True,
+        maxlen=(
+            64,
+            224,
+            224,
+        ),  # for query, first document and second document respectively
+        mask=False,
     ) -> TokenizedTexts:
-        
+
         assert batch_first, "Batch first is the only option"
 
         query = self.tokenizer(
-            [triplet[0] for triplet in texts], 
-            max_length = maxlen[0],
-            truncation = True
+            [triplet[0] for triplet in texts], max_length=maxlen[0], truncation=True
         )
 
         document_1 = self.tokenizer(
-            [triplet[1] for triplet in texts], 
-            max_length = maxlen[1],
-            truncation = True
+            [triplet[1] for triplet in texts], max_length=maxlen[1], truncation=True
         )
 
         document_2 = self.tokenizer(
-            [triplet[2] for triplet in texts], 
-            max_length = maxlen[2],
-            truncation = True
+            [triplet[2] for triplet in texts], max_length=maxlen[2], truncation=True
         )
 
         new_input_ids = []
         new_attention_mask = []
         new_token_type_ids = []
-        length_factory = [] # [[query_length, document_1_length, document_2_length, total_length],..]
+        length_factory = (
+            []
+        )  # [[query_length, document_1_length, document_2_length, total_length],..]
         new_length = []
         maxlen = 0
         batch_size = len(query["input_ids"])
@@ -384,17 +390,31 @@ class DualDuoBertTransformerEncoder(TransformerVocab, TripletTextEncoder):
             total_length_at_index = query_length + document_1_length + document_2_length
             if total_length_at_index > maxlen:
                 maxlen = total_length_at_index
-            length_factory.append([query_length, document_1_length, document_2_length, total_length_at_index])
+            length_factory.append(
+                [
+                    query_length,
+                    document_1_length,
+                    document_2_length,
+                    total_length_at_index,
+                ]
+            )
 
         for index in range(batch_size):
             new_input_ids.append(
-                query["input_ids"][index] + document_1["input_ids"][index][1:] + document_2["input_ids"][index][1:] + [0] * (maxlen - length_factory[index][3])
+                query["input_ids"][index]
+                + document_1["input_ids"][index][1:]
+                + document_2["input_ids"][index][1:]
+                + [0] * (maxlen - length_factory[index][3])
             )
             new_attention_mask.append(
-                [1] * length_factory[index][3] + [0] * (maxlen - length_factory[index][3])
+                [1] * length_factory[index][3]
+                + [0] * (maxlen - length_factory[index][3])
             )
             new_token_type_ids.append(
-                [0] * length_factory[index][0] + [1] * length_factory[index][1] + [2] * length_factory[index][2] + [0] * (maxlen - length_factory[index][3])
+                [0] * length_factory[index][0]
+                + [1] * length_factory[index][1]
+                + [2] * length_factory[index][2]
+                + [0] * (maxlen - length_factory[index][3])
             )
             new_length.append(length_factory[index][3])
 
@@ -410,7 +430,7 @@ class DualDuoBertTransformerEncoder(TransformerVocab, TripletTextEncoder):
             new_input_ids.to(self.device),
             new_length,
             new_attention_mask if mask else None,
-            new_token_type_ids.to(self.device)
+            new_token_type_ids.to(self.device),
         )
 
     def forward(self, texts: List[Tuple[str, str, str]]):
@@ -418,11 +438,15 @@ class DualDuoBertTransformerEncoder(TransformerVocab, TripletTextEncoder):
         tokenized = self.batch_tokenize(texts, mask=True)
 
         with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
-            y = self.model(tokenized.ids, token_type_ids=tokenized.token_type_ids, attention_mask=tokenized.mask.to(self.device))
+            y = self.model(
+                tokenized.ids,
+                token_type_ids=tokenized.token_type_ids,
+                attention_mask=tokenized.mask.to(self.device),
+            )
 
         # Assumes that [CLS] is the first token
         # shape of y.last_hidden_state: (1, len(texts), dimension)
-        return y.last_hidden_state[:, 0] 
+        return y.last_hidden_state[:, 0]
 
     @property
     def dimension(self) -> int:
@@ -430,6 +454,7 @@ class DualDuoBertTransformerEncoder(TransformerVocab, TripletTextEncoder):
 
     # def distribute_models(self, update):
     #     self.model = update(self.model)
+
 
 class LayerFreezer(InitializationTrainingHook):
     """This training hook class can be used to freeze some of the transformer layers"""

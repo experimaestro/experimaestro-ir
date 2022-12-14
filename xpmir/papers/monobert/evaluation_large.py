@@ -82,7 +82,7 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
     if configuration.type == "small":
         # We request a GPU, and if none, a CPU
         gpu_launcher = find_launcher(
-            ((cuda_gpu(mem="12G")*2) if gpu else cpu()) & req_duration, tags=tags
+            ((cuda_gpu(mem="12G") * 2) if gpu else cpu()) & req_duration, tags=tags
         )
     else:
         assert gpu, "Running full scale experiment without GPU is not recommended"
@@ -112,8 +112,8 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
         logging.info("tensorboard --logdir=%s", runs_path)
 
         # Datasets: train, validation and test
-        documents = prepare_dataset("irds.msmarco-passage.documents") # for indexing 
-        cars_documents = prepare_dataset("irds.car.v1.5.documents") # for indexing
+        documents = prepare_dataset("irds.msmarco-passage.documents")  # for indexing
+        cars_documents = prepare_dataset("irds.car.v1.5.documents")  # for indexing
         devsmall = prepare_dataset("irds.msmarco-passage.dev.small")
 
         # We will evaluate on TREC DL 2019 and 2020
@@ -133,40 +133,42 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
         base_retriever_ms = AnseriniRetriever(k=topK, index=index, model=basemodel)
 
         # Build the TREC CARS index
-        index_cars = IndexCollection(documents=cars_documents, storeContents=True).submit(launcher = cpu_launcher_4g)
-        base_retriever_cars = AnseriniRetriever(k=topK, index=index_cars, model=basemodel)
+        index_cars = IndexCollection(
+            documents=cars_documents, storeContents=True
+        ).submit(launcher=cpu_launcher_4g)
+        base_retriever_cars = AnseriniRetriever(
+            k=topK, index=index_cars, model=basemodel
+        )
 
         base_retrievers = {
-            'irds.car.v1.5.documents@irds': base_retriever_cars,
-            'irds.msmarco-passage.documents@irds': base_retriever_ms
+            "irds.car.v1.5.documents@irds": base_retriever_cars,
+            "irds.msmarco-passage.documents@irds": base_retriever_ms,
         }
 
         # Search and evaluate with BM25
         bm25_retriever_ms = AnseriniRetriever(k=topK, index=index, model=basemodel).tag(
             "model", "bm25"
         )
-        bm25_retriever_car = AnseriniRetriever(k=topK, index=index_cars, model=basemodel).tag(
-            "model", "bm25"
-        )
+        bm25_retriever_car = AnseriniRetriever(
+            k=topK, index=index_cars, model=basemodel
+        ).tag("model", "bm25")
 
         bm25_retriever = {
-            'irds.car.v1.5.documents@irds': bm25_retriever_car,
-            'irds.msmarco-passage.documents@irds': bm25_retriever_ms
+            "irds.car.v1.5.documents@irds": bm25_retriever_car,
+            "irds.msmarco-passage.documents@irds": bm25_retriever_ms,
         }
-
 
         # FIXME: Resolve the OoM by using a GPU. Recommend to rewrite the code in the ir_measures
         # Evaluate BM25 as well as the random scorer (low baseline)
         tests.evaluate_retriever(
-            lambda documents: bm25_retriever[documents.id], 
-            gpu_launcher_4
+            lambda documents: bm25_retriever[documents.id], gpu_launcher_4
         )
 
         tests.evaluate_retriever(
             lambda documents: random_scorer.getRetriever(
                 base_retrievers[documents.id], batch_size, PowerAdaptativeBatcher()
             ),
-            gpu_launcher_4
+            gpu_launcher_4,
         )
 
         # define the trainer for monobert
@@ -178,9 +180,12 @@ def cli(debug, configuration, gpu, tags, host, port, workdir, max_epochs, batch_
 
         tests.evaluate_retriever(
             lambda documents: monobert_scorer.getRetriever(
-                base_retrievers[documents.id], batch_size, PowerAdaptativeBatcher(), device = device
+                base_retrievers[documents.id],
+                batch_size,
+                PowerAdaptativeBatcher(),
+                device=device,
             ),
-            gpu_launcher
+            gpu_launcher,
         )
 
         # Waits that experiments complete

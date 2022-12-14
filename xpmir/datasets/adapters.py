@@ -87,10 +87,11 @@ class ConcatFold(Task):
     topics: Annotated[Path, pathgenerator("topics.tsv")]
     """Generated topics file"""
 
-
     def config(self) -> Adhoc:
         dataset_document_id = set(dataset.document.id for dataset in self.datasets)
-        assert len(dataset_document_id) == 1, 'At the moment only one set of documents supported.'
+        assert (
+            len(dataset_document_id) == 1
+        ), "At the moment only one set of documents supported."
         return Adhoc(
             id="",  # No need to have a more specific id since it is generated
             topics=CSVAdhocTopics(id="", path=self.topics),
@@ -101,16 +102,16 @@ class ConcatFold(Task):
     def execute(self):
         topics = []
         # concat the topics
-        for dataset in self.datasets: 
+        for dataset in self.datasets:
             topics.extend([topic for topic in dataset.topics.iter()])
-        
+
         # Write topics and assessments
         ids = set()
         self.topics.parent.mkdir(parents=True, exist_ok=True)
         with self.topics.open("wt") as fp:
             for topic in topics:
                 ids.add(topic.qid)
-                slash_t = '\t'
+                slash_t = "\t"
                 fp.write(f"""{topic.qid}\t{topic.text.replace(slash_t, ' ')}\n""")
 
         with self.assessments.open("wt") as fp:
@@ -119,8 +120,6 @@ class ConcatFold(Task):
                     if qrels.qid in ids:
                         for qrel in qrels.assessments:
                             fp.write(f"""{qrels.qid} 0 {qrel.docno} {qrel.rel}\n""")
-
-
 
 
 class RandomFold(Task):

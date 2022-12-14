@@ -1,10 +1,10 @@
 type: duobert
-Launcher: 
+Launcher:
     gpu: true
-    tags: 
+    tags:
 Indexation:
     requirements: duration=6 days & cpu(mem=4G)
-Learner: 
+Learner:
     validation_size: 500
     steps_per_epoch: 32
     validation_interval: 32
@@ -14,9 +14,9 @@ Learner:
     warmup_min_factor: 0
     lr: 3.0e-6
     requirements: duration=6 days & cuda(mem=24G)*2
-Evaluation: 
+Evaluation:
     requirements: duration=6 days & cuda(mem=24G)
-Retriever_mono: 
+Retriever_mono:
     k: 1000
     val_k: 1000
 Retriever_duo:

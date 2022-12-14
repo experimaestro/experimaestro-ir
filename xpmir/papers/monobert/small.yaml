@@ -1,10 +1,10 @@
 type: monobert-small
-Launcher: 
+Launcher:
     gpu: true
-    tags: 
+    tags:
 Indexation:
     requirements: duration=2 days & cpu(mem=4G)
-Learner: 
+Learner:
     validation_size: 10
     steps_per_epoch: 32
     validation_interval: 1
@@ -14,8 +14,8 @@ Learner:
     warmup_min_factor: 0.1
     lr: 3.0e-6
     requirements: duration=2 days & cuda(mem=8G) * 2
-Evaluation: 
+Evaluation:
     requirements: duration=2 days & cuda(mem=8G)
-Retriever_mono: 
+Retriever_mono:
     k: 20
     val_k: 20

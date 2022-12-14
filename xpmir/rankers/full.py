@@ -127,7 +127,7 @@ class FullRetrieverRescorer(Retriever):
 
     def retrieve_all(self, queries: Dict[str, str]) -> Dict[str, List[ScoredDocument]]:
         """Input is a dictionary of query {id:text},
-           return the a dictionary of {query_id: List of ScoredDocuments under the query}
+        return the a dictionary of {query_id: List of ScoredDocuments under the query}
         """
 
         self.scorer.eval()
@@ -139,8 +139,10 @@ class FullRetrieverRescorer(Retriever):
             # and then concat them together
             enc_queries = self.query_batcher.reduce(
                 all_queries, self.encode_queries, []
-            ) 
-            enc_queries = self.scorer.merge_queries(enc_queries) # shape (len(queries), dimension)
+            )
+            enc_queries = self.scorer.merge_queries(
+                enc_queries
+            )  # shape (len(queries), dimension)
 
             # Encode documents and score them
             scored_documents: List[List[ScoredDocument]] = []

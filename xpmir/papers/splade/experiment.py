@@ -70,35 +70,35 @@ logging.basicConfig(level=logging.INFO)
 #     "--batch-size", type=int, default=None, help="Batch size (validation and test)"
 # )
 
+
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 @omegaconf_argument("configuration", package=__package__)
 @click.argument("workdir", type=Path)
 @click.command()
-
 def cli(
     env: Dict[str, str],
     debug: bool,
-    configuration, 
+    configuration,
     host: str,
     port: int,
     workdir: str,
-    args
+    args,
 ):
     """Runs an experiment"""
-    # Merge the additional option to the existing 
+    # Merge the additional option to the existing
     conf_args = OmegaConf.from_dotlist(args)
     configuration = OmegaConf.merge(configuration, conf_args)
 
     tags = configuration.Launcher.tags.split(",") if configuration.Launcher.tags else []
-    
+
     logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
-    
+
     # Number of topics in the validation set
     VAL_SIZE = configuration.Learner.validation_size
 
     # Number of steps in each epoch
     steps_per_epoch = configuration.Learner.steps_per_epoch
-    
+
     # Validation interval (in epochs)
     validation_interval = configuration.Learner.validation_interval
 
@@ -113,7 +113,7 @@ def cli(
 
     # the batch_size for training the splade model
     splade_batch_size = configuration.Learner.splade_batch_size
-    
+
     # The numbers of the warmup steps during the training
     num_warmup_steps = configuration.Learner.num_warmup_steps
 
@@ -144,16 +144,20 @@ def cli(
 
     name = configuration.type
 
-    # launchers 
-    assert configuration.Launcher.gpu, 'It is recommend to do this on GPU'
+    # launchers
+    assert configuration.Launcher.gpu, "It is recommend to do this on GPU"
     cpu_launcher_index = find_launcher(configuration.Indexation.requirements)
-    gpu_launcher_index = find_launcher(configuration.Indexation.training_requirements, tags=tags)
+    gpu_launcher_index = find_launcher(
+        configuration.Indexation.training_requirements, tags=tags
+    )
     gpu_launcher_learner = find_launcher(configuration.Learner.requirements, tags=tags)
-    gpu_launcher_evaluate = find_launcher(configuration.Evaluation.requirements, tags=tags)
+    gpu_launcher_evaluate = find_launcher(
+        configuration.Evaluation.requirements, tags=tags
+    )
 
     # Starts the experiment
     with experiment(workdir, name, host=host, port=port) as xp:
-         # Set environment variables
+        # Set environment variables
         xp.setenv("JAVA_HOME", os.environ["JAVA_HOME"])
         for key, value in env:
             xp.setenv(key, value)
@@ -162,11 +166,15 @@ def cli(
         device = CudaDevice() if configuration.Launcher.gpu else Device()
         random = Random(seed=0)
 
-        # prepare the dataset 
-        documents = prepare_dataset("irds.msmarco-passage.documents") # all the documents for msmarco
+        # prepare the dataset
+        documents = prepare_dataset(
+            "irds.msmarco-passage.documents"
+        )  # all the documents for msmarco
         dev = prepare_dataset("irds.msmarco-passage.dev")
-        devsmall = prepare_dataset("irds.msmarco-passage.dev.small") # development
-        train_triples = prepare_dataset("irds.msmarco-passage.train.docpairs") # pair for pairwise learner
+        devsmall = prepare_dataset("irds.msmarco-passage.dev.small")  # development
+        train_triples = prepare_dataset(
+            "irds.msmarco-passage.train.docpairs"
+        )  # pair for pairwise learner
 
         # Index for msmarcos
         index = IndexCollection(documents=documents, storeContents=True).submit()
@@ -178,7 +186,7 @@ def cli(
 
         # Build a dev. collection for full-ranking (validation)
         # "Efficiently Teaching an Effective Dense Retriever with Balanced Topic Aware Sampling"
-        tasb = tas_balanced() # create a scorer from huggingface
+        tasb = tas_balanced()  # create a scorer from huggingface
 
         # task to train the tas_balanced encoder for the document list and generate an index for retrieval
         tasb_index = IndexBackedFaiss(
@@ -192,11 +200,7 @@ def cli(
             encoder=DenseDocumentEncoder(scorer=tasb),
             batchsize=2048,
             batcher=PowerAdaptativeBatcher(),
-            hooks=[
-                setmeta(
-                    DistributedHook(models=[tasb]), True
-                )
-            ],
+            hooks=[setmeta(DistributedHook(models=[tasb]), True)],
         ).submit(launcher=gpu_launcher_index)
 
         # A retriever if tas-balanced. We use the index of the faiss.
@@ -217,7 +221,7 @@ def cli(
             trec2020=Evaluations(
                 prepare_dataset("irds.msmarco-passage.trec-dl-2020"), measures
             ),
-            msmarco_dev=Evaluations(devsmall, measures)
+            msmarco_dev=Evaluations(devsmall, measures),
         )
 
         # building the validation dataset.
@@ -233,17 +237,15 @@ def cli(
         ).submit(launcher=gpu_launcher_index)
 
         # compute the baseline performance on the test dataset.
-        # Bm25 
+        # Bm25
         bm25_retriever = AnseriniRetriever(k=topK, index=index, model=basemodel)
         tests.evaluate_retriever(
-            copyconfig(bm25_retriever).tag('model','bm25'), 
-            cpu_launcher_index
+            copyconfig(bm25_retriever).tag("model", "bm25"), cpu_launcher_index
         )
 
         # tas-balance
         tests.evaluate_retriever(
-            copyconfig(tasb_retriever).tag('model','tasb'),
-            gpu_launcher_index
+            copyconfig(tasb_retriever).tag("model", "tasb"), gpu_launcher_index
         )
 
         # define the path to store the result for tensorboard
@@ -252,9 +254,13 @@ def cli(
         runspath.mkdir(exist_ok=True, parents=True)
 
         # generator a batchwise sampler which is an Iterator of ProductRecords()
-        train_sampler = TripletBasedSampler(source=triplesid, index=index) # the pairwise sampler from the dataset.
-        ibn_sampler = PairwiseInBatchNegativesSampler(sampler=train_sampler) # generating the batchwise from the pairwise
-        
+        train_sampler = TripletBasedSampler(
+            source=triplesid, index=index
+        )  # the pairwise sampler from the dataset.
+        ibn_sampler = PairwiseInBatchNegativesSampler(
+            sampler=train_sampler
+        )  # generating the batchwise from the pairwise
+
         # scheduler for trainer
         scheduler = LinearWithWarmup(num_warmup_steps=num_warmup_steps)
 
@@ -280,13 +286,16 @@ def cli(
             trainer: Trainer,
             optimizers: List,
             hooks=[],
-            launcher=gpu_launcher_learner
+            launcher=gpu_launcher_learner,
         ):
             # establish the validation listener
             validation = ValidationListener(
                 dataset=ds_val,
                 retriever=scorer.getRetriever(
-                    base_retriever_full, batch_size_full_retriever, PowerAdaptativeBatcher(), device=device
+                    base_retriever_full,
+                    batch_size_full_retriever,
+                    PowerAdaptativeBatcher(),
+                    device=device,
                 ),  # a retriever which use the splade model to score all the documents and then do the retrieve
                 early_stop=early_stop,
                 validation_interval=validation_interval,
@@ -320,7 +329,6 @@ def cli(
             best = outputs.listeners["bestval"]["RR@10"]
 
             return best
-            
 
         # Get a sparse retriever from a dual scorer
         def sparse_retriever(scorer, documents):
@@ -334,7 +342,7 @@ def cli(
                 encoder=DenseDocumentEncoder(scorer=scorer),
                 device=device,
                 documents=documents,
-                ordered_index = False,
+                ordered_index=False,
             ).submit(launcher=gpu_launcher_index)
 
             return SparseRetriever(
@@ -359,10 +367,7 @@ def cli(
 
         # evaluate the best model
         splade_retriever = sparse_retriever(best_model, documents)
-        tests.evaluate_retriever(
-            splade_retriever, 
-            gpu_launcher_evaluate
-        )
+        tests.evaluate_retriever(splade_retriever, gpu_launcher_evaluate)
 
         # wait for all the experiments ends
         xp.wait()
@@ -375,6 +380,7 @@ def cli(
                 print(
                     f"Results for {evaluation.__xpm__.tags()}\n{evaluation.results.read_text()}\n"
                 )
+
 
 if __name__ == "__main__":
     cli()

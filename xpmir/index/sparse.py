@@ -77,6 +77,7 @@ class SparseRetriever(Retriever):
 
     def retrieve_all(self, queries: Dict[str, str]) -> Dict[str, List[ScoredDocument]]:
         """Input queries: {id: text}"""
+
         def reducer(
             batch: List[Tuple[str, str]], results: Dict[str, List[ScoredDocument]]
         ):
@@ -104,8 +105,10 @@ class SparseRetriever(Retriever):
 
         # Build up iterators
         vector = self.encoder([query])[0].cpu().numpy()
-        (ix,) = vector.nonzero() # ix represents the position without 0 in the vector
-        query = {ix: float(v) for ix, v in zip(ix, vector[ix])} # generate a dict: {position:value}
+        (ix,) = vector.nonzero()  # ix represents the position without 0 in the vector
+        query = {
+            ix: float(v) for ix, v in zip(ix, vector[ix])
+        }  # generate a dict: {position:value}
         return self.index.retrieve(query, top_k or self.topk, content=content)
 
 
@@ -191,8 +194,8 @@ class SparseRetrieverIndexBuilder(Task):
             d.internal_docid is not None for d in batch
         ), f"No internal document ID provided by document store {type(self.documents)}"
 
-        vectors = self.encoder([d.text for d in batch]).cpu().numpy() # bs * vocab
-        for vector, d in zip(vectors, batch): 
+        vectors = self.encoder([d.text for d in batch]).cpu().numpy()  # bs * vocab
+        for vector, d in zip(vectors, batch):
             (nonzero_ix,) = vector.nonzero()
             self.indexer.add(
                 d.internal_docid, nonzero_ix.astype(np.uint64), vector[nonzero_ix]

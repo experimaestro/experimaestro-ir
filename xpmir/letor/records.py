@@ -60,7 +60,7 @@ class TokenizedTexts:
         ids: torch.LongTensor,
         lens: List[int],
         mask: torch.LongTensor,
-        token_type_ids: torch.LongTensor
+        token_type_ids: torch.LongTensor,
     ):
         self.tokens = tokens
         self.ids = ids
@@ -160,9 +160,12 @@ class PairwiseRecordWithTarget(PairwiseRecord):
 
     target: int
 
-    def __init__(self, query: Query, positive: Document, negative: Document, target: int):
-        super().__init__(query,positive,negative)
+    def __init__(
+        self, query: Query, positive: Document, negative: Document, target: int
+    ):
+        super().__init__(query, positive, negative)
         self.target = target
+
 
 class PairwiseRecords(BaseRecords):
     """Pairwise records of queries associated with (positive, negative) pairs"""
@@ -185,7 +188,7 @@ class PairwiseRecords(BaseRecords):
         self._queries.append(record.query)
         self.positives.append(record.positive)
         self.negatives.append(record.negative)
-    
+
     @property
     def queries(self):
         return itertools.chain(self._queries, self._queries)
@@ -218,6 +221,7 @@ class PairwiseRecords(BaseRecords):
 
         return PairwiseRecord(self._queries[ix], self.positives[ix], self.negatives[ix])
 
+
 class PairwiseRecordsWithTarget(PairwiseRecords):
     # The target of the Pairwise records in Duobert case
     target: List[int]
@@ -234,19 +238,24 @@ class PairwiseRecordsWithTarget(PairwiseRecords):
 
     def get_target(self):
         return self.target
-    
+
     def __getitem__(self, ix: Union[slice, int]):
         if isinstance(ix, slice):
             records = PairwiseRecordsWithTarget()
             for i in range(ix.start, min(ix.stop, len(self._queries)), ix.step or 1):
                 records.add(
                     PairwiseRecordWithTarget(
-                        self._queries[i], self.positives[i], self.negatives[i], self.target[i]
+                        self._queries[i],
+                        self.positives[i],
+                        self.negatives[i],
+                        self.target[i],
                     )
                 )
             return records
 
-        return PairwiseRecordWithTarget(self._queries[ix], self.positives[ix], self.negatives[ix], self.target[ix])
+        return PairwiseRecordWithTarget(
+            self._queries[ix], self.positives[ix], self.negatives[ix], self.target[ix]
+        )
 
 
 class BatchwiseRecords(BaseRecords):
