@@ -1,7 +1,8 @@
 from typing import List, Optional, Tuple, Dict, Any
 from experimaestro import Param, Meta
 import torch
-from . import Retriever, AdhocDocuments, ScoredDocument, AdhocDocument
+from . import Retriever, ScoredDocument
+from datamaestro_text.data.ir import AdhocDocument, AdhocDocuments
 from xpmir.neural.dual import DualRepresentationScorer
 from xpmir.letor.batchers import Batcher
 from xpmir.letor import Device
