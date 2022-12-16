@@ -1,11 +1,11 @@
 from dataclasses import InitVar
 import sys
-from typing import Dict, Iterator, Tuple
+from typing import Iterator
 import torch
 from torch import nn
 from torch.functional import Tensor
 import torch.nn.functional as F
-from experimaestro import Config, default, Annotated, Param, deprecate
+from experimaestro import Config, Param
 from xpmir.letor.context import Loss
 from xpmir.letor.metrics import ScalarMetric
 from xpmir.letor.records import (
@@ -19,7 +19,6 @@ from xpmir.letor.trainers import TrainerContext, LossTrainer
 import numpy as np
 from xpmir.rankers import LearnableScorer, ScorerOutputType
 from xpmir.utils import foreach
-from xpmir.letor.trainers.pointwise import PointwiseLoss
 
 
 class PairwiseLoss(Config, nn.Module):
@@ -204,13 +203,18 @@ class PairwiseTrainer(LossTrainer):
             ).sum().float() / count
 
 
-class DuoLogProbaLoss(PairwiseLoss):
+class PairwiseLossWithTarget(Config):
+    pass
+
+
+class PairwiseLossWithTarget(PairwiseLossWithTarget):
     NAME = "DuoLogProbaLoss"
 
     def compute(self, score: Tensor, target: Tensor, context: TrainerContext):
         return self.loss(score, target)
 
     def process(self, scores: Tensor, target: Tensor, context: TrainerContext):
+        # TODO: adapt the loss to the scorer output (see PairwiseLoss)
         self.loss = nn.BCEWithLogitsLoss()
         value = self.compute(scores, target, context)
         context.add_loss(Loss(f"pair-{self.NAME}", value, self.weight))
@@ -221,7 +225,7 @@ class DuoPairwiseTrainer(LossTrainer):
     can be the same as the pairwiseTrainer
     """
 
-    lossfn: Param[PairwiseLoss]
+    lossfn: Param[PairwiseLossWithTarget]
     """The loss function"""
 
     sampler: Param[PairwiseSampler]
@@ -240,8 +244,9 @@ class DuoPairwiseTrainer(LossTrainer):
         while True:
             batch = PairwiseRecordsWithTarget()
             for _, record in zip(range(self.batch_size), self.sampler_iter):
-                # randomly swap the first and second document
-                # Test: some errors maybe related here. modify the 0.5 to 1 to see the source of the error
+                # randomly swap the first and second document Test: some errors
+                # maybe related here. modify the 0.5 to 1 to see the source of
+                # the error
                 if self.random.random() < 0.5:
                     batch.add(
                         PairwiseRecordWithTarget(
@@ -260,6 +265,7 @@ class DuoPairwiseTrainer(LossTrainer):
         # Get the next batch and compute the scores for each query/document
         # forward pass
         rel_scores = self.ranker(records, self.context)  # shape: (bs)
+        targets = records.get_target().to(rel_scores.device())
 
         # print(rel_scores)
         # print(torch.Tensor(records.get_target()))
@@ -271,19 +277,17 @@ class DuoPairwiseTrainer(LossTrainer):
         # Reshape to get the pairs and compute the loss
         self.lossfn.process(
             rel_scores,
-            torch.Tensor(records.get_target()).to(torch.device("cuda:0")),
+            torch.Tensor(targets),
             self.context,
         )
 
         self.context.add_metric(
             ScalarMetric(
                 "accuracy",
-                float(
-                    self.acc(
-                        rel_scores,
-                        torch.Tensor(records.get_target()).to(torch.device("cuda:0")),
-                    ).item()
-                ),
+                self.acc(
+                    rel_scores,
+                    torch.Tensor(targets),
+                ).item(),
                 len(rel_scores),
             )
         )
