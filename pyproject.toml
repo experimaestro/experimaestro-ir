@@ -1,3 +1,11 @@
+[project]
+name = "experimaestro-ir"
+dynamic = ["version"]
+
+[project.scripts]
+xpmir = "xpmir.__main__:main"
+
+
 [tool.setuptools_scm]
 write_to = "xpmir/_version.py"
 fallback_version = "0.0.0-dev"
