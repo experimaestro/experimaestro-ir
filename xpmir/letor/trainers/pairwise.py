@@ -241,6 +241,7 @@ class DuoPairwiseTrainer(LossTrainer):
             batch = PairwiseRecordsWithTarget()
             for _, record in zip(range(self.batch_size), self.sampler_iter):
                 # randomly swap the first and second document
+                # Test: some errors maybe related here. modify the 0.5 to 1 to see the source of the error
                 if self.random.random() < 0.5:
                     batch.add(
                         PairwiseRecordWithTarget(
@@ -290,6 +291,7 @@ class DuoPairwiseTrainer(LossTrainer):
     def acc(self, scores_by_record, target) -> Tensor:
         with torch.no_grad():
             count = scores_by_record.shape[0]  # batch_size
+            pos = scores_by_record > 0
             return (
-                torch.abs(scores_by_record - (1 - target)) > 0
+                torch.logical_not(torch.logical_xor(pos, target))
             ).sum().float() / count

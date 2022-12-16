@@ -78,8 +78,8 @@ class AdhocDocuments(ir.AdhocDocumentStore, IRDSId):
         return self.dataset.docs_store()
 
     def _doc_text(self, doc) -> str:
-        if self.has_title and doc.title:
-            return f"{doc.title}\n{doc.text}"
+        # if self.has_title and doc.title:
+        #     return f"{doc.title}\n{doc.text}"
         return doc.text
 
     def document_text(self, docid: str) -> str:

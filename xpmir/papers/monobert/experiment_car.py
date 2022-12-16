@@ -1,11 +1,9 @@
-# Implementation of the experiments in the paper with trec car
+# Implementation of the experiments in the paper with trec car training, not working yet.
 # Passage Re-ranking with BERT, (Rodrigo Nogueira, Kyunghyun Cho). 2019
 # https://arxiv.org/abs/1901.04085
 
-import dataclasses
 import logging
 from pathlib import Path
-from omegaconf import OmegaConf
 from xpmir.datasets.adapters import ConcatFold
 from xpmir.distributed import DistributedHook
 from xpmir.letor.samplers import PairwiseModelBasedSampler
@@ -13,21 +11,12 @@ from xpmir.letor.schedulers import LinearWithWarmup
 
 import xpmir.letor.trainers.pairwise as pairwise
 from datamaestro import prepare_dataset
-from datamaestro_text.transforms.ir import ShuffledTrainingTripletsLines
-from xpmir.neural.cross import CrossScorer, DuoCrossScorer
+from xpmir.neural.cross import CrossScorer
 from experimaestro import experiment, setmeta
-from experimaestro.click import click, forwardoption
+from experimaestro.click import click
 from experimaestro.launcherfinder import cpu, cuda_gpu, find_launcher
 from experimaestro.launcherfinder.specs import duration
 from experimaestro.utils import cleanupdir
-from datamaestro_text.data.ir import (
-    Adhoc,
-    AdhocAssessments,
-    AdhocDocument,
-    AdhocDocumentStore,
-    AdhocDocuments,
-    AdhocTopics,
-)
 
 from xpmir.configuration import omegaconf_argument
 from xpmir.evaluation import Evaluations, EvaluationsCollection
@@ -35,26 +24,23 @@ from xpmir.interfaces.anserini import AnseriniRetriever, IndexCollection
 from xpmir.letor import Device, Random
 from xpmir.letor.batchers import PowerAdaptativeBatcher
 from xpmir.letor.devices import CudaDevice
-from xpmir.letor.learner import Learner
-from xpmir.letor.optim import Adam, ParameterOptimizer
+from xpmir.letor.optim import AdamW, ParameterOptimizer, RegexParameterFilter
 from xpmir.measures import AP, RR, P, nDCG
-from xpmir.neural.jointclassifier import JointClassifier
 from xpmir.pipelines.reranking import RerankingPipeline
-from xpmir.rankers import RandomScorer, Retriever
+from xpmir.rankers import RandomScorer
 from xpmir.rankers.standard import BM25
-from xpmir.text.huggingface import DualDuoBertTransformerEncoder, DualTransformerEncoder
+from xpmir.text.huggingface import DualTransformerEncoder
 from xpmir.utils import find_java_home
 
 logging.basicConfig(level=logging.INFO)
 
 # --- Experiment
-# @forwardoption.max_epochs(Learner, default=None)
-# @click.option("--tags", type=str, default="", help="Tags for selecting the launcher")
+# $ python -m xpmir.paper.monobert.experiment_car path/to/work_dir config_file_name configuration_modifier
+# Example:
+# $ python -m xpmir.paper.monobert.experiment_car experiment/ small Retriever_mono.k=10
+
+
 @click.option("--debug", is_flag=True, help="Print debug information")
-# @click.option("--gpu", is_flag=True, help="Use GPU")
-# @click.option(
-#     "--batch-size", type=int, default=None, help="Batch size (validation and test)"
-# )
 @click.option(
     "--host",
     type=str,
@@ -64,9 +50,6 @@ logging.basicConfig(level=logging.INFO)
 @click.option(
     "--port", type=int, default=12345, help="Port for monitoring (default 12345)"
 )
-
-# @omegaconf_argument("configuration", package=__package__)
-# works only with this one a the moment
 @omegaconf_argument("configuration", package="xpmir.papers.monobert")
 @click.argument("workdir", type=Path)
 @click.command()
@@ -100,7 +83,6 @@ def cli(debug, configuration, host, port, workdir):
     batch_size = configuration.Learner.batch_size
     max_epochs = configuration.Learner.max_epoch
 
-    # FIXME: uses CPU constraints rather than GPU
     cpu_launcher_4G = find_launcher(cuda_gpu(mem="4G"))
 
     # we assigne a gpu, if not, a cpu
@@ -218,13 +200,10 @@ def cli(debug, configuration, host, port, workdir):
         }
 
         # Defines how we sample train examples
-        # TODO: The dataset for training by using the dev
-        # k=20 in the bm25_retriever is too large --> reduce it to 10
         train_sampler = PairwiseModelBasedSampler(
             dataset=dev, retriever=bm25_retriever_car
         )
 
-        # FIXME: Resolve the OoM by using a GPU for devsmall. Recommend to rewrite the code in the ir_measures
         # Evaluate BM25 as well as the random scorer (low baseline)
         tests.evaluate_retriever(
             lambda documents: bm25_retriever[documents.id], cpu_launcher_4G
@@ -256,10 +235,24 @@ def cli(debug, configuration, host, port, workdir):
 
         monobert_reranking = RerankingPipeline(
             monobert_trainer,
-            ParameterOptimizer(
-                scheduler=scheduler,
-                optimizer=Adam(lr=configuration.Learner.lr, weight_decay=1e-2),
-            ),
+            [
+                ParameterOptimizer(
+                    scheduler=scheduler,
+                    optimizer=AdamW(lr=configuration.Learner.lr, eps=1e-6),
+                    filter=RegexParameterFilter(
+                        includes=[r"\.bias$", r"\.LayerNorm\."]
+                    ),
+                ),
+                ParameterOptimizer(
+                    scheduler=scheduler,
+                    optimizer=AdamW(
+                        lr=configuration.Learner.lr, weight_decay=1e-2, eps=1e-6
+                    ),
+                    filter=RegexParameterFilter(
+                        excludes=[r"\.bias$", r"\.LayerNorm\."]
+                    ),
+                ),
+            ],
             factory_retriever,
             STEPS_PER_EPOCH,
             max_epochs,
@@ -272,14 +265,7 @@ def cli(debug, configuration, host, port, workdir):
             launcher=gpu_launcher,
             evaluate_launcher=gpu_launcher,
             runs_path=runs_path,
-            # FIXME: The write and read of the model in the DataParallel has a .module. to resolve the problem,
-            # It should be better to create a adapter for the DistributedHook class for the DataParallel and
-            # rewrite the function read and load
-            # Further, it should be better if we can implement the hooks in the form like
-            # (models=[monobert_scorer]) where can paralize more things
-            # hooks=[
-            #     setmeta(DistributedHook(models=[monobert_scorer.encoder]), True)
-            # ]
+            hooks=[setmeta(DistributedHook(models=[monobert_scorer]), True)],
         )
 
         # Run the monobert and use the result as the baseline for duobert
