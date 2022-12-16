@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Optional, Protocol, List
-from experimaestro import tagspath, experiment, Param
+from experimaestro import tagspath, experiment
 from experimaestro.launchers import Launcher
 from datamaestro_text.data.ir import Adhoc, AdhocDocuments
 from xpmir.letor.devices import Device
@@ -11,7 +11,7 @@ from xpmir.evaluation import EvaluationsCollection
 from xpmir.letor.trainers import Trainer
 from xpmir.letor.optim import get_optimizers, Optimizers
 from xpmir.letor.learner import Learner, ValidationListener
-from xpmir.context import Hook, InitializationHook
+from xpmir.context import Hook
 
 
 class RetrieverFactory(Protocol):
@@ -47,7 +47,8 @@ class RerankingPipeline:
     """The validation dataset"""
 
     validation_metrics: Dict[str, bool]
-    """Metrics used for validation. If the corresponding value is False, the metric value is computed but no validation is performed on it"""
+    """Metrics used for validation. If the corresponding value is False, the
+    metric value is computed but no validation is performed on it"""
 
     # Test part
     tests: EvaluationsCollection
@@ -89,7 +90,6 @@ class RerankingPipeline:
         val_retriever_factory = (
             self.validation_retriever_factory or self.retriever_factory
         )
-        runs_path = self.runs_path or (experiment.current().resultspath / "runs")
 
         random = self.random or Random()
 
@@ -122,6 +122,9 @@ class RerankingPipeline:
             # The hook used for evaluation
             hooks=self.hooks,
         )
+
+        # Submit job and link
+        runs_path = self.runs_path or (experiment.current().resultspath / "runs")
         outputs = learner.submit(launcher=self.launcher)
         (runs_path / tagspath(learner)).symlink_to(learner.logpath)
 
@@ -129,8 +132,11 @@ class RerankingPipeline:
         for metric_name, monitored in self.validation_metrics.items():
             if monitored:
                 best = outputs.listeners["bestval"][metric_name]
-                eval_factory = lambda documents: self.retriever_factory(best, documents)
-                self.tests.evaluate_retriever(eval_factory, self.evaluate_launcher)
+                self.tests.evaluate_retriever(
+                    lambda documents: self.retriever_factory(best, documents),
+                    self.evaluate_launcher,
+                )
 
-        # return the output of the learner in order to get the information about the best retriever
+        # return the output of the learner in order to get the information about
+        # the best retriever
         return outputs

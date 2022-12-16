@@ -2,9 +2,7 @@ from dataclasses import dataclass
 import torch
 import itertools
 from typing import (
-    Any,
     Iterable,
-    Iterator,
     List,
     NamedTuple,
     Optional,
@@ -60,7 +58,7 @@ class TokenizedTexts:
         ids: torch.LongTensor,
         lens: List[int],
         mask: torch.LongTensor,
-        token_type_ids: torch.LongTensor,
+        token_type_ids: torch.LongTensor = None,
     ):
         self.tokens = tokens
         self.ids = ids
@@ -93,9 +91,11 @@ class BaseRecords(List[RT]):
         return self.documents
 
     def pairs(self) -> Tuple[Iterable[int], Iterable[int]]:
-        """Returns the list of query/document indices for which we should compute the score,
-        or None if all (cartesian product). This method should be used with `unique` set
-        to true to get the queries/documents
+        """Returns two iterators (over queries and documents)
+
+        Returns the list of query/document indices for which we should compute
+        the score, or None if all (cartesian product). This method should be
+        used with `unique` set to true to get the queries/documents
         """
         raise NotImplementedError(f"pairs() in {self.__class__}")
 
@@ -156,7 +156,9 @@ class PairwiseRecord:
 
 
 class PairwiseRecordWithTarget(PairwiseRecord):
-    """A pairwise record is composed of a query, a positive and a negative document, and the indetifier which says the one on the first is pos or neg"""
+    """A pairwise record is composed of a query, a positive and a negative
+    document, and the indetifier which says the one on the first is pos or
+    neg"""
 
     target: int
 
@@ -291,7 +293,8 @@ class ProductRecords(BatchwiseRecords):
     """The list of documents to score"""
 
     relevances: torch.Tensor
-    """A 2D tensor (query x document) indicating the relevance of the each query/document pair"""
+    """A 2D tensor (query x document) indicating the relevance of the each
+    query/document pair"""
 
     is_product = True
 
@@ -306,12 +309,14 @@ class ProductRecords(BatchwiseRecords):
         self._documents.extend(documents)
 
     def setRelevances(self, relevances: torch.Tensor):
-        assert relevances.shape[0] == len(
-            self._queries
-        ), f"The number of queries {len(self._queries)} does not match the number of rows {relevances.shape[0]}"
-        assert relevances.shape[1] == len(
-            self._documents
-        ), f"The number of documents {len(self._documents)} does not match the number of columns {relevances.shape[1]}"
+        assert relevances.shape[0] == len(self._queries), (
+            f"The number of queries {len(self._queries)} "
+            + "does not match the number of rows {relevances.shape[0]}"
+        )
+        assert relevances.shape[1] == len(self._documents), (
+            f"The number of documents {len(self._documents)} "
+            + "does not match the number of columns {relevances.shape[1]}"
+        )
         self.relevances = relevances
 
     def __len__(self):
