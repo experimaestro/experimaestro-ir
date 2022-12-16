@@ -123,7 +123,7 @@ def cli(
     early_stop = 0
 
     # FAISS index building
-    indexspec = "OPQ4_16,IVF256_HNSW32,PQ4"
+    indexspec = "OPQ4_16,IVF256,PQ4"
     faiss_max_traindocs = 15_000
 
     # the number of documents retrieved from the splade model during the evaluation
@@ -176,6 +176,8 @@ def cli(
         # "Efficiently Teaching an Effective Dense Retriever with Balanced Topic Aware Sampling"
         tasb = tas_balanced()  # create a scorer from huggingface
 
+        random_scorer = RandomScorer(random=random).tag("model", "random")
+
         # task to train the tas_balanced encoder for the document list and generate an index for retrieval
         tasb_index = IndexBackedFaiss(
             indexspec=indexspec,
@@ -210,6 +212,13 @@ def cli(
         # Bm25
         bm25_retriever_trec = AnseriniRetriever(
             k=20, index=index_trec_covid, model=basemodel
+        )
+
+        tests.evaluate_retriever(
+            random_scorer.getRetriever(
+                bm25_retriever_trec, 20, PowerAdaptativeBatcher()
+            ),
+            gpu_launcher_index,
         )
 
         tests.evaluate_retriever(copyconfig(bm25_retriever_trec).tag("model", "bm25"))

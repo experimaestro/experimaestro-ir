@@ -77,6 +77,7 @@ class IndexBackedFaiss(FaissIndex, Task):
     """The index type as a factory string
 
     See https://github.com/facebookresearch/faiss/wiki/Faiss-indexes for the full list of indices
+    and https://github.com/facebookresearch/faiss/wiki/The-index-factory for the combination of the index factory
     """
 
     sampler: Param[Optional[DocumentSampler]]
@@ -85,7 +86,7 @@ class IndexBackedFaiss(FaissIndex, Task):
     def full_sampler(self) -> Tuple[int, Iterator[str]]:
         """Returns an iterator over the full set of documents"""
         iter = (d.text for d in self.documents.iter_documents())
-        return self.documents.count or 0, iter
+        return self.documents.documentcount or 0, iter
 
     def train(
         self,
@@ -110,11 +111,15 @@ class IndexBackedFaiss(FaissIndex, Task):
 
         # Collect batches (in memory)
         logger.info("Collecting the representation of %d documents", count)
-        sample = np.ndarray((count, self.encoder.dimension), dtype=np.float32)
-        ix = 0
+        # sample = np.ndarray((count, self.encoder.dimension), dtype=np.float32)
+        # ix = 0
+        # for batch in batch_encoder(doc_iter):
+        #     sample[ix : (ix + len(batch))] = batch.cpu().numpy()
+        #     ix += len(batch)
+
+        sample = np.ndarray((0, self.encoder.dimension), dtype=np.float32)
         for batch in batch_encoder(doc_iter):
-            sample[ix : (ix + len(batch))] = batch.cpu().numpy()
-            ix += len(batch)
+            sample = np.concatenate([sample, batch.cpu().numpy()])
 
         logger.info("Training index (%d samples)", count)
         # Here we may use just a part of the document to train the index
@@ -182,6 +187,9 @@ class IndexBackedFaiss(FaissIndex, Task):
         step_iter.update()
 
     def encode(self, batch: List[str], data: List):
+        batch = [
+            text for text in batch if text != ""
+        ]  # remove the empty strings in the dataset
         x = self.encoder(batch)
         if self.normalize:
             x /= x.norm(2, keepdim=True, dim=1)

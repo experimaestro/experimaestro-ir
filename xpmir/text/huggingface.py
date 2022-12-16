@@ -423,8 +423,6 @@ class DualDuoBertTransformerEncoder(TransformerVocab, TripletTextEncoder):
         new_token_type_ids = torch.Tensor(new_token_type_ids).type(torch.long)
         new_length = torch.Tensor(new_length).type(torch.long)
 
-        print(new_input_ids.shape, new_attention_mask.shape, new_token_type_ids.shape)
-
         return TokenizedTexts(
             None,
             new_input_ids.to(self.device),

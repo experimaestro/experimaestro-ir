@@ -2,9 +2,7 @@
 # Passage Re-ranking with BERT, (Rodrigo Nogueira, Kyunghyun Cho). 2019
 # https://arxiv.org/abs/1901.04085
 
-import dataclasses
 import logging
-import sys
 from pathlib import Path
 from omegaconf import OmegaConf
 from xpmir.distributed import DistributedHook
@@ -13,10 +11,10 @@ from xpmir.letor.schedulers import LinearWithWarmup
 import xpmir.letor.trainers.pairwise as pairwise
 from datamaestro import prepare_dataset
 from datamaestro_text.transforms.ir import ShuffledTrainingTripletsLines
-from xpmir.neural.cross import CrossScorer, DuoCrossScorer
+from xpmir.neural.cross import CrossScorer
 from experimaestro import experiment, setmeta
-from experimaestro.click import click, forwardoption
-from experimaestro.launcherfinder import cpu, cuda_gpu, find_launcher
+from experimaestro.click import click
+from experimaestro.launcherfinder import cpu, find_launcher
 from experimaestro.launcherfinder.specs import duration
 from experimaestro.utils import cleanupdir
 from xpmir.configuration import omegaconf_argument
@@ -26,24 +24,25 @@ from xpmir.interfaces.anserini import AnseriniRetriever, IndexCollection
 from xpmir.letor import Device, Random
 from xpmir.letor.batchers import PowerAdaptativeBatcher
 from xpmir.letor.devices import CudaDevice
-from xpmir.letor.learner import Learner
-from xpmir.letor.optim import Adam, AdamW, ParameterOptimizer, RegexParameterFilter
+from xpmir.letor.optim import AdamW, ParameterOptimizer, RegexParameterFilter
 from xpmir.letor.samplers import TripletBasedSampler
 from xpmir.measures import AP, RR, P, nDCG
-from xpmir.neural.jointclassifier import JointClassifier
 from xpmir.pipelines.reranking import RerankingPipeline
-from xpmir.rankers import RandomScorer, Retriever
+from xpmir.rankers import RandomScorer
 from xpmir.rankers.standard import BM25
-from xpmir.text.huggingface import DualDuoBertTransformerEncoder, DualTransformerEncoder
+from xpmir.text.huggingface import DualTransformerEncoder
 from xpmir.utils import find_java_home
 
 logging.basicConfig(level=logging.INFO)
 
 # --- Experiment
-# $ python -m xpmir.paper.monobert.experiment experiment/ small + additional options
-# experiment/ : the path to the working directory
-# small: the default configuration
-# additional configuration: dotlist to modify the choice in the default configuration
+# $ python -m xpmir.paper.monobert.experiment path/to/work_dir config_file_name configuration_modifier
+### configuration_modifier: dotlist to modify the choice in the default configuration
+
+# --- Example
+# $ python -m xpmir.paper.monobert.experiment experiment small Learner.lr=2.0e-6 Learner.num_warmup_steps=20
+
+
 @click.option("--debug", is_flag=True, help="Print debug information")
 @click.option(
     "--host",
