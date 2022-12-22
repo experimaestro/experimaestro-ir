@@ -1,27 +1,19 @@
-from errno import EROFS
 import torch
-import torch.nn as nn
 from experimaestro import Param
 from xpmir.distributed import DistributableModel
 from xpmir.letor.batchers import Batcher
 from xpmir.letor.context import TrainerContext
 from xpmir.letor.records import (
     BaseRecords,
-    PairwiseRecord,
     PairwiseRecords,
-    Query,
-    Document,
 )
 from xpmir.neural import TorchLearnableScorer
 from xpmir.text.encoders import DualTextEncoder, TripletTextEncoder
 from xpmir.rankers import (
     DuoLearnableScorer,
     DuoTwoStageRetriever,
-    LearnableScorer,
     Retriever,
-    ScoredDocument,
 )
-from typing import List, Optional
 
 
 class CrossScorer(TorchLearnableScorer, DistributableModel):
@@ -94,7 +86,8 @@ class DuoCrossScorer(DuoLearnableScorer, DistributableModel):
         top_k=None,
         device=None,
     ):
-        """The given the base_retriever and return a two stage retriever specialized for Duobert"""
+        """The given the base_retriever and return a two stage retriever
+        specialized for Duobert"""
         return DuoTwoStageRetriever(
             retriever=retriever,
             scorer=self,

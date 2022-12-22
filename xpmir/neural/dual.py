@@ -1,9 +1,7 @@
-from typing import Callable, List, Optional, Tuple
-import itertools
+from typing import List, Optional
 import torch
-from experimaestro import Config, Param, Meta
+from experimaestro import Param
 from xpmir.distributed import DistributableModel
-from xpmir.letor import DEFAULT_DEVICE, Device
 from xpmir.letor.batchers import Batcher
 from xpmir.neural import DualRepresentationScorer
 from xpmir.rankers import Retriever
@@ -16,12 +14,14 @@ logger = easylog()
 
 
 class DualVectorListener(TrainingHook):
-    """Listener called with the (vectorial) representation of queries and documents
+    """Listener called with the (vectorial) representation of queries and
+    documents
 
-    The hook is called just after the computation of documents and queries representations.
+    The hook is called just after the computation of documents and queries
+    representations.
 
-    This can be used for logging purposes, but more importantly, to add regularization
-    losses such as the :class:`FlopsRegularizer` regularizer.
+    This can be used for logging purposes, but more importantly, to add
+    regularization losses such as the :class:`FlopsRegularizer` regularizer.
     """
 
     def __call__(
@@ -156,7 +156,7 @@ class DotDense(Dense, DistributableModel):
 
     def distribute_models(self, update):
         self.encoder.model = update(self.encoder.model)
-        self.query_encoder.encoder.model = update(self.query_encoder.encoder.model)
+        self.query_encoder.model = update(self.query_encoder.model)
 
 
 class FlopsRegularizer(DualVectorListener):

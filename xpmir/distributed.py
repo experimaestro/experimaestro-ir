@@ -26,8 +26,8 @@ class DistributableModel(Config):
 class DistributedHook(InitializationHook):
     """Hook to distribute the model processing
 
-    When in multiprocessing/multidevice, use `torch.nn.parallel.DistributedDataParallel`,
-    otherwise use `torch.nn.DataParallel`.
+    When in multiprocessing/multidevice, use `torch.nn.parallel.DistributedDataParallel`
+    ,otherwise use `torch.nn.DataParallel`.
     """
 
     models: Param[List[DistributableModel]]
@@ -43,14 +43,15 @@ class DistributedHook(InitializationHook):
             logger.info("Using a distributed model with rank=%d", info.rank)
             return nn.parallel.DistributedDataParallel(model, device_ids=[info.rank])
         else:
-            n_gpus = torch.cuda.device_count()
-            if n_gpus > 1:
-                logger.info(
-                    "Setting up DataParallel for text encoder (%d GPUs)", n_gpus
-                )
-                return DataParallel(model)
-            else:
-                logger.warning("Only one GPU detected, not using data parallel")
+            if not isinstance(model, nn.DataParallel):
+                n_gpus = torch.cuda.device_count()
+                if n_gpus > 1:
+                    logger.info(
+                        "Setting up DataParallel for text encoder (%d GPUs)", n_gpus
+                    )
+                    return DataParallel(model)
+                else:
+                    logger.warning("Only one GPU detected, not using data parallel")
 
         return model
 
