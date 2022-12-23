@@ -5,6 +5,10 @@ dynamic = ["version"]
 [project.scripts]
 xpmir = "xpmir.__main__:main"
 
+[project.entry-points."datamaestro.repositories"]
+ir = "xpmir:Repository"
+irds = "xpmir.datasets.irds:Repository"
+
 
 [tool.setuptools_scm]
 write_to = "xpmir/_version.py"
