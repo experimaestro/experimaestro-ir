@@ -4,11 +4,8 @@ import torch.nn as nn
 import torch
 from experimaestro import initializer
 from xpmir.distributed import DistributableModel
-from xpmir.context import Context, InitializationHook
-from xpmir.letor import DistributedDeviceInformation
 from xpmir.letor.samplers import PairwiseSampler, PairwiseInBatchNegativesSampler
 from transformers import AutoModelForMaskedLM
-from xpmir.neural import TorchLearnableScorer
 from xpmir.text.huggingface import TransformerVocab
 from xpmir.text.encoders import TextEncoder
 from xpmir.letor.trainers.batchwise import BatchwiseTrainer
@@ -55,7 +52,7 @@ class SpladeTextEncoderModel(nn.Module):
         # We stock all the outputs in order to get the embedding matrix
         # Here as the automodel is not the same as the normal AutoModel,
         # So here the output has the attribute logits, the w_ij in the paper
-        # which is of shape (1, len(texts), vocab_size)
+        # which is of shape (bs, len(texts), vocab_size)
         out = self.encoder(tokenized, all_outputs=True)
         out = self.aggregation(out.logits, tokenized.mask)
         return out
@@ -125,7 +122,8 @@ def spladeV1(lambda_q: float, lambda_d: float):
 def spladeV2(lambda_q: float, lambda_d: float):
     """Returns the Splade v2 architecture
 
-    SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval (arXiv:2109.10086)
+    SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval
+    (arXiv:2109.10086)
     """
     return _splade(lambda_q, lambda_d, MaxAggregation())
 

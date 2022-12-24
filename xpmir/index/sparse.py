@@ -68,7 +68,8 @@ class SparseRetriever(Retriever):
     """Size of batches (when using retrieve_all)"""
 
     in_memory: Meta[bool] = False
-    """Whether the index should be fully loaded in memory (otherwise, uses virtual memory)"""
+    """Whether the index should be fully loaded in memory (otherwise, uses
+    virtual memory)"""
 
     def initialize(self):
         super().initialize()
@@ -82,7 +83,7 @@ class SparseRetriever(Retriever):
             batch: List[Tuple[str, str]], results: Dict[str, List[ScoredDocument]]
         ):
             for (key, _), vector in zip(
-                batch, self.encoder([text for _, text in batch]).cpu().numpy()
+                batch, self.encoder([text for _, text in batch]).cpu().detach().numpy()
             ):
                 (ix,) = vector.nonzero()
                 query = {ix: float(v) for ix, v in zip(ix, vector[ix])}
@@ -104,7 +105,7 @@ class SparseRetriever(Retriever):
         """
 
         # Build up iterators
-        vector = self.encoder([query])[0].cpu().numpy()
+        vector = self.encoder([query])[0].cpu().detach().numpy()
         (ix,) = vector.nonzero()  # ix represents the position without 0 in the vector
         query = {
             ix: float(v) for ix, v in zip(ix, vector[ix])
@@ -132,7 +133,8 @@ class SparseRetrieverIndexBuilder(Task):
     """Size of batches"""
 
     ordered_index: Param[bool]
-    """Ordered index: if not ordered, use DAAT strategy (WAND), otherwise, use fast top-k strategies"""
+    """Ordered index: if not ordered, use DAAT strategy (WAND), otherwise, use
+    fast top-k strategies"""
 
     device: Meta[Device] = DEFAULT_DEVICE
 
@@ -145,8 +147,9 @@ class SparseRetrieverIndexBuilder(Task):
     """Version 3 of the index"""
 
     def taskoutputs(self):
-        """Returns a sparse retriever index that can be used by a SparseRetriever to search efficiently
-        for documents"""
+        """Returns a sparse retriever index that can be used by a
+        SparseRetriever to search efficiently for documents"""
+
         return SparseRetrieverIndex(
             index_path=self.index_path, documents=self.documents
         )
@@ -154,7 +157,7 @@ class SparseRetrieverIndexBuilder(Task):
     def execute(self):
         # Encode all documents
         logger.info(
-            f"Loading the encoder and transferring to the target device {self.device.value}"
+            f"Load the encoder and transfer to the target device {self.device.value}"
         )
 
         self.encoder.initialize()

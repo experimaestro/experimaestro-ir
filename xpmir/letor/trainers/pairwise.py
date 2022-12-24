@@ -35,9 +35,7 @@ class PairwiseLoss(Config, nn.Module):
     def compute(self, scores: Tensor, info: TrainerContext) -> Tensor:
         """
         Compute the loss
-
         Arguments:
-
         - scores: A (batch x 2) tensor (positive/negative)
         """
         raise NotImplementedError()
@@ -66,11 +64,9 @@ class SoftmaxLoss(PairwiseLoss):
 
 class LogSoftmaxLoss(PairwiseLoss):
     """RankNet loss or log-softmax loss
-
     Classification loss (relevant vs non-relevant) where the logit
     is equal to the difference between the relevant and the non relevant
     document (or equivalently, softmax then mean log probability of relevant documents)
-
     Reference: C. Burges et al., “Learning to rank using gradient descent,” 2005.
     """
 
@@ -114,9 +110,7 @@ class BCEWithLogLoss(nn.Module):
 
 class PointwiseCrossEntropyLoss(PairwiseLoss):
     """Regular PCE (>0 for relevant, 0 otherwise)
-
     Uses the ranker output type:
-
     - If real, uses a BCELossWithLogits (sigmoid transformation)
     - If probability, uses the BCELoss
     - If log probability, uses a custom BCE loss
