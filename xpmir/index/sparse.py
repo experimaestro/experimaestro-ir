@@ -80,7 +80,9 @@ class SparseRetriever(Retriever):
         """Input queries: {id: text}"""
 
         def reducer(
-            batch: List[Tuple[str, str]], results: Dict[str, List[ScoredDocument]]
+            batch: List[Tuple[str, str]],
+            results: Dict[str, List[ScoredDocument]],
+            progress,
         ):
             for (key, _), vector in zip(
                 batch, self.encoder([text for _, text in batch]).cpu().detach().numpy()
@@ -88,13 +90,17 @@ class SparseRetriever(Retriever):
                 (ix,) = vector.nonzero()
                 query = {ix: float(v) for ix, v in zip(ix, vector[ix])}
                 results[key] = self.index.retrieve(query, self.topk, content=False)
+                progress.update(1)
             return results
 
         batcher = self.batcher.initialize(self.batchsize)
         results = {}
-        with tqdm(list(queries.items()), desc="Retrieve documents") as it:
-            for batch in batchiter(self.batchsize, it):
-                results = batcher.reduce(batch, reducer, results)
+        items = list(queries.items())
+        with tqdm(
+            desc="Retrieve documents", total=len(items), unit="queries"
+        ) as progress:
+            for batch in batchiter(self.batchsize, items):
+                results = batcher.reduce(batch, reducer, results, progress)
 
         return results
 
