@@ -64,5 +64,8 @@ class DataParallel(torch.nn.DataParallel):
     module: nn.Module
     """The model to put on multi dataset."""
 
+    def load_state_dict(self, **kwargs):
+        return self.module.load_state_dict(**kwargs)
+
     def state_dict(self, **kwargs):
         return self.module.state_dict(**kwargs)

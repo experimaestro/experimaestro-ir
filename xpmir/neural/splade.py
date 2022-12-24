@@ -9,7 +9,7 @@ from transformers import AutoModelForMaskedLM
 from xpmir.text.huggingface import TransformerVocab
 from xpmir.text.encoders import TextEncoder
 from xpmir.letor.trainers.batchwise import BatchwiseTrainer
-from xpmir.neural.dual import DotDense, FlopsRegularizer
+from xpmir.neural.dual import DotDense, ScheduledFlopsRegularizer
 from xpmir.utils import easylog
 
 logger = easylog()
@@ -96,7 +96,12 @@ class SpladeTextEncoder(TextEncoder, DistributableModel):
         self.model = update(self.model)
 
 
-def _splade(lambda_q: float, lambda_d: float, aggregation: Aggregation):
+def _splade(
+    lambda_q: float,
+    lambda_d: float,
+    aggregation: Aggregation,
+    lamdba_warmup_steps: int = 0,
+):
     # Unlike the cross-encoder, here the encoder returns the whole last layer
     # In the paper we use the DistilBERT-based as the checkpoint
     encoder = TransformerVocab(model_id="distilbert-base-uncased", trainable=True)
@@ -106,26 +111,28 @@ def _splade(lambda_q: float, lambda_d: float, aggregation: Aggregation):
         aggregation=aggregation, encoder=encoder, maxlen=200
     )
     query_encoder = SpladeTextEncoder(
-        aggregation=SumAggregation(), encoder=encoder, maxlen=30
+        aggregation=aggregation, encoder=encoder, maxlen=30
     )
 
-    return DotDense(encoder=doc_encoder, query_encoder=query_encoder), FlopsRegularizer(
-        lambda_q=lambda_q, lambda_d=lambda_d
+    return DotDense(
+        encoder=doc_encoder, query_encoder=query_encoder
+    ), ScheduledFlopsRegularizer(
+        lambda_q=lambda_q, lambda_d=lambda_d, lamdba_warmup_steps=lamdba_warmup_steps
     )
 
 
-def spladeV1(lambda_q: float, lambda_d: float):
+def spladeV1(lambda_q: float, lambda_d: float, lamdba_warmup_steps: int = 0):
     """Returns the Splade architecture"""
-    return _splade(lambda_q, lambda_d, SumAggregation())
+    return _splade(lambda_q, lambda_d, SumAggregation(), lamdba_warmup_steps)
 
 
-def spladeV2(lambda_q: float, lambda_d: float):
+def spladeV2(lambda_q: float, lambda_d: float, lamdba_warmup_steps: int = 0):
     """Returns the Splade v2 architecture
 
     SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval
     (arXiv:2109.10086)
     """
-    return _splade(lambda_q, lambda_d, MaxAggregation())
+    return _splade(lambda_q, lambda_d, MaxAggregation(), lamdba_warmup_steps)
 
 
 def spladev2___(sampler: PairwiseSampler) -> Tuple[BatchwiseTrainer, DotDense]:
