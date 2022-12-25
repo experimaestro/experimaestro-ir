@@ -1,5 +1,4 @@
 from typing import Dict, Iterator
-from collections import OrderedDict
 from experimaestro import Param
 import numpy as np
 from xpmir.letor.context import (

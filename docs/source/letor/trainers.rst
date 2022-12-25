@@ -47,3 +47,8 @@ Losses
 .. autoxpmconfig:: xpmir.letor.trainers.pairwise.SoftmaxLoss
 .. autoxpmconfig:: xpmir.letor.trainers.pairwise.LogSoftmaxLoss
 .. autoxpmconfig:: xpmir.letor.trainers.pairwise.HingeLoss
+
+Other
+*****
+
+.. autoxpmconfig:: xpmir.letor.trainers.multiple.MultipleTrainer
