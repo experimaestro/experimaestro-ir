@@ -77,7 +77,7 @@ def cli(
     conf_args = OmegaConf.from_dotlist(args)
     configuration = OmegaConf.merge(configuration, conf_args)
 
-    tags = configuration.Launcher.tags.split(",") if configuration.Launcher.tags else []
+    tags = configuration.Launcher.tags or []
 
     logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
 
@@ -382,15 +382,8 @@ def cli(
         # wait for all the experiments ends
         xp.wait()
 
-        # ---  End of the experiment
         # Display metrics for each trained model
-        for key, dsevaluations in tests.collection.items():
-            print(f"=== {key}")  # noqa: T201
-            for evaluation in dsevaluations.results:
-                print(  # noqa: T201
-                    f"Results for {evaluation.__xpm__.tags()}"
-                    f"\n{evaluation.results.read_text()}\n"
-                )
+        tests.output_results()
 
 
 if __name__ == "__main__":

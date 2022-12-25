@@ -1,7 +1,8 @@
 from pathlib import Path
+import sys
 from typing import DefaultDict, Dict, List, Protocol, Union
 from datamaestro_text.data.ir import Adhoc, AdhocAssessments, AdhocDocuments
-from experimaestro import tqdm, Task, Param, pathgenerator, Annotated
+from experimaestro import Task, Param, pathgenerator, Annotated
 from datamaestro_text.data.ir.trec import (
     TrecAdhocRun,
     TrecAdhocResults,
@@ -173,6 +174,18 @@ class EvaluationsCollection:
     def evaluate_retriever(
         self, retriever: Union[Retriever, RetrieverFactory], launcher: Launcher = None
     ):
-        """Evaluate a retriever for all the evaluations in this collection (the tasks are submitted to experimaestro the scheduler)"""
+        """Evaluate a retriever for all the evaluations in this collection (the
+        tasks are submitted to experimaestro the scheduler)"""
         for evaluations in self.collection.values():
             evaluations.evaluate_retriever(retriever, launcher)
+
+    def output_results(self, file=sys.stdout):
+        """Print all the results"""
+        for key, dsevaluations in self.collection.items():
+            print(f"=== {key}", file=file)  # noqa: T201
+            for evaluation in dsevaluations.results:
+                print(  # noqa: T201
+                    f"Results for {evaluation.__xpm__.tags()}"
+                    f"\n{evaluation.results.read_text()}\n",
+                    file=file,
+                )
