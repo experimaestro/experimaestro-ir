@@ -7,6 +7,7 @@ Indexation:
     training_requirements: duration=2 days & cuda(mem=24G)
 Learner:
     validation_size: 10
+    # validation for each (steps_per_epoch * validation interval) steps
     steps_per_epoch: 128
     validation_interval: 1
     splade_batch_size: 48
@@ -14,6 +15,9 @@ Learner:
     num_warmup_steps: 20
     early_stop: 0
     lr: 2.0e-5
+    lambda_q: 3.0e-4
+    lambda_d: 1.0e-4
+    lamdba_warmup_steps: 300
     requirements: duration=2 days & cuda(mem=8G)
 Evaluation:
     requirements: duration=2 days & cuda(mem=8G)

@@ -1,64 +1,57 @@
-# Implementation of the experiments in the paper
-# SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval, (Thibault Formal, Carlos Lassance, Benjamin Piwowarski, Stéphane Clinchant), 2021
+# Implementation of the experiments in the paper SPLADE v2: Sparse Lexical and
+# Expansion Model for Information Retrieval, (Thibault Formal, Carlos Lassance,
+# Benjamin Piwowarski, Stéphane Clinchant), 2021
 # https://arxiv.org/abs/2109.10086
 
 import logging
 from pathlib import Path
 import os
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from omegaconf import OmegaConf
 from datamaestro import prepare_dataset
 from datamaestro_text.transforms.ir import ShuffledTrainingTripletsLines
-from experimaestro.launcherfinder import cpu, cuda_gpu, find_launcher
+from experimaestro.launcherfinder import find_launcher
 
 from experimaestro import experiment, tag, tagspath, copyconfig, setmeta
-from experimaestro.click import click, forwardoption
+from experimaestro.click import click
 from experimaestro.utils import cleanupdir
-from experimaestro.launcherfinder.specs import duration
 from xpmir.configuration import omegaconf_argument
 from xpmir.datasets.adapters import RandomFold, RetrieverBasedCollection
 from xpmir.distributed import DistributedHook
 from xpmir.documents.samplers import RandomDocumentSampler
-from xpmir.evaluation import Evaluate, Evaluations, EvaluationsCollection
+from xpmir.evaluation import Evaluations, EvaluationsCollection
 from xpmir.interfaces.anserini import AnseriniRetriever, IndexCollection
 from xpmir.letor.devices import CudaDevice, Device
 from xpmir.letor import Random
 from xpmir.letor.learner import Learner, ValidationListener
-from xpmir.letor.optim import Adam, AdamW, get_optimizers
+from xpmir.letor.optim import AdamW, RegexParameterFilter, get_optimizers
 from xpmir.letor.samplers import PairwiseInBatchNegativesSampler, TripletBasedSampler
-from xpmir.letor.schedulers import CosineWithWarmup, LinearWithWarmup
+from xpmir.letor.schedulers import LinearWithWarmup
 from xpmir.index.faiss import IndexBackedFaiss, FaissRetriever
 from xpmir.index.sparse import (
     SparseRetriever,
     SparseRetrieverIndexBuilder,
 )
-from xpmir.rankers import RandomScorer, Scorer
+from xpmir.rankers import Scorer
 from xpmir.rankers.full import FullRetriever
-from xpmir.letor.trainers import Trainer, pointwise
+from xpmir.letor.trainers import Trainer
 from xpmir.letor.trainers.batchwise import BatchwiseTrainer, SoftmaxCrossEntropy
 from xpmir.letor.batchers import PowerAdaptativeBatcher
-import xpmir.letor.trainers.pairwise as pairwise
-from xpmir.neural.dual import Dense, DenseDocumentEncoder, DenseQueryEncoder, DotDense
+from xpmir.neural.dual import DenseDocumentEncoder, DenseQueryEncoder
 from xpmir.letor.optim import ParameterOptimizer
 from xpmir.rankers.standard import BM25
 from xpmir.neural.splade import spladeV2
 from xpmir.measures import AP, P, nDCG, RR
 from xpmir.neural.pretrained import tas_balanced
-from xpmir.text.huggingface import DistributedModelHook, TransformerEncoder
 
 logging.basicConfig(level=logging.INFO)
 
-# @forwardoption.max_epochs(Learner, default=None)
-# @click.option("--tags", type=str, default="", help="Tags for selecting the launcher")
+
 @click.option("--debug", is_flag=True, help="Print debug information")
 @click.option(
     "--env", help="Define one environment variable", type=(str, str), multiple=True
 )
-# @click.option("--gpu", is_flag=True, help="Use GPU")
-# @click.option(
-#     "--batch-size", type=int, default=None, help="Batch size (validation and test)"
-# )
 @click.option(
     "--host",
     type=str,
@@ -66,11 +59,6 @@ logging.basicConfig(level=logging.INFO)
     help="Server hostname (default to localhost, not suitable if your jobs are remote)",
 )
 @click.option("--port", type=int, default=12345, help="Port for monitoring")
-# @click.option(
-#     "--batch-size", type=int, default=None, help="Batch size (validation and test)"
-# )
-
-
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 @omegaconf_argument("configuration", package=__package__)
 @click.argument("workdir", type=Path)
@@ -124,11 +112,16 @@ def cli(
     validation_interval = configuration.Learner.validation_interval
 
     # After how many steps without improvement, the trainer stops.
-    early_stop = 0
+    early_stop = configuration.Learner.early_stop
 
     # FAISS index building
-    indexspec = "OPQ4_16,IVF256_HNSW32,PQ4"
-    faiss_max_traindocs = 15_000
+    indexspec = configuration.tas_balance_retriever.indexspec
+    faiss_max_traindocs = configuration.tas_balance_retriever.faiss_max_traindocs
+
+    # the flop coefficient for query and documents
+    lambda_q = configuration.Learner.lambda_q
+    lambda_d = configuration.Learner.lambda_d
+    lamdba_warmup_steps = configuration.Learner.lamdba_warmup_steps
 
     # the number of documents retrieved from the splade model during the evaluation
     topK_eval_splade = topK
@@ -139,7 +132,8 @@ def cli(
 
     if (max_epochs % validation_interval) != 0:
         raise AssertionError(
-            f"Number of epochs ({max_epochs}) is not a multiple of validation interval ({validation_interval})"
+            f"Number of epochs ({max_epochs}) is not "
+            f"a multiple of validation interval ({validation_interval})"
         )
 
     name = configuration.type
@@ -184,11 +178,13 @@ def cli(
             data=train_triples,
         ).submit()
 
-        # Build a dev. collection for full-ranking (validation)
-        # "Efficiently Teaching an Effective Dense Retriever with Balanced Topic Aware Sampling"
+        # Build a dev. collection for full-ranking (validation) "Efficiently
+        # Teaching an Effective Dense Retriever with Balanced Topic Aware
+        # Sampling"
         tasb = tas_balanced()  # create a scorer from huggingface
 
-        # task to train the tas_balanced encoder for the document list and generate an index for retrieval
+        # task to train the tas_balanced encoder for the document list and
+        # generate an index for retrieval
         tasb_index = IndexBackedFaiss(
             indexspec=indexspec,
             device=device,
@@ -224,8 +220,8 @@ def cli(
             msmarco_dev=Evaluations(devsmall, measures),
         )
 
-        # building the validation dataset.
-        # Based on the existing dataset and the top retrieved doc from tas-balanced and bm25
+        # building the validation dataset. Based on the existing dataset and the
+        # top retrieved doc from tas-balanced and bm25
         ds_val = RetrieverBasedCollection(
             dataset=RandomFold(
                 dataset=dev, seed=123, fold=0, sizes=[VAL_SIZE], exclude=devsmall.topics
@@ -267,7 +263,8 @@ def cli(
         # Define the model and the flop loss for regularization
         # Model of class: DotDense()
         # The parameters are the regularization coeff for the query and document
-        spladev2, flops = spladeV2(3e-4, 1e-4)
+        # TODO: make the lambda to a scheduler
+        spladev2, flops = spladeV2(lambda_q, lambda_d, lamdba_warmup_steps)
 
         # Base retrievers for validation
         # It retrieve all the document of the collection with score 0
@@ -291,12 +288,14 @@ def cli(
             # establish the validation listener
             validation = ValidationListener(
                 dataset=ds_val,
+                # a retriever which use the splade model to score all the
+                # documents and then do the retrieve
                 retriever=scorer.getRetriever(
                     base_retriever_full,
                     batch_size_full_retriever,
                     PowerAdaptativeBatcher(),
                     device=device,
-                ),  # a retriever which use the splade model to score all the documents and then do the retrieve
+                ),
                 early_stop=early_stop,
                 validation_interval=validation_interval,
                 metrics={"RR@10": True, "AP": False, "nDCG@10": False},
@@ -348,7 +347,7 @@ def cli(
             return SparseRetriever(
                 index=index,
                 topk=topK_eval_splade,
-                batchsize=256,
+                batchsize=1,
                 encoder=DenseQueryEncoder(scorer=scorer),
             )
 
@@ -358,8 +357,19 @@ def cli(
             batchwise_trainer_flops,
             [
                 ParameterOptimizer(
-                    scheduler=scheduler, optimizer=Adam(lr=configuration.Learner.lr)
-                )
+                    scheduler=scheduler,
+                    optimizer=AdamW(lr=configuration.Learner.lr),
+                    filter=RegexParameterFilter(
+                        includes=[r"\.bias$", r"\.LayerNorm\."]
+                    ),
+                ),
+                ParameterOptimizer(
+                    scheduler=scheduler,
+                    optimizer=AdamW(lr=configuration.Learner.lr),
+                    filter=RegexParameterFilter(
+                        excludes=[r"\.bias$", r"\.LayerNorm\."]
+                    ),
+                ),
             ],
             hooks=[setmeta(DistributedHook(models=[spladev2]), True)],
             launcher=gpu_launcher_learner,
@@ -375,10 +385,11 @@ def cli(
         # ---  End of the experiment
         # Display metrics for each trained model
         for key, dsevaluations in tests.collection.items():
-            print(f"=== {key}")
+            print(f"=== {key}")  # noqa: T201
             for evaluation in dsevaluations.results:
-                print(
-                    f"Results for {evaluation.__xpm__.tags()}\n{evaluation.results.read_text()}\n"
+                print(  # noqa: T201
+                    f"Results for {evaluation.__xpm__.tags()}"
+                    f"\n{evaluation.results.read_text()}\n"
                 )
 
 

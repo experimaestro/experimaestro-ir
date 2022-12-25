@@ -216,3 +216,26 @@ class FlopsRegularizer(DualVectorListener):
                     len(d),
                 )
             )
+
+
+class ScheduledFlopsRegularizer(FlopsRegularizer):
+    """
+    The FLOPS regularizer where the lamdba_q and lambda_d varie according to the
+    steps. The lambda values goes quadratic before the
+    ```lamdba_warmup_steps```, and then remains constant
+    """
+
+    lamdba_warmup_steps: Param[int] = 0
+    """The warmup steps for the lambda"""
+
+    def quardratic_ratio(self, step):
+        if step > self.lamdba_warmup_steps:
+            return 1
+        else:
+            return (step / self.lamdba_warmup_steps) ** 2
+
+    def __call__(self, info: TrainerContext, queries, documents):
+        current_step = info.step
+        self.lambda_q = self.lambda_q * self.quardratic_ratio(current_step)
+        self.lambda_d = self.lambda_d * self.quardratic_ratio(current_step)
+        super.__call__(info, queries, documents)
