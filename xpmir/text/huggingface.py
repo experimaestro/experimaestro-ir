@@ -6,9 +6,9 @@ import torch
 import torch.nn as nn
 from experimaestro import Param, Constant
 from xpmir.context import Context, InitializationHook
+from xpmir.distributed import DistributableModel
 from xpmir.letor import DistributedDeviceInformation
-from xpmir.letor.context import InitializationTrainingHook, TrainState, TrainerContext
-from xpmir.neural import TorchLearnableScorer
+from xpmir.letor.context import InitializationTrainingHook, TrainState
 from xpmir.text.encoders import (
     ContextualizedTextEncoder,
     ContextualizedTextEncoderOutput,
@@ -24,38 +24,10 @@ except Exception:
     logging.error("Install huggingface transformers to use these configurations")
     raise
 
-from xpmir.letor.records import BaseRecords, TokenizedTexts
+from xpmir.letor.records import TokenizedTexts
 import xpmir.text as text
 
 logger = easylog()
-
-# class CrossScorerHuggingface(TorchLearnableScorer):
-#     """Query-Document Representation Classifier
-
-#     Based on a query-document representation representation (e.g. BERT [CLS] token).
-#     AKA Cross-Encoder
-
-#     The scorer for huggingface has already implemented the final classfier so we don't need it here.
-
-#     Attribute:
-#         model_id: id for the huggingface model.
-#     """
-#     # TODO: modify the encoder here to get the model id directly.
-#     # Then load the model by using the SequenceModel...() to get the full information...
-#     model_id: Param[str]
-
-#     def __validate__(self):
-#         super().__validate__()
-
-#     def _initialize(self, random):
-#         # Initialize the model
-#         # TODO: initialize the model
-#         pass
-
-#     def forward(self, inputs: BaseRecords, info: TrainerContext = None):
-#         # Encode queries and documents
-#         # TODO: do a forward pass
-#         pass
 
 
 class TransformerVocab(text.Vocab):
@@ -207,7 +179,7 @@ class IndependentTransformerVocab(TransformerVocab):
         return y.last_hidden_state
 
 
-class TransformerEncoder(TransformerVocab, TextEncoder):
+class TransformerEncoder(TransformerVocab, TextEncoder, DistributableModel):
     """Encodes using the [CLS] token"""
 
     maxlen: Param[Optional[int]] = None
@@ -228,8 +200,11 @@ class TransformerEncoder(TransformerVocab, TextEncoder):
     def with_maxlength(self, maxlen: int):
         return TransformerTextEncoderAdapter(encoder=self, maxlen=maxlen)
 
+    def distribute_models(self, update):
+        self.model = update(self.model)
 
-class TransformerTextEncoderAdapter(TextEncoder):
+
+class TransformerTextEncoderAdapter(TextEncoder, DistributableModel):
     encoder: Param[TransformerEncoder]
     maxlen: Param[Optional[int]] = None
 
@@ -249,6 +224,9 @@ class TransformerTextEncoderAdapter(TextEncoder):
     @property
     def vocab_size(self):
         return self.encoder.vocab_size
+
+    def distribute_models(self, update):
+        self.encoder.model = update(self.encoder.model)
 
 
 class ContextualizedTransformerEncoder(TransformerVocab, ContextualizedTextEncoder):
@@ -309,7 +287,8 @@ class ContextualizedTextEncoderAdapter(ContextualizedTextEncoder):
 class DualTransformerEncoder(TransformerVocab, DualTextEncoder):
     """Encodes the (query, document pair) using the [CLS] token
 
-    maxlen: Maximum length of the query document pair (in tokens) or None if using the transformer limit
+    maxlen: Maximum length of the query document pair (in tokens) or None if
+    using the transformer limit
     """
 
     maxlen: Param[Optional[int]] = None
@@ -466,7 +445,8 @@ class LayerFreezer(InitializationTrainingHook):
     """Whether embeddings should be frozen"""
 
     frozen: Param[int] = 0
-    """Number of frozen layers (can be negative, i.e. -1 meaning until the last layer excluded, etc. / 0 means no layer)"""
+    """Number of frozen layers (can be negative, i.e. -1 meaning until the last
+    layer excluded, etc. / 0 means no layer)"""
 
     def __init__(self):
         self._initialized = False
@@ -505,12 +485,14 @@ class LayerFreezer(InitializationTrainingHook):
                     param.requires_grad = False
 
 
-# TODO: make the class more generic (but involves changing the models or moving this to the training part)
+# TODO: make the class more generic (but involves changing the models or moving
+# this to the training part)
 class DistributedModelHook(InitializationHook):
     """Hook to distribute the model processing
 
-    When in multiprocessing/multidevice, use `torch.nn.parallel.DistributedDataParallel`,
-    otherwise use `torch.nn.DataParallel`.
+    When in multiprocessing/multidevice, use
+    `torch.nn.parallel.DistributedDataParallel`, otherwise use
+    `torch.nn.DataParallel`.
     """
 
     transformer: Param[TransformerVocab]

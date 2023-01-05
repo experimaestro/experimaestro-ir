@@ -100,6 +100,8 @@ def _splade(
     lambda_q: float,
     lambda_d: float,
     aggregation: Aggregation,
+    min_lambda_q: float = 0,
+    min_lambda_d: float = 0,
     lamdba_warmup_steps: int = 0,
 ):
     # Unlike the cross-encoder, here the encoder returns the whole last layer
@@ -117,7 +119,11 @@ def _splade(
     return DotDense(
         encoder=doc_encoder, query_encoder=query_encoder
     ), ScheduledFlopsRegularizer(
-        lambda_q=lambda_q, lambda_d=lambda_d, lamdba_warmup_steps=lamdba_warmup_steps
+        lambda_q=lambda_q,
+        lambda_d=lambda_d,
+        min_lambda_q=min_lambda_q,
+        min_lambda_d=min_lambda_d,
+        lamdba_warmup_steps=lamdba_warmup_steps,
     )
 
 
@@ -126,13 +132,26 @@ def spladeV1(lambda_q: float, lambda_d: float, lamdba_warmup_steps: int = 0):
     return _splade(lambda_q, lambda_d, SumAggregation(), lamdba_warmup_steps)
 
 
-def spladeV2(lambda_q: float, lambda_d: float, lamdba_warmup_steps: int = 0):
+def spladeV2(
+    lambda_q: float,
+    lambda_d: float,
+    min_lambda_q: float = 0,
+    min_lambda_d: float = 0,
+    lamdba_warmup_steps: int = 0,
+):
     """Returns the Splade v2 architecture
 
     SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval
     (arXiv:2109.10086)
     """
-    return _splade(lambda_q, lambda_d, MaxAggregation(), lamdba_warmup_steps)
+    return _splade(
+        lambda_q,
+        lambda_d,
+        MaxAggregation(),
+        min_lambda_q,
+        min_lambda_d,
+        lamdba_warmup_steps,
+    )
 
 
 def spladev2___(sampler: PairwiseSampler) -> Tuple[BatchwiseTrainer, DotDense]:
