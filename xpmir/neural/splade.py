@@ -96,12 +96,37 @@ class SpladeTextEncoder(TextEncoder, DistributableModel):
         self.model = update(self.model)
 
 
+class SpladeTokenEncoder(TextEncoder):
+    """A encoder which encodes the tokens into 0 and 1 vector
+    1 represents the text contains the token and 0 otherwise"""
+
+    encoder: Param[TransformerVocab]
+    """The encoder from HuggingFace(make use of its tokenizer)"""
+
+    maxlen: Param[Optional[int]] = None
+    """Max length for texts"""
+
+    @initializer
+    def initialize(self):
+        self.encoder.initialize(automodel=AutoModelForMaskedLM)
+
+    def forward(self, texts: List[str]) -> torch.Tensor:
+        """Returns a batch x vocab tensor"""
+        tokenized = self.encoder.batch_tokenize(texts, mask=True, maxlen=self.maxlen)
+        return tokenized
+
+    @property
+    def dimension(self):
+        return self.encoder.model.config.vocab_size
+
+    def static(self):
+        return False
+
+
 def _splade(
     lambda_q: float,
     lambda_d: float,
     aggregation: Aggregation,
-    min_lambda_q: float = 0,
-    min_lambda_d: float = 0,
     lamdba_warmup_steps: int = 0,
 ):
     # Unlike the cross-encoder, here the encoder returns the whole last layer
@@ -121,8 +146,34 @@ def _splade(
     ), ScheduledFlopsRegularizer(
         lambda_q=lambda_q,
         lambda_d=lambda_d,
-        min_lambda_q=min_lambda_q,
-        min_lambda_d=min_lambda_d,
+        lamdba_warmup_steps=lamdba_warmup_steps,
+    )
+
+
+def _splade_doc(
+    lambda_q: float,
+    lambda_d: float,
+    aggregation: Aggregation,
+    lamdba_warmup_steps: int = 0,
+):
+    # Unlike the cross-encoder, here the encoder returns the whole last layer
+    # The doc_encoder is the traditional one, and the query encoder return a vector
+    # contains only 0 and 1
+    # In the paper we use the DistilBERT-based as the checkpoint
+    encoder = TransformerVocab(model_id="distilbert-base-uncased", trainable=True)
+
+    # make use the output of the BERT and do an aggregation
+    doc_encoder = SpladeTextEncoder(
+        aggregation=aggregation, encoder=encoder, maxlen=200
+    )
+
+    query_encoder = SpladeTokenEncoder(encoder=encoder, maxlen=30)
+
+    return DotDense(
+        encoder=doc_encoder, query_encoder=query_encoder
+    ), ScheduledFlopsRegularizer(
+        lambda_q=lambda_q,
+        lambda_d=lambda_d,
         lamdba_warmup_steps=lamdba_warmup_steps,
     )
 
@@ -132,14 +183,12 @@ def spladeV1(lambda_q: float, lambda_d: float, lamdba_warmup_steps: int = 0):
     return _splade(lambda_q, lambda_d, SumAggregation(), lamdba_warmup_steps)
 
 
-def spladeV2(
+def spladeV2_max(
     lambda_q: float,
     lambda_d: float,
-    min_lambda_q: float = 0,
-    min_lambda_d: float = 0,
     lamdba_warmup_steps: int = 0,
 ):
-    """Returns the Splade v2 architecture
+    """Returns the Splade-max architecture
 
     SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval
     (arXiv:2109.10086)
@@ -148,10 +197,19 @@ def spladeV2(
         lambda_q,
         lambda_d,
         MaxAggregation(),
-        min_lambda_q,
-        min_lambda_d,
         lamdba_warmup_steps,
     )
+
+
+def spladeV2_doc():
+    """Returns the Splade-doc architecture
+
+    SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval
+    (arXiv:2109.10086)
+    """
+    pass
+
+    return
 
 
 def spladev2___(sampler: PairwiseSampler) -> Tuple[BatchwiseTrainer, DotDense]:
@@ -168,4 +226,4 @@ def spladev2___(sampler: PairwiseSampler) -> Tuple[BatchwiseTrainer, DotDense]:
     )
 
     # Trained with distillation
-    return trainer, spladeV2()
+    return trainer, spladeV2_max()

@@ -41,7 +41,7 @@ from xpmir.letor.batchers import PowerAdaptativeBatcher
 from xpmir.neural.dual import DenseDocumentEncoder, DenseQueryEncoder
 from xpmir.letor.optim import ParameterOptimizer
 from xpmir.rankers.standard import BM25
-from xpmir.neural.splade import spladeV2
+from xpmir.neural.splade import spladeV2_max
 from xpmir.measures import AP, P, nDCG, RR
 from xpmir.neural.pretrained import tas_balanced
 
@@ -121,8 +121,6 @@ def cli(
     # the flop coefficient for query and documents
     lambda_q = configuration.Learner.lambda_q
     lambda_d = configuration.Learner.lambda_d
-    min_lambda_q = configuration.Learner.min_lambda_q
-    min_lambda_d = configuration.Learner.min_lambda_d
     lamdba_warmup_steps = configuration.Learner.lamdba_warmup_steps
 
     # the number of documents retrieved from the splade model during the evaluation
@@ -270,9 +268,7 @@ def cli(
         # Model of class: DotDense()
         # The parameters are the regularization coeff for the query and document
         # TODO: make the lambda to a scheduler
-        spladev2, flops = spladeV2(
-            lambda_q, lambda_d, min_lambda_q, min_lambda_d, lamdba_warmup_steps
-        )
+        spladev2, flops = spladeV2_max(lambda_q, lambda_d, lamdba_warmup_steps)
 
         # Base retrievers for validation
         # It retrieve all the document of the collection with score 0
