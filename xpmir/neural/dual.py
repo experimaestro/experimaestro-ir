@@ -236,6 +236,10 @@ class ScheduledFlopsRegularizer(FlopsRegularizer):
         else:
             return (step / self.lamdba_warmup_steps) ** 2
 
+    def __post_init__(self):
+        # TODO: move from __call__
+        pass
+
     def __call__(self, info: TrainerContext, queries, documents):
         current_step = info.steps
         if current_step == 1:

@@ -4,11 +4,11 @@ import torch.nn as nn
 import torch
 from experimaestro import initializer
 from xpmir.distributed import DistributableModel
-from xpmir.letor.samplers import PairwiseSampler, PairwiseInBatchNegativesSampler
 from transformers import AutoModelForMaskedLM
+from xpmir.letor.samplers import PairwiseInBatchNegativesSampler, PairwiseSampler
+from xpmir.letor.trainers.batchwise import BatchwiseTrainer
 from xpmir.text.huggingface import TransformerVocab
 from xpmir.text.encoders import TextEncoder
-from xpmir.letor.trainers.batchwise import BatchwiseTrainer
 from xpmir.neural.dual import DotDense, ScheduledFlopsRegularizer
 from xpmir.utils import easylog
 
@@ -208,8 +208,6 @@ def spladeV2_doc():
     (arXiv:2109.10086)
     """
     pass
-
-    return
 
 
 def spladev2___(sampler: PairwiseSampler) -> Tuple[BatchwiseTrainer, DotDense]:

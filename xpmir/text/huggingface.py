@@ -57,6 +57,15 @@ class TransformerVocab(text.Vocab):
         return self.tokenizer.pad_token_id
 
     def initialize(self, noinit=False, automodel=AutoModel):
+        """Initialize the HuggingFace transformer
+
+        Args:
+            noinit (bool, optional): True when the weights don't need to be
+            loaded. Defaults to False.
+
+            automodel (type, optional): The class
+            used to initialize the model. Defaults to AutoModel.
+        """
         super().initialize(noinit=noinit)
 
         config = AutoConfig.from_pretrained(self.model_id)
