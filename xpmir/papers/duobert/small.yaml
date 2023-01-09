@@ -1,7 +1,7 @@
 type: duobert-small
 Launcher:
     gpu: true
-    tags:
+    tags: []
 Indexation:
     requirements: duration=2 days & cpu(mem=4G)
 Learner:

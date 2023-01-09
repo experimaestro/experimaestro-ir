@@ -1,7 +1,7 @@
 type: splade-small
 Launcher:
     gpu: true
-    tags:
+    tags: []
 Indexation:
     requirements: duration=2 days & cpu(mem=2G)
     training_requirements: duration=2 days & cuda(mem=24G)
@@ -15,8 +15,10 @@ Learner:
     num_warmup_steps: 20
     early_stop: 0
     lr: 2.0e-5
-    lambda_q: 3.0e-4
-    lambda_d: 1.0e-4
+    min_lambda_q: 3.0e-4
+    min_lambda_d: 1.0e-4
+    lambda_q: 3.0e-1
+    lambda_d: 1.0e-1
     lamdba_warmup_steps: 300
     requirements: duration=2 days & cuda(mem=8G)
 Evaluation:

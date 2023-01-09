@@ -4,25 +4,27 @@ Launcher:
     tags: []
 Indexation:
     requirements: duration=2 days & cpu(mem=2G)
-    training_requirements: duration=2 days & cuda(mem=24G)
+    training_requirements: duration=4 days & cuda(mem=24G)
 Learner:
     validation_size: 500
     # validation for each (steps_per_epoch * validation interval) steps
     steps_per_epoch: 128
     validation_interval: 8
     # maybe it is too large for a gpu of 24G
-    splade_batch_size: 124
+    splade_batch_size: 96
     # 150k steps for training
     max_epochs: 1200
     num_warmup_steps: 6000
     early_stop: 0
     lr: 2.0e-5
+    min_lambda_q: 0
+    min_lambda_d: 0
     lambda_q: 3.0e-4
     lambda_d: 1.0e-4
     lamdba_warmup_steps: 50000
-    requirements: duration=2 days & cuda(mem=24G)
+    requirements: duration=6 days & cuda(mem=24G)
 Evaluation:
-    requirements: duration=2 days & cuda(mem=12G)
+    requirements: duration=6 days & cuda(mem=12G)
 base_retriever:
     topK: 1000
 tas_balance_retriever:

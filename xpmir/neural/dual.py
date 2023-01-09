@@ -154,10 +154,6 @@ class DotDense(Dense, DistributableModel):
             device=device,
         )
 
-    def distribute_models(self, update):
-        self.encoder.model = update(self.encoder.model)
-        self.query_encoder.model = update(self.query_encoder.model)
-
 
 class FlopsRegularizer(DualVectorListener):
     r"""The FLOPS regularizer computes
@@ -225,6 +221,12 @@ class ScheduledFlopsRegularizer(FlopsRegularizer):
     ```lamdba_warmup_steps```, and then remains constant
     """
 
+    min_lambda_q: Param[float] = 0
+    """Min value for the lambda_q before it increase"""
+
+    min_lambda_d: Param[float] = 0
+    """Min value for the lambda_d before it increase"""
+
     lamdba_warmup_steps: Param[int] = 0
     """The warmup steps for the lambda"""
 
@@ -235,7 +237,14 @@ class ScheduledFlopsRegularizer(FlopsRegularizer):
             return (step / self.lamdba_warmup_steps) ** 2
 
     def __call__(self, info: TrainerContext, queries, documents):
-        current_step = info.step
-        self.lambda_q = self.lambda_q * self.quardratic_ratio(current_step)
-        self.lambda_d = self.lambda_d * self.quardratic_ratio(current_step)
-        super.__call__(info, queries, documents)
+        current_step = info.steps
+        if current_step == 1:
+            self.initial_lambda_q = self.lambda_q
+            self.initial_lambda_d = self.lambda_d
+        self.lambda_q = (
+            self.initial_lambda_q - self.min_lambda_q
+        ) * self.quardratic_ratio(current_step) + self.min_lambda_q
+        self.lambda_d = (
+            self.initial_lambda_d - self.min_lambda_d
+        ) * self.quardratic_ratio(current_step) + self.min_lambda_d
+        FlopsRegularizer.__call__(self, info, queries, documents)
