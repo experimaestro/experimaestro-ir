@@ -26,15 +26,23 @@ Functionalities can be added by installing optional dependencies:
     - HuggingFace transformers
 - Indices
     - dense: [FAISS](https://github.com/facebookresearch/faiss) interface
+    - sparse: [xpmir-rust library](https://github.com/experimaestro/experimaestro-ir-rust)
 - Standard Indexing and Retrieval
     - Anserini
 - Learning to Rank
     - Pointwise
     - Pairwise
-- Neural IR:
-    - Dual/Cross-Encoder
+    - Distillation
+    - (*planned*) Pipelines (e.g. ANCE)
+- Neural IR
+    - Cross-Encoder
+    - Splade
     - DRMM
     - ColBERT
+- Paper reproduction:
+    - *MonoBERT* (Passage Re-ranking with BERT. Rodrigo Nogueira and Kyunghyun Cho. 2019)
+    - *DuoBERT* (Multi-Stage Document Ranking with BERT. Rodrigo Nogueira, Wei Yang, Kyunghyun Cho, Jimmy Lin. 2019)
+    - *Splade v2* (SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval, Thibault Formal, Carlos Lassance, Benjamin Piwowarski, and Stéphane Clinchant. SIGIR 2021)
 
 ## Examples
 
