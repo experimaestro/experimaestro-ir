@@ -41,7 +41,7 @@ from xpmir.letor.batchers import PowerAdaptativeBatcher
 from xpmir.neural.dual import DenseDocumentEncoder, DenseQueryEncoder
 from xpmir.letor.optim import ParameterOptimizer
 from xpmir.rankers.standard import BM25
-from xpmir.neural.splade import spladeV2_max
+from xpmir.neural.splade import spladeV2_doc
 from xpmir.measures import AP, P, nDCG, RR
 from xpmir.neural.pretrained import tas_balanced
 
@@ -267,7 +267,7 @@ def cli(
         # Define the model and the flop loss for regularization
         # Model of class: DotDense()
         # The parameters are the regularization coeff for the query and document
-        spladev2, flops = spladeV2_max(lambda_q, lambda_d, lamdba_warmup_steps)
+        spladev2, flops = spladeV2_doc(lambda_q, lambda_d, lamdba_warmup_steps)
 
         # Base retrievers for validation
         # It retrieve all the document of the collection with score 0
@@ -356,7 +356,7 @@ def cli(
 
         # Do the training process and then return the best model for splade
         best_model = run(
-            spladev2.tag("model", "splade-v2"),
+            spladev2.tag("model", "splade-v2-doc"),
             batchwise_trainer_flops,
             [
                 ParameterOptimizer(
@@ -376,7 +376,7 @@ def cli(
             ],
             hooks=[
                 setmeta(
-                    DistributedHook(models=[spladev2.encoder, spladev2.query_encoder]),
+                    DistributedHook(models=[spladev2.encoder]),
                     True,
                 )
             ],

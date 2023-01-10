@@ -230,25 +230,22 @@ class ScheduledFlopsRegularizer(FlopsRegularizer):
     lamdba_warmup_steps: Param[int] = 0
     """The warmup steps for the lambda"""
 
-    def quardratic_ratio(self, step):
+    def quadratic_ratio(self, step):
         if step > self.lamdba_warmup_steps:
             return 1
         else:
             return (step / self.lamdba_warmup_steps) ** 2
 
     def __post_init__(self):
-        # TODO: move from __call__
-        pass
+        self.initial_lambda_q = self.lambda_q
+        self.initial_lambda_d = self.lambda_d
 
     def __call__(self, info: TrainerContext, queries, documents):
         current_step = info.steps
-        if current_step == 1:
-            self.initial_lambda_q = self.lambda_q
-            self.initial_lambda_d = self.lambda_d
         self.lambda_q = (
             self.initial_lambda_q - self.min_lambda_q
-        ) * self.quardratic_ratio(current_step) + self.min_lambda_q
+        ) * self.quadratic_ratio(current_step) + self.min_lambda_q
         self.lambda_d = (
             self.initial_lambda_d - self.min_lambda_d
-        ) * self.quardratic_ratio(current_step) + self.min_lambda_d
+        ) * self.quadratic_ratio(current_step) + self.min_lambda_d
         FlopsRegularizer.__call__(self, info, queries, documents)

@@ -178,6 +178,53 @@ class TransformerVocab(text.Vocab):
         return self.tokenizer.vocab_size
 
 
+class HuggingfaceTokenizer(TextEncoder):
+    """A tokenizer which encodes the tokens into 0 and 1 vector
+    1 represents the text contains the token and 0 otherwise"""
+
+    model_id: Param[str] = "bert-base-uncased"
+    """Model ID from huggingface"""
+
+    maxlen: Param[Optional[int]] = None
+    """Max length for texts"""
+
+    def initialize(self):
+        self._dummy_params = nn.Parameter(torch.Tensor())
+
+    @property
+    def device(self):
+        return self._dummy_params.device
+
+    @cached_property
+    def tokenizer(self):
+        return AutoTokenizer.from_pretrained(self.model_id, use_fast=True)
+
+    def batch_tokenize(self, texts):
+        r = self.tokenizer(
+            list(texts),
+            max_length=self.maxlen,
+            truncation=True,
+            padding=True,
+            return_tensors="pt",
+        )
+        return r["input_ids"]
+
+    def forward(self, texts: List[str]) -> torch.Tensor:
+        """Returns a batch x vocab tensor"""
+        tokenized_ids = self.batch_tokenize(texts)
+        x = torch.zeros(len(texts), self.dimension)
+        x.scatter_(-1, tokenized_ids, value=1)
+        x[:, 0] = 0
+        return x.to(self.device)
+
+    @property
+    def dimension(self):
+        return self.tokenizer.vocab_size
+
+    def static(self):
+        return False
+
+
 class IndependentTransformerVocab(TransformerVocab):
     """Encodes as [CLS] QUERY [SEP]"""
 

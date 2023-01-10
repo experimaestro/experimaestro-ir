@@ -7,7 +7,7 @@ from xpmir.distributed import DistributableModel
 from transformers import AutoModelForMaskedLM
 from xpmir.letor.samplers import PairwiseInBatchNegativesSampler, PairwiseSampler
 from xpmir.letor.trainers.batchwise import BatchwiseTrainer
-from xpmir.text.huggingface import TransformerVocab
+from xpmir.text.huggingface import TransformerVocab, HuggingfaceTokenizer
 from xpmir.text.encoders import TextEncoder
 from xpmir.neural.dual import DotDense, ScheduledFlopsRegularizer
 from xpmir.utils import easylog
@@ -96,33 +96,6 @@ class SpladeTextEncoder(TextEncoder, DistributableModel):
         self.model = update(self.model)
 
 
-class SpladeTokenEncoder(TextEncoder):
-    """A encoder which encodes the tokens into 0 and 1 vector
-    1 represents the text contains the token and 0 otherwise"""
-
-    encoder: Param[TransformerVocab]
-    """The encoder from HuggingFace(make use of its tokenizer)"""
-
-    maxlen: Param[Optional[int]] = None
-    """Max length for texts"""
-
-    @initializer
-    def initialize(self):
-        self.encoder.initialize(automodel=AutoModelForMaskedLM)
-
-    def forward(self, texts: List[str]) -> torch.Tensor:
-        """Returns a batch x vocab tensor"""
-        tokenized = self.encoder.batch_tokenize(texts, mask=True, maxlen=self.maxlen)
-        return tokenized
-
-    @property
-    def dimension(self):
-        return self.encoder.model.config.vocab_size
-
-    def static(self):
-        return False
-
-
 def _splade(
     lambda_q: float,
     lambda_d: float,
@@ -164,10 +137,10 @@ def _splade_doc(
 
     # make use the output of the BERT and do an aggregation
     doc_encoder = SpladeTextEncoder(
-        aggregation=aggregation, encoder=encoder, maxlen=200
+        aggregation=aggregation, encoder=encoder, maxlen=256
     )
 
-    query_encoder = SpladeTokenEncoder(encoder=encoder, maxlen=30)
+    query_encoder = HuggingfaceTokenizer(model_id="distilbert-base-uncased", maxlen=30)
 
     return DotDense(
         encoder=doc_encoder, query_encoder=query_encoder
@@ -201,13 +174,22 @@ def spladeV2_max(
     )
 
 
-def spladeV2_doc():
+def spladeV2_doc(
+    lambda_q: float,
+    lambda_d: float,
+    lamdba_warmup_steps: int = 0,
+):
     """Returns the Splade-doc architecture
 
     SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval
     (arXiv:2109.10086)
     """
-    pass
+    return _splade_doc(
+        lambda_q,
+        lambda_d,
+        MaxAggregation(),
+        lamdba_warmup_steps,
+    )
 
 
 def spladev2___(sampler: PairwiseSampler) -> Tuple[BatchwiseTrainer, DotDense]:
