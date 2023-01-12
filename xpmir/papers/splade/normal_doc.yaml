@@ -9,9 +9,9 @@ Learner:
     validation_size: 500
     # validation for each (steps_per_epoch * validation interval) steps
     steps_per_epoch: 128
-    validation_interval: 8
+    validation_interval: 4
     # maybe it is too large for a gpu of 24G
-    splade_batch_size: 48
+    splade_batch_size: 84
     # 150k steps for training
     max_epochs: 400
     num_warmup_steps: 6000
@@ -22,7 +22,7 @@ Learner:
     lamdba_warmup_steps: 10000
     requirements: duration=6 days & cuda(mem=24G)
 Evaluation:
-    requirements: duration=6 days & cuda(mem=12G)
+    requirements: duration=6 days & cuda(mem=24G)
 base_retriever:
     topK: 1000
 tas_balance_retriever:
