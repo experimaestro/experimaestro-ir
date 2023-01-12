@@ -36,14 +36,14 @@ class SparseRetrieverIndex(Config):
 
     def initialize(self, in_memory: bool):
         self.index = xpmir_rust.index.SparseBuilderIndex.load(
-            str(self.index_path.absolute())
+            str(self.index_path.absolute()), in_memory
         )
 
     def retrieve(
         self, query: Dict[int, float], top_k: int, content=False
     ) -> List[ScoredDocument]:
         results = []
-        for sd in self.index.search(query, top_k):
+        for sd in self.index.search_maxscore(query, top_k):
             doc_id = self.documents.docid_internal2external(sd.docid)
             results.append(
                 ScoredDocument(
