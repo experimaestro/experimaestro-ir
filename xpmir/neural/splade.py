@@ -1,12 +1,10 @@
-from typing import List, Optional, Tuple
+from typing import List, Optional
 from experimaestro import Config, Param
 import torch.nn as nn
 import torch
 from experimaestro import initializer
 from xpmir.distributed import DistributableModel
 from transformers import AutoModelForMaskedLM
-from xpmir.letor.samplers import PairwiseInBatchNegativesSampler, PairwiseSampler
-from xpmir.letor.trainers.batchwise import BatchwiseTrainer
 from xpmir.text.huggingface import TransformerVocab, HuggingfaceTokenizer
 from xpmir.text.encoders import TextEncoder
 from xpmir.neural.dual import DotDense, ScheduledFlopsRegularizer
@@ -190,20 +188,3 @@ def spladeV2_doc(
         MaxAggregation(),
         lamdba_warmup_steps,
     )
-
-
-def spladev2___(sampler: PairwiseSampler) -> Tuple[BatchwiseTrainer, DotDense]:
-    """Returns the model described in Splade V2"""
-    from xpmir.letor.optim import Adam
-    from xpmir.letor.trainers.batchwise import SoftmaxCrossEntropy
-
-    ibn_sampler = PairwiseInBatchNegativesSampler(sampler=sampler)
-    trainer = BatchwiseTrainer(
-        batch_size=124,
-        optimizer=Adam(lr=2e-5),
-        sampler=ibn_sampler,
-        lossfn=SoftmaxCrossEntropy(),
-    )
-
-    # Trained with distillation
-    return trainer, spladeV2_max()
