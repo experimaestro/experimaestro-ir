@@ -6,6 +6,7 @@ from datamaestro_text.data.ir import AdhocDocumentStore
 from xpmir.letor.samplers import Sampler
 from xpmir.rankers import ScoredDocument
 from xpmir.datasets.adapters import TextStore
+import numpy as np
 
 
 class PairwiseDistillationSample(NamedTuple):
@@ -24,9 +25,13 @@ class PairwiseHydrator(PairwiseDistillationSamples):
     """Hydrate ID-based samples with document and/or query content"""
 
     samples: Param[PairwiseDistillationSamples]
+    """The distillation samples without texts for query and documents"""
 
     documentstore: Param[Optional[AdhocDocumentStore]]
+    """The store for document texts if needed"""
+
     querystore: Param[Optional[TextStore]]
+    """The store for query texts if needed"""
 
     def __iter__(self) -> Iterator[PairwiseDistillationSample]:
         for sample in self.samples:
@@ -46,6 +51,9 @@ class PairwiseDistillationSamplesTSV(PairwiseDistillationSamples, File):
     with_queryid: Meta[bool]
 
     def __iter__(self) -> Iterator[PairwiseDistillationSample]:
+        return self.iter()
+
+    def iter(self) -> Iterator[PairwiseDistillationSample]:
         import csv
 
         with self.path.open("rt") as fp:
@@ -74,8 +82,12 @@ class DistillationPairwiseSampler(Sampler):
 
     samples: Param[PairwiseDistillationSamples]
 
-    def __init__(self):
+    def initialize(self, random: np.random.RandomState):
         self.count = 0
+        super().initialize(random)
+
+    # def __init__(self):
+    #     self.count = 0
 
     def state_dict(self) -> Dict:
         return {"count": self.count}

@@ -1,17 +1,16 @@
 import sys
-from typing import Iterator, List, Tuple
+from typing import Iterator, List
 import torch
 from torch import nn
 from torch.functional import Tensor
-import torch.nn.functional as F
-from experimaestro import Config, default, Annotated, Param, deprecate
+from experimaestro import Config, Param
 from xpmir.letor.records import Document, PairwiseRecord, PairwiseRecords
 from xpmir.letor.context import Loss
-from xpmir.letor.trainers import TrainerContext, LossTrainer, TrainingHook
+from xpmir.letor.trainers import TrainerContext, LossTrainer
 from xpmir.utils import batchiter, foreach
 from .samplers import DistillationPairwiseSampler, PairwiseDistillationSample
 import numpy as np
-from xpmir.rankers import LearnableScorer, ScorerOutputType
+from xpmir.rankers import LearnableScorer
 
 
 class DistillationPairwiseLoss(Config, nn.Module):
@@ -49,8 +48,8 @@ class MSEDifferenceLoss(DistillationPairwiseLoss):
 
     NAME = "delta-MSE"
 
-    def __init__(self):
-        super().__init__()
+    def initialize(self, ranker):
+        super().initialize(ranker)
         self.loss = nn.MSELoss()
 
     def compute(
@@ -81,8 +80,17 @@ class DistillationPairwiseTrainer(LossTrainer):
         context: TrainerContext,
     ):
         super().initialize(random, context)
-        self.train_iter = batchiter(self.batch_size, self.sampler.pairwise_iter())
         self.lossfn.initialize(self.ranker)
+        foreach(
+            context.hooks(DistillationPairwiseLoss),
+            lambda loss: loss.initialize(self.ranker),
+        )
+        self.sampler.initialize(random)
+        self.train_iter = batchiter(self.batch_size, self.sampler.pairwise_iter())
+
+    def iter_batches(self) -> Iterator[List[PairwiseDistillationSample]]:
+        """Build a iterator over the batches of samples"""
+        return self.train_iter
 
     def train_batch(
         self, samples: List[PairwiseDistillationSample], context: TrainerContext

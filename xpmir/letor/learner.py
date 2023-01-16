@@ -13,10 +13,8 @@ from experimaestro import (
     Annotated,
     tqdm,
     Meta,
-    documentation,
 )
 import numpy as np
-from experimaestro.notifications import tqdm
 from xpmir.context import Hook, InitializationHook
 from xpmir.letor.batchers import RecoverableOOMError
 from xpmir.utils import EasyLogger, easylog, foreach
@@ -27,15 +25,11 @@ from xpmir.letor.context import (
     StepTrainingHook,
     TrainState,
     TrainerContext,
-    TrainingHook,
 )
 from xpmir.letor.metrics import Metrics
 from xpmir.rankers import (
     AbstractLearnableScorer,
-    LearnableScorer,
     Retriever,
-    ScoredDocument,
-    Scorer,
 )
 from xpmir.letor.optim import ParameterOptimizer, ScheduledOptimizer
 
@@ -94,6 +88,11 @@ class ValidationListener(LearnerListener):
     bestpath: Annotated[Path, pathgenerator("best")]
     """Path to the best checkpoints"""
 
+    last_checkpoint_path: Annotated[Path, pathgenerator("last_checkpoint")]
+    """Path to the last checkpoints"""
+
+    store_last_checkpoint: Param[bool] = False
+
     info: Annotated[Path, pathgenerator("info.json")]
     """Path to the JSON file that contains the metric values at each epoch"""
 
@@ -114,6 +113,8 @@ class ValidationListener(LearnerListener):
 
         self.retriever.initialize()
         self.bestpath.mkdir(exist_ok=True, parents=True)
+        if self.store_last_checkpoint:
+            self.last_checkpoint_path.mkdir(exist_ok=True, parents=True)
 
         # Checkpoint start
         try:
@@ -131,11 +132,22 @@ class ValidationListener(LearnerListener):
     def taskoutputs(self, learner: "Learner"):
         """Experimaestro outputs: returns the best checkpoints for each
         metric"""
-        return {
+        # return {
+        #     key: copyconfig(learner.scorer, checkpoint=str(self.bestpath / key))
+        #     for key, store in self.metrics.items()
+        #     if store
+        # }
+        res = {
             key: copyconfig(learner.scorer, checkpoint=str(self.bestpath / key))
             for key, store in self.metrics.items()
             if store
         }
+        if self.store_last_checkpoint:
+            res["last_checkpoint"] = copyconfig(
+                learner.scorer, checkpoint=str(self.last_checkpoint_path)
+            )
+
+        return res
 
     def should_stop(self, epoch=0):
         if self.early_stop > 0 and self.top:
@@ -182,9 +194,14 @@ class ValidationListener(LearnerListener):
                         # Copy in corresponding directory
                         if keep:
                             logging.info(
-                                f"Saving the checkpoint {state.epoch} for metric {metric}"
+                                f"Saving the checkpoint \
+                                {state.epoch} for metric {metric}"
                             )
                             self.context.copy(self.bestpath / metric)
+
+            if self.store_last_checkpoint:
+                logging.info(f"Saving the last checkpoint {state.epoch}")
+                self.context.copy(self.last_checkpoint_path)
 
             # Update information
             with self.info.open("wt") as fp:
@@ -202,9 +219,9 @@ class LearnerOutput(NamedTuple):
 class Learner(Task, EasyLogger):
     """Model Learner
 
-    The learner task is generic, and takes two main arguments:
-    (1) the scorer defines the model (e.g. DRMM), and
-    (2) the trainer defines how the model should be trained (e.g. pointwise, pairwise, etc.)
+    The learner task is generic, and takes two main arguments: (1) the scorer
+    defines the model (e.g. DRMM), and (2) the trainer defines how the model
+    should be trained (e.g. pointwise, pairwise, etc.)
 
     When submitted, it returns a dictionary based on the `listeners`
     """
@@ -232,7 +249,8 @@ class Learner(Task, EasyLogger):
     """The list of parameter optimizers"""
 
     listeners: Param[Dict[str, LearnerListener]]
-    """Listeners are in charge of handling the validation of the model, and saving the relevant checkpoints"""
+    """Listeners are in charge of handling the validation of the model, and
+    saving the relevant checkpoints"""
 
     checkpoint_interval: Param[int] = 1
     """Number of epochs between each checkpoint"""
@@ -436,7 +454,8 @@ class Learner(Task, EasyLogger):
                                 break
                         except RecoverableOOMError:
                             logger.warning(
-                                "Recoverable OOM detected - re-running the training step"
+                                """Recoverable OOM detected - re-running the
+                                training step"""
                             )
                             continue
 

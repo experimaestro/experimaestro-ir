@@ -1,4 +1,4 @@
-type: splade_max
+type: splade_distilMSE
 Launcher:
     gpu: true
     tags: []

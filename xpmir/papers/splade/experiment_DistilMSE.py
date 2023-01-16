@@ -10,23 +10,33 @@ from typing import Dict, List
 
 from omegaconf import OmegaConf
 from datamaestro import prepare_dataset
-from datamaestro_text.transforms.ir import ShuffledTrainingTripletsLines
 from experimaestro.launcherfinder import find_launcher
 
 from experimaestro import experiment, tag, tagspath, copyconfig, setmeta
 from experimaestro.click import click
 from experimaestro.utils import cleanupdir
 from xpmir.configuration import omegaconf_argument
-from xpmir.datasets.adapters import RandomFold, RetrieverBasedCollection
+from xpmir.datasets.adapters import (
+    MemoryTopicStore,
+    RandomFold,
+    RetrieverBasedCollection,
+)
 from xpmir.distributed import DistributedHook
 from xpmir.documents.samplers import RandomDocumentSampler
 from xpmir.evaluation import Evaluations, EvaluationsCollection
 from xpmir.interfaces.anserini import AnseriniRetriever, IndexCollection
 from xpmir.letor.devices import CudaDevice, Device
 from xpmir.letor import Random
+from xpmir.letor.distillation.pairwise import (
+    DistillationPairwiseTrainer,
+    MSEDifferenceLoss,
+)
+from xpmir.letor.distillation.samplers import (
+    DistillationPairwiseSampler,
+    PairwiseHydrator,
+)
 from xpmir.letor.learner import Learner, ValidationListener
 from xpmir.letor.optim import AdamW, RegexParameterFilter, get_optimizers
-from xpmir.letor.samplers import PairwiseInBatchNegativesSampler, TripletBasedSampler
 from xpmir.letor.schedulers import LinearWithWarmup
 from xpmir.index.faiss import IndexBackedFaiss, FaissRetriever
 from xpmir.index.sparse import (
@@ -36,7 +46,6 @@ from xpmir.index.sparse import (
 from xpmir.rankers import Scorer
 from xpmir.rankers.full import FullRetriever
 from xpmir.letor.trainers import Trainer
-from xpmir.letor.trainers.batchwise import BatchwiseTrainer, SoftmaxCrossEntropy
 from xpmir.letor.batchers import PowerAdaptativeBatcher
 from xpmir.neural.dual import DenseDocumentEncoder, DenseQueryEncoder
 from xpmir.letor.optim import ParameterOptimizer
@@ -164,19 +173,35 @@ def cli(
         documents = prepare_dataset(
             "irds.msmarco-passage.documents"
         )  # all the documents for msmarco
+
+        # All the query text
+        train_topics = prepare_dataset("irds.msmarco-passage.train.queries")
+
         dev = prepare_dataset("irds.msmarco-passage.dev")
+
+        # For evaluation
         devsmall = prepare_dataset("irds.msmarco-passage.dev.small")  # development
-        train_triples = prepare_dataset(
-            "irds.msmarco-passage.train.docpairs"
-        )  # pair for pairwise learner
+
+        # hard negatives trained by distillation with cross-encoder
+        # Improving Efficient Neural Ranking Models with Cross-Architecture
+        # Knowledge Distillation, (Sebastian Hofstätter, Sophia Althammer,
+        # Michael Schröder, Mete Sertkan, Allan Hanbury), 2020
+        # In the form of Tuple[Query, Tuple[Document, Document]] without text
+        train_triples_distil = prepare_dataset(
+            """com.github.sebastian-hofstaetter.
+            neural-ranking-kd.msmarco.ensemble.teacher"""
+        )
 
         # Index for msmarcos
         index = IndexCollection(documents=documents, storeContents=True).submit()
 
-        triplesid = ShuffledTrainingTripletsLines(
-            seed=123,
-            data=train_triples,
-        ).submit()
+        # Not work for now, avoid shuffuling first.
+        # TODO: Generalizing the shuffle mechanism for distillation
+
+        # triplesid = ShuffledTrainingTripletsLines(
+        #     seed=123,
+        #     data=train_triples_distil,
+        # ).submit()
 
         # Build a dev. collection for full-ranking (validation) "Efficiently
         # Teaching an Effective Dense Retriever with Balanced Topic Aware
@@ -218,9 +243,6 @@ def cli(
             trec2019=Evaluations(
                 prepare_dataset("irds.msmarco-passage.trec-dl-2019"), measures
             ),
-            trec2020=Evaluations(
-                prepare_dataset("irds.msmarco-passage.trec-dl-2020"), measures
-            ),
             msmarco_dev=Evaluations(devsmall, measures),
         )
 
@@ -253,13 +275,17 @@ def cli(
         cleanupdir(runspath)
         runspath.mkdir(exist_ok=True, parents=True)
 
-        # generator a batchwise sampler which is an Iterator of ProductRecords()
-        train_sampler = TripletBasedSampler(
-            source=triplesid, index=index
-        )  # the pairwise sampler from the dataset.
-        ibn_sampler = PairwiseInBatchNegativesSampler(
-            sampler=train_sampler
-        )  # generating the batchwise from the pairwise
+        # Combine the training triplets with the document and queries texts
+        distillation_samples = PairwiseHydrator(
+            samples=train_triples_distil,
+            documentstore=documents,
+            querystore=MemoryTopicStore(topics=train_topics),
+        )
+
+        # Generate a sampler from the samples
+        distil_pairwise_sampler = DistillationPairwiseSampler(
+            samples=distillation_samples
+        )
 
         # scheduler for trainer
         scheduler = LinearWithWarmup(num_warmup_steps=num_warmup_steps)
@@ -273,10 +299,10 @@ def cli(
         # It retrieve all the document of the collection with score 0
         base_retriever_full = FullRetriever(documents=ds_val.documents)
 
-        batchwise_trainer_flops = BatchwiseTrainer(
+        distil_pairwise_trainer = DistillationPairwiseTrainer(
             batch_size=splade_batch_size,
-            sampler=ibn_sampler,
-            lossfn=SoftmaxCrossEntropy(),
+            sampler=distil_pairwise_sampler,
+            lossfn=MSEDifferenceLoss(),
             hooks=[flops],
         )
 
@@ -357,7 +383,7 @@ def cli(
         # Do the training process and then return the best model for splade
         best_model = run(
             spladev2.tag("model", "splade-v2"),
-            batchwise_trainer_flops,
+            distil_pairwise_trainer,
             [
                 ParameterOptimizer(
                     scheduler=scheduler,

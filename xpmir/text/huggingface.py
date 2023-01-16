@@ -188,7 +188,13 @@ class HuggingfaceTokenizer(TextEncoder):
     maxlen: Param[Optional[int]] = None
     """Max length for texts"""
 
+    version: Constant[int] = 2
+
     def initialize(self):
+        self._tokenizer = AutoTokenizer.from_pretrained(self.model_id, use_fast=True)
+        self.CLS = self._tokenizer.cls_token_id
+        self.SEP = self._tokenizer.sep_token_id
+        self.PAD = self._tokenizer.pad_token_id
         self._dummy_params = nn.Parameter(torch.Tensor())
 
     @property
@@ -197,7 +203,7 @@ class HuggingfaceTokenizer(TextEncoder):
 
     @cached_property
     def tokenizer(self):
-        return AutoTokenizer.from_pretrained(self.model_id, use_fast=True)
+        return self._tokenizer
 
     def batch_tokenize(self, texts):
         r = self.tokenizer(
@@ -212,9 +218,10 @@ class HuggingfaceTokenizer(TextEncoder):
     def forward(self, texts: List[str]) -> torch.Tensor:
         """Returns a batch x vocab tensor"""
         tokenized_ids = self.batch_tokenize(texts)
-        x = torch.zeros(len(texts), self.dimension)
-        x.scatter_(-1, tokenized_ids, value=1)
-        x[:, 0] = 0
+        batch_size = len(texts)
+        x = torch.zeros(batch_size, self.dimension)
+        x[torch.arange(batch_size).unsqueeze(-1), tokenized_ids] = 1
+        x[:, [self.PAD, self.SEP, self.CLS]] = 0
         return x.to(self.device)
 
     @property
