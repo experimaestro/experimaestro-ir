@@ -1,6 +1,5 @@
 from pathlib import Path
 from typing import (
-    Iterable,
     Iterator,
     List,
     Optional,
@@ -343,14 +342,12 @@ class TripletBasedSampler(PairwiseSampler):
         getdoc = self._fromid if self.source.ids else self._fromtext
         source = self.source
 
-        class _Iterable(Iterable[PairwiseRecord]):
-            def __iter__(self):
-                return (
-                    PairwiseRecord(Query(None, query), getdoc(pos), getdoc(neg))
-                    for query, pos, neg in source.iter()
-                )
+        iterator = (
+            PairwiseRecord(Query(None, query), getdoc(pos), getdoc(neg))
+            for query, pos, neg in source.iter()
+        )
 
-        return SkippingIterator(_Iterable())
+        return SkippingIterator(iterator)
 
 
 class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
