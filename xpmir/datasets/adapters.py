@@ -20,11 +20,10 @@ from datamaestro_text.data.ir import (
     AdhocTopics,
 )
 
-from itertools import chain
 from datamaestro_text.data.ir.trec import TrecAdhocAssessments
 from datamaestro_text.data.ir.csv import AdhocTopics as CSVAdhocTopics
 from xpmir.rankers import Retriever
-from xpmir.utils import easylog
+from xpmir.utils.utils import easylog
 
 logger = easylog()
 

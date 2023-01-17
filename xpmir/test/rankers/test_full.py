@@ -7,7 +7,7 @@ from xpmir.letor.context import TrainerContext
 from xpmir.rankers import ScoredDocument
 from xpmir.rankers.full import FullRetrieverRescorer
 from xpmir.neural.dual import DualRepresentationScorer
-from xpmir.test.utils import SampleAdhocDocumentStore
+from xpmir.test.utils.utils import SampleAdhocDocumentStore
 
 
 class ListWrapper(list):
@@ -48,12 +48,12 @@ class CachedRandomScorer(DualRepresentationScorer):
 
 class _FullRetrieverRescorer(FullRetrieverRescorer):
     def retrieve(self, query: str):
-        l = [
+        scored_documents = [
             ScoredDocument(d.docid, self.scorer.cache[(query, d.text)])
             for d in self.documents
         ]
-        l.sort(reverse=True)
-        return l
+        scored_documents.sort(reverse=True)
+        return scored_documents
 
 
 def test_fullretrieverescorer():

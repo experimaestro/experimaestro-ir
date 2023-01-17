@@ -13,13 +13,11 @@ from experimaestro import (
     Annotated,
     tqdm,
     Meta,
-    documentation,
 )
 import numpy as np
-from experimaestro.notifications import tqdm
 from xpmir.context import Hook, InitializationHook
 from xpmir.letor.batchers import RecoverableOOMError
-from xpmir.utils import EasyLogger, easylog, foreach
+from xpmir.utils.utils import EasyLogger, easylog, foreach
 from xpmir.evaluation import evaluate
 from xpmir.letor import DEFAULT_DEVICE, Device, DeviceInformation, Random
 from xpmir.letor.trainers import Trainer
@@ -27,15 +25,11 @@ from xpmir.letor.context import (
     StepTrainingHook,
     TrainState,
     TrainerContext,
-    TrainingHook,
 )
 from xpmir.letor.metrics import Metrics
 from xpmir.rankers import (
     AbstractLearnableScorer,
-    LearnableScorer,
     Retriever,
-    ScoredDocument,
-    Scorer,
 )
 from xpmir.letor.optim import ParameterOptimizer, ScheduledOptimizer
 
@@ -182,7 +176,8 @@ class ValidationListener(LearnerListener):
                         # Copy in corresponding directory
                         if keep:
                             logging.info(
-                                f"Saving the checkpoint {state.epoch} for metric {metric}"
+                                f"Saving the checkpoint {state.epoch}"
+                                f" for metric {metric}"
                             )
                             self.context.copy(self.bestpath / metric)
 
@@ -203,8 +198,10 @@ class Learner(Task, EasyLogger):
     """Model Learner
 
     The learner task is generic, and takes two main arguments:
+
     (1) the scorer defines the model (e.g. DRMM), and
-    (2) the trainer defines how the model should be trained (e.g. pointwise, pairwise, etc.)
+    (2) the trainer defines how the model should be trained (e.g. pointwise,
+        pairwise, etc.)
 
     When submitted, it returns a dictionary based on the `listeners`
     """
@@ -232,7 +229,8 @@ class Learner(Task, EasyLogger):
     """The list of parameter optimizers"""
 
     listeners: Param[Dict[str, LearnerListener]]
-    """Listeners are in charge of handling the validation of the model, and saving the relevant checkpoints"""
+    """Listeners are in charge of handling the validation of the model, and
+    saving the relevant checkpoints"""
 
     checkpoint_interval: Param[int] = 1
     """Number of epochs between each checkpoint"""
@@ -436,7 +434,8 @@ class Learner(Task, EasyLogger):
                                 break
                         except RecoverableOOMError:
                             logger.warning(
-                                "Recoverable OOM detected - re-running the training step"
+                                "Recoverable OOM detected"
+                                " - re-running the training step"
                             )
                             continue
 

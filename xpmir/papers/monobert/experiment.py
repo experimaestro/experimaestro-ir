@@ -2,6 +2,8 @@
 # Passage Re-ranking with BERT, (Rodrigo Nogueira, Kyunghyun Cho). 2019
 # https://arxiv.org/abs/1901.04085
 
+# flake8: noqa: T210
+
 import logging
 from pathlib import Path
 from omegaconf import OmegaConf
@@ -31,7 +33,7 @@ from xpmir.pipelines.reranking import RerankingPipeline
 from xpmir.rankers import RandomScorer
 from xpmir.rankers.standard import BM25
 from xpmir.text.huggingface import DualTransformerEncoder
-from xpmir.utils import find_java_home
+from xpmir.utils.utils import find_java_home
 
 logging.basicConfig(level=logging.INFO)
 

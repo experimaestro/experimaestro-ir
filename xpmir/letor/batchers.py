@@ -3,18 +3,14 @@ from typing import (
     List,
     Protocol,
     Callable,
-    Any,
     Iterator,
-    SupportsIndex,
-    Tuple,
     TypeVar,
     Union,
     overload,
 )
 from experimaestro import Config
-from numpy import isin
 from pytorch_lightning.utilities.memory import garbage_collection_cuda
-from xpmir.utils import easylog
+from xpmir.utils.utils import easylog
 
 logger = easylog()
 
@@ -115,8 +111,12 @@ class BatcherWorker:
 
         Arguments:
             batch: The data to process
-            reducer: The reducer function, whose two first arguments are a slice of T and the reduced value, and that returns a new value
-            raise_oom: Raise an OOM exception when an OOM is recoverable instead of continuing
+
+            reducer: The reducer function, whose two first arguments are a slice
+            of T and the reduced value, and that returns a new value
+
+            raise_oom: Raise an OOM exception when an OOM is recoverable instead
+            of continuing
         """
         return reducer(batch, initialvalue, *args, **kwargs)
 

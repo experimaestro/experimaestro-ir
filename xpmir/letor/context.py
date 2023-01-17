@@ -5,19 +5,14 @@ from pathlib import Path
 import os
 import json
 from typing import (
-    Callable,
-    DefaultDict,
-    Dict,
     List,
     NamedTuple,
-    TypeVar,
     Optional,
-    Type,
     TYPE_CHECKING,
 )
 from shutil import rmtree
 from xpmir.context import Context, InitializationHook
-from xpmir.utils import easylog
+from xpmir.utils.utils import easylog
 from xpmir.letor import DeviceInformation
 from xpmir.letor.metrics import Metric, Metrics
 from experimaestro.utils import cleanupdir

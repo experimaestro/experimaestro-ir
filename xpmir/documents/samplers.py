@@ -1,16 +1,12 @@
 from typing import Optional, Tuple, Iterator
 from experimaestro import Config, Param
 import torch
-import re
 import numpy as np
 from datamaestro_text.data.ir import AdhocDocumentStore
 from xpmir.letor import Random
 from xpmir.letor.records import Document, ProductRecords, Query
-from xpmir.letor.samplers import (
-    BatchwiseSampler,
-    RandomSerializableIterator,
-    SerializableIterator,
-)
+from xpmir.letor.samplers import BatchwiseSampler
+from xpmir.utils.iter import RandomSerializableIterator, SerializableIterator
 
 
 class DocumentSampler(Config):
@@ -83,10 +79,14 @@ class RandomDocumentSampler(DocumentSampler):
 
 
 class BatchwiseRandomSpanSampler(DocumentSampler, BatchwiseSampler):
-    """This sampler uses positive samples coming from the same documents and negative ones coming from others
+    """This sampler uses positive samples coming from the same documents
+    and negative ones coming from others
 
     Allows to (pre)-train as in co-condenser:
-        L. Gao and J. Callan, “Unsupervised Corpus Aware Language Model Pre-training for Dense Passage Retrieval,” arXiv:2108.05540 [cs], Aug. 2021, Accessed: Sep. 17, 2021. [Online]. Available: http://arxiv.org/abs/2108.05540
+        L. Gao and J. Callan, “Unsupervised Corpus Aware Language Model
+        Pre-training for Dense Passage Retrieval,” arXiv:2108.05540 [cs],
+        Aug. 2021, Accessed: Sep. 17, 2021. [Online].
+        http://arxiv.org/abs/2108.05540
     """
 
     max_spansize: Param[int] = 1000

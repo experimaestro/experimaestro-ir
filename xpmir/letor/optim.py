@@ -2,7 +2,7 @@ from typing import Any, Callable, List, Optional, TYPE_CHECKING, Union
 from experimaestro import Config, Param
 import torch
 from .schedulers import Scheduler
-from xpmir.utils import easylog
+from xpmir.utils.utils import easylog
 from xpmir.letor.metrics import ScalarMetric
 import re
 
@@ -62,7 +62,8 @@ class ParameterFilter(Config):
     """One abstract class which doesn't do the filtrage"""
 
     def __call__(self, name, params) -> bool:
-        """Returns true if the parameters should be optimized with the associated optimizer"""
+        """Returns true if the parameters should be optimized with the
+        associated optimizer"""
         return True
 
 

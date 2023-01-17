@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch
 from xpmir.context import Context, InitializationHook
 from xpmir.letor import DistributedDeviceInformation
-from xpmir.utils import easylog
+from xpmir.utils.utils import easylog
 
 logger = easylog()
 

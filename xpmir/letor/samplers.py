@@ -1,17 +1,18 @@
 from pathlib import Path
 from typing import (
-    Callable,
-    Dict,
-    Generic,
     Iterable,
     Iterator,
     List,
     Optional,
     Tuple,
-    TypeVar,
 )
 import numpy as np
-from datamaestro_text.data.ir import Adhoc, TrainingTriplets
+from datamaestro_text.data.ir import (
+    Adhoc,
+    TrainingTriplets,
+    PairwiseSampleDataset,
+    PairwiseSample,
+)
 from experimaestro import Config, Param, tqdm
 from experimaestro.annotations import cache
 import torch
@@ -23,125 +24,17 @@ from xpmir.letor.records import (
     PointwiseRecord,
     Query,
 )
-from xpmir.rankers import Retriever, ScoredDocument
-from xpmir.utils import EasyLogger, easylog
+from xpmir.rankers import Retriever
+from xpmir.utils.utils import EasyLogger, easylog
 from xpmir.index import Index
-from xpmir.compat import Protocol
+from xpmir.utils.iter import (
+    RandomSerializableIterator,
+    SerializableIterator,
+    SerializableIteratorAdapter,
+    SkippingIterator,
+)
 
 logger = easylog()
-
-# --- Utility classes
-
-T = TypeVar("T")
-U = TypeVar("U")
-ItType = TypeVar("ItType", covariant=True)
-
-
-class SerializableIterator(Iterator[ItType], Protocol[ItType]):
-    """An iterator that can be serialized through state dictionaries.
-
-    This is used when saving the sampler state
-    """
-
-    def state_dict(self) -> Dict:
-        ...
-
-    def load_state_dict(self, state):
-        ...
-
-
-class RandomSerializableIterator(Iterator[T]):
-    def __init__(
-        self,
-        random: np.random.RandomState,
-        generator: Callable[[np.random.RandomState], Iterator[T]],
-    ):
-        self.random = random
-        self.generator = generator
-        self.iter = generator(random)
-
-    def load_state_dict(self, state):
-        self.random.set_state(state["random"])
-        self.iter = self.generator(self.random)
-
-    def state_dict(self):
-        return {"random": self.random.get_state()}
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        return next(self.iter)
-
-
-class SerializableIteratorWrapper(Iterable[U], Generic[T, U]):
-    def __init__(
-        self,
-        main: SerializableIterator[T],
-        generator: Callable[[SerializableIterator[T]], Iterator[U]],
-    ):
-        self.generator = generator
-        self.main = main
-        self.iter = generator(main)
-
-    def load_state_dict(self, state):
-        self.main.load_state_dict(state)
-        self.iter = self.generator(self.main)
-
-    def state_dict(self):
-        return self.main.state_dict()
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        return next(self.iter)
-
-
-class SkippingIterator(Iterable[T]):
-    """An iterator that skips the first entries and can output its state
-
-    When serialized (i.e. checkpointing), the iterator saves the current position.
-    This can be used when deserialized, to get back to the same (checkpointed) position.
-    """
-
-    position: int
-    """The current position (in number of items) of the iterator"""
-
-    count: int
-    """The target position (in case of deserialization)"""
-
-    def __init__(self, iterable: Iterable[T]):
-        self.position = 0
-        self.iterable = iterable
-        self.iter = iter(iterable)
-        self.count = 0
-
-    def state_dict(self):
-        return {"count": self.position}
-
-    def load_state_dict(self, state):
-        self.iter = None
-        self.position = state.get("count", 0)
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        self.iter = self.iter or iter(self.iterable)
-
-        # Nature of the documents
-        if self.position < self.count:
-            # Skip self.count items
-            logger.info("Skipping %d records to match state (sampler)", self.count)
-            for _ in range(self.count - self.position):
-                next(self.iter)
-            self.position = self.count
-
-        # And now go ahead
-        element = next(self.iter)
-        self.position += 1
-        return element
 
 
 # --- Base classes for samplers
@@ -150,14 +43,8 @@ class SkippingIterator(Iterable[T]):
 class Sampler(Config, EasyLogger):
     """Abstract data sampler"""
 
-    def initialize(self, random: np.random.RandomState):
-        self.random = np.random.RandomState(random.randint(0, 2**31))
-
-    def state_dict(self) -> Dict:
-        raise NotImplementedError(f"state_dict() not implemented in {self.__class__}")
-
-    def load_dict(self, Dict):
-        raise NotImplementedError(f"load_dict() not implemented in {self.__class__}")
+    def initialize(self, random: Optional[np.random.RandomState]):
+        self.random = random or np.random.RandomState(random.randint(0, 2**31))
 
 
 class PointwiseSampler(Sampler):
@@ -167,7 +54,8 @@ class PointwiseSampler(Sampler):
 
 
 class PairwiseSampler(Sampler):
-    """Abstract class for pairwise samplers which output a set of (query, positive, negative) triples"""
+    """Abstract class for pairwise samplers which output a set of (query,
+    positive, negative) triples"""
 
     def pairwise_iter(self) -> SerializableIterator[PairwiseRecord]:
         """Iterate over batches of size (# of queries) batch_size
@@ -181,7 +69,7 @@ class PairwiseSampler(Sampler):
 class BatchwiseSampler(Sampler):
     """Batchwise samplers provide for each question a set of documents"""
 
-    def batchwise_iter(self, batchsize: int) -> SerializableIterator[BatchwiseRecords]:
+    def batchwise_iter(self, batch_size: int) -> SerializableIterator[BatchwiseRecords]:
         """Iterate over batches of size (# of queries) batch_size
 
         Args:
@@ -215,7 +103,8 @@ class ModelBasedSampler(Sampler):
     ) -> Iterator[
         Tuple[str, List[Tuple[str, int, float]], List[Tuple[str, int, float]]]
     ]:
-        """Iterates over topics, returning retrieved positives and negatives documents"""
+        """Iterates over topics, returning retrieved positives and negatives
+        documents"""
         self.logger.info("Reading topics and retrieving documents")
 
         if not runpath.is_file():
@@ -254,7 +143,8 @@ class ModelBasedSampler(Sampler):
                     for docno, rel in qassessments.items():
                         if rel > 0:
                             fp.write(
-                                f"{query.text if not positives else ''}\t{docno}\t0.\t{rel}\n"
+                                f"{query.text if not positives else ''}"
+                                f"\t{docno}\t0.\t{rel}\n"
                             )
                             positives.append((docno, rel, 0))
 
@@ -421,7 +311,7 @@ class PairwiseInBatchNegativesSampler(BatchwiseSampler):
                 batch.setRelevances(relevances)
                 yield batch
 
-        return SerializableIteratorWrapper(self.sampler.pairwise_iter(), iter)
+        return SerializableIteratorAdapter(self.sampler.pairwise_iter(), iter)
 
 
 class TripletBasedSampler(PairwiseSampler):
@@ -461,3 +351,44 @@ class TripletBasedSampler(PairwiseSampler):
                 )
 
         return SkippingIterator(_Iterable())
+
+
+class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
+    """Sampler based on a dataset where each query is associated
+    with (1) a set of relevant documents (2) negative documents,
+    where each negative is sampled with a specific algorithm
+    """
+
+    dataset: Param[PairwiseSampleDataset]
+
+    def pairwise_iter(self) -> SkippingIterator[PairwiseRecord]:
+        class _Iterator(SkippingIterator[PairwiseRecord]):
+            def __init__(
+                self, random: np.random.RandomState, iterator: Iterator[PairwiseSample]
+            ):
+                super().__init__(iterator)
+                self.random = random
+
+            def load_state_dict(self, state):
+                super().load_state_dict(state)
+                self.random.set_state(state["random"])
+
+            def state_dict(self):
+                return {"random": self.random.get_state(), **super().state_dict()}
+
+            def restore_state(self, state):
+                self.random.set_state(state["random"])
+                self.iter = super().restore_state(state)
+
+            def next(self):
+                sample = super().next()  # type: PairwiseSample
+
+                pos = sample.positives[self.random.randint(len(sample.positives))]
+
+                all_negatives = sample.negatives().values()
+                negatives = all_negatives[self.random.randint(len(all_negatives))]
+                neg = negatives[self.random.randint(len(negatives))]
+
+                return PairwiseRecord(sample.query, pos, neg)
+
+        return SkippingIterator(_Iterator(self.random, self.dataset.iter()))

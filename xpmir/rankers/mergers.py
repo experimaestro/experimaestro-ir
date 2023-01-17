@@ -1,6 +1,6 @@
 from typing import Optional, List
 from experimaestro import Param
-from xpmir.utils import foreach
+from xpmir.utils.utils import foreach
 from . import Retriever
 
 

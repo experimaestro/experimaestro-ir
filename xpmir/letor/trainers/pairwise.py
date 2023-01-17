@@ -18,7 +18,7 @@ from xpmir.letor.samplers import PairwiseSampler, SerializableIterator
 from xpmir.letor.trainers import TrainerContext, LossTrainer
 import numpy as np
 from xpmir.rankers import LearnableScorer, ScorerOutputType
-from xpmir.utils import foreach
+from xpmir.utils.utils import foreach
 
 
 class PairwiseLoss(Config, nn.Module):

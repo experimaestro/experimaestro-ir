@@ -19,7 +19,7 @@ from xpmir.letor import (
     DEFAULT_DEVICE,
     DeviceInformation,
 )
-from xpmir.utils import batchiter, easylog, foreach
+from xpmir.utils.utils import batchiter, easylog, foreach
 from xpmir.documents.samplers import DocumentSampler
 from xpmir.context import Context, Hook, InitializationHook
 
@@ -76,12 +76,15 @@ class IndexBackedFaiss(FaissIndex, Task):
     indexspec: Param[str]
     """The index type as a factory string
 
-    See https://github.com/facebookresearch/faiss/wiki/Faiss-indexes for the full list of indices
-    and https://github.com/facebookresearch/faiss/wiki/The-index-factory for the combination of the index factory
+    See https://github.com/facebookresearch/faiss/wiki/Faiss-indexes
+    for the full list oqf indices
+    and https://github.com/facebookresearch/faiss/wiki/The-index-factory
+    for the combination of the index factory
     """
 
     sampler: Param[Optional[DocumentSampler]]
-    """Optional document sampler when training the index -- by default, all the documents from the collection are used"""
+    """Optional document sampler when training the index -- by default, all the
+    documents from the collection are used"""
 
     def full_sampler(self) -> Tuple[int, Iterator[str]]:
         """Returns an iterator over the full set of documents"""

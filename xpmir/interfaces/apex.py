@@ -1,13 +1,17 @@
 import sys
 import types
-from xpmir.utils import easylog
+from xpmir.utils.utils import easylog
 
 _logger = easylog()
 
 
 # hack for pylint
-FP16_Optimizer = lambda *args, **kwargs: None
-FusedAdam = lambda *args, **kwargs: None
+def FP16_Optimizer(*args, **kwargs):
+    return None
+
+
+def FusedAdam(*args, **kwargs):
+    return None
 
 
 class ApexWrapper(types.ModuleType):

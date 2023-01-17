@@ -16,7 +16,7 @@ from xpmir.text.encoders import (
     TextEncoder,
     TripletTextEncoder,
 )
-from xpmir.utils import easylog
+from xpmir.utils.utils import easylog
 
 try:
     from transformers import AutoModel, AutoTokenizer, AutoConfig

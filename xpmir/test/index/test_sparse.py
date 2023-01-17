@@ -4,7 +4,7 @@ import pytest
 import torch
 import numpy as np
 from xpmir.index.sparse import SparseRetriever, SparseRetrieverIndexBuilder
-from xpmir.test.utils import SampleAdhocDocumentStore, SparseRandomTextEncoder
+from xpmir.test.utils.utils import SampleAdhocDocumentStore, SparseRandomTextEncoder
 
 
 @pytest.fixture
@@ -121,7 +121,8 @@ def test_sparse_retrieve(sparse_index: SparseIndex, retriever):
 
 
 def test_sparse_retrieve_all(retriever):
-    """Just verifies that the retriever is coherent with itself when retrieving many queries"""
+    """Just verifies that the retriever is coherent with itself when retrieving
+    many queries"""
     queries = {
         "q1": "Query 1",
         "q2": "Query 2",

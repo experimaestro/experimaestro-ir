@@ -1,15 +1,11 @@
 import logging
-from collections import defaultdict
 from pathlib import Path
-from typing import Dict, Iterator, List, OrderedDict
 
 import pytest
-import torch
-from experimaestro import Param
 from experimaestro.xpmutils import DirectoryContext
-from xpmir.documents.samplers import DocumentSampler, HeadDocumentSampler
-from xpmir.index.faiss import FaissIndex, FaissRetriever, IndexBackedFaiss
-from xpmir.test.utils import SampleAdhocDocumentStore, SparseRandomTextEncoder
+from xpmir.documents.samplers import HeadDocumentSampler
+from xpmir.index.faiss import FaissRetriever, IndexBackedFaiss
+from xpmir.test.utils.utils import SampleAdhocDocumentStore, SparseRandomTextEncoder
 
 indexspecs = ["Flat", "HNSW"]
 

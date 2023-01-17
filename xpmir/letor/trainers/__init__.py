@@ -5,14 +5,14 @@ import numpy as np
 from xpmir.letor.metrics import ScalarMetric
 from xpmir.letor.samplers import Sampler, SerializableIterator
 from xpmir.letor.records import BaseRecords
-from xpmir.utils import EasyLogger, easylog
+from xpmir.utils.utils import EasyLogger, easylog
 from xpmir.letor.batchers import Batcher
 from xpmir.letor.context import (
     TrainingHook,
     TrainerContext,
 )
 
-from xpmir.utils import foreach
+from xpmir.utils.utils import foreach
 
 logger = easylog()
 
@@ -21,8 +21,11 @@ class Trainer(Config, EasyLogger):
     """Generic trainer"""
 
     hooks: Param[List[TrainingHook]] = []
-    """Hooks for this trainer: this includes the losses, but can be adapted for other uses
-        The specific list of hooks depends on the specific trainer"""
+    """Hooks for this trainer: this includes the losses, but can be adapted for
+        other uses
+
+        The specific list of hooks depends on the specific trainer
+    """
 
     def initialize(
         self,

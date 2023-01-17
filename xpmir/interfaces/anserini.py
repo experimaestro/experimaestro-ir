@@ -22,7 +22,7 @@ from tqdm import tqdm
 from xpmir.index.anserini import Index
 from xpmir.rankers import Retriever, ScoredDocument
 from xpmir.rankers.standard import BM25, Model
-from xpmir.utils import Handler, StreamGenerator
+from xpmir.utils.utils import Handler, StreamGenerator
 
 
 def anserini_classpath():
@@ -147,13 +147,12 @@ class IndexCollection(Index, Task):
         if self.storeContents:
             command.append("-storeContents")
 
-        print("Running", command)
         # Index and keep track of progress through regular expressions
         RE_FILES = re.compile(
-            rb""".*index\.IndexCollection \(IndexCollection.java:\d+\) - ([\d,]+) files found"""
+            rb""".*index\.IndexCollection \(IndexCollection.java:\d+\) - ([\d,]+) files found"""  # noqa: E501
         )
         RE_FILE = re.compile(
-            rb""".*index\.IndexCollection\$LocalIndexerThread \(IndexCollection.java:\d+\).* docs added."""
+            rb""".*index\.IndexCollection\$LocalIndexerThread \(IndexCollection.java:\d+\).* docs added."""  # noqa: E501
         )
         RE_COMPLETE = re.compile(
             rb""".*IndexCollection\.java.*Indexing Complete.*documents indexed"""
@@ -180,7 +179,6 @@ class IndexCollection(Index, Task):
                     complete = complete or (RE_COMPLETE.match(data) is not None)
                     if m:
                         nfiles = int(m.group(1).decode("utf-8").replace(",", ""))
-                        print("%d files to index" % nfiles)
                     elif RE_FILE.match(data):
                         indexedfiles += 1
                         progress(indexedfiles / nfiles)
@@ -193,7 +191,8 @@ class IndexCollection(Index, Task):
 
                 if proc.returncode == 0 and not complete:
                     logging.error(
-                        "Did not see the indexing complete log message -- exiting with error"
+                        "Did not see the indexing complete log message"
+                        " -- exiting with error"
                     )
                     sys.exit(1)
                 sys.exit(proc.returncode)

@@ -3,7 +3,7 @@ import logging
 import os
 from pathlib import Path
 import re
-from subprocess import DEVNULL, PIPE, check_output, run
+from subprocess import run
 import tempfile
 from threading import Thread
 from typing import BinaryIO, Callable, Iterator, List, TextIO, TypeVar, Union, Iterable

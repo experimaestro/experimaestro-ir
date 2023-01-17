@@ -6,7 +6,7 @@ from experimaestro.taskglobals import Env as TaskEnv
 import torch.distributed as dist
 import torch.multiprocessing as mp
 import tempfile
-from xpmir.utils import easylog
+from xpmir.utils.utils import easylog
 
 logger = easylog()
 
@@ -63,7 +63,8 @@ class CudaDevice(Device):
     """Fallback to CPU if no GPU is available"""
 
     distributed: Param[bool] = False
-    """Use distributed computation (DDP) when `distributed` is `True` and the number of GPUs greater than 1"""
+    """Use distributed computation (DDP) when `distributed` is `True` and the
+    number of GPUs greater than 1"""
 
     @cached_property
     def value(self):

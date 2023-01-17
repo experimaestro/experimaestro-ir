@@ -1,6 +1,8 @@
-# Implementation of the experiments in the paper with trec car training, not working yet.
-# Passage Re-ranking with BERT, (Rodrigo Nogueira, Kyunghyun Cho). 2019
-# https://arxiv.org/abs/1901.04085
+# Implementation of the experiments in the paper with trec car training, not
+# working yet. Passage Re-ranking with BERT, (Rodrigo Nogueira, Kyunghyun Cho).
+# 2019 https://arxiv.org/abs/1901.04085
+
+# flake8: noqa: T201
 
 import logging
 from pathlib import Path
@@ -30,7 +32,7 @@ from xpmir.pipelines.reranking import RerankingPipeline
 from xpmir.rankers import RandomScorer
 from xpmir.rankers.standard import BM25
 from xpmir.text.huggingface import DualTransformerEncoder
-from xpmir.utils import find_java_home
+from xpmir.utils.utils import find_java_home
 
 logging.basicConfig(level=logging.INFO)
 
@@ -58,9 +60,6 @@ def cli(debug, configuration, host, port, workdir):
     tags = configuration.Launcher.tags.split(",") if configuration.Launcher.tags else []
 
     logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
-
-    # Number of topics in the validation set
-    VAL_SIZE = configuration.Learner.validation_size
 
     # Number of batches per epoch (# samples = STEPS_PER_EPOCH * batch_size)
     STEPS_PER_EPOCH = configuration.Learner.steps_per_epoch
@@ -172,19 +171,21 @@ def cli(debug, configuration, host, port, workdir):
             "irds.msmarco-passage.documents@irds": base_retriever_ms_val,
         }
 
-        factory_retriever = lambda scorer, documents: scorer.getRetriever(
-            base_retrievers[documents.id],
-            batch_size,
-            PowerAdaptativeBatcher(),
-            device=device,
-        )
+        def factory_retriever(scorer, documents):
+            return scorer.getRetriever(
+                base_retrievers[documents.id],
+                batch_size,
+                PowerAdaptativeBatcher(),
+                device=device,
+            )
 
-        factory_retriever_val = lambda scorer, documents: scorer.getRetriever(
-            base_retrievers_val[documents.id],
-            batch_size,
-            PowerAdaptativeBatcher(),
-            device=device,
-        )
+        def factory_retriever_val(scorer, documents):
+            return scorer.getRetriever(
+                base_retrievers_val[documents.id],
+                batch_size,
+                PowerAdaptativeBatcher(),
+                device=device,
+            )
 
         # Search and evaluate with BM25
         bm25_retriever_ms = AnseriniRetriever(k=topK, index=index, model=basemodel).tag(

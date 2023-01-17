@@ -8,7 +8,7 @@ from transformers import AutoModelForMaskedLM
 from xpmir.text.huggingface import TransformerVocab, HuggingfaceTokenizer
 from xpmir.text.encoders import TextEncoder
 from xpmir.neural.dual import DotDense, ScheduledFlopsRegularizer
-from xpmir.utils import easylog
+from xpmir.utils.utils import easylog
 
 logger = easylog()
 

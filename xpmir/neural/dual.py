@@ -5,7 +5,7 @@ from xpmir.distributed import DistributableModel
 from xpmir.letor.batchers import Batcher
 from xpmir.neural import DualRepresentationScorer
 from xpmir.rankers import Retriever
-from xpmir.utils import easylog, foreach
+from xpmir.utils.utils import easylog, foreach
 from xpmir.text.encoders import TextEncoder
 from xpmir.letor.context import Loss, TrainerContext, TrainingHook
 from xpmir.letor.metrics import ScalarMetric

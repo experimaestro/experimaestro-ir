@@ -4,7 +4,8 @@
 
 # An imitation of examples/msmarco-reranking.py
 
-import dataclasses
+# flake8: noqa: T201
+
 import logging
 from pathlib import Path
 from omegaconf import OmegaConf
@@ -16,8 +17,8 @@ from datamaestro import prepare_dataset
 from datamaestro_text.transforms.ir import ShuffledTrainingTripletsLines
 from xpmir.neural.cross import CrossScorer, DuoCrossScorer
 from experimaestro import experiment, setmeta
-from experimaestro.click import click, forwardoption
-from experimaestro.launcherfinder import cpu, cuda_gpu, find_launcher
+from experimaestro.click import click
+from experimaestro.launcherfinder import cpu, find_launcher
 from experimaestro.launcherfinder.specs import duration
 from experimaestro.utils import cleanupdir
 from xpmir.configuration import omegaconf_argument
@@ -27,16 +28,14 @@ from xpmir.interfaces.anserini import AnseriniRetriever, IndexCollection
 from xpmir.letor import Device, Random
 from xpmir.letor.batchers import PowerAdaptativeBatcher
 from xpmir.letor.devices import CudaDevice
-from xpmir.letor.learner import Learner
-from xpmir.letor.optim import Adam, AdamW, ParameterOptimizer, RegexParameterFilter
+from xpmir.letor.optim import AdamW, ParameterOptimizer, RegexParameterFilter
 from xpmir.letor.samplers import TripletBasedSampler
 from xpmir.measures import AP, RR, P, nDCG
-from xpmir.neural.jointclassifier import JointClassifier
 from xpmir.pipelines.reranking import RerankingPipeline
-from xpmir.rankers import RandomScorer, Retriever
+from xpmir.rankers import RandomScorer
 from xpmir.rankers.standard import BM25
 from xpmir.text.huggingface import DualDuoBertTransformerEncoder, DualTransformerEncoder
-from xpmir.utils import find_java_home
+from xpmir.utils.utils import find_java_home
 
 logging.basicConfig(level=logging.INFO)
 
@@ -199,20 +198,23 @@ def cli(debug, configuration, host, port, workdir, args):
             "irds.msmarco-passage.documents@irds": base_retriever_ms_val,
         }
 
-        # The factory returns a function which gives back a retriever based on the different kinds of documents to index.
-        factory_retriever = lambda scorer, documents: scorer.getRetriever(
-            base_retrievers[documents.id],
-            batch_size,
-            PowerAdaptativeBatcher(),
-            device=device,
-        )
+        # The factory returns a function which gives back a retriever based on
+        # the different kinds of documents to index.
+        def factory_retriever(scorer, documents):
+            return scorer.getRetriever(
+                base_retrievers[documents.id],
+                batch_size,
+                PowerAdaptativeBatcher(),
+                device=device,
+            )
 
-        factory_retriever_val = lambda scorer, documents: scorer.getRetriever(
-            base_retrievers_val[documents.id],
-            batch_size,
-            PowerAdaptativeBatcher(),
-            device=device,
-        )
+        def factory_retriever_val(scorer, documents):
+            return scorer.getRetriever(
+                base_retrievers_val[documents.id],
+                batch_size,
+                PowerAdaptativeBatcher(),
+                device=device,
+            )
 
         # Defines how we sample train examples
         # (using the shuffled pre-computed triplets from MS Marco)
@@ -223,7 +225,8 @@ def cli(debug, configuration, host, port, workdir, args):
         ).submit()
         train_sampler = TripletBasedSampler(source=triplesid, index=index)
 
-        # Search and evaluate with BM25(We need also make the difference between the index)
+        # Search and evaluate with BM25(We need also make the difference between
+        # the index)
         bm25_retriever_ms = AnseriniRetriever(
             k=topK1, index=index, model=basemodel
         ).tag("model", "bm25")
@@ -314,7 +317,8 @@ def cli(debug, configuration, host, port, workdir, args):
         # Here we have only one metric so we don't use a loop
         best_mono_scorer = outputs.listeners["bestval"]["RR@10"]
         # We take only the first topK2 value retrieved by the monobert retriever
-        # Create the retriever for the msmarcos dataset by using the best result from the monobert.
+        # Create the retriever for the msmarcos dataset by using the best result
+        # from the monobert.
         best_mono_retriever_ms = best_mono_scorer.getRetriever(
             base_retriever_ms,
             batch_size,
@@ -323,7 +327,8 @@ def cli(debug, configuration, host, port, workdir, args):
             top_k=topK2,
         )
 
-        # Create the retriever for the cars dataset by using the best result from the monobert.
+        # Create the retriever for the cars dataset by using the best result
+        # from the monobert.
         best_mono_retriever_cars = best_mono_scorer.getRetriever(
             base_retriever_cars,
             batch_size,
@@ -360,21 +365,23 @@ def cli(debug, configuration, host, port, workdir, args):
             "irds.msmarco-passage.documents@irds": best_mono_retriever_ms_val,
         }
 
-        factory_retriever_best_mono = lambda scorer, documents: scorer.getRetriever(
-            best_mono_retrievers[documents.id],
-            batch_size,
-            PowerAdaptativeBatcher(),
-            device=device,
-            top_k=topK2,
-        )
+        def factory_retriever_best_mono(scorer, documents):
+            return scorer.getRetriever(
+                best_mono_retrievers[documents.id],
+                batch_size,
+                PowerAdaptativeBatcher(),
+                device=device,
+                top_k=topK2,
+            )
 
-        factory_retriever_best_mono_val = lambda scorer, documents: scorer.getRetriever(
-            best_mono_retrievers_val[documents.id],
-            batch_size,
-            PowerAdaptativeBatcher(),
-            device=device,
-            top_k=topK2,
-        )
+        def factory_retriever_best_mono_val(scorer, documents):
+            return scorer.getRetriever(
+                best_mono_retrievers_val[documents.id],
+                batch_size,
+                PowerAdaptativeBatcher(),
+                device=device,
+                top_k=topK2,
+            )
 
         # The scorer(model) for the duobert
         duobert_scorer = DuoCrossScorer(

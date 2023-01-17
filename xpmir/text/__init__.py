@@ -5,7 +5,7 @@ from typing import List
 import torch.nn as nn
 from experimaestro import Config
 from xpmir.letor.records import TokenizedTexts
-from xpmir.utils import EasyLogger
+from xpmir.utils.utils import EasyLogger
 
 
 def lengthToMask(length, max_len=None, dtype=None):
@@ -37,8 +37,9 @@ class Vocab(Config, EasyLogger, nn.Module):
         """Initialize the vocabulary
 
         Args:
-            noinit (bool, optional): If `noinit` is true, parameters are not initialized (useful to have a faster
-            model initialization when loading parameters from checkpoint). Defaults to False.
+            noinit (bool, optional): If `noinit` is true, parameters are not
+            initializedq (useful to have a faster model initialization when
+            loading parameters from checkpoint). Defaults to False.
         """
         # Easy and hacky way to get the device
         self._dummy_params = nn.Parameter(torch.Tensor())
@@ -151,8 +152,9 @@ class Vocab(Config, EasyLogger, nn.Module):
 
     def emb_views(self) -> int:
         """
-        Returns how many "views" are returned by the embedding layer.
-        Most have 1, but sometimes it's useful to return multiple, e.g., BERT's multiple layers
+        Returns how many "views" are returned by the embedding layer. Most have
+        1, but sometimes it's useful to return multiple, e.g., BERT's multiple
+        layers
         """
         return 1
 
@@ -164,8 +166,8 @@ class Vocab(Config, EasyLogger, nn.Module):
 
     def static(self) -> bool:
         """
-        Returns True if the representations are static, i.e., not trained. Otherwise False.
-        This allows models to know when caching is appropriate.
+        Returns True if the representations are static, i.e., not trained.
+        Otherwise False. This allows models to know when caching is appropriate.
         """
         return True
 

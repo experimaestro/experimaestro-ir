@@ -22,7 +22,7 @@ from xpmir.letor.records import (
     ProductRecords,
     Query,
 )
-from xpmir.utils import EasyLogger, easylog
+from xpmir.utils.utils import EasyLogger, easylog
 
 logger = easylog()
 
