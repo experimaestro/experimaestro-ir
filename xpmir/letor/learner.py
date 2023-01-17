@@ -88,6 +88,11 @@ class ValidationListener(LearnerListener):
     bestpath: Annotated[Path, pathgenerator("best")]
     """Path to the best checkpoints"""
 
+    last_checkpoint_path: Annotated[Path, pathgenerator("last_checkpoint")]
+    """Path to the last checkpoints"""
+
+    store_last_checkpoint: Param[bool] = False
+
     info: Annotated[Path, pathgenerator("info.json")]
     """Path to the JSON file that contains the metric values at each epoch"""
 
@@ -108,6 +113,8 @@ class ValidationListener(LearnerListener):
 
         self.retriever.initialize()
         self.bestpath.mkdir(exist_ok=True, parents=True)
+        if self.store_last_checkpoint:
+            self.last_checkpoint_path.mkdir(exist_ok=True, parents=True)
 
         # Checkpoint start
         try:
@@ -125,11 +132,22 @@ class ValidationListener(LearnerListener):
     def taskoutputs(self, learner: "Learner"):
         """Experimaestro outputs: returns the best checkpoints for each
         metric"""
-        return {
+        # return {
+        #     key: copyconfig(learner.scorer, checkpoint=str(self.bestpath / key))
+        #     for key, store in self.metrics.items()
+        #     if store
+        # }
+        res = {
             key: copyconfig(learner.scorer, checkpoint=str(self.bestpath / key))
             for key, store in self.metrics.items()
             if store
         }
+        if self.store_last_checkpoint:
+            res["last_checkpoint"] = copyconfig(
+                learner.scorer, checkpoint=str(self.last_checkpoint_path)
+            )
+
+        return res
 
     def should_stop(self, epoch=0):
         if self.early_stop > 0 and self.top:
@@ -181,6 +199,10 @@ class ValidationListener(LearnerListener):
                             )
                             self.context.copy(self.bestpath / metric)
 
+            if self.store_last_checkpoint:
+                logging.info(f"Saving the last checkpoint {state.epoch}")
+                self.context.copy(self.last_checkpoint_path)
+
             # Update information
             with self.info.open("wt") as fp:
                 json.dump(self.top, fp)
@@ -197,11 +219,9 @@ class LearnerOutput(NamedTuple):
 class Learner(Task, EasyLogger):
     """Model Learner
 
-    The learner task is generic, and takes two main arguments:
-
-    (1) the scorer defines the model (e.g. DRMM), and
-    (2) the trainer defines how the model should be trained (e.g. pointwise,
-        pairwise, etc.)
+    The learner task is generic, and takes two main arguments: (1) the scorer
+    defines the model (e.g. DRMM), and (2) the trainer defines how the model
+    should be trained (e.g. pointwise, pairwise, etc.)
 
     When submitted, it returns a dictionary based on the `listeners`
     """

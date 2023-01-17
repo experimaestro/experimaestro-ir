@@ -149,6 +149,10 @@ class SparseRetrieverIndexBuilder(Task):
 
     index_path: Annotated[Path, pathgenerator("index")]
 
+    in_memory: Meta[bool] = False
+    """Whether the index should be fully loaded in memory (otherwise, uses
+    virtual memory)"""
+
     version: Constant[int] = 3
     """Version 3 of the index"""
 
@@ -195,7 +199,7 @@ class SparseRetrieverIndexBuilder(Task):
                 batcher.process(batch, self.encode_documents)
 
         # Build the index
-        self.indexer.build()
+        self.indexer.build(self.in_memory)
 
     def encode_documents(self, batch: List[AdhocDocument]):
         # Assumes for now dense vectors

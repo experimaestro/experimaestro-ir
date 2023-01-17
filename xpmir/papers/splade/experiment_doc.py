@@ -231,7 +231,7 @@ def cli(
                 dataset=dev, seed=123, fold=0, sizes=[VAL_SIZE], exclude=devsmall.topics
             ).submit(),
             retrievers=[
-                tasb_retriever,
+                # tasb_retriever,
                 AnseriniRetriever(k=retTopK, index=index, model=basemodel),
             ],
         ).submit(launcher=gpu_launcher_index)
@@ -302,6 +302,7 @@ def cli(
                 early_stop=early_stop,
                 validation_interval=validation_interval,
                 metrics={"RR@10": True, "AP": False, "nDCG@10": False},
+                store_last_checkpoint=True,
             )
 
             # the learner for the splade
@@ -328,9 +329,9 @@ def cli(
             (runspath / tagspath(learner)).symlink_to(learner.logpath)
 
             # return the best trained model here for only RR@10
-            best = outputs.listeners["bestval"]["RR@10"]
-
-            return best
+            # best = outputs.listeners["bestval"]["RR@10"]
+            last_checkpoint = outputs.listeners["bestval"]["last_checkpoint"]
+            return last_checkpoint
 
         # Get a sparse retriever from a dual scorer
         def sparse_retriever(scorer, documents):
