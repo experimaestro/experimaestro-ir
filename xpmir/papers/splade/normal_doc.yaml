@@ -26,7 +26,7 @@ Evaluation:
 base_retriever:
     topK: 1000
 tas_balance_retriever:
-    retTopK: 100
+    retTopK: 50
     indexspec: OPQ4_16,IVF65536_HNSW32,PQ4
     faiss_max_traindocs: 800_000
 full_retriever:
