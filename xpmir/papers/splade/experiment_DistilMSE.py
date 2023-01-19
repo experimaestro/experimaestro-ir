@@ -188,8 +188,8 @@ def cli(
         # Michael Schröder, Mete Sertkan, Allan Hanbury), 2020
         # In the form of Tuple[Query, Tuple[Document, Document]] without text
         train_triples_distil = prepare_dataset(
-            """com.github.sebastian-hofstaetter.
-            neural-ranking-kd.msmarco.ensemble.teacher"""
+            "com.github.sebastian-hofstaetter."
+            + "neural-ranking-kd.msmarco.ensemble.teacher"
         )
 
         # Index for msmarcos
@@ -253,7 +253,7 @@ def cli(
                 dataset=dev, seed=123, fold=0, sizes=[VAL_SIZE], exclude=devsmall.topics
             ).submit(),
             retrievers=[
-                # tasb_retriever,
+                tasb_retriever,
                 AnseriniRetriever(k=retTopK, index=index, model=basemodel),
             ],
         ).submit(launcher=gpu_launcher_index)

@@ -231,7 +231,7 @@ def cli(
                 dataset=dev, seed=123, fold=0, sizes=[VAL_SIZE], exclude=devsmall.topics
             ).submit(),
             retrievers=[
-                # tasb_retriever,
+                tasb_retriever,
                 AnseriniRetriever(k=retTopK, index=index, model=basemodel),
             ],
         ).submit(launcher=gpu_launcher_index)
