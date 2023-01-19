@@ -1,47 +1,28 @@
 import logging
 from pathlib import Path
 import os
-from typing import Dict, List, Optional
+from typing import Dict
 
 from omegaconf import OmegaConf
 from datamaestro import prepare_dataset
-from datamaestro_text.transforms.ir import ShuffledTrainingTripletsLines
-from experimaestro.launcherfinder import cpu, cuda_gpu, find_launcher
+from experimaestro.launcherfinder import find_launcher
 
-from experimaestro import experiment, tag, tagspath, copyconfig, setmeta
-from experimaestro.click import click, forwardoption
-from experimaestro.utils import cleanupdir
-from experimaestro.launcherfinder.specs import duration
+from experimaestro import experiment, copyconfig, setmeta
+from experimaestro.click import click
 from xpmir.configuration import omegaconf_argument
-from xpmir.datasets.adapters import RandomFold, RetrieverBasedCollection
 from xpmir.distributed import DistributedHook
 from xpmir.documents.samplers import RandomDocumentSampler
-from xpmir.evaluation import Evaluate, Evaluations, EvaluationsCollection
+from xpmir.evaluation import Evaluations, EvaluationsCollection
 from xpmir.interfaces.anserini import AnseriniRetriever, IndexCollection
 from xpmir.letor.devices import CudaDevice, Device
 from xpmir.letor import Random
-from xpmir.letor.learner import Learner, ValidationListener
-from xpmir.letor.optim import Adam, AdamW, get_optimizers
-from xpmir.letor.samplers import PairwiseInBatchNegativesSampler, TripletBasedSampler
-from xpmir.letor.schedulers import CosineWithWarmup, LinearWithWarmup
 from xpmir.index.faiss import IndexBackedFaiss, FaissRetriever
-from xpmir.index.sparse import (
-    SparseRetriever,
-    SparseRetrieverIndexBuilder,
-)
-from xpmir.rankers import RandomScorer, Scorer
-from xpmir.rankers.full import FullRetriever
-from xpmir.letor.trainers import Trainer, pointwise
-from xpmir.letor.trainers.batchwise import BatchwiseTrainer, SoftmaxCrossEntropy
+from xpmir.rankers import RandomScorer
 from xpmir.letor.batchers import PowerAdaptativeBatcher
-import xpmir.letor.trainers.pairwise as pairwise
-from xpmir.neural.dual import Dense, DenseDocumentEncoder, DenseQueryEncoder, DotDense
-from xpmir.letor.optim import ParameterOptimizer
+from xpmir.neural.dual import DenseDocumentEncoder, DenseQueryEncoder
 from xpmir.rankers.standard import BM25
-from xpmir.neural.splade import spladeV2
 from xpmir.measures import AP, P, nDCG, RR
 from xpmir.neural.pretrained import tas_balanced
-from xpmir.text.huggingface import DistributedModelHook, TransformerEncoder
 
 logging.basicConfig(level=logging.INFO)
 
@@ -143,9 +124,7 @@ def cli(
     # launchers
     assert configuration.Launcher.gpu, "It is recommend to do this on GPU"
     cpu_launcher_index = find_launcher(configuration.Indexation.requirements)
-    gpu_launcher_index = find_launcher(
-        configuration.Indexation.training_requirements, tags=tags
-    )
+    gpu_launcher_index = find_launcher(configuration.Indexation.requirements, tags=tags)
     gpu_launcher_learner = find_launcher(configuration.Learner.requirements, tags=tags)
     gpu_launcher_evaluate = find_launcher(
         configuration.Evaluation.requirements, tags=tags
@@ -185,7 +164,7 @@ def cli(
             normalize=False,
             documents=documents_trec_covid,
             sampler=RandomDocumentSampler(
-                documents=documents_trec_covid, max_count=160_000, random=random
+                documents=documents_trec_covid, max_count=20_000, random=random
             ),  # Just use a fraction of the dataset for training
             encoder=DenseDocumentEncoder(scorer=tasb),
             batchsize=2048,

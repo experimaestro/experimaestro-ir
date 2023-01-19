@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 
 import numpy as np
-from experimaestro import Param, Config, Meta
+from experimaestro import Param, Config, Meta, DataPath
 from datamaestro_text.data.ir import AdhocIndex as Index
 from xpmir.letor import Device, Random
 from xpmir.letor.batchers import Batcher
@@ -129,7 +129,7 @@ class RandomScorer(Scorer):
 class AbstractLearnableScorer(Scorer, Module):
     """Base class for all learnable scorer"""
 
-    checkpoint: Meta[Optional[Path]]
+    checkpoint: DataPath[Optional[Path]]
     """A checkpoint path from which the model should be loaded (or None otherwise)"""
 
     __call__ = nn.Module.__call__

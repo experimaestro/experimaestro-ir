@@ -132,11 +132,6 @@ class ValidationListener(LearnerListener):
     def taskoutputs(self, learner: "Learner"):
         """Experimaestro outputs: returns the best checkpoints for each
         metric"""
-        # return {
-        #     key: copyconfig(learner.scorer, checkpoint=str(self.bestpath / key))
-        #     for key, store in self.metrics.items()
-        #     if store
-        # }
         res = {
             key: copyconfig(learner.scorer, checkpoint=str(self.bestpath / key))
             for key, store in self.metrics.items()

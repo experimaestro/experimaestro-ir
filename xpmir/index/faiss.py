@@ -114,15 +114,11 @@ class IndexBackedFaiss(FaissIndex, Task):
 
         # Collect batches (in memory)
         logger.info("Collecting the representation of %d documents", count)
-        # sample = np.ndarray((count, self.encoder.dimension), dtype=np.float32)
-        # ix = 0
-        # for batch in batch_encoder(doc_iter):
-        #     sample[ix : (ix + len(batch))] = batch.cpu().numpy()
-        #     ix += len(batch)
-
-        sample = np.ndarray((0, self.encoder.dimension), dtype=np.float32)
+        sample = np.ndarray((count, self.encoder.dimension), dtype=np.float32)
+        ix = 0
         for batch in batch_encoder(doc_iter):
-            sample = np.concatenate([sample, batch.cpu().numpy()])
+            sample[ix : (ix + len(batch))] = batch.cpu().numpy()
+            ix += len(batch)
 
         logger.info("Training index (%d samples)", count)
         # Here we may use just a part of the document to train the index
@@ -192,7 +188,7 @@ class IndexBackedFaiss(FaissIndex, Task):
     def encode(self, batch: List[str], data: List):
         batch = [
             text for text in batch if text != ""
-        ]  # remove the empty strings in the dataset
+        ]  # remove the empty strings in the dataset (training only)
         x = self.encoder(batch)
         if self.normalize:
             x /= x.norm(2, keepdim=True, dim=1)
