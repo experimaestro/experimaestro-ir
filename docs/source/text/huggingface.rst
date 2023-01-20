@@ -11,6 +11,8 @@ Encoders
 .. autoxpmconfig:: IndependentTransformerVocab
 .. autoxpmconfig:: ContextualizedTextEncoderAdapter
 .. autoxpmconfig:: DualTransformerEncoder
+.. autoxpmconfig:: SentenceTransformerTextEncoder
+.. autoxpmconfig:: HuggingfaceTokenizer
 
 Hooks
 =====

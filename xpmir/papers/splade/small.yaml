@@ -27,7 +27,12 @@ base_retriever:
     topK: 20
 tas_balance_retriever:
     retTopK: 10
-    indexspec: OPQ4_16,IVF65536_HNSW32,PQ4
-    faiss_max_traindocs: 15_000
+    # See FAISS guidelines
+    # https://github.com/facebookresearch/faiss/wiki/Guidelines-to-choose-an-index
+    # TREC COVID has 192509 documents
+    # K within 4*sqrt(N) to 16*sqrt(N)
+    indexspec: OPQ4_16,IVF2048_HNSW32,PQ4
+    # 30*K and 256*K
+    faiss_max_traindocs:  65_536
 full_retriever:
     batch_size_full_retriever: 20

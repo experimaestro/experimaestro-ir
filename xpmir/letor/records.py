@@ -141,6 +141,18 @@ class PointwiseRecords(BaseRecords[PointwiseRecord]):
         ix = list(range(len(self.queries)))
         return (ix, ix)
 
+    @staticmethod
+    def from_texts(
+        queries: List[str],
+        documents: List[str],
+        relevances: Optional[List[float]] = None,
+    ):
+        records = PointwiseRecords()
+        records.queries = list(map(lambda t: Query(None, t), queries))
+        records.documents = list(map(lambda t: Query(None, t), documents))
+        records.relevances = relevances
+        return records
+
 
 class PairwiseRecord:
     """A pairwise record is composed of a query, a positive and a negative document"""

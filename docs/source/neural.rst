@@ -38,6 +38,8 @@ Dense models
 
 
 .. autoxpmconfig:: xpmir.neural.dual.Dense
+    :members: from_sentence_transformers
+
 .. autoxpmconfig:: xpmir.neural.dual.DotDense
 .. autoxpmconfig:: xpmir.neural.dual.CosineDense
 
@@ -64,10 +66,3 @@ Sparse Models
 .. autoxpmconfig:: xpmir.neural.splade.Aggregation
 .. autoxpmconfig:: xpmir.neural.splade.MaxAggregation
 .. autoxpmconfig:: xpmir.neural.splade.SumAggregation
-
-
-Pretrained models
-=================
-
-.. automodule:: xpmir.neural.pretrained
-    :members:

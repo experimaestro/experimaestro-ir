@@ -22,7 +22,7 @@ from xpmir.letor.batchers import PowerAdaptativeBatcher
 from xpmir.neural.dual import DenseDocumentEncoder, DenseQueryEncoder
 from xpmir.rankers.standard import BM25
 from xpmir.measures import AP, P, nDCG, RR
-from xpmir.neural.pretrained import tas_balanced
+from xpmir.models import AutoModel
 
 logging.basicConfig(level=logging.INFO)
 
@@ -103,10 +103,6 @@ def cli(
     # After how many steps without improvement, the trainer stops.
     early_stop = 0
 
-    # FAISS index building
-    indexspec = "OPQ4_16,IVF256,PQ4"
-    faiss_max_traindocs = 15_000
-
     # the number of documents retrieved from the splade model during the evaluation
     topK_eval_splade = topK
 
@@ -153,23 +149,27 @@ def cli(
 
         # Build a dev. collection for full-ranking (validation)
         # "Efficiently Teaching an Effective Dense Retriever with Balanced Topic Aware Sampling"
-        tasb = tas_balanced()  # create a scorer from huggingface
+        tasb = AutoModel.load_from_hf_hub(
+            "xpmir/tas-balanced"
+        )  # create a scorer from huggingface
 
         random_scorer = RandomScorer(random=random).tag("model", "random")
 
         # task to train the tas_balanced encoder for the document list and generate an index for retrieval
         tasb_index = IndexBackedFaiss(
-            indexspec=indexspec,
+            indexspec=configuration.tas_balance_retriever.indexspec,
             device=device,
             normalize=False,
             documents=documents_trec_covid,
             sampler=RandomDocumentSampler(
-                documents=documents_trec_covid, max_count=20_000, random=random
+                documents=documents_trec_covid,
+                max_count=configuration.tas_balance_retriever.faiss_max_traindocs,
+                random=random,
             ),  # Just use a fraction of the dataset for training
             encoder=DenseDocumentEncoder(scorer=tasb),
             batchsize=2048,
             batcher=PowerAdaptativeBatcher(),
-            hooks=[setmeta(DistributedHook(models=[tasb]), True)],
+            # hooks=[setmeta(DistributedHook(models=[tasb]), True)],
         ).submit(launcher=gpu_launcher_index)
 
         # A retriever if tas-balanced. We use the index of the faiss.

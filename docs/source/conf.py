@@ -1,3 +1,8 @@
+import builtins
+import mock
+import sys
+import logging
+
 # Configuration file for the Sphinx documentation builder.
 #
 # This file only contains a selection of the most common options. For a full
@@ -17,11 +22,6 @@
 # --- Set build mode
 # Used to notify python modules that we are building
 # a documentation
-
-import builtins
-import mock
-import sys
-import logging
 
 builtins.__sphinx_build__ = True
 

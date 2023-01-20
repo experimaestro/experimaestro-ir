@@ -178,6 +178,20 @@ class TransformerVocab(text.Vocab):
         return self.tokenizer.vocab_size
 
 
+class SentenceTransformerTextEncoder(TextEncoder):
+    """A Sentence Transformers text encoder"""
+
+    model_id: Param[str] = "bert-base-uncased"
+
+    def initialize(self):
+        from sentence_transformers import SentenceTransformer
+
+        self.model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+
+    def forward(self, texts: List[str]) -> torch.Tensor:
+        return self.model.encode(texts)
+
+
 class HuggingfaceTokenizer(TextEncoder):
     """A tokenizer which encodes the tokens into 0 and 1 vector
     1 represents the text contains the token and 0 otherwise"""

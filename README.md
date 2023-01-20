@@ -41,8 +41,10 @@ Functionalities can be added by installing optional dependencies:
     - ColBERT
 - Paper reproduction:
     - *MonoBERT* (Passage Re-ranking with BERT. Rodrigo Nogueira and Kyunghyun Cho. 2019)
-    - *DuoBERT* (Multi-Stage Document Ranking with BERT. Rodrigo Nogueira, Wei Yang, Kyunghyun Cho, Jimmy Lin. 2019)
-    - *Splade v2* (SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval, Thibault Formal, Carlos Lassance, Benjamin Piwowarski, and Stéphane Clinchant. SIGIR 2021)
+    - (planned) *DuoBERT* (Multi-Stage Document Ranking with BERT. Rodrigo Nogueira, Wei Yang, Kyunghyun Cho, Jimmy Lin. 2019)
+    - (planned) *Splade v2* (SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval, Thibault Formal, Carlos Lassance, Benjamin Piwowarski, and Stéphane Clinchant. SIGIR 2021)
+- Pre-trained models
+    - [HuggingFace](https://huggingface.co) integration (direct, through the Sentence Transformers library)
 
 ## Examples
 

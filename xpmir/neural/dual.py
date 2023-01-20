@@ -82,6 +82,20 @@ class Dense(DualVectorScorer):
     def _query_encoder(self):
         return self.query_encoder or self.encoder
 
+    @classmethod
+    def from_sentence_transformers(cls, hf_id: str, **kwargs):
+        """Creates a dense model from a Sentence transformer
+
+        The list can be found on HuggingFace
+        https://huggingface.co/models?library=sentence-transformers
+
+        :param hf_id: The HuggingFace ID
+        """
+        from xpmir.text.huggingface import SentenceTransformerTextEncoder
+
+        encoder = SentenceTransformerTextEncoder(hf_id)
+        return cls(encoder, **kwargs)
+
 
 class DenseBaseEncoder(TextEncoder):
     """A text encoder adapter for dense scorers (either query or document encoder)"""

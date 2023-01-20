@@ -13,6 +13,7 @@ Welcome to Experimaestro IR documentation!
    text/index
    pipelines
    papers
+   pretrained
    misc
 
 
