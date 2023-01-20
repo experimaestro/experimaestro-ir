@@ -28,7 +28,7 @@ builtins.__sphinx_build__ = True
 
 # -- Project information -----------------------------------------------------
 
-project = "Experimaestro"
+project = "Experimaestro IR (XPM-IR)"
 copyright = "2021, Benjamin Piwowarski"
 author = "Benjamin Piwowarski"
 
