@@ -4,23 +4,22 @@ from experimaestro.click import click
 
 
 class OmegaConfParamType(click.Choice):
-    # name = "OmegaConf"
     def __init__(self, package, names):
-        super().__init__(self, names)
+        super().__init__(names)
         self.package = package
 
     def convert(self, value: str, param, ctx):
         # Load the YAML file
-        # value = super().convert(value, param, ctx)
-        value = value + ".yaml"
-        self.path = resources.path(self.package, value)
-        conf = OmegaConf.load(self.path)
-        return conf
+        self.path = resources.path(self.package, f"{value}.yaml")
+        return OmegaConf.load(self.path)
 
 
 def omegaconf_argument(name: str, package: str = None):
-    """name: the name for the parameter,
-    package: the path to stock the configuration files
+    """Provides a choice of YAML configuration (file names)
+
+    :param name: the name for the parameter,
+
+    :param package: the module qualified name in which to search for yaml files
     """
     names = []  # list of available configurations
 

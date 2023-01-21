@@ -1,15 +1,27 @@
 # This package contains all rankers
 
+from functools import lru_cache
 from experimaestro import tqdm
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple, final
+from typing import (
+    Dict,
+    Generic,
+    Iterable,
+    List,
+    Optional,
+    Protocol,
+    Tuple,
+    TypeVar,
+    final,
+    TYPE_CHECKING,
+)
 import torch
 import torch.nn as nn
 
 import numpy as np
 from experimaestro import Param, Config, Meta, DataPath
-from datamaestro_text.data.ir import AdhocIndex as Index
+from datamaestro_text.data.ir import AdhocIndex as Index, AdhocDocuments
 from xpmir.letor import Device, Random
 from xpmir.letor.batchers import Batcher
 from xpmir.letor.context import TrainerContext
@@ -23,6 +35,9 @@ from xpmir.letor.records import (
     Query,
 )
 from xpmir.utils.utils import EasyLogger, easylog
+
+if TYPE_CHECKING:
+    from xpmir.evaluation import RetrieverFactory
 
 logger = easylog()
 
@@ -64,6 +79,7 @@ class Scorer(Config, EasyLogger):
     """
 
     outputType: ScorerOutputType = ScorerOutputType.REAL
+    """Determines the type of output scalar (log probability, probability, logit) """
 
     def initialize(self, random: Optional[np.random.RandomState]):
         """Initialize the scorer
@@ -87,6 +103,14 @@ class Scorer(Config, EasyLogger):
         """Put the model in inference/evaluation mode"""
         pass
 
+    def getRetrieverFactory(self, retriever: "RetrieverFactory", *args, **kwargs):
+        """Returns a factory for this scorer, based on another retriever factory"""
+
+        def factory(dataset: AdhocDocuments, **f_kwargs) -> Retriever:
+            return self.getRetriever(retriever(dataset, **f_kwargs), *args, **kwargs)
+
+        return factory
+
     def getRetriever(
         self,
         retriever: "Retriever",
@@ -97,8 +121,11 @@ class Scorer(Config, EasyLogger):
     ):
         """Returns a two stage re-ranker from this retriever and a scorer
 
-        Arguments:
-            device: Device for the ranker or None if no change should be made
+        :param device: Device for the ranker or None if no change should be made
+
+        :param batch_size: The number of documents in each batch
+
+        :param top_k: Number of documents to re-rank (or None for all)
         """
         return TwoStageRetriever(
             retriever=retriever,
@@ -400,3 +427,38 @@ class DuoTwoStageRetriever(AbstractTwoStageRetriever):
         with torch.no_grad():
             scores = self.scorer(inputs, None).cpu().float()  # shape (batchsizes)
             return scores.tolist()
+
+
+KWARGS = TypeVar("KWARGS")
+
+
+class ParametricRetrieverFactory(Protocol, Generic[KWARGS]):
+    def __call__(**kwargs: KWARGS) -> Retriever:
+        ...
+
+
+class CollectionBasedRetrievers(Generic[KWARGS]):
+    """Handles various retrievers depending on the collection"""
+
+    def __init__(self):
+        self.indices: Dict[str, KWARGS] = {}
+
+    def add_index(self, documents: AdhocDocuments, **kwargs):
+        self.indices[documents.__identifier__().all] = kwargs
+
+    def factory(
+        self, retriever_factory: ParametricRetrieverFactory
+    ) -> "RetrieverFactory":
+        """Returns a retriever factory - cached the retrievers based on the
+        document collection"""
+
+        @lru_cache
+        def cached_factory(dataset_id: str) -> Retriever:
+            kwargs = self.indices[dataset_id]
+            return retriever_factory(**kwargs)
+
+        def _factory(documents: AdhocDocuments):
+            dataset_id = documents.__identifier__().all
+            return cached_factory(dataset_id)
+
+        return _factory

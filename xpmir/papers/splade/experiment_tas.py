@@ -172,10 +172,25 @@ def cli(
             # hooks=[setmeta(DistributedHook(models=[tasb]), True)],
         ).submit(launcher=gpu_launcher_index)
 
+        tasb_index_hnsw = IndexBackedFaiss(
+            indexspec="HNSW",
+            device=device,
+            normalize=False,
+            documents=documents_trec_covid,
+            sampler=None,
+            encoder=DenseDocumentEncoder(scorer=tasb),
+            batchsize=2048,
+            batcher=PowerAdaptativeBatcher(),
+            # hooks=[setmeta(DistributedHook(models=[tasb]), True)],
+        ).submit(launcher=gpu_launcher_index)
+
         # A retriever if tas-balanced. We use the index of the faiss.
         # Used it to create the validation dataset.
         tasb_retriever = FaissRetriever(
             index=tasb_index, topk=20, encoder=DenseQueryEncoder(scorer=tasb)
+        )
+        tasb_retriever_2 = FaissRetriever(
+            index=tasb_index_hnsw, topk=20, encoder=DenseQueryEncoder(scorer=tasb)
         )
 
         # also the bm25 for creating the validation set.
@@ -205,6 +220,9 @@ def cli(
         # tas-balance
         tests.evaluate_retriever(
             copyconfig(tasb_retriever).tag("model", "tasb"), gpu_launcher_index
+        )
+        tests.evaluate_retriever(
+            copyconfig(tasb_retriever_2).tag("model", "tasb-hnsw"), gpu_launcher_index
         )
 
         # wait for all the experiments ends
