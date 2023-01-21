@@ -4,18 +4,15 @@
 # https://arxiv.org/abs/2109.10086
 
 import logging
-from pathlib import Path
 import os
-from typing import Dict, List
+from typing import List
 
-from omegaconf import OmegaConf
+from datamaestro_text.data.ir import AdhocDocuments
 from datamaestro import prepare_dataset
 from experimaestro.launcherfinder import find_launcher
 
 from experimaestro import experiment, tag, tagspath, copyconfig, setmeta
-from experimaestro.click import click
 from experimaestro.utils import cleanupdir
-from xpmir.configuration import omegaconf_argument
 from xpmir.datasets.adapters import (
     MemoryTopicStore,
     RandomFold,
@@ -43,6 +40,8 @@ from xpmir.index.sparse import (
     SparseRetriever,
     SparseRetrieverIndexBuilder,
 )
+from xpmir.models import AutoModel
+from xpmir.papers.cli import paper_command
 from xpmir.rankers import Scorer
 from xpmir.rankers.full import FullRetriever
 from xpmir.letor.trainers import Trainer
@@ -52,52 +51,26 @@ from xpmir.letor.optim import ParameterOptimizer
 from xpmir.rankers.standard import BM25
 from xpmir.neural.splade import spladeV2_max
 from xpmir.measures import AP, P, nDCG, RR
-from xpmir.neural.pretrained import tas_balanced
 
 logging.basicConfig(level=logging.INFO)
 
 
-@click.option("--debug", is_flag=True, help="Print debug information")
-@click.option(
-    "--env", help="Define one environment variable", type=(str, str), multiple=True
-)
-@click.option(
-    "--host",
-    type=str,
-    default=None,
-    help="Server hostname (default to localhost, not suitable if your jobs are remote)",
-)
-@click.option("--port", type=int, default=12345, help="Port for monitoring")
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-@omegaconf_argument("configuration", package=__package__)
-@click.argument("workdir", type=Path)
-@click.command()
-def cli(
-    env: Dict[str, str],
-    debug: bool,
-    configuration,
-    host: str,
-    port: int,
-    workdir: str,
-    args,
-):
+@paper_command(package=__package__)
+def cli(debug: bool, configuration, host: str, port: int, workdir: str):
     """Runs an experiment"""
-    # Merge the additional option to the existing
-    conf_args = OmegaConf.from_dotlist(args)
-    configuration = OmegaConf.merge(configuration, conf_args)
-
-    tags = configuration.Launcher.tags or []
+    # Get launcher tags
+    tags = configuration.launcher.tags.split(",") if configuration.launcher.tags else []
 
     logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
 
     # Number of topics in the validation set
-    VAL_SIZE = configuration.Learner.validation_size
+    VAL_SIZE = configuration.learner.validation_size
 
     # Number of steps in each epoch
-    steps_per_epoch = configuration.Learner.steps_per_epoch
+    steps_per_epoch = configuration.learner.steps_per_epoch
 
     # Validation interval (in epochs)
-    validation_interval = configuration.Learner.validation_interval
+    validation_interval = configuration.learner.validation_interval
 
     # How many documents retrieved from the base retriever(bm25)
     topK = configuration.base_retriever.topK
@@ -106,31 +79,31 @@ def cli(
     batch_size_full_retriever = configuration.full_retriever.batch_size_full_retriever
 
     # the max epochs to train
-    max_epochs = configuration.Learner.max_epochs
+    max_epochs = configuration.learner.max_epochs
 
     # the batch_size for training the splade model
-    splade_batch_size = configuration.Learner.splade_batch_size
+    splade_batch_size = configuration.learner.splade_batch_size
 
     # The numbers of the warmup steps during the training
-    num_warmup_steps = configuration.Learner.num_warmup_steps
+    num_warmup_steps = configuration.learner.num_warmup_steps
 
     # # Top-K when building the validation set(tas-balanced)
     retTopK = configuration.tas_balance_retriever.retTopK
 
     # Validation interval (in epochs)
-    validation_interval = configuration.Learner.validation_interval
+    validation_interval = configuration.learner.validation_interval
 
     # After how many steps without improvement, the trainer stops.
-    early_stop = configuration.Learner.early_stop
+    early_stop = configuration.learner.early_stop
 
     # FAISS index building
     indexspec = configuration.tas_balance_retriever.indexspec
     faiss_max_traindocs = configuration.tas_balance_retriever.faiss_max_traindocs
 
     # the flop coefficient for query and documents
-    lambda_q = configuration.Learner.lambda_q
-    lambda_d = configuration.Learner.lambda_d
-    lamdba_warmup_steps = configuration.Learner.lamdba_warmup_steps
+    lambda_q = configuration.learner.lambda_q
+    lambda_d = configuration.learner.lambda_d
+    lamdba_warmup_steps = configuration.learner.lamdba_warmup_steps
 
     # the number of documents retrieved from the splade model during the evaluation
     topK_eval_splade = topK
@@ -149,28 +122,26 @@ def cli(
 
     # launchers
     assert configuration.Launcher.gpu, "It is recommend to do this on GPU"
-    cpu_launcher_index = find_launcher(configuration.Indexation.requirements)
+    cpu_launcher_index = find_launcher(configuration.indexation.requirements)
     gpu_launcher_index = find_launcher(
-        configuration.Indexation.training_requirements, tags=tags
+        configuration.indexation.training_requirements, tags=tags
     )
-    gpu_launcher_learner = find_launcher(configuration.Learner.requirements, tags=tags)
+    gpu_launcher_learner = find_launcher(configuration.learner.requirements, tags=tags)
     gpu_launcher_evaluate = find_launcher(
-        configuration.Evaluation.requirements, tags=tags
+        configuration.evaluation.requirements, tags=tags
     )
 
     # Starts the experiment
     with experiment(workdir, name, host=host, port=port) as xp:
         # Set environment variables
         xp.setenv("JAVA_HOME", os.environ["JAVA_HOME"])
-        for key, value in env:
-            xp.setenv(key, value)
 
         # Misc
-        device = CudaDevice() if configuration.Launcher.gpu else Device()
+        device = CudaDevice() if configuration.launcher.gpu else Device()
         random = Random(seed=0)
 
         # prepare the dataset
-        documents = prepare_dataset(
+        documents: AdhocDocuments = prepare_dataset(
             "irds.msmarco-passage.documents"
         )  # all the documents for msmarco
 
@@ -206,7 +177,9 @@ def cli(
         # Build a dev. collection for full-ranking (validation) "Efficiently
         # Teaching an Effective Dense Retriever with Balanced Topic Aware
         # Sampling"
-        tasb = tas_balanced()  # create a scorer from huggingface
+        tasb = AutoModel.load_from_hf_hub(
+            "xpmir/tas-balanced"
+        )  # create a scorer from huggingface
 
         # task to train the tas_balanced encoder for the document list and
         # generate an index for retrieval
@@ -387,17 +360,16 @@ def cli(
             [
                 ParameterOptimizer(
                     scheduler=scheduler,
-                    optimizer=AdamW(lr=configuration.Learner.lr),
+                    optimizer=AdamW(
+                        lr=configuration.learner.lr, weight_decay=0, eps=1e-6
+                    ),
                     filter=RegexParameterFilter(
                         includes=[r"\.bias$", r"\.LayerNorm\."]
                     ),
                 ),
                 ParameterOptimizer(
                     scheduler=scheduler,
-                    optimizer=AdamW(lr=configuration.Learner.lr),
-                    filter=RegexParameterFilter(
-                        excludes=[r"\.bias$", r"\.LayerNorm\."]
-                    ),
+                    optimizer=AdamW(lr=configuration.learner.lr, eps=1e-6),
                 ),
             ],
             hooks=[

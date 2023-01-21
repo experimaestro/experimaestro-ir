@@ -33,6 +33,7 @@ from xpmir.index.sparse import (
     SparseRetriever,
     SparseRetrieverIndexBuilder,
 )
+from xpmir.models import AutoModel
 from xpmir.rankers import Scorer
 from xpmir.rankers.full import FullRetriever
 from xpmir.letor.trainers import Trainer
@@ -43,7 +44,6 @@ from xpmir.letor.optim import ParameterOptimizer
 from xpmir.rankers.standard import BM25
 from xpmir.neural.splade import spladeV2_max
 from xpmir.measures import AP, P, nDCG, RR
-from xpmir.neural.pretrained import tas_balanced
 
 logging.basicConfig(level=logging.INFO)
 
@@ -181,7 +181,9 @@ def cli(
         # Build a dev. collection for full-ranking (validation) "Efficiently
         # Teaching an Effective Dense Retriever with Balanced Topic Aware
         # Sampling"
-        tasb = tas_balanced()  # create a scorer from huggingface
+        tasb = AutoModel.load_from_hf_hub(
+            "xpmir/tas-balanced"
+        )  # create a scorer from huggingface
 
         # task to train the tas_balanced encoder for the document list and
         # generate an index for retrieval

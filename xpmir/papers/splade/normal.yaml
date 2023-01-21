@@ -29,7 +29,7 @@ base_retriever:
     topK: 1000
 tas_balance_retriever:
     retTopK: 50
-    indexspec: OPQ4_16,IVF65536_HNSW32,PQ4
+    indexspec: HNSW
     faiss_max_traindocs: 800_000
 full_retriever:
     batch_size_full_retriever: 200

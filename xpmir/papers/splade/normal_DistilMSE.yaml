@@ -1,11 +1,11 @@
 type: splade_distilMSE
-Launcher:
+launcher:
     gpu: true
     tags: []
-Indexation:
+indexation:
     requirements: duration=2 days & cpu(mem=2G)
     training_requirements: duration=4 days & cuda(mem=24G)
-Learner:
+learner:
     validation_size: 500
     # validation for each (steps_per_epoch * validation interval) steps
     steps_per_epoch: 128
@@ -23,13 +23,13 @@ Learner:
     lambda_d: 0.4
     lamdba_warmup_steps: 50000
     requirements: duration=6 days & cuda(mem=24G)
-Evaluation:
+evaluation:
     requirements: duration=6 days & cuda(mem=12G)
 base_retriever:
     topK: 1000
 tas_balance_retriever:
     retTopK: 50
-    indexspec: OPQ4_16,IVF65536_HNSW32,PQ4
+    indexspec: HNSW
     faiss_max_traindocs: 800_000
 full_retriever:
     batch_size_full_retriever: 200

@@ -1,4 +1,3 @@
-from ast import Dict
 import sys
 from typing import Iterator, List
 import torch
@@ -87,19 +86,11 @@ class DistillationPairwiseTrainer(LossTrainer):
             lambda loss: loss.initialize(self.ranker),
         )
         self.sampler.initialize(random)
-        self.train_iter = batchiter(self.batch_size, self.sampler.pairwise_iter())
-
-    # overload the load and write of the state
-    # TODO: try to do the same as the original version.
-    def load_state_dict(self, state: Dict):
-        self.sampler.load_state_dict(state["sampler"])
-
-    def state_dict(self):
-        return {"sampler": self.sampler.state_dict()}
+        self.sampler_iter = self.sampler.pairwise_iter()
 
     def iter_batches(self) -> Iterator[List[PairwiseDistillationSample]]:
         """Build a iterator over the batches of samples"""
-        return self.train_iter
+        return batchiter(self.batch_size, self.sampler_iter)
 
     def train_batch(self, samples: List[PairwiseDistillationSample]):
         # Builds records and teacher score matrix
