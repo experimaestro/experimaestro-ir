@@ -7,7 +7,7 @@ from experimaestro import Config, Param
 from xpmir.letor.records import Document, PairwiseRecord, PairwiseRecords
 from xpmir.letor.context import Loss
 from xpmir.letor.trainers import TrainerContext, LossTrainer
-from xpmir.utils import batchiter, foreach
+from xpmir.utils.utils import batchiter, foreach
 from .samplers import DistillationPairwiseSampler, PairwiseDistillationSample
 import numpy as np
 from xpmir.rankers import LearnableScorer

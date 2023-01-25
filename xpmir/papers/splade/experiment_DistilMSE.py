@@ -121,7 +121,7 @@ def cli(debug: bool, configuration, host: str, port: int, workdir: str):
     name = configuration.type
 
     # launchers
-    assert configuration.Launcher.gpu, "It is recommend to do this on GPU"
+    assert configuration.launcher.gpu, "It is recommend to do this on GPU"
     cpu_launcher_index = find_launcher(configuration.indexation.requirements)
     gpu_launcher_index = find_launcher(
         configuration.indexation.training_requirements, tags=tags
