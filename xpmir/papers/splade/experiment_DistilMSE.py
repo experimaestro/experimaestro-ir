@@ -33,7 +33,7 @@ from xpmir.letor.distillation.samplers import (
     PairwiseHydrator,
 )
 from xpmir.letor.learner import Learner, ValidationListener
-from xpmir.letor.optim import AdamW, RegexParameterFilter, get_optimizers
+from xpmir.letor.optim import AdamW, get_optimizers
 from xpmir.letor.schedulers import LinearWithWarmup
 from xpmir.index.faiss import IndexBackedFaiss, FaissRetriever
 from xpmir.index.sparse import (
@@ -355,22 +355,13 @@ def cli(debug: bool, configuration, host: str, port: int, workdir: str):
 
         # Do the training process and then return the best model for splade
         best_model = run(
-            spladev2.tag("model", "splade-v2"),
+            spladev2.tag("model", "splade-v2-distilMSE"),
             distil_pairwise_trainer,
             [
                 ParameterOptimizer(
                     scheduler=scheduler,
-                    optimizer=AdamW(
-                        lr=configuration.learner.lr, weight_decay=0, eps=1e-6
-                    ),
-                    filter=RegexParameterFilter(
-                        includes=[r"\.bias$", r"\.LayerNorm\."]
-                    ),
-                ),
-                ParameterOptimizer(
-                    scheduler=scheduler,
-                    optimizer=AdamW(lr=configuration.learner.lr, eps=1e-6),
-                ),
+                    optimizer=AdamW(lr=configuration.learner.lr),
+                )
             ],
             hooks=[
                 setmeta(
