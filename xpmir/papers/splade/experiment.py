@@ -52,7 +52,6 @@ def cli(
     host: str,
     port: int,
     workdir: str,
-    args,
 ):
     """Runs an experiment"""
     # Get launcher tags

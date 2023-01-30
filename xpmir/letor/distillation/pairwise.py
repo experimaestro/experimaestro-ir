@@ -61,6 +61,35 @@ class MSEDifferenceLoss(DistillationPairwiseLoss):
         )
 
 
+class DistillationKLLoss(DistillationPairwiseLoss):
+    """
+    Distillation loss from: Distilling Dense Representations for Ranking using
+    Tightly-Coupled Teachers https://arxiv.org/abs/2010.11386
+    """
+
+    NAME = "Distil-KL"
+
+    def initialize(self, ranker):
+        super().initialize(ranker)
+        self.loss = nn.KLDivLoss(reduction="none")
+
+    def compute(
+        self, student_scores: Tensor, teacher_scores: Tensor, info: TrainerContext
+    ) -> torch.Tensor:
+        pos_student = student_scores[:, 0].unsqueeze(0)
+        neg_student = student_scores[:, 1].unsqueeze(0)
+        pos_teacher = teacher_scores[:, 0].unsqueeze(0)
+        neg_teacher = teacher_scores[:, 1].unsqueeze(0)
+
+        scores = torch.cat([pos_student, neg_student], dim=1)
+        local_scores = torch.log_softmax(scores, dim=1)
+        teacher_scores = torch.cat(
+            [pos_teacher.unsqueeze(-1), neg_teacher.unsqueeze(-1)], dim=1
+        )
+        teacher_scores = torch.softmax(teacher_scores, dim=1)
+        return self.loss(local_scores, teacher_scores).sum(dim=1).mean(dim=0)
+
+
 class DistillationPairwiseTrainer(LossTrainer):
     """Pairwse trainer
 
