@@ -20,22 +20,22 @@ To get the list of experiments for a paper (here, monobert)
 
 .. code-block:: bash
 
-    $ xpmir papers monobert
+    $ xpmir papers monobert --help
 
 Runs an experiment (monobert with "small" configuration, training on msmarco)
 
 .. code-block:: bash
 
-    $ xpmir papers monobert /path/to/workdir msmarco small
+    $ xpmir papers monobert msmarco /path/to/workdir small
 
 with some overriding arguments
 
 .. code-block:: bash
 
-    $ xpmir papers monobert small learner.lr=2.0e-6 learner.num_warmup_steps=20
+    $ xpmir papers monobert msmarco /path/to/workdir small learner.lr=2.0e-6 learner.num_warmup_steps=20
 
 You can look at arguments by using the `--show` option
 
 .. code-block:: bash
 
-    $ xpmir papers monobert small --show
+    $ xpmir papers monobert msmarco /path/to/workdir small --show

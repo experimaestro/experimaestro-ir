@@ -1,4 +1,4 @@
-from typing import Dict, Iterable, Iterator, NamedTuple, Optional, Tuple
+from typing import Iterable, Iterator, NamedTuple, Optional, Tuple
 from datamaestro.data import File
 from experimaestro import Config, Meta, Param
 from xpmir.letor.records import Query
@@ -7,6 +7,8 @@ from xpmir.letor.samplers import Sampler
 from xpmir.rankers import ScoredDocument
 from xpmir.datasets.adapters import TextStore
 import numpy as np
+
+from xpmir.utils.iter import SerializableIterator, SkippingIterator
 
 
 class PairwiseDistillationSample(NamedTuple):
@@ -86,23 +88,7 @@ class DistillationPairwiseSampler(Sampler):
     samples: Param[PairwiseDistillationSamples]
 
     def initialize(self, random: np.random.RandomState):
-        self.count = 0
         super().initialize(random)
 
-    # def __init__(self):
-    #     self.count = 0
-
-    def state_dict(self) -> Dict:
-        return {"count": self.count}
-
-    def load_state_dict(self, state: Dict):
-        self.count = state["count"]
-
-    def pairwise_iter(self) -> Iterator[PairwiseDistillationSample]:
-        base = self.count
-        while True:
-            self.count = 0
-            for sample in self.samples:
-                if self.count >= base:
-                    yield sample
-                self.count += 1
+    def pairwise_iter(self) -> SerializableIterator[PairwiseDistillationSample]:
+        return SkippingIterator(iter(self.samples))

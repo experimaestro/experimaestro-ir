@@ -1,4 +1,3 @@
-from ast import Dict
 import sys
 from typing import Iterator, List
 import torch
@@ -8,7 +7,7 @@ from experimaestro import Config, Param
 from xpmir.letor.records import Document, PairwiseRecord, PairwiseRecords
 from xpmir.letor.context import Loss
 from xpmir.letor.trainers import TrainerContext, LossTrainer
-from xpmir.utils import batchiter, foreach
+from xpmir.utils.utils import batchiter, foreach
 from .samplers import DistillationPairwiseSampler, PairwiseDistillationSample
 import numpy as np
 from xpmir.rankers import LearnableScorer
@@ -62,6 +61,35 @@ class MSEDifferenceLoss(DistillationPairwiseLoss):
         )
 
 
+class DistillationKLLoss(DistillationPairwiseLoss):
+    """
+    Distillation loss from: Distilling Dense Representations for Ranking using
+    Tightly-Coupled Teachers https://arxiv.org/abs/2010.11386
+    """
+
+    NAME = "Distil-KL"
+
+    def initialize(self, ranker):
+        super().initialize(ranker)
+        self.loss = nn.KLDivLoss(reduction="none")
+
+    def compute(
+        self, student_scores: Tensor, teacher_scores: Tensor, info: TrainerContext
+    ) -> torch.Tensor:
+        pos_student = student_scores[:, 0].unsqueeze(0)
+        neg_student = student_scores[:, 1].unsqueeze(0)
+        pos_teacher = teacher_scores[:, 0].unsqueeze(0)
+        neg_teacher = teacher_scores[:, 1].unsqueeze(0)
+
+        scores = torch.cat([pos_student, neg_student], dim=1)
+        local_scores = torch.log_softmax(scores, dim=1)
+        teacher_scores = torch.cat(
+            [pos_teacher.unsqueeze(-1), neg_teacher.unsqueeze(-1)], dim=1
+        )
+        teacher_scores = torch.softmax(teacher_scores, dim=1)
+        return self.loss(local_scores, teacher_scores).sum(dim=1).mean(dim=0)
+
+
 class DistillationPairwiseTrainer(LossTrainer):
     """Pairwse trainer
 
@@ -87,19 +115,11 @@ class DistillationPairwiseTrainer(LossTrainer):
             lambda loss: loss.initialize(self.ranker),
         )
         self.sampler.initialize(random)
-        self.train_iter = batchiter(self.batch_size, self.sampler.pairwise_iter())
-
-    # overload the load and write of the state
-    # TODO: try to do the same as the original version.
-    def load_state_dict(self, state: Dict):
-        self.sampler.load_state_dict(state["sampler"])
-
-    def state_dict(self):
-        return {"sampler": self.sampler.state_dict()}
+        self.sampler_iter = self.sampler.pairwise_iter()
 
     def iter_batches(self) -> Iterator[List[PairwiseDistillationSample]]:
         """Build a iterator over the batches of samples"""
-        return self.train_iter
+        return batchiter(self.batch_size, self.sampler_iter)
 
     def train_batch(self, samples: List[PairwiseDistillationSample]):
         # Builds records and teacher score matrix

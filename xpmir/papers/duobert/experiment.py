@@ -10,13 +10,15 @@ import logging
 from pathlib import Path
 from omegaconf import OmegaConf
 from xpmir.distributed import DistributedHook
+from xpmir.letor.learner import Learner, ValidationListener
 from xpmir.letor.schedulers import LinearWithWarmup
 
 import xpmir.letor.trainers.pairwise as pairwise
 from datamaestro import prepare_dataset
+from datamaestro_text.data.ir import AdhocDocuments
 from datamaestro_text.transforms.ir import ShuffledTrainingTripletsLines
 from xpmir.neural.cross import CrossScorer, DuoCrossScorer
-from experimaestro import experiment, setmeta
+from experimaestro import experiment, setmeta, tagspath
 from experimaestro.click import click
 from experimaestro.launcherfinder import cpu, find_launcher
 from experimaestro.launcherfinder.specs import duration
@@ -28,89 +30,66 @@ from xpmir.interfaces.anserini import AnseriniRetriever, IndexCollection
 from xpmir.letor import Device, Random
 from xpmir.letor.batchers import PowerAdaptativeBatcher
 from xpmir.letor.devices import CudaDevice
-from xpmir.letor.optim import AdamW, ParameterOptimizer, RegexParameterFilter
+from xpmir.letor.optim import (
+    AdamW,
+    ParameterOptimizer,
+    RegexParameterFilter,
+    get_optimizers,
+)
 from xpmir.letor.samplers import TripletBasedSampler
 from xpmir.measures import AP, RR, P, nDCG
+from xpmir.papers.cli import paper_command
 from xpmir.pipelines.reranking import RerankingPipeline
-from xpmir.rankers import RandomScorer
+from xpmir.rankers import CollectionBasedRetrievers, RandomScorer
 from xpmir.rankers.standard import BM25
 from xpmir.text.huggingface import DualDuoBertTransformerEncoder, DualTransformerEncoder
 from xpmir.utils.utils import find_java_home
 
 logging.basicConfig(level=logging.INFO)
 
-# --- Experiment
-# $ python -m xpmir.paper.duobert.experiment experiment/ small + additional options
-# experiment/ : the path to the working directory
-# small: the default configuration
-# additional configuration: dotlist to modify the choice in the default configuration
 
-
-@click.option("--debug", is_flag=True, help="Print debug information")
-@click.option(
-    "--host",
-    type=str,
-    default=None,
-    help="Server hostname (default to localhost, not suitable if your jobs are remote)",
-)
-@click.option(
-    "--port", type=int, default=12345, help="Port for monitoring (default 12345)"
-)
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-@omegaconf_argument("configuration", package=__package__)
-@click.argument("workdir", type=Path)
-@click.command()
-def cli(debug, configuration, host, port, workdir, args):
+@paper_command(package=__package__)
+def cli(debug, configuration, host, port, workdir):
     """Runs an experiment"""
 
-    # Merge the additional option to the existing
-    conf_args = OmegaConf.from_dotlist(args)
-    configuration = OmegaConf.merge(configuration, conf_args)
-
-    tags = configuration.Launcher.tags.split(",") if configuration.Launcher.tags else []
+    # Get launcher tags
+    tags = configuration.launcher.tags.split(",") if configuration.launcher.tags else []
 
     logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
 
     # Number of topics in the validation set
-    VAL_SIZE = configuration.Learner.validation_size
+    VAL_SIZE = configuration.learner.validation_size
 
     # Number of batches per epoch (# samples = STEPS_PER_EPOCH * batch_size)
-    STEPS_PER_EPOCH = configuration.Learner.steps_per_epoch
+    steps_per_epoch = configuration.learner.steps_per_epoch
 
     # Validation interval (in epochs)
-    validation_interval = configuration.Learner.validation_interval
+    validation_interval = configuration.learner.validation_interval
 
     # How many document to re-rank for the monobert
-    topK1 = configuration.Retriever_mono.k
+    topK1 = configuration.retriever_mono.k
     # How many documents to use for cross-validation in monobert
-    valtopK1 = configuration.Retriever_mono.val_k
+    valtopK1 = configuration.retriever_mono.val_k
 
     # How many document to pass from the monobert to duobert
-    topK2 = configuration.Retriever_duo.k
+    topK2 = configuration.retriever_duo.k
     # How many document to use for cross-validation in duobert
-    valtopK2 = configuration.Retriever_duo.val_k
+    valtopK2 = configuration.retriever_duo.val_k
 
     # The numbers of the warmup steps during the training
-    num_warmup_steps = configuration.Learner.num_warmup_steps
+    num_warmup_steps = configuration.learner.num_warmup_steps
 
     # Our default launcher for light tasks
-    gpu_launcher_index = find_launcher(configuration.Indexation.requirements)
+    gpu_launcher_index = find_launcher(configuration.indexation.requirements)
 
-    batch_size = configuration.Learner.batch_size
-    max_epochs = configuration.Learner.max_epoch
+    batch_size = configuration.learner.batch_size
+    max_epochs = configuration.learner.max_epoch
 
     # we assigne a gpu, if not, a cpu
-    if configuration.Launcher.gpu:
-        gpu_launcher_learner = find_launcher(
-            configuration.Learner.requirements, tags=tags
-        )
-        gpu_launcher_evaluate = find_launcher(
-            configuration.Evaluation.requirements, tags=tags
-        )
-    else:
-        gpu_launcher_learner = gpu_launcher_evaluate = find_launcher(
-            cpu(mem="4G") & duration("2 days"), tags=tags
-        )
+    launcher_index = find_launcher(configuration.indexation.requirements)
+
+    launcher_learner = find_launcher(configuration.learner.requirements, tags=tags)
+    launcher_evaluate = find_launcher(configuration.evaluation.requirements, tags=tags)
 
     logging.info(
         f"Number of epochs {max_epochs}, validation interval {validation_interval}"
@@ -131,6 +110,7 @@ def cli(debug, configuration, host, port, workdir, args):
         device = CudaDevice() if configuration.Launcher.gpu else Device()
         random = Random(seed=0)
         basemodel = BM25()
+
         # create a random scorer as the most naive baseline
         random_scorer = RandomScorer(random=random).tag("model", "random")
         measures = [AP, P @ 20, nDCG, nDCG @ 10, nDCG @ 20, RR, RR @ 10]
@@ -139,16 +119,20 @@ def cli(debug, configuration, host, port, workdir, args):
         runs_path = xp.resultspath / "runs"
         cleanupdir(runs_path)
         runs_path.mkdir(exist_ok=True, parents=True)
-        logging.info("Monitor learning with:")
+        logging.info("You can monitor learning with:")
         logging.info("tensorboard --logdir=%s", runs_path)
 
         # Datasets: train, validation and test
-        documents = prepare_dataset(
-            "irds.msmarco-passage.documents"
-        )  # for indexing --> msmarcos
-        cars_documents = prepare_dataset(
-            "irds.car.v1.5.documents"
-        )  # for indexing --> trec
+        # for indexing --> msmarcos
+        documents: AdhocDocuments = prepare_dataset("irds.msmarco-passage.documents")
+
+        # Not using the trec_car for now
+        # for indexing --> trec_car
+        # cars_documents = prepare_dataset(
+        #     "irds.car.v1.5.documents"
+        # )
+
+        # Development datasets
         devsmall = prepare_dataset("irds.msmarco-passage.dev.small")
         dev = prepare_dataset("irds.msmarco-passage.dev")
         ds_val = RandomFold(
@@ -164,57 +148,42 @@ def cli(debug, configuration, host, port, workdir, args):
                 prepare_dataset("irds.msmarco-passage.trec-dl-2020"), measures
             ),
             msmarco_dev=Evaluations(devsmall, measures),
-            # works not well on it shows the duobert is weak on zero-shot
-            # trec_car=Evaluations(
-            #     prepare_dataset("irds.car.v1.5.test200"), measures
-            # )
         )
+
+        # Setup indices and validation/test base retrievers
+        retrievers = CollectionBasedRetrievers()
 
         # Build the MS Marco index and definition of first stage rankers
-        index = IndexCollection(documents=documents, storeContents=True).submit()
-        base_retriever_ms = AnseriniRetriever(k=topK1, index=index, model=basemodel)
-        base_retriever_ms_val = AnseriniRetriever(
-            k=valtopK1, index=index, model=basemodel
+        msmarco_index = IndexCollection(documents=documents, storeContents=True).submit(
+            launcher_index
         )
 
-        # Build the MS Marco index and definition of first stage rankers
-        index_cars = IndexCollection(
-            documents=cars_documents, storeContents=True
-        ).submit(launcher=gpu_launcher_index)
-        base_retriever_cars = AnseriniRetriever(
-            k=topK1, index=index_cars, model=basemodel
+        retrievers.add_index(documents, index=msmarco_index)
+
+        # Also can add the index for the trec_car, but not for now
+        # cars_index = IndexCollection(
+        #   documents=cars_documents, storeContents=True
+        # ).submit(launcher=launcher_index)
+        # retrievers.add_index(cars_documents, index=cars_index)
+
+        # define the base retriever for validation and testing on the msmarcos
+        # index respectively
+        val_retrievers = retrievers.factory(
+            lambda index: AnseriniRetriever(index=index, k=valtopK1, model=basemodel)
         )
-        base_retriever_cars_val = AnseriniRetriever(
-            k=valtopK1, index=index_cars, model=basemodel
+        test_retrievers = retrievers.factory(
+            lambda index: AnseriniRetriever(index=index, k=topK1, model=basemodel)
         )
 
-        base_retrievers = {
-            "irds.car.v1.5.documents@irds": base_retriever_cars,
-            "irds.msmarco-passage.documents@irds": base_retriever_ms,
-        }
+        # Search and evaluate with the base model
+        tests.evaluate_retriever(test_retrievers, launcher_index)
 
-        base_retrievers_val = {
-            "irds.car.v1.5.documents@irds": base_retriever_cars_val,
-            "irds.msmarco-passage.documents@irds": base_retriever_ms_val,
-        }
-
-        # The factory returns a function which gives back a retriever based on
-        # the different kinds of documents to index.
-        def factory_retriever(scorer, documents):
-            return scorer.getRetriever(
-                base_retrievers[documents.id],
-                batch_size,
-                PowerAdaptativeBatcher(),
-                device=device,
+        # Search and evaluate with the bm25 model
+        tests.evaluate_retriever(
+            random_scorer.getRetrieverFactory(
+                test_retrievers, batch_size, PowerAdaptativeBatcher()
             )
-
-        def factory_retriever_val(scorer, documents):
-            return scorer.getRetriever(
-                base_retrievers_val[documents.id],
-                batch_size,
-                PowerAdaptativeBatcher(),
-                device=device,
-            )
+        )
 
         # Defines how we sample train examples
         # (using the shuffled pre-computed triplets from MS Marco)
@@ -223,45 +192,11 @@ def cli(debug, configuration, host, port, workdir, args):
             seed=123,
             data=train_triples,
         ).submit()
-        train_sampler = TripletBasedSampler(source=triplesid, index=index)
-
-        # Search and evaluate with BM25(We need also make the difference between
-        # the index)
-        bm25_retriever_ms = AnseriniRetriever(
-            k=topK1, index=index, model=basemodel
-        ).tag("model", "bm25")
-        bm25_retriever_car = AnseriniRetriever(
-            k=topK1, index=index_cars, model=basemodel
-        ).tag("model", "bm25")
-
-        bm25_retriever = {
-            "irds.car.v1.5.documents@irds": bm25_retriever_car,
-            "irds.msmarco-passage.documents@irds": bm25_retriever_ms,
-        }
-
-        # Evaluate BM25 as well as the random scorer (low baseline)
-        tests.evaluate_retriever(
-            lambda documents: bm25_retriever[documents.id], gpu_launcher_index
-        )
-
-        tests.evaluate_retriever(
-            lambda documents: random_scorer.getRetriever(
-                bm25_retriever[documents.id], batch_size, PowerAdaptativeBatcher()
-            ),
-            gpu_launcher_index,
-        )
+        train_sampler = TripletBasedSampler(source=triplesid, index=msmarco_index)
 
         # define the trainer for monobert
         monobert_trainer = pairwise.PairwiseTrainer(
             lossfn=pairwise.PointwiseCrossEntropyLoss().tag("loss", "pce"),
-            sampler=train_sampler,
-            batcher=PowerAdaptativeBatcher(),
-            batch_size=batch_size,
-        )
-
-        # Define the trainer for the duobert
-        duobert_trainer = pairwise.DuoPairwiseTrainer(
-            lossfn=pairwise.DuoLogProbaLoss().tag("loss", "duo_proba"),
             sampler=train_sampler,
             batcher=PowerAdaptativeBatcher(),
             batch_size=batch_size,
@@ -272,171 +207,157 @@ def cli(debug, configuration, host, port, workdir, args):
             min_factor=configuration.Learner.warmup_min_factor,
         )
 
-        monobert_scorer = CrossScorer(
+        monobert_scorer: CrossScorer = CrossScorer(
             encoder=DualTransformerEncoder(trainable=True, maxlen=512, dropout=0.1)
         ).tag("model", "monobert")
 
-        monobert_reranking = RerankingPipeline(
-            monobert_trainer,
-            [
-                ParameterOptimizer(
-                    scheduler=scheduler,
-                    optimizer=AdamW(lr=configuration.Learner.lr, eps=1e-6),
-                    filter=RegexParameterFilter(
-                        includes=[r"\.bias$", r"\.LayerNorm\."]
-                    ),
-                ),
-                ParameterOptimizer(
-                    scheduler=scheduler,
-                    optimizer=AdamW(
-                        lr=configuration.Learner.lr, weight_decay=1e-2, eps=1e-6
-                    ),
-                    filter=RegexParameterFilter(
-                        excludes=[r"\.bias$", r"\.LayerNorm\."]
-                    ),
-                ),
-            ],
-            factory_retriever,
-            STEPS_PER_EPOCH,
-            max_epochs,
-            ds_val,
-            {"RR@10": True, "AP": False, "nDCG": False},
-            tests,
-            device=device,
-            validation_retriever_factory=factory_retriever_val,
+        monobert_validation = ValidationListener(
+            dataset=ds_val,
+            retriever=monobert_scorer.getRetriever(
+                val_retrievers(documents), batch_size, PowerAdaptativeBatcher()
+            ),
             validation_interval=validation_interval,
-            launcher=gpu_launcher_learner,
-            evaluate_launcher=gpu_launcher_evaluate,
-            runs_path=runs_path,
+            metrics={"RR@10": True, "AP": False, "nDCG": False},
+        )
+
+        optimizers = [
+            ParameterOptimizer(
+                scheduler=scheduler,
+                optimizer=AdamW(lr=configuration.learner.lr, eps=1e-6),
+                filter=RegexParameterFilter(includes=[r"\.bias$", r"\.LayerNorm\."]),
+            ),
+            ParameterOptimizer(
+                scheduler=scheduler,
+                optimizer=AdamW(
+                    lr=configuration.learner.lr, weight_decay=1e-2, eps=1e-6
+                ),
+            ),
+        ]
+
+        # The learner trains the model
+        mono_learner = Learner(
+            # Misc settings
+            device=device,
+            random=random,
+            # How to train the model
+            trainer=monobert_trainer,
+            # The model to train
+            scorer=monobert_scorer,
+            # Optimization settings
+            steps_per_epoch=steps_per_epoch,
+            optimizers=get_optimizers(optimizers),
+            max_epochs=max_epochs,
+            # The listeners (here, for validation)
+            listeners={"bestval": monobert_validation},
+            # The hook used for evaluation
             hooks=[setmeta(DistributedHook(models=[monobert_scorer]), True)],
         )
 
-        # Run the monobert and use the result as the baseline for duobert
-        outputs = monobert_reranking.run(monobert_scorer)
+        # Submit the job of learning the monobert and link
+        mono_runs_path = runs_path or (experiment.current().resultspath / "runs")
+        outputs = mono_learner.submit(launcher=launcher_learner)
+        (mono_runs_path / tagspath(mono_learner)).symlink_to(mono_learner.logpath)
 
-        # Here we have only one metric so we don't use a loop
+        # Evaluate the monobert model
+        for metric_name, monitored in monobert_validation.metrics.items():
+            if monitored:
+                best = outputs.listeners["bestval"][metric_name]
+                tests.evaluate_retriever(
+                    best.getRetrieverFactory(
+                        test_retrievers, batch_size, PowerAdaptativeBatcher()
+                    ),
+                    launcher_evaluate,
+                )
+
+        # ------Start the code for the duobert
+
+        # Get the trained monobert model for reranking
         best_mono_scorer = outputs.listeners["bestval"]["RR@10"]
-        # We take only the first topK2 value retrieved by the monobert retriever
-        # Create the retriever for the msmarcos dataset by using the best result
-        # from the monobert.
-        best_mono_retriever_ms = best_mono_scorer.getRetriever(
-            base_retriever_ms,
-            batch_size,
-            PowerAdaptativeBatcher(),
-            device=device,
-            top_k=topK2,
+
+        # Define the trainer for the duobert
+        duobert_trainer = pairwise.DuoPairwiseTrainer(
+            lossfn=pairwise.DuoLogProbaLoss().tag("loss", "duo_proba"),
+            sampler=train_sampler,
+            batcher=PowerAdaptativeBatcher(),
+            batch_size=batch_size,
         )
 
-        # Create the retriever for the cars dataset by using the best result
-        # from the monobert.
-        best_mono_retriever_cars = best_mono_scorer.getRetriever(
-            base_retriever_cars,
+        # define the retriever factories for the duobert for test and validation(only for msmarcos now)
+        duobert_val_retrievers = best_mono_scorer.getRetrieverFactory(
+            val_retrievers,
             batch_size,
             PowerAdaptativeBatcher(),
-            device=device,
-            top_k=topK2,
-        )
-
-        # Get access to the different retriever based on the document id of the dataset
-        best_mono_retrievers = {
-            "irds.car.v1.5.documents@irds": best_mono_retriever_cars,
-            "irds.msmarco-passage.documents@irds": best_mono_retriever_ms,
-        }
-
-        # Similar operation for the dataset for validation
-        best_mono_retriever_ms_val = best_mono_scorer.getRetriever(
-            base_retriever_ms,
-            batch_size,
-            PowerAdaptativeBatcher(),
-            device=device,
             top_k=valtopK2,
+            device=device,
         )
-
-        best_mono_retriever_cars_val = best_mono_scorer.getRetriever(
-            base_retriever_cars,
+        duobert_test_retrievers = best_mono_scorer.getRetrieverFactory(
+            test_retrievers,
             batch_size,
             PowerAdaptativeBatcher(),
+            top_k=topK2,
             device=device,
-            top_k=valtopK2,
         )
-
-        best_mono_retrievers_val = {
-            "irds.car.v1.5.documents@irds": best_mono_retriever_cars_val,
-            "irds.msmarco-passage.documents@irds": best_mono_retriever_ms_val,
-        }
-
-        def factory_retriever_best_mono(scorer, documents):
-            return scorer.getRetriever(
-                best_mono_retrievers[documents.id],
-                batch_size,
-                PowerAdaptativeBatcher(),
-                device=device,
-                top_k=topK2,
-            )
-
-        def factory_retriever_best_mono_val(scorer, documents):
-            return scorer.getRetriever(
-                best_mono_retrievers_val[documents.id],
-                batch_size,
-                PowerAdaptativeBatcher(),
-                device=device,
-                top_k=topK2,
-            )
 
         # The scorer(model) for the duobert
-        duobert_scorer = DuoCrossScorer(
+        duobert_scorer: DuoCrossScorer = DuoCrossScorer(
             encoder=DualDuoBertTransformerEncoder(trainable=True, dropout=0.1)
         ).tag("duo-model", "duobert")
 
-        duobert_reranking = RerankingPipeline(
-            duobert_trainer,
-            [
-                ParameterOptimizer(
-                    scheduler=scheduler,
-                    optimizer=AdamW(lr=configuration.Learner.lr, eps=1e-6),
-                    filter=RegexParameterFilter(
-                        includes=[r"\.bias$", r"\.LayerNorm\."]
-                    ),
-                ),
-                ParameterOptimizer(
-                    scheduler=scheduler,
-                    optimizer=AdamW(
-                        lr=configuration.Learner.lr, weight_decay=1e-2, eps=1e-6
-                    ),
-                    filter=RegexParameterFilter(
-                        excludes=[r"\.bias$", r"\.LayerNorm\."]
-                    ),
-                ),
-            ],
-            factory_retriever_best_mono,
-            STEPS_PER_EPOCH,
-            max_epochs,
-            ds_val,
-            {"RR@10": True, "AP": False, "nDCG": False},
-            tests,
-            device=device,
-            validation_retriever_factory=factory_retriever_best_mono_val,
+        duobert_validation = ValidationListener(
+            dataset=ds_val,
+            retriever=duobert_scorer.getRetriever(
+                duobert_val_retrievers(documents),
+                batch_size,
+                PowerAdaptativeBatcher(),
+                device=device,
+            ),
             validation_interval=validation_interval,
-            launcher=gpu_launcher_learner,
-            evaluate_launcher=gpu_launcher_evaluate,
-            runs_path=runs_path,
+            metrics={"RR@10": True, "AP": False, "nDCG": False},
+        )
+
+        # The learner for the duobert.
+        duobert_learner = Learner(
+            # Misc settings
+            device=device,
+            random=random,
+            # How to train the model
+            trainer=duobert_trainer,
+            # The model to train
+            scorer=duobert_scorer,
+            # Optimization settings
+            steps_per_epoch=steps_per_epoch,
+            optimizers=get_optimizers(optimizers),
+            max_epochs=max_epochs,
+            # The listeners (here, for validation)
+            listeners={"bestval": duobert_validation},
+            # The hook used for evaluation
             hooks=[setmeta(DistributedHook(models=[duobert_scorer]), True)],
         )
 
-        # Run the duobert
-        duobert_reranking.run(duobert_scorer)
+        # Submit job and link
+        duo_runs_path = runs_path or (experiment.current().resultspath / "runs")
+        outputs = duobert_learner.submit(launcher=launcher_learner)
+        (duo_runs_path / tagspath(duobert_learner)).symlink_to(duobert_learner.logpath)
+
+        # Evaluate the duobert model
+        for metric_name, monitored in monobert_validation.metrics.items():
+            if monitored:
+                best = outputs.listeners["bestval"][metric_name]
+                tests.evaluate_retriever(
+                    best.getRetriever(
+                        duobert_test_retrievers(documents),
+                        batch_size,
+                        PowerAdaptativeBatcher(),
+                    ),
+                    launcher_evaluate,
+                )
 
         # Waits that experiments complete
         xp.wait()
 
         # ---  End of the experiment
         # Display metrics for each trained model
-        for key, dsevaluations in tests.collection.items():
-            print(f"=== {key}")
-            for evaluation in dsevaluations.results:
-                print(
-                    f"Results for {evaluation.__xpm__.tags()}\n{evaluation.results.read_text()}\n"
-                )
+        tests.output_results()
 
 
 if __name__ == "__main__":
