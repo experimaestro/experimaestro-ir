@@ -42,6 +42,7 @@ class TransformerVocab(text.Vocab):
     layer: Param[int] = 0
     """Layer to use (0 is the last, -1 to use them all)"""
 
+    # FIXME: should be in a hook rather than here?
     dropout: Param[Optional[float]] = 0
     """Define a dropout for all the layers"""
 

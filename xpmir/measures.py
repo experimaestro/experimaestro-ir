@@ -1,7 +1,7 @@
-from typing import List, Optional
+from typing import Optional
 import ir_measures as irm
-from experimaestro import Config, Param
-from datamaestro_text.data.ir import Adhoc, Measure as BaseMeasure
+from experimaestro import Param
+from datamaestro_text.data.ir import Measure as BaseMeasure
 
 
 class Measure(BaseMeasure):
@@ -17,7 +17,7 @@ class Measure(BaseMeasure):
     """Cutoff value"""
 
     def __matmul__(self, cutoff):
-        return Measure(identifier=self.identifier, rel=self.rel, cutoff=cutoff)
+        return Measure(identifier=self.identifier, rel=self.rel, cutoff=int(cutoff))
 
     def __call__(self):
         measure = irm.parse_measure(self.identifier)

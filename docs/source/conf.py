@@ -2,6 +2,7 @@ import builtins
 import mock
 import sys
 import logging
+from xpmir import version
 
 # Configuration file for the Sphinx documentation builder.
 #
@@ -29,11 +30,11 @@ builtins.__sphinx_build__ = True
 # -- Project information -----------------------------------------------------
 
 project = "Experimaestro IR (XPM-IR)"
-copyright = "2021, Benjamin Piwowarski"
+copyright = "2023, Benjamin Piwowarski"
 author = "Benjamin Piwowarski"
 
 # The full version, including alpha/beta/rc tags
-release = "0.8.0"
+release = version
 
 
 # -- General configuration ---------------------------------------------------
@@ -126,6 +127,7 @@ for name in [
     "torch.utils.tensorboard",
     "torch.utils.tensorboard.writer",
     "torch.optim.lr_scheduler",
+    "transformers",
 ]:
     sys.modules[name] = mock.Mock(side_effect=side_effect)
 

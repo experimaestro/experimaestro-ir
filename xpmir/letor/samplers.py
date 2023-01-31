@@ -11,6 +11,7 @@ from datamaestro_text.data.ir import (
     TrainingTriplets,
     PairwiseSampleDataset,
     PairwiseSample,
+    AdhocDocumentStore,
 )
 from experimaestro import Config, Param, tqdm
 from experimaestro.annotations import cache
@@ -25,7 +26,6 @@ from xpmir.letor.records import (
 )
 from xpmir.rankers import Retriever
 from xpmir.utils.utils import EasyLogger, easylog
-from xpmir.index import Index
 from xpmir.utils.iter import (
     RandomSerializableIterator,
     SerializableIterator,
@@ -323,7 +323,7 @@ class TripletBasedSampler(PairwiseSampler):
     """
 
     source: Param[TrainingTriplets]
-    index: Param[Optional[Index]] = None
+    index: Param[Optional[AdhocDocumentStore]] = None
 
     def __validate__(self):
         assert (

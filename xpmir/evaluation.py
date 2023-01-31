@@ -149,11 +149,11 @@ class Evaluations:
         if not isinstance(retriever, Retriever):
             retriever = retriever(self.dataset.documents)
 
-        self.add(
-            Evaluate(
-                retriever=retriever, measures=self.measures, dataset=self.dataset
-            ).submit(launcher=launcher)
-        )
+        evaluation = Evaluate(
+            retriever=retriever, measures=self.measures, dataset=self.dataset
+        ).submit(launcher=launcher)
+        self.add(evaluation)
+        return evaluation
 
     def add(self, *results: BaseEvaluation):
         self.results.extend(results)
@@ -176,16 +176,21 @@ class EvaluationsCollection:
     ):
         """Evaluate a retriever for all the evaluations in this collection (the
         tasks are submitted to experimaestro the scheduler)"""
+        results = []
         for evaluations in self.collection.values():
-            evaluations.evaluate_retriever(retriever, launcher)
+            results.append(evaluations.evaluate_retriever(retriever, launcher))
+            return results
 
     def output_results(self, file=sys.stdout):
         """Print all the results"""
         for key, dsevaluations in self.collection.items():
-            print(f"=== {key}", file=file)  # noqa: T201
+            print(f"## Dataset {key}", file=file)  # noqa: T201
             for evaluation in dsevaluations.results:
+                with evaluation.results.open("rt") as fp:
+                    results = [f"- {line}" for line in fp.readlines()]
+                    results = "".join(results)
+
                 print(  # noqa: T201
-                    f"Results for {evaluation.__xpm__.tags()}"
-                    f"\n{evaluation.results.read_text()}\n",
+                    f"### Results for {evaluation.__xpm__.tags()}" f"""\n{results}\n""",
                     file=file,
                 )

@@ -1,6 +1,7 @@
 # Starts experiments from command line
 
 from functools import reduce
+import inspect
 import logging
 import sys
 from typing import List
@@ -9,6 +10,7 @@ import pkgutil
 from typing import Optional
 import click
 from importlib import import_module
+import docstring_parser
 
 from omegaconf import OmegaConf
 from xpmir.configuration import omegaconf_argument
@@ -64,6 +66,12 @@ def paper_command(package=None):
             click.option("--debug", is_flag=True, help="Print debug information"),
             click.option("--show", is_flag=True, help="Print configuration and exits"),
             click.option(
+                "--env",
+                help="Define one environment variable",
+                type=(str, str),
+                multiple=True,
+            ),
+            click.option(
                 "--host",
                 type=str,
                 default=None,
@@ -72,15 +80,15 @@ def paper_command(package=None):
             click.option(
                 "--port",
                 type=int,
-                default=12345,
-                help="Port for monitoring (default 12345)",
+                default=None,
+                help="Port for monitoring (can be defined in the settings.yaml file)",
             ),
             click.argument("workdir", type=Path),
             omegaconf_argument("configuration", package=package),
             click.argument("args", nargs=-1, type=click.UNPROCESSED),
         ]
 
-        def cli(debug, configuration, host, port, workdir, args, show):
+        def cli(show, debug, configuration, args, **kwargs):
             logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
             conf_args = OmegaConf.from_dotlist(args)
             configuration = OmegaConf.merge(configuration, conf_args)
@@ -90,9 +98,17 @@ def paper_command(package=None):
                 print(configuration)
                 sys.exit(0)
 
-            fn(debug, configuration, host, port, workdir)
+            parameters = inspect.signature(fn).parameters
+            if "documentation" in parameters:
+                doc = docstring_parser.parse(fn.__doc__)
+                kwargs[
+                    "documentation"
+                ] = f"{doc.short_description}\n\n{doc.long_description}"
+            return fn(debug, configuration, **kwargs)
 
-        return reduce(lambda fn, decorator: decorator(fn), decorators, cli)
+        cli.__doc__ = fn.__doc__
+        cmd = reduce(lambda fn, decorator: decorator(fn), decorators, cli)
+        return cmd
 
     return _decorate
 

@@ -175,7 +175,7 @@ class ValidationListener(LearnerListener):
 
                 self.context.writer.add_histogram(
                     f"{self.key}/{metric}",
-                    np.array(list(details[metric].values())),
+                    np.array(list(details[metric].values()), dtype=np.float32),
                     state.step,
                 )
 

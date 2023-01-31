@@ -15,6 +15,7 @@ Welcome to Experimaestro IR documentation!
    papers
    pretrained
    misc
+   code/index
 
 
 Install

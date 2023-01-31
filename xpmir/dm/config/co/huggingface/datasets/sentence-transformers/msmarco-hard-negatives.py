@@ -1,7 +1,7 @@
 # See documentation on http://experimaestro.github.io/datamaestro/
 
 from datamaestro.definitions import datatasks, datatags, dataset
-from datamaestro_text.data.ir import HuggingFacePairwiseSampleDataset
+from datamaestro_text.data.ir.huggingface import HuggingFacePairwiseSampleDataset
 from datamaestro.download.huggingface import hf_download
 
 

@@ -11,7 +11,10 @@ import numpy as np
 
 class PairwiseDistillationSample(NamedTuple):
     query: Query
+    """The query"""
+
     documents: Tuple[ScoredDocument, ScoredDocument]
+    """Positive/negative document with teacher scores"""
 
 
 class PairwiseDistillationSamples(Config, Iterable[PairwiseDistillationSample]):

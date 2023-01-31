@@ -1,12 +1,11 @@
-# Implementation of the experiments in the paper by training with msmarcos
-# Passage Re-ranking with BERT, (Rodrigo Nogueira, Kyunghyun Cho). 2019
-# https://arxiv.org/abs/1901.04085
-
+import io
 import logging
+
+import click
 from xpmir.distributed import DistributedHook
 from xpmir.letor.learner import Learner, ValidationListener
 from xpmir.letor.schedulers import LinearWithWarmup
-
+from xpmir.models import XPMIRHFHub
 import xpmir.letor.trainers.pairwise as pairwise
 from datamaestro import prepare_dataset
 from datamaestro_text.transforms.ir import ShuffledTrainingTripletsLines
@@ -30,7 +29,7 @@ from xpmir.letor.optim import (
 from xpmir.letor.samplers import TripletBasedSampler
 from xpmir.measures import AP, RR, P, nDCG
 from xpmir.papers.cli import paper_command
-from xpmir.rankers import CollectionBasedRetrievers, RandomScorer
+from xpmir.rankers import CollectionBasedRetrievers, RandomScorer, RetrieverHydrator
 from xpmir.rankers.standard import BM25
 from xpmir.text.huggingface import DualTransformerEncoder
 from xpmir.utils.utils import find_java_home
@@ -38,9 +37,20 @@ from xpmir.utils.utils import find_java_home
 logging.basicConfig(level=logging.INFO)
 
 
+@click.option(
+    "--upload-to-hub",
+    required=False,
+    type=str,
+    default=None,
+    help="Upload the model to Hugging Face Hub with the given identifier",
+)
 @paper_command(package=__package__)
-def cli(debug, configuration, host, port, workdir):
-    """Runs an experiment"""
+def cli(debug, configuration, host, port, workdir, upload_to_hub, documentation, env):
+    """monoBERT trained on MS-Marco
+
+    Passage Re-ranking with BERT (Rodrigo Nogueira, Kyunghyun Cho). 2019.
+    https://arxiv.org/abs/1901.04085
+    """
 
     # Get launcher tags
     tags = configuration.launcher.tags.split(",") if configuration.launcher.tags else []
@@ -83,14 +93,16 @@ def cli(debug, configuration, host, port, workdir):
     with experiment(workdir, name, host=host, port=port) as xp:
         # Needed by Pyserini
         xp.setenv("JAVA_HOME", find_java_home())
+        for key, value in env:
+            xp.setenv(key, value)
 
         # Misc
         device = CudaDevice() if configuration.launcher.gpu else Device()
         random = Random(seed=0)
-        basemodel = BM25()
+        basemodel = BM25().tag("model", "bm25")
 
         # create a random scorer as the most naive baseline
-        random_scorer = RandomScorer(random=random).tag("model", "random")
+        random_scorer = RandomScorer(random=random).tag("reranker", "random")
         measures = [AP, P @ 20, nDCG, nDCG @ 10, nDCG @ 20, RR, RR @ 10]
 
         # Creates the directory with tensorboard data
@@ -131,22 +143,27 @@ def cli(debug, configuration, host, port, workdir):
         # Setup indices and validation/test base retrievers
         retrievers = CollectionBasedRetrievers()
 
-        # FIXME: should not store contents (IR datasets already does that)
-        msmarco_index = IndexCollection(documents=documents, storeContents=True).submit(
+        msmarco_index = IndexCollection(documents=documents).submit(
             launcher=launcher_index
         )
-        retrievers.add_index(documents, index=msmarco_index)
+        retrievers.add(documents, index=msmarco_index)
 
         # cars_index = IndexCollection(
-        #   documents=cars_documents, storeContents=True
+        #   documents=cars_documents,
         # ).submit(launcher=launcher_index)
-        # retrievers.add_index(cars_documents, index=cars_index)
+        # retrievers.add(cars_documents, index=cars_index)
 
         val_retrievers = retrievers.factory(
-            lambda index: AnseriniRetriever(index=index, k=valtopK, model=basemodel)
+            lambda documents, **kwargs: RetrieverHydrator(
+                store=documents,
+                retriever=AnseriniRetriever(**kwargs, k=valtopK, model=basemodel),
+            )
         )
         test_retrievers = retrievers.factory(
-            lambda index: AnseriniRetriever(index=index, k=topK, model=basemodel)
+            lambda documents, **kwargs: RetrieverHydrator(
+                store=documents,
+                retriever=AnseriniRetriever(**kwargs, k=topK, model=basemodel),
+            )
         )
 
         # Search and evaluate with the base model
@@ -165,11 +182,11 @@ def cli(debug, configuration, host, port, workdir):
             seed=123,
             data=train_triples,
         ).submit()
-        train_sampler = TripletBasedSampler(source=triplesid, index=msmarco_index)
+        train_sampler = TripletBasedSampler(source=triplesid, index=documents)
 
         # define the trainer for monobert
         monobert_trainer = pairwise.PairwiseTrainer(
-            lossfn=pairwise.PointwiseCrossEntropyLoss().tag("loss", "pce"),
+            lossfn=pairwise.PointwiseCrossEntropyLoss(),
             sampler=train_sampler,
             batcher=PowerAdaptativeBatcher(),
             batch_size=batch_size,
@@ -177,7 +194,7 @@ def cli(debug, configuration, host, port, workdir):
 
         monobert_scorer: CrossScorer = CrossScorer(
             encoder=DualTransformerEncoder(trainable=True, maxlen=512, dropout=0.1)
-        ).tag("model", "monobert")
+        ).tag("reranker", "monobert")
 
         # The validation listener will evaluate the full retriever
         # (1st stage + reranker) and keep the best performing model
@@ -241,13 +258,35 @@ def cli(debug, configuration, host, port, workdir):
                 best = outputs.listeners["bestval"][metric_name]
                 tests.evaluate_retriever(
                     best.getRetrieverFactory(
-                        test_retrievers, batch_size, PowerAdaptativeBatcher()
+                        test_retrievers,
+                        batch_size,
+                        PowerAdaptativeBatcher(),
+                        device=device,
                     ),
                     launcher_evaluate,
                 )
 
         # Waits that experiments complete
         xp.wait()
+
+        if upload_to_hub:
+            logging.info("Uploading to HuggingFace Hub")
+            best = outputs.listeners["bestval"]["RR@10"]
+            # TODO: add tags automatically + results
+            out = io.StringIO()
+            tests.output_results(out)
+            documentation = f"""---
+library_name: xpmir
+---
+{documentation}
+
+{out.getvalue()}
+"""
+            # AutoModel.push_to_hf_hub(best.__unwrap__(),
+            # repo_url=upload_to_hub, readme=documentation)
+            XPMIRHFHub(best.__unwrap__(), readme=documentation).push_to_hub(
+                repo_id=upload_to_hub
+            )
 
         # Display metrics for each trained model
         tests.output_results()

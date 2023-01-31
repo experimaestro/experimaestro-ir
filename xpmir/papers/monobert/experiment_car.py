@@ -55,7 +55,7 @@ logging.basicConfig(level=logging.INFO)
 @omegaconf_argument("configuration", package="xpmir.papers.monobert")
 @click.argument("workdir", type=Path)
 @click.command()
-def cli(debug, configuration, host, port, workdir):
+def cli(debug, configuration, host, port, workdir, env):
     """Runs an experiment"""
     tags = configuration.Launcher.tags.split(",") if configuration.Launcher.tags else []
 

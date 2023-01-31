@@ -10,8 +10,8 @@ class OmegaConfParamType(click.Choice):
 
     def convert(self, value: str, param, ctx):
         # Load the YAML file
-        self.path = resources.path(self.package, f"{value}.yaml")
-        return OmegaConf.load(self.path)
+        with resources.path(self.package, f"{value}.yaml") as path:
+            return OmegaConf.load(path)
 
 
 def omegaconf_argument(name: str, package: str = None):
@@ -24,8 +24,9 @@ def omegaconf_argument(name: str, package: str = None):
     names = []  # list of available configurations
 
     for item in resources.contents(package):
-        if resources.is_resource(package, item) and item.endswith(".yaml"):
-            names.append(item.removesuffix(".yaml"))
+        YAML_SUFFIX = ".yaml"
+        if resources.is_resource(package, item) and item.endswith(YAML_SUFFIX):
+            names.append(item[: -len(YAML_SUFFIX)])
 
     def handler(method):
         return click.argument(name, type=OmegaConfParamType(package, names))(method)

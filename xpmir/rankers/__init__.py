@@ -1,6 +1,5 @@
 # This package contains all rankers
 
-from functools import lru_cache
 from experimaestro import tqdm
 from enum import Enum
 from pathlib import Path
@@ -21,7 +20,11 @@ import torch.nn as nn
 
 import numpy as np
 from experimaestro import Param, Config, Meta, DataPath
-from datamaestro_text.data.ir import AdhocIndex as Index, AdhocDocuments
+from datamaestro_text.data.ir import (
+    AdhocIndex as Index,
+    AdhocDocuments,
+    AdhocDocumentStore,
+)
 from xpmir.letor import Device, Random
 from xpmir.letor.batchers import Batcher
 from xpmir.letor.context import TrainerContext
@@ -281,7 +284,7 @@ class Retriever(Config):
         return results
 
     def retrieve(self, query: str, content=False) -> List[ScoredDocument]:
-        """Retrieves a documents, returning a list sorted by decreasing score
+        """Retrieves documents, returning a list sorted by decreasing score
 
         if `content` is true, includes the document full text
         """
@@ -441,24 +444,45 @@ class CollectionBasedRetrievers(Generic[KWARGS]):
     """Handles various retrievers depending on the collection"""
 
     def __init__(self):
-        self.indices: Dict[str, KWARGS] = {}
+        self.kwargs: Dict[str, KWARGS] = {}
 
-    def add_index(self, documents: AdhocDocuments, **kwargs):
-        self.indices[documents.__identifier__().all] = kwargs
+    def add(self, documents: AdhocDocuments, **kwargs):
+        self.kwargs[documents.__identifier__().all] = kwargs
 
     def factory(
         self, retriever_factory: ParametricRetrieverFactory
     ) -> "RetrieverFactory":
         """Returns a retriever factory - cached the retrievers based on the
         document collection"""
-
-        @lru_cache
-        def cached_factory(dataset_id: str) -> Retriever:
-            kwargs = self.indices[dataset_id]
-            return retriever_factory(**kwargs)
+        retrievers = {}
 
         def _factory(documents: AdhocDocuments):
             dataset_id = documents.__identifier__().all
-            return cached_factory(dataset_id)
+            if dataset_id not in retrievers:
+                kwargs = self.kwargs[documents.__identifier__().all]
+                retrievers[dataset_id] = retriever_factory(documents, **kwargs)
+            return retrievers[dataset_id]
 
         return _factory
+
+
+class RetrieverHydrator(Retriever):
+    """Hydrate retrieved results with document text"""
+
+    retriever: Param[Retriever]
+    """The retriever to hydrate"""
+
+    store: Param[AdhocDocumentStore]
+    """The store for document texts"""
+
+    def initialize(self):
+        return self.retriever.initialize()
+
+    def retrieve(self, query: str, content=False) -> List[ScoredDocument]:
+        results = self.retriever.retrieve(query, content)
+
+        if content:
+            for result in results:
+                result.content = self.store.document_text(result.docid)
+
+        return results
