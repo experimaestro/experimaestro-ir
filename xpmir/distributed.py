@@ -64,8 +64,26 @@ class DataParallel(torch.nn.DataParallel):
     module: nn.Module
     """The model to put on multi dataset."""
 
-    def load_state_dict(self, **kwargs):
-        return self.module.load_state_dict(**kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self._register_load_state_dict_pre_hook(DataParallel.load_state_dict_hook)
+
+    @staticmethod
+    def load_state_dict_hook(
+        state_dict,
+        prefix,
+        local_metadata,
+        strict,
+        missing_keys,
+        unexpected_keys,
+        error_msgs,
+    ):
+        replaced_keys = [key for key in state_dict if key.startswith(prefix)]
+        offset = len(prefix)
+        for key in replaced_keys:
+            new_key = f"{prefix}module.{key[offset:]}"
+            state_dict[new_key] = state_dict.pop(key)
 
     def state_dict(self, **kwargs):
         return self.module.state_dict(**kwargs)
