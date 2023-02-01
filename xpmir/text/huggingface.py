@@ -399,6 +399,8 @@ class DualDuoBertTransformerEncoder(TransformerVocab, TripletTextEncoder):
     and 223 for each document.
     """
 
+    maxlen: Param[Optional[Tuple[int, int, int]]] = (64, 224, 224)
+
     def initialize(self, noinit=False, automodel=AutoModel):
         super().initialize(noinit, automodel)
         self.model.embeddings.token_type_embeddings = nn.Embedding(3, self.dimension)
@@ -490,7 +492,7 @@ class DualDuoBertTransformerEncoder(TransformerVocab, TripletTextEncoder):
 
     def forward(self, texts: List[Tuple[str, str, str]]):
 
-        tokenized = self.batch_tokenize(texts, mask=True)
+        tokenized = self.batch_tokenize(texts, mask=True, maxlen=self.maxlen)
 
         with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
             y = self.model(

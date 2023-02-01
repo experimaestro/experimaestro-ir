@@ -179,7 +179,7 @@ class EvaluationsCollection:
         results = []
         for evaluations in self.collection.values():
             results.append(evaluations.evaluate_retriever(retriever, launcher))
-            return results
+        return results
 
     def output_results(self, file=sys.stdout):
         """Print all the results"""

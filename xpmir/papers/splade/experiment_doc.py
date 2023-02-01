@@ -46,13 +46,7 @@ logging.basicConfig(level=logging.INFO)
 
 
 @paper_command(package=__package__)
-def cli(
-    debug: bool,
-    configuration,
-    host: str,
-    port: int,
-    workdir: str,
-):
+def cli(debug: bool, configuration, host: str, port: int, workdir: str, env):
     """Runs an experiment"""
     # Get launcher tags
     tags = configuration.launcher.tags.split(",") if configuration.launcher.tags else []
@@ -131,6 +125,8 @@ def cli(
     with experiment(workdir, name, host=host, port=port) as xp:
         # Set environment variables
         xp.setenv("JAVA_HOME", os.environ["JAVA_HOME"])
+        for key, value in env:
+            xp.setenv(key, value)
 
         # Misc
         device = CudaDevice() if configuration.launcher.gpu else Device()

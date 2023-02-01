@@ -40,7 +40,7 @@ from xpmir.letor.samplers import TripletBasedSampler
 from xpmir.measures import AP, RR, P, nDCG
 from xpmir.papers.cli import paper_command
 from xpmir.pipelines.reranking import RerankingPipeline
-from xpmir.rankers import CollectionBasedRetrievers, RandomScorer
+from xpmir.rankers import CollectionBasedRetrievers, RandomScorer, RetrieverHydrator
 from xpmir.rankers.standard import BM25
 from xpmir.text.huggingface import DualDuoBertTransformerEncoder, DualTransformerEncoder
 from xpmir.utils.utils import find_java_home
@@ -49,7 +49,7 @@ logging.basicConfig(level=logging.INFO)
 
 
 @paper_command(package=__package__)
-def cli(debug, configuration, host, port, workdir):
+def cli(debug, configuration, host, port, workdir, env):
     """Runs an experiment"""
 
     # Get launcher tags
@@ -105,6 +105,8 @@ def cli(debug, configuration, host, port, workdir):
     with experiment(workdir, name, host=host, port=port) as xp:
         # Needed by Pyserini
         xp.setenv("JAVA_HOME", find_java_home())
+        for key, value in env:
+            xp.setenv(key, value)
 
         # Misc
         device = CudaDevice() if configuration.Launcher.gpu else Device()
@@ -154,25 +156,29 @@ def cli(debug, configuration, host, port, workdir):
         retrievers = CollectionBasedRetrievers()
 
         # Build the MS Marco index and definition of first stage rankers
-        msmarco_index = IndexCollection(documents=documents, storeContents=True).submit(
-            launcher_index
-        )
+        msmarco_index = IndexCollection(documents=documents).submit(launcher_index)
 
-        retrievers.add_index(documents, index=msmarco_index)
+        retrievers.add(documents, index=msmarco_index)
 
         # Also can add the index for the trec_car, but not for now
         # cars_index = IndexCollection(
         #   documents=cars_documents, storeContents=True
         # ).submit(launcher=launcher_index)
-        # retrievers.add_index(cars_documents, index=cars_index)
+        # retrievers.add(cars_documents, index=cars_index)
 
         # define the base retriever for validation and testing on the msmarcos
         # index respectively
         val_retrievers = retrievers.factory(
-            lambda index: AnseriniRetriever(index=index, k=valtopK1, model=basemodel)
+            lambda documents, **kwargs: RetrieverHydrator(
+                store=documents,
+                retriever=AnseriniRetriever(**kwargs, k=valtopK1, model=basemodel),
+            )
         )
         test_retrievers = retrievers.factory(
-            lambda index: AnseriniRetriever(index=index, k=topK1, model=basemodel)
+            lambda documents, **kwargs: RetrieverHydrator(
+                store=documents,
+                retriever=AnseriniRetriever(**kwargs, k=topK1, model=basemodel),
+            )
         )
 
         # Search and evaluate with the base model
@@ -192,7 +198,7 @@ def cli(debug, configuration, host, port, workdir):
             seed=123,
             data=train_triples,
         ).submit()
-        train_sampler = TripletBasedSampler(source=triplesid, index=msmarco_index)
+        train_sampler = TripletBasedSampler(source=triplesid, index=documents)
 
         # define the trainer for monobert
         monobert_trainer = pairwise.PairwiseTrainer(
@@ -209,7 +215,7 @@ def cli(debug, configuration, host, port, workdir):
 
         monobert_scorer: CrossScorer = CrossScorer(
             encoder=DualTransformerEncoder(trainable=True, maxlen=512, dropout=0.1)
-        ).tag("model", "monobert")
+        ).tag("reranker", "monobert")
 
         monobert_validation = ValidationListener(
             dataset=ds_val,
@@ -301,7 +307,7 @@ def cli(debug, configuration, host, port, workdir):
         # The scorer(model) for the duobert
         duobert_scorer: DuoCrossScorer = DuoCrossScorer(
             encoder=DualDuoBertTransformerEncoder(trainable=True, dropout=0.1)
-        ).tag("duo-model", "duobert")
+        ).tag("duo-reranker", "duobert")
 
         duobert_validation = ValidationListener(
             dataset=ds_val,

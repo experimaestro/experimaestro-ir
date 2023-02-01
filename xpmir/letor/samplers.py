@@ -13,7 +13,7 @@ from datamaestro_text.data.ir import (
     PairwiseSample,
     AdhocDocumentStore,
 )
-from experimaestro import Config, Param, tqdm
+from experimaestro import Config, Param, tqdm, Task, Annotated, pathgenerator
 from experimaestro.annotations import cache
 import torch
 from xpmir.letor.records import (
@@ -32,6 +32,7 @@ from xpmir.utils.iter import (
     SerializableIteratorAdapter,
     SkippingIterator,
 )
+from datamaestro_text.interfaces.plaintext import read_tsv
 
 logger = easylog()
 
@@ -389,3 +390,102 @@ class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
                 return PairwiseRecord(sample.query, pos, neg)
 
         return SkippingIterator(_Iterator(self.random, self.dataset.iter()))
+
+
+class ModelBasedHardNegativeSampler(Task, Sampler):
+    """Retriever-based hard negative sampler"""
+
+    dataset: Param[Adhoc]
+    """The dataset which contains the topics and assessments"""
+
+    retriever: Param[Retriever]
+    """The retriever to score of the document wrt the query"""
+
+    hard_negative_samples: Annotated[Path, pathgenerator("hard_negatives.tsv")]
+    """Path to store the generated hard negatives"""
+
+    def config(self) -> Iterator[PairwiseSample]:
+        """return a iterator of PairwiseSample"""
+        for triplet in read_tsv(self.hard_negative_samples):
+            query = triplet[0]
+            positives = triplet[2].split(" ")
+            negatives = triplet[4].split(" ")
+            # FIXME: at the moment, I don't have some good idea to store the algo
+            yield query, positives, negatives
+
+    def execute(self):
+        """Retrieve over the dataset and select the positive and negative
+        according to the relevance score and their rank
+        """
+        self.logger.info("Reading topics and retrieving documents")
+
+        # create the file
+        self.hard_negative_samples.parent.mkdir(parents=True, exist_ok=True)
+
+        # Read the assessments
+        self.logger.info("Reading assessments")
+        assessments = {}  # type: Dict[str, Dict[str, float]]
+        for qrels in self.dataset.assessments.iter():
+            doc2rel = {}
+            assessments[qrels.qid] = doc2rel
+            for qrel in qrels.assessments:
+                doc2rel[qrel.docno] = qrel.rel
+        self.logger.info("Assessment loaded")
+        self.logger.info("Read assessments for %d topics", len(assessments))
+
+        self.logger.info("Retrieving documents for each topic")
+        queries = []
+        for query in self.dataset.topics.iter():
+            queries.append(query)
+
+        with self.hard_negative_samples.open("wt") as fp:
+            # Retrieve documents
+
+            # count the number of queries been skipped because of no assessments
+            # available
+            skipped = 0
+            for query in tqdm(queries):
+                qassessments = assessments.get(query.qid, None)
+                if not qassessments:
+                    skipped += 1
+                    self.logger.warning("Skipping topic %s (no assessments)", query.qid)
+                    continue
+
+                # Write all the positive documents
+                positives = []
+                negatives = []
+                scoreddocuments = self.retriever.retrieve(
+                    query.text
+                )  # type: List[ScoredDocument]
+
+                for rank, sd in enumerate(scoreddocuments):
+                    if qassessments.get(sd.docid, 0) > 0:
+                        # It is a positive document:
+                        positives.append(sd.docid)
+                    else:
+                        # It is a negative document or
+                        # don't exist in assessment
+                        negatives.append(sd.docid)
+
+                if not positives:
+                    self.logger.debug(
+                        "Skipping topic %s (no relevant documents)", query.qid
+                    )
+                    skipped += 1
+                    continue
+                if not negatives:
+                    self.logger.debug(
+                        "Skipping topic %s (no negative documents)", query.qid
+                    )
+                    skipped += 1
+                    continue
+
+                # Write the result to the file
+                positive_str = " ".join(positives)
+                negative_str = " ".join(negatives)
+                fp.write(
+                    f"{qrels.qid}\tpositives:\t{positive_str}\t"
+                    f"negatives:\t{negative_str}"
+                )
+
+        self.logger.info("Processed %d topics (%d skipped)", len(queries), skipped)
