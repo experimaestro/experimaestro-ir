@@ -33,6 +33,7 @@ from xpmir.rankers import CollectionBasedRetrievers, RandomScorer, RetrieverHydr
 from xpmir.rankers.standard import BM25
 from xpmir.text.huggingface import DualTransformerEncoder
 from xpmir.utils.utils import find_java_home
+from .configuration import Monobert
 
 logging.basicConfig(level=logging.INFO)
 
@@ -44,7 +45,7 @@ logging.basicConfig(level=logging.INFO)
     default=None,
     help="Upload the model to Hugging Face Hub with the given identifier",
 )
-@paper_command(package=__package__)
+@paper_command(schema=Monobert, package=__package__)
 def cli(debug, configuration, host, port, workdir, upload_to_hub, documentation, env):
     """monoBERT trained on MS-Marco
 
@@ -193,7 +194,9 @@ def cli(debug, configuration, host, port, workdir, upload_to_hub, documentation,
         )
 
         monobert_scorer: CrossScorer = CrossScorer(
-            encoder=DualTransformerEncoder(trainable=True, maxlen=512, dropout=0.1)
+            encoder=DualTransformerEncoder(
+                model_id="bert-base-uncased", trainable=True, maxlen=512, dropout=0.1
+            )
         ).tag("reranker", "monobert")
 
         # The validation listener will evaluate the full retriever
