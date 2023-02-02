@@ -1,7 +1,4 @@
-# ty2pe: monobert-small
-launcher:
-    gpu: true
-    tags: []
+type: monobert-small
 indexation:
     requirements: duration=2 days & cpu(mem=4G)
 learner:
@@ -12,7 +9,6 @@ learner:
     max_epoch: 4
     num_warmup_steps: 30
     warmup_min_factor: 0.1
-    lr: 3.0e-6
     requirements: duration=2 days & cuda(mem=8G)
 evaluation:
     requirements: duration=2 days & cuda(mem=8G)
