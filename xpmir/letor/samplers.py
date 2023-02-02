@@ -4,6 +4,7 @@ from typing import (
     List,
     Optional,
     Tuple,
+    Union,
 )
 import numpy as np
 from datamaestro_text.data.ir import (
@@ -16,15 +17,18 @@ from datamaestro_text.data.ir import (
 from experimaestro import Config, Param, tqdm, Task, Annotated, pathgenerator
 from experimaestro.annotations import cache
 import torch
+from xpmir.datasets.adapters import TextStore
 from xpmir.letor.records import (
     BatchwiseRecords,
+    PairwiseRecords,
     ProductRecords,
     Document,
     PairwiseRecord,
     PointwiseRecord,
     Query,
 )
-from xpmir.rankers import Retriever
+from xpmir.models import AutoModel
+from xpmir.rankers import Retriever, Scorer
 from xpmir.utils.utils import EasyLogger, easylog
 from xpmir.utils.iter import (
     RandomSerializableIterator,
@@ -33,6 +37,7 @@ from xpmir.utils.iter import (
     SkippingIterator,
 )
 from datamaestro_text.interfaces.plaintext import read_tsv
+from sentence_transformers import CrossEncoder
 
 logger = easylog()
 
@@ -392,6 +397,47 @@ class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
         return SkippingIterator(_Iterator(self.random, self.dataset.iter()))
 
 
+# --- Dataloader
+
+# FIXME: A class for loading the data, need to move the other places.
+class PairwiseSampleDatasetFromTSV(PairwiseSampleDataset):
+    """Read the pairwise sample dataset from a csv file"""
+
+    hard_negative_samples_path: Param[Path]
+    """The path which stores the existing ids"""
+
+    def iter(self) -> Iterator[PairwiseSample]:
+        """return a iterator over a set of pairwise_samples"""
+        for triplet in read_tsv(self.hard_negative_samples_path):
+            query = triplet[0]
+            positives = triplet[2].split(" ")
+            negatives = triplet[4].split(" ")
+            # FIXME: at the moment, I don't have some good idea to store the algo
+            yield PairwiseSample(query, positives, negatives)
+
+
+# FIXME: A class for loading the data, need to move the other places.
+class PairwiseSamplerFromTSV(PairwiseSampler):
+
+    pairwise_samples_path: Param[Path]
+    """The path which stores the existing triplets"""
+
+    def pairwise_iter(self) -> SerializableIterator[PairwiseRecord]:
+        def iter() -> Iterator[PairwiseSample]:
+            for triplet in read_tsv(self.pairwise_samples_path):
+                q_id, pos_id, pos_score, neg_id, neg_score = triplet
+                yield PairwiseRecord(
+                    Query(q_id, None),
+                    Document(pos_id, None, pos_score),
+                    Document(neg_id, None, neg_score),
+                )
+
+        return SkippingIterator(iter)
+
+
+# --- Tasks for hard negatives
+
+
 class ModelBasedHardNegativeSampler(Task, Sampler):
     """Retriever-based hard negative sampler"""
 
@@ -404,14 +450,11 @@ class ModelBasedHardNegativeSampler(Task, Sampler):
     hard_negative_samples: Annotated[Path, pathgenerator("hard_negatives.tsv")]
     """Path to store the generated hard negatives"""
 
-    def config(self) -> Iterator[PairwiseSample]:
+    def config(self) -> PairwiseSampleDataset:
         """return a iterator of PairwiseSample"""
-        for triplet in read_tsv(self.hard_negative_samples):
-            query = triplet[0]
-            positives = triplet[2].split(" ")
-            negatives = triplet[4].split(" ")
-            # FIXME: at the moment, I don't have some good idea to store the algo
-            yield query, positives, negatives
+        return PairwiseSampleDatasetFromTSV(
+            ids=self.dataset.id, hard_negative_samples_path=self.hard_negative_samples
+        )
 
     def execute(self):
         """Retrieve over the dataset and select the positive and negative
@@ -489,3 +532,84 @@ class ModelBasedHardNegativeSampler(Task, Sampler):
                 )
 
         self.logger.info("Processed %d topics (%d skipped)", len(queries), skipped)
+
+
+class TeacherModelBasedHardNegativesTripletSampler(Task, Sampler):
+    """For a given set of triplet, assign the score
+    for the documents according to the teacher model"""
+
+    sampler: Param[PairwiseSampler]
+    """The list of exsting hard negatives which we can sample from"""
+
+    document_store: Param[AdhocDocumentStore]
+    """The document store"""
+
+    query_store: Param[TextStore]
+    """The query_document store"""
+
+    # FIXME: Generialize all the type of the scorer
+    teacher_model: Union[Scorer, AutoModel]
+    """The teacher model which scores the positive and negative document"""
+
+    hard_negative_triplet: Annotated[Path, pathgenerator("triplet.tsv")]
+    """The path to store the generated triplets"""
+
+    batch_size: int
+    """How many pairs of documents are been calculate in a batch"""
+
+    def config(self) -> PairwiseSampler:
+        return PairwiseSamplerFromTSV(pairwise_samples_path=self.hard_negative_triplet)
+
+    def iter_pairs_with_text(self) -> Iterator[PairwiseRecord]:
+        """Add the information of the text back to the records"""
+        for record in self.sampler.pairwise_iter():
+            record.query.text = self.query_store[record.query.id]
+            record.positive.text = self.document_store.document_text(
+                record.positive.docid
+            )
+            record.negative.text = self.document_store.document_text(
+                record.negative.docid
+            )
+            yield record
+
+    def iter_batches(self) -> Iterator[PairwiseRecords]:
+        """Return the batch which contains the records"""
+        while True:
+            batch = PairwiseRecords()
+            for _, record in zip(range(self.batch_size), self.iter_pairs_with_text()):
+                batch.add(record)
+            yield batch
+
+    def execute(self):
+        """Pre-calculate the score for the teacher model, and store them"""
+
+        self.logger.info("Calculating the score for the teacher model")
+        # create the file
+        self.hard_negative_samples.parent.mkdir(parents=True, exist_ok=True)
+
+        # FIXME: make the tqdm progressing wrt one record, not a batch of records
+        with self.hard_negative_triplet.open("wt") as fp:
+            for batch in tqdm(self.iter_batches()):
+                query_texts = [query.text for query in batch.queries]
+                document_texts = [document.text for document in batch.documents]
+                text_pairs = [
+                    (query, text) for query, text in zip(query_texts, document_texts)
+                ]
+                # TODO: Only support the sentence_transformer model now
+                if not isinstance(self.teacher_model, CrossEncoder):
+                    scores = ...
+                    raise NotImplementedError
+                else:
+                    # scores in shape: [batch_size, 2]
+                    scores = self.teacher_model.predict(
+                        text_pairs, convert_to_tensor=True
+                    )
+                    scores = scores.reshape(2, -1).T
+
+                # write in the file
+                for i, record in enumerate(batch):
+                    fp.write(
+                        f"{record.query.id}\t{record.positive.id}\t{scores[i,0]}"
+                        f"\t{record.negative.id}\t{scores[i,1]}"
+                    )
+        self.logger.info("Teacher models score generating finish")

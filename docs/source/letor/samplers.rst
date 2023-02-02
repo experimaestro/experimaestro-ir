@@ -25,6 +25,11 @@ Pairwise
 .. autoxpmconfig:: xpmir.letor.samplers.TripletBasedSampler
 .. autoxpmconfig:: xpmir.letor.samplers.PairwiseDatasetTripletBasedSampler
 
+Hard Negatives Sampling (Tasks)
+============
+
+.. autoxpmconfig:: xpmir.letor.samplers.ModelBasedHardNegativeSampler
+.. autoxpmconfig:: xpmir.letor.samplers.TeacherModelBasedHardNegativesTripletSampler
 
 Distillation
 ============
