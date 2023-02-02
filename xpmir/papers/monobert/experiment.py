@@ -46,7 +46,16 @@ logging.basicConfig(level=logging.INFO)
     help="Upload the model to Hugging Face Hub with the given identifier",
 )
 @paper_command(schema=Monobert, package=__package__)
-def cli(debug, configuration, host, port, workdir, upload_to_hub, documentation, env):
+def cli(
+    debug,
+    configuration: Monobert,
+    host,
+    port,
+    workdir,
+    upload_to_hub,
+    documentation,
+    env,
+):
     """monoBERT trained on MS-Marco
 
     Passage Re-ranking with BERT (Rodrigo Nogueira, Kyunghyun Cho). 2019.
