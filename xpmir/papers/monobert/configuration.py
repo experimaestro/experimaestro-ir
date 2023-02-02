@@ -2,18 +2,18 @@ from attrs import define
 from typing import List
 
 
-@define(kw_only=True)
+@define(auto_attribs=True, kw_only=True)
 class Launcher:
     gpu: bool
     tags: List[str]
 
 
-@define(kw_only=True)
+@define(auto_attribs=True, kw_only=True)
 class Indexation:
     requirements: str = "duration=6 days & cpu(mem=4G, cores=8)"
 
 
-@define(kw_only=True)
+@define(auto_attribs=True, kw_only=True)
 class Learner:
     validation_size: int = 500
     steps_per_epoch: int = 32
@@ -26,22 +26,20 @@ class Learner:
     requirements: str = "duration=4 days & cuda(mem=24G) * 2"
 
 
-@define(kw_only=True)
+@define(auto_attribs=True, kw_only=True)
 class Evaluation:
     requirements: str = "duration=2 days & cuda(mem=24G)"
 
 
-@define(kw_only=True)
+@define(auto_attribs=True, kw_only=True)
 class Retrieval:
-    cra: int
     k: int = 1000
     val_k: int = 1000
 
 
-@define(kw_only=True)
+@define(auto_attribs=True, kw_only=True)
 class Monobert:
-    type: str = "monobert"
-
+    type: str
     launcher: Launcher
     indexation: Indexation
     learner: Learner

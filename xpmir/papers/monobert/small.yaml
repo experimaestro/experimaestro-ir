@@ -1,4 +1,4 @@
-type: monobert-small
+# ty2pe: monobert-small
 launcher:
     gpu: true
     tags: []
