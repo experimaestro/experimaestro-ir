@@ -57,8 +57,12 @@ class PapersCli(click.MultiCommand):
         return
 
 
-def paper_command(package=None):
+def paper_command(package=None, schema=None):
     """General command line decorator for an XPM-IR experiment"""
+
+    omegaconf_schema = None
+    if schema is not None:
+        omegaconf_schema = OmegaConf.structured(schema)
 
     def _decorate(fn):
         decorators = [
@@ -89,9 +93,15 @@ def paper_command(package=None):
         ]
 
         def cli(show, debug, configuration, args, **kwargs):
+            nonlocal omegaconf_schema
+            assert schema is None or omegaconf_schema is not None
+
             logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
             conf_args = OmegaConf.from_dotlist(args)
+
             configuration = OmegaConf.merge(configuration, conf_args)
+            if omegaconf_schema is not None:
+                configuration = OmegaConf.merge(omegaconf_schema, configuration)
 
             if show:
                 # flake8: noqa: T201
