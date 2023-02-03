@@ -1,7 +1,9 @@
+from contextlib import contextmanager
+import os
 from typing import Iterable
 from ir_datasets import registry, corpus_id, load
 
-from datamaestro.definitions import AbstractDataset, AbstractDataset
+from datamaestro.definitions import AbstractDataset
 from .data import (
     AdhocAssessments,
     AdhocRun,
@@ -19,7 +21,10 @@ class Dataset(AbstractDataset):
 
     def __init__(self, repository, irds_id, irds_ds):
         super().__init__(repository)
-        self.id = f"""irds.{irds_id.replace("/", ".")}{"." + self.SUFFIX if self.SUFFIX else ""}"""
+        self.id = (
+            f"""irds.{irds_id.replace("/", ".")}"""
+            f"""{"." + self.SUFFIX if self.SUFFIX else ""}"""
+        )
         self.irds_id = irds_id
         self.irds_ds = irds_ds
 
@@ -90,10 +95,6 @@ class Documents(Dataset):
     def _prepare(self, download=False) -> AdhocDocuments:
         return AdhocDocuments(id=self.fullid)
 
-    def download(self, force=False):
-        self.irds_ds.docs_path()
-        return True
-
 
 class TrainingTripletsDataset(Dataset):
     SUFFIX = "docpairs"
@@ -150,6 +151,17 @@ class Datasets:
         return self.datasets.__iter__()
 
 
+IRDS_NO_WARNING_KEY = "IR_DATASETS_SKIP_DEPRECATED_WARNING"
+
+
+@contextmanager
+def no_deprecated_warnings():
+    old = os.environ.get(IRDS_NO_WARNING_KEY, "")
+    os.environ[IRDS_NO_WARNING_KEY] = "true"
+    yield None
+    os.environ[IRDS_NO_WARNING_KEY] = old
+
+
 def build(repository):
     """Builds a repository by using ir_datasets registry"""
     datasets = {}
@@ -159,47 +171,52 @@ def build(repository):
         datasets[cid].datasets.append(ds)
         bykey[ds.id] = ds
 
-    for dataset_id in registry:
-        ds = load(dataset_id)
+    with no_deprecated_warnings():
+        for dataset_id in registry:
+            ds = load(dataset_id)
 
-        if not ds.has_docs():
-            # Abstract dataset
-            continue
+            # Skip deprecated datasets
+            if hasattr(ds, "deprecated"):
+                continue
 
-        cid = corpus_id(dataset_id)
-        queries = None
-        qrels = None
+            if not ds.has_docs():
+                # Abstract dataset
+                continue
 
-        if cid == dataset_id:
-            # If the corpus ID is the current dataset ID
-            module = Datasets(
-                cid,
-                ds.documentation().get("pretty_name", cid),
-                ds.documentation()["desc"],
-            )
-            datasets[cid] = module
-            add(cid, Documents(repository, dataset_id, ds))
+            cid = corpus_id(dataset_id)
+            queries = None
+            qrels = None
 
-        if ds.has_queries():
-            queries = Queries(repository, dataset_id, ds)
-            add(cid, queries)
+            if cid == dataset_id:
+                # If the corpus ID is the current dataset ID
+                module = Datasets(
+                    cid,
+                    ds.documentation().get("pretty_name", cid),
+                    ds.documentation()["desc"],
+                )
+                datasets[cid] = module
+                add(cid, Documents(repository, dataset_id, ds))
 
-        if ds.has_docpairs():
-            add(cid, TrainingTripletsDataset(repository, dataset_id, ds))
+            if ds.has_queries():
+                queries = Queries(repository, dataset_id, ds)
+                add(cid, queries)
 
-        if ds.has_scoreddocs():
-            add(cid, AdhocRunDataset(repository, dataset_id, ds))
+            if ds.has_docpairs():
+                add(cid, TrainingTripletsDataset(repository, dataset_id, ds))
 
-        if ds.has_qrels():
-            qrels = Qrels(repository, dataset_id, ds)
-            add(cid, qrels)
+            if ds.has_scoreddocs():
+                add(cid, AdhocRunDataset(repository, dataset_id, ds))
 
-        if qrels and queries:
-            collection = Collection(repository, dataset_id, ds)
-            collection.documents = datasets[cid].datasets[0]
-            collection.topics = queries
-            collection.assessments = qrels
+            if ds.has_qrels():
+                qrels = Qrels(repository, dataset_id, ds)
+                add(cid, qrels)
 
-            add(cid, collection)
+            if qrels and queries:
+                collection = Collection(repository, dataset_id, ds)
+                collection.documents = datasets[cid].datasets[0]
+                collection.topics = queries
+                collection.assessments = qrels
 
-    return list(datasets.values()), bykey
+                add(cid, collection)
+
+        return list(datasets.values()), bykey

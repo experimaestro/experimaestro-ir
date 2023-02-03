@@ -56,11 +56,10 @@ class BaseEvaluation(Task):
             for metric in evaluator.iter_calc(run):
                 print_line(fp, str(metric.measure), metric.query_id, metric.value)
 
-        # Scope hack: use query_measures of last item in previous loop to
-        # figure out all unique measure names.
-        #
-        # TODO(cvangysel): add member to RelevanceEvaluator
-        #                  with a list of measure names.
+        # TODO: work-around bug in pytrec_eval
+        # https://github.com/terrierteam/ir_measures/issues/49
+        evaluator = get_evaluator([m() for m in self.measures], assessments)
+
         with self.aggregated.open("w") as fp:
             for key, value in evaluator.calc_aggregate(run).items():
                 print_line(fp, str(key), "all", value)
@@ -131,7 +130,8 @@ class RetrieverFactory(Protocol):
 
 
 class Evaluations:
-    """Holds experiment results for several models"""
+    """Holds experiment results for several models
+    on one dataset"""
 
     dataset: Adhoc
     measures: List[Measure]
@@ -167,24 +167,37 @@ class EvaluationsCollection:
     """
 
     collection: Dict[str, Evaluations]
+    per_model: Dict[str, List[Evaluate]]
 
     def __init__(self, **collection: Evaluations):
         self.collection = collection
+        self.per_model = {}
 
     def evaluate_retriever(
-        self, retriever: Union[Retriever, RetrieverFactory], launcher: Launcher = None
+        self,
+        retriever: Union[Retriever, RetrieverFactory],
+        launcher: Launcher = None,
+        model_id: str = None,
     ):
         """Evaluate a retriever for all the evaluations in this collection (the
         tasks are submitted to experimaestro the scheduler)"""
         results = []
-        for evaluations in self.collection.values():
-            results.append(evaluations.evaluate_retriever(retriever, launcher))
+        for key, evaluations in self.collection.items():
+            result = evaluations.evaluate_retriever(retriever, launcher)
+            results.append((key, evaluations, result))
+
+        if model_id is not None:
+            assert (
+                model_id not in self.per_model
+            ), f"Model with ID `{model_id}` was already evaluated"
+            self.per_model[model_id] = results
+
         return results
 
     def output_results(self, file=sys.stdout):
         """Print all the results"""
         for key, dsevaluations in self.collection.items():
-            print(f"## Dataset {key}", file=file)  # noqa: T201
+            print(f"## Dataset {key}\n", file=file)  # noqa: T201
             for evaluation in dsevaluations.results:
                 with evaluation.results.open("rt") as fp:
                     results = [f"- {line}" for line in fp.readlines()]
@@ -194,3 +207,25 @@ class EvaluationsCollection:
                     f"### Results for {evaluation.__xpm__.tags()}" f"""\n{results}\n""",
                     file=file,
                 )
+
+    def output_model_results(self, model_id: str, file=sys.stdout):
+        """Outputs the result of a model over various datasets (in markdown format)
+
+        :param model_id: The model id, as given by :meth:`evaluate_retriever`
+        :param file: The output stream, defaults to sys.stdout
+        """
+        all_results = {}
+        all_metrics = set()
+        for key, _, evaluation in self.per_model[model_id]:
+            all_results[key] = evaluation.get_results()
+            all_metrics.update(all_results[key].keys())
+        all_metrics = sorted(all_metrics)
+
+        file.write(f"| Dataset  | {' | '.join(all_metrics)}  |\n")
+        file.write(f"|----| {'---|---'.join('' for _ in all_metrics)}---|\n")
+        for key, values in all_results.items():
+            file.write(f"| {key}")
+            for metric in all_metrics:
+                value = values.get(metric, "")
+                file.write(f" | {value}")
+            file.write(" |\n")

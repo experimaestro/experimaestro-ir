@@ -12,6 +12,7 @@ from typing import (
     Protocol,
     Tuple,
     TypeVar,
+    Union,
     final,
     TYPE_CHECKING,
 )
@@ -222,8 +223,17 @@ class LearnableScorer(AbstractLearnableScorer):
         raise NotImplementedError(f"forward in {self.__class__}")
 
     def rsv(
-        self, query: str, documents: List[ScoredDocument], content=False
+        self,
+        query: str,
+        documents: Union[List[ScoredDocument], ScoredDocument, str, List[str]],
+        content=False,
     ) -> List[ScoredDocument]:
+
+        if isinstance(documents, str):
+            documents = [ScoredDocument(None, None, documents)]
+        elif isinstance(documents[0], str):
+            documents = [ScoredDocument(None, None, text) for text in documents]
+
         # Prepare the inputs and call the model
         inputs = ProductRecords()
         for doc in documents:

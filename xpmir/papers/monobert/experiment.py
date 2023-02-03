@@ -1,11 +1,8 @@
-import io
 import logging
 
-import click
 from xpmir.distributed import DistributedHook
 from xpmir.letor.learner import Learner, ValidationListener
 from xpmir.letor.schedulers import LinearWithWarmup
-from xpmir.models import XPMIRHFHub
 import xpmir.letor.trainers.pairwise as pairwise
 from datamaestro import prepare_dataset
 from datamaestro_text.transforms.ir import ShuffledTrainingTripletsLines
@@ -28,7 +25,7 @@ from xpmir.letor.optim import (
 )
 from xpmir.letor.samplers import TripletBasedSampler
 from xpmir.measures import AP, RR, P, nDCG
-from xpmir.papers.cli import paper_command
+from xpmir.papers.cli import UploadToHub, paper_command
 from xpmir.rankers import CollectionBasedRetrievers, RandomScorer, RetrieverHydrator
 from xpmir.rankers.standard import BM25
 from xpmir.text.huggingface import DualTransformerEncoder
@@ -38,24 +35,8 @@ from .configuration import Monobert
 logging.basicConfig(level=logging.INFO)
 
 
-@click.option(
-    "--upload-to-hub",
-    required=False,
-    type=str,
-    default=None,
-    help="Upload the model to Hugging Face Hub with the given identifier",
-)
 @paper_command(schema=Monobert, package=__package__)
-def cli(
-    debug,
-    configuration: Monobert,
-    host,
-    port,
-    workdir,
-    upload_to_hub,
-    documentation,
-    env,
-):
+def cli(debug, configuration, host, port, workdir, upload_to_hub: UploadToHub, env):
     """monoBERT trained on MS-Marco
 
     Passage Re-ranking with BERT (Rodrigo Nogueira, Kyunghyun Cho). 2019.
@@ -276,29 +257,16 @@ def cli(
                         device=device,
                     ),
                     launcher_evaluate,
+                    model_id=f"monobert-{metric_name}",
                 )
 
         # Waits that experiments complete
         xp.wait()
 
-        if upload_to_hub:
-            logging.info("Uploading to HuggingFace Hub")
-            best = outputs.listeners["bestval"]["RR@10"]
-            # TODO: add tags automatically + results
-            out = io.StringIO()
-            tests.output_results(out)
-            documentation = f"""---
-library_name: xpmir
----
-{documentation}
-
-{out.getvalue()}
-"""
-            # AutoModel.push_to_hf_hub(best.__unwrap__(),
-            # repo_url=upload_to_hub, readme=documentation)
-            XPMIRHFHub(best.__unwrap__(), readme=documentation).push_to_hub(
-                repo_id=upload_to_hub
-            )
+        # Upload to HUB if requested
+        upload_to_hub.send_scorer(
+            {"monobert-RR@10": outputs.listeners["bestval"]["RR@10"]}, evaluations=tests
+        )
 
         # Display metrics for each trained model
         tests.output_results()

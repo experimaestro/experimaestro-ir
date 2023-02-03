@@ -1,19 +1,20 @@
-from attrs import define
+from attrs import define, field, Factory
+from omegaconf import MISSING
 from typing import List
 
 
-@define(auto_attribs=True, kw_only=True)
+@define(kw_only=True)
 class Launcher:
-    gpu: bool
-    tags: List[str]
+    gpu: bool = True
+    tags: List[str] = Factory(list)
 
 
-@define(auto_attribs=True, kw_only=True)
+@define(kw_only=True)
 class Indexation:
     requirements: str = "duration=6 days & cpu(mem=4G, cores=8)"
 
 
-@define(auto_attribs=True, kw_only=True)
+@define(kw_only=True)
 class Learner:
     validation_size: int = 500
     steps_per_epoch: int = 32
@@ -26,22 +27,22 @@ class Learner:
     requirements: str = "duration=4 days & cuda(mem=24G) * 2"
 
 
-@define(auto_attribs=True, kw_only=True)
+@define(kw_only=True)
 class Evaluation:
     requirements: str = "duration=2 days & cuda(mem=24G)"
 
 
-@define(auto_attribs=True, kw_only=True)
+@define(kw_only=True)
 class Retrieval:
     k: int = 1000
     val_k: int = 1000
 
 
-@define(auto_attribs=True, kw_only=True)
+@define(kw_only=True)
 class Monobert:
-    type: str
-    launcher: Launcher
-    indexation: Indexation
-    learner: Learner
-    evaluation: Evaluation
-    retrieval: Retrieval
+    type: str = MISSING
+    launcher: Launcher = field(factory=Launcher)
+    indexation: Indexation = MISSING
+    learner: Learner = MISSING
+    evaluation: Evaluation = MISSING
+    retrieval: Retrieval = MISSING

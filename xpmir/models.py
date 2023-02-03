@@ -20,6 +20,7 @@ class XPMIRHFHub(ExperimaestroHFHub):
         self,
         config: Config,
         variant: Optional[str] = None,
+        as_instance: bool = False,
         readme: Optional[str] = None,
     ):
         super().__init__(config, variant)
@@ -34,9 +35,13 @@ class XPMIRHFHub(ExperimaestroHFHub):
 
 class AutoModel:
     @staticmethod
-    def load_from_hf_hub(hf_id_or_folder: str, variant: Optional[str] = None):
+    def load_from_hf_hub(
+        hf_id_or_folder: str, variant: Optional[str] = None, as_instance: bool = False
+    ):
         """Loads from hugging face hub or from a folder"""
-        return XPMIRHFHub.from_pretrained(hf_id_or_folder, variant=variant)
+        return XPMIRHFHub.from_pretrained(
+            hf_id_or_folder, variant=variant, as_instance=as_instance
+        )
 
     @staticmethod
     def push_to_hf_hub(config: Config, *args, variant=None, readme=None, **kwargs):

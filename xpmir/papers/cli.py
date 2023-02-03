@@ -2,9 +2,10 @@
 
 from functools import reduce
 import inspect
+import io
 import logging
 import sys
-from typing import List
+from typing import Dict, List
 from pathlib import Path
 import pkgutil
 from typing import Optional
@@ -14,7 +15,10 @@ import docstring_parser
 
 from omegaconf import OmegaConf
 from xpmir.configuration import omegaconf_argument
+from xpmir.evaluation import EvaluationsCollection
 import xpmir.papers as papers
+from xpmir.models import XPMIRHFHub
+from xpmir.rankers import Scorer
 
 
 class ExperimentsCli(click.MultiCommand):
@@ -57,12 +61,71 @@ class PapersCli(click.MultiCommand):
         return
 
 
+class UploadToHub:
+    def __init__(self, model_id: Optional[str], doc: docstring_parser.Docstring):
+        self.model_id = model_id
+        self.doc = doc
+
+    def send_scorer(
+        self,
+        models: Dict[str, Scorer],
+        *,
+        evaluations: Optional[EvaluationsCollection] = None,
+    ):
+        if self.model_id is None:
+            return
+
+        out = io.StringIO()
+        out.write(
+            f"""---
+library_name: xpmir
+---
+"""
+        )
+
+        out.write(f"# {self.doc.short_description}\n\n")
+        out.write(f"{self.doc.long_description}\n")
+
+        out.write("\n## Using the model")
+        out.write(
+            f""")
+The model can be loaded with [experimaestro IR](https://experimaestro-ir.readthedocs.io/en/latest/)
+
+```py
+from xpmir.models import AutoModel
+
+# Model that can be re-used in experiments
+model = AutoModel.load_from_hf_hub("{self.model_id}")
+
+# Use this if you want to actually use the model
+model = AutoModel.load_from_hf_hub("{self.model_id}", as_instance=True)
+model.initialize(None)
+model.rsv("walgreens store sales average", "The average Walgreens salary ranges from approximately $15,000 per year for Customer Service Associate / Cashier to $179,900 per year for District Manager...")
+```
+"""
+        )
+
+        assert len(models) == 1, f"Cannot deal with more than one variant"
+        ((key, model),) = list(models.items())
+
+        if evaluations is not None:
+            out.write("\n## Results\n")
+            evaluations.output_model_results(key, file=out)
+
+        readme_md = out.getvalue()
+
+        logging.info("Uploading to HuggingFace Hub")
+        XPMIRHFHub(model, readme=readme_md).push_to_hub(
+            repo_id=self.model_id, config={}
+        )
+
+
 def paper_command(package=None, schema=None):
     """General command line decorator for an XPM-IR experiment"""
 
     omegaconf_schema = None
     if schema is not None:
-        omegaconf_schema = OmegaConf.structured(schema)
+        omegaconf_schema = OmegaConf.structured(schema())
 
     def _decorate(fn):
         decorators = [
@@ -87,12 +150,21 @@ def paper_command(package=None, schema=None):
                 default=None,
                 help="Port for monitoring (can be defined in the settings.yaml file)",
             ),
+            click.option(
+                "--upload-to-hub",
+                required=False,
+                type=str,
+                default=None,
+                help="Upload the model to Hugging Face Hub with the given identifier",
+            ),
             click.argument("workdir", type=Path),
             omegaconf_argument("configuration", package=package),
             click.argument("args", nargs=-1, type=click.UNPROCESSED),
         ]
 
-        def cli(show, debug, configuration, args, **kwargs):
+        def cli(
+            show, debug, configuration, args, upload_to_hub: Optional[str], **kwargs
+        ):
             nonlocal omegaconf_schema
             assert schema is None or omegaconf_schema is not None
 
@@ -109,11 +181,17 @@ def paper_command(package=None, schema=None):
                 sys.exit(0)
 
             parameters = inspect.signature(fn).parameters
+
+            doc = docstring_parser.parse(fn.__doc__)
+
             if "documentation" in parameters:
-                doc = docstring_parser.parse(fn.__doc__)
                 kwargs[
                     "documentation"
                 ] = f"{doc.short_description}\n\n{doc.long_description}"
+
+            if "upload_to_hub" in parameters:
+                kwargs["upload_to_hub"] = UploadToHub(upload_to_hub, doc)
+
             return fn(debug, configuration, **kwargs)
 
         cli.__doc__ = fn.__doc__
