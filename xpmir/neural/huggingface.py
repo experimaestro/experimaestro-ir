@@ -6,10 +6,10 @@ from experimaestro import Param
 
 class HFCrossScorer(LearnableScorer):
 
-    hf_id: str
+    hf_id: Param[str]
     """the id for the huggingface model"""
 
-    max_length: Param[int] = 512
+    max_length: Param[int] = None
     """the max length for the transformer model"""
 
     def __post_init__(self):

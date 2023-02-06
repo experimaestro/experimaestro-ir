@@ -73,5 +73,5 @@ class AutoModel:
         """Loads from huggingface hub in to a form of a cross-scorer, it returns
         a sentence_transformer model for cross encoder"""
 
-        scorer = HFCrossScorer(hf_id, max_length)
+        scorer = HFCrossScorer(hf_id=hf_id, max_length=max_length)
         return scorer
