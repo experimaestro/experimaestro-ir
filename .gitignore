@@ -103,4 +103,4 @@ venv.bak/
 # mypy
 .mypy_cache/
 .vscode/
-xpmir/_version.py
+src/xpmir/_version.py

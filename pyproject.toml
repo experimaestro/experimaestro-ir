@@ -31,7 +31,7 @@ ir = "xpmir:Repository"
 irds = "xpmir.datasets.irds:Repository"
 
 [tool.setuptools_scm]
-write_to = "xpmir/_version.py"
+write_to = "src/xpmir/_version.py"
 fallback_version = "0.0.0-dev"
 
 [build-system]
