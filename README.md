@@ -33,7 +33,6 @@ Functionalities can be added by installing optional dependencies:
     - Pointwise
     - Pairwise
     - Distillation
-    - (*planned*) Pipelines (e.g. ANCE)
 - Neural IR
     - Cross-Encoder
     - Splade
@@ -44,7 +43,7 @@ Functionalities can be added by installing optional dependencies:
     - (planned) *DuoBERT* (Multi-Stage Document Ranking with BERT. Rodrigo Nogueira, Wei Yang, Kyunghyun Cho, Jimmy Lin. 2019)
     - (planned) *Splade v2* (SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval, Thibault Formal, Carlos Lassance, Benjamin Piwowarski, and Stéphane Clinchant. SIGIR 2021)
 - Pre-trained models
-    - [HuggingFace](https://huggingface.co) integration (direct, through the Sentence Transformers library)
+    - [HuggingFace](https://huggingface.co) [integration](https://experimaestro-ir.readthedocs.io/en/latest/pretrained.html) (direct, through the Sentence Transformers library)
 
 ## Examples
 

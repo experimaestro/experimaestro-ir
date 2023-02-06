@@ -1,5 +1,5 @@
 import logging
-from typing import Callable, List, NamedTuple, Tuple
+from typing import List, Tuple
 import itertools
 import pytest
 import torch
@@ -18,7 +18,7 @@ from xpmir.letor.records import (
     TokenizedTexts,
 )
 from xpmir.text import Vocab
-from xpmir.text.encoders import DualTextEncoder, MeanTextEncoder, TextEncoder
+from xpmir.text.encoders import DualTextEncoder, MeanTextEncoder
 
 
 class RandomVocab(Vocab):
@@ -73,7 +73,9 @@ modelfactories = []
 
 
 def registermodel(method):
-    modelfactories.append(method)
+    modelfactories.append(
+        pytest.param(method, marks=pytest.mark.dependency(name=f"model-{method}"))
+    )
     return method
 
 
@@ -136,9 +138,9 @@ class DummyDualTextEncoder(DualTextEncoder):
 @registermodel
 def joint():
     """Joint classifier factory"""
-    from xpmir.neural.jointclassifier import JointClassifier
+    from xpmir.neural.cross import CrossScorer
 
-    return JointClassifier(encoder=DummyDualTextEncoder()).instance()
+    return CrossScorer(encoder=DummyDualTextEncoder()).instance()
 
 
 # ---
@@ -216,7 +218,6 @@ def test_forward_types(modelfactory, inputfactory):
         for f1, f2 in itertools.combinations(inputfactories, 2)
     ),
 )
-@pytest.mark.dependency(depends=["test_model_forward"])
 def test_forward_consistency(modelfactory, inputfactoriescouple):
     """Test that outputs are consistent between the different records types"""
     model = modelfactory()

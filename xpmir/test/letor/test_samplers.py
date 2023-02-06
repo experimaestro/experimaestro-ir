@@ -13,6 +13,7 @@ class TestTrainingTriplets(TrainingTriplets):
 
 
 def test_serializing_tripletbasedsampler():
+    """Serialized samplers should start back from the saved state"""
     # Collect samples and state after 10 samples
     sampler = TripletBasedSampler(
         source=TestTrainingTriplets(id="test-triplets", ids=False)

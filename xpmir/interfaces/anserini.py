@@ -255,9 +255,9 @@ class AnseriniRetriever(Retriever):
     k: Param[int] = 1500
 
     def __post_init__(self):
-        from pyserini.search import SimpleSearcher
+        from pyserini.search.lucene import LuceneSearcher
 
-        self.searcher = SimpleSearcher(str(self.index.path))
+        self.searcher = LuceneSearcher(str(self.index.path))
 
         modelhandler = Handler()
 

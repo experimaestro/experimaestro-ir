@@ -20,7 +20,6 @@ class XPMIRHFHub(ExperimaestroHFHub):
         self,
         config: Config,
         variant: Optional[str] = None,
-        as_instance: bool = False,
         readme: Optional[str] = None,
     ):
         super().__init__(config, variant)
