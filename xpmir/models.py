@@ -3,6 +3,7 @@ from typing import Optional, Union
 from experimaestro.huggingface import ExperimaestroHFHub
 from experimaestro import Config
 from xpmir.neural.dual import DotDense
+from xpmir.neural.huggingface import HFCrossScorer
 from xpmir.utils.utils import easylog
 import importlib
 
@@ -70,14 +71,6 @@ class AutoModel:
     def cross_encoder_model(hf_id: str, max_length: int = 512):
         """Loads from huggingface hub in to a form of a cross-scorer, it returns
         a sentence_transformer model for cross encoder"""
-        try:
-            from sentence_transformers import CrossEncoder
-        except Exception:
-            logger.error(
-                "Sentence transformer is not installed:"
-                "pip install -U sentence_transformers"
-            )
-            raise
 
-        model = CrossEncoder(hf_id, max_length=max_length)
-        return model
+        scorer = HFCrossScorer(hf_id, max_length)
+        return scorer

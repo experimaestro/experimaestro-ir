@@ -4,7 +4,6 @@ from typing import (
     List,
     Optional,
     Tuple,
-    Union,
 )
 import numpy as np
 from datamaestro_text.data.ir import (
@@ -27,7 +26,6 @@ from xpmir.letor.records import (
     PointwiseRecord,
     Query,
 )
-from xpmir.models import AutoModel
 from xpmir.rankers import Retriever, Scorer
 from xpmir.utils.utils import EasyLogger, easylog
 from xpmir.utils.iter import (
@@ -37,7 +35,6 @@ from xpmir.utils.iter import (
     SkippingIterator,
 )
 from datamaestro_text.interfaces.plaintext import read_tsv
-from sentence_transformers import CrossEncoder
 
 logger = easylog()
 
@@ -547,8 +544,7 @@ class TeacherModelBasedHardNegativesTripletSampler(Task, Sampler):
     query_store: Param[TextStore]
     """The query_document store"""
 
-    # FIXME: Generialize all the type of the scorer
-    teacher_model: Union[Scorer, AutoModel]
+    teacher_model: Param[Scorer]
     """The teacher model which scores the positive and negative document"""
 
     hard_negative_triplet: Annotated[Path, pathgenerator("triplet.tsv")]
@@ -585,26 +581,15 @@ class TeacherModelBasedHardNegativesTripletSampler(Task, Sampler):
 
         self.logger.info("Calculating the score for the teacher model")
         # create the file
-        self.hard_negative_samples.parent.mkdir(parents=True, exist_ok=True)
+        self.hard_negative_triplet.parent.mkdir(parents=True, exist_ok=True)
 
         # FIXME: make the tqdm progressing wrt one record, not a batch of records
         with self.hard_negative_triplet.open("wt") as fp:
             for batch in tqdm(self.iter_batches()):
-                query_texts = [query.text for query in batch.queries]
-                document_texts = [document.text for document in batch.documents]
-                text_pairs = [
-                    (query, text) for query, text in zip(query_texts, document_texts)
-                ]
-                # TODO: Only support the sentence_transformer model now
-                if not isinstance(self.teacher_model, CrossEncoder):
-                    scores = ...
-                    raise NotImplementedError
-                else:
-                    # scores in shape: [batch_size, 2]
-                    scores = self.teacher_model.predict(
-                        text_pairs, convert_to_tensor=True
-                    )
-                    scores = scores.reshape(2, -1).T
+
+                # scores in shape: [batch_size, 2]
+                scores = self.teacher_model(batch)
+                scores = scores.reshape(2, -1).T
 
                 # write in the file
                 for i, record in enumerate(batch):
