@@ -45,11 +45,6 @@ Functionalities can be added by installing optional dependencies:
 - Pre-trained models
     - [HuggingFace](https://huggingface.co) [integration](https://experimaestro-ir.readthedocs.io/en/latest/pretrained.html) (direct, through the Sentence Transformers library)
 
-## Examples
-
-- [BM25 retrieval](./examples/bm25.py)
-- [MS Marco (cross-encoder)](./examples/msmarco-rerank.py)
-
 ## Thanks
 
 Some parts of the code have been adapted from [OpenNIR](https://github.com/Georgetown-IR-Lab/OpenNIR)
