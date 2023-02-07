@@ -1,12 +1,5 @@
-from attrs import define, field, Factory
+from attrs import define, Factory
 from omegaconf import MISSING
-from typing import List
-
-
-@define(kw_only=True)
-class Launcher:
-    gpu: bool = True
-    tags: List[str] = Factory(list)
 
 
 @define(kw_only=True)
@@ -17,10 +10,13 @@ class Indexation:
 @define(kw_only=True)
 class Learner:
     validation_size: int = 500
+
     steps_per_epoch: int = 32
+    """Number of steps (batches) per epoch"""
+
     validation_interval: int = 32
     batch_size: int = 64
-    max_epoch: int = 3200
+    max_epochs: int = 3200
     num_warmup_steps: int = 10000
     warmup_min_factor: float = 0
     lr: float = 3.0e-6
@@ -36,13 +32,18 @@ class Evaluation:
 class Retrieval:
     k: int = 1000
     val_k: int = 1000
+    batch_size: int = 512
 
 
 @define(kw_only=True)
 class Monobert:
-    type: str = MISSING
-    launcher: Launcher = field(factory=Launcher)
-    indexation: Indexation = MISSING
-    learner: Learner = MISSING
-    evaluation: Evaluation = MISSING
-    retrieval: Retrieval = MISSING
+    id: str = MISSING
+    """The experiment ID"""
+
+    gpu: bool = True
+    """Use GPU for computation"""
+
+    indexation: Indexation = Factory(Indexation)
+    learner: Learner = Factory(Learner)
+    evaluation: Evaluation = Factory(Evaluation)
+    retrieval: Retrieval = Factory(Retrieval)

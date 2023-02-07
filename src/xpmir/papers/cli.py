@@ -192,7 +192,10 @@ def paper_command(package=None, schema=None):
             if "upload_to_hub" in parameters:
                 kwargs["upload_to_hub"] = UploadToHub(upload_to_hub, doc)
 
-            return fn(debug, configuration, **kwargs)
+            if "debug" in parameters:
+                kwargs["debug"] = debug
+
+            return fn(configuration, **kwargs)
 
         cli.__doc__ = fn.__doc__
         cmd = reduce(lambda fn, decorator: decorator(fn), decorators, cli)

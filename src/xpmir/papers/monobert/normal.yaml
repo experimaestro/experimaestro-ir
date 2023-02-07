@@ -1,7 +1,5 @@
-type: monobert
-launcher:
-    gpu: true
-    tags: []
+id: monobert
+gpu: true
 indexation:
     requirements: duration=6 days & cpu(mem=4G, cores=8)
 learner:
@@ -9,7 +7,7 @@ learner:
     steps_per_epoch: 32
     validation_interval: 32
     batch_size: 64
-    max_epoch: 3200
+    max_epochs: 3200
     num_warmup_steps: 10000
     warmup_min_factor: 0
     lr: 3.0e-6

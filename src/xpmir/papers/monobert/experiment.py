@@ -6,7 +6,7 @@ from xpmir.letor.schedulers import LinearWithWarmup
 import xpmir.letor.trainers.pairwise as pairwise
 from datamaestro import prepare_dataset
 from datamaestro_text.transforms.ir import ShuffledTrainingTripletsLines
-from datamaestro_text.data.ir import AdhocDocuments
+from datamaestro_text.data.ir import AdhocDocuments, Adhoc
 from xpmir.neural.cross import CrossScorer
 from experimaestro import experiment, setmeta, tagspath
 from experimaestro.launcherfinder import find_launcher
@@ -36,59 +36,38 @@ logging.basicConfig(level=logging.INFO)
 
 
 @paper_command(schema=Monobert, package=__package__)
-def cli(debug, configuration, host, port, workdir, upload_to_hub: UploadToHub, env):
+def cli(cfg: Monobert, host, port, workdir, upload_to_hub: UploadToHub, env):
     """monoBERT trained on MS-Marco
 
     Passage Re-ranking with BERT (Rodrigo Nogueira, Kyunghyun Cho). 2019.
     https://arxiv.org/abs/1901.04085
     """
 
-    # Get launcher tags
-    tags = configuration.launcher.tags.split(",") if configuration.launcher.tags else []
-
-    # Number of batches per epoch (# samples = steps_per_epoch * batch_size)
-    steps_per_epoch = configuration.learner.steps_per_epoch
-
-    # Validation interval (in epochs)
-    validation_interval = configuration.learner.validation_interval
-
-    # How many document to re-rank for the monobert
-    topK = configuration.retrieval.k
-
-    # How many documents to use for cross-validation in monobert
-    valtopK = configuration.retrieval.val_k
-
-    # The numbers of the warmup steps during the training
-    num_warmup_steps = configuration.learner.num_warmup_steps
-
-    batch_size = configuration.learner.batch_size
-    max_epochs = configuration.learner.max_epoch
-
-    launcher_index = find_launcher(configuration.indexation.requirements)
-
-    launcher_learner = find_launcher(configuration.learner.requirements, tags=tags)
-    launcher_evaluate = find_launcher(configuration.evaluation.requirements, tags=tags)
+    # Define the different launchers
+    launcher_index = find_launcher(cfg.indexation.requirements)
+    launcher_learner = find_launcher(cfg.learner.requirements)
+    launcher_evaluate = find_launcher(cfg.evaluation.requirements)
 
     logging.info(
-        f"Number of epochs {max_epochs}, validation interval {validation_interval}"
+        "Number of epochs %d, validation interval %d",
+        cfg.learner.max_epochs,
+        cfg.learner.validation_interval,
     )
 
-    assert max_epochs % validation_interval == 0, (
-        f"Number of epochs ({max_epochs}) is not a multiple "
-        f"of validation interval ({validation_interval})"
+    assert cfg.learner.max_epochs % cfg.learner.validation_interval == 0, (
+        f"Number of epochs ({cfg.learner.max_epochs}) is not a multiple "
+        f"of validation interval ({cfg.learner.validation_interval})"
     )
 
     # Sets the working directory and the name of the xp
-    name = configuration.type
-
-    with experiment(workdir, name, host=host, port=port) as xp:
+    with experiment(workdir, cfg.id, host=host, port=port) as xp:
         # Needed by Pyserini
         xp.setenv("JAVA_HOME", find_java_home())
         for key, value in env:
             xp.setenv(key, value)
 
         # Misc
-        device = CudaDevice() if configuration.launcher.gpu else Device()
+        device = CudaDevice() if cfg.gpu else Device()
         random = Random(seed=0)
         basemodel = BM25().tag("model", "bm25")
 
@@ -105,22 +84,19 @@ def cli(debug, configuration, host, port, workdir, upload_to_hub: UploadToHub, e
 
         # Datasets: train, validation and test
         documents: AdhocDocuments = prepare_dataset("irds.msmarco-passage.documents")
+        devsmall: Adhoc = prepare_dataset("irds.msmarco-passage.dev.small")
+        dev: Adhoc = prepare_dataset("irds.msmarco-passage.dev")
 
-        # for indexing
-        # cars_documents: AdhocDocuments = prepare_dataset("irds.car.v1.5.documents")
-
-        # Development datasets
-        devsmall = prepare_dataset("irds.msmarco-passage.dev.small")
-        dev = prepare_dataset("irds.msmarco-passage.dev")
+        # Sample the dev set to create a validation set
         ds_val = RandomFold(
             dataset=dev,
             seed=123,
             fold=0,
-            sizes=[configuration.learner.validation_size],
+            sizes=[cfg.learner.validation_size],
             exclude=devsmall.topics,
         ).submit()
 
-        # Prepare the evaluation on MsMarco-v1 (dev) and TREC DL 2019/2020
+        # Prepares the test collections evaluation
         tests = EvaluationsCollection(
             msmarco_dev=Evaluations(devsmall, measures),
             trec2019=Evaluations(
@@ -139,30 +115,30 @@ def cli(debug, configuration, host, port, workdir, upload_to_hub: UploadToHub, e
         )
         retrievers.add(documents, index=msmarco_index)
 
-        # cars_index = IndexCollection(
-        #   documents=cars_documents,
-        # ).submit(launcher=launcher_index)
-        # retrievers.add(cars_documents, index=cars_index)
-
         val_retrievers = retrievers.factory(
             lambda documents, **kwargs: RetrieverHydrator(
                 store=documents,
-                retriever=AnseriniRetriever(**kwargs, k=valtopK, model=basemodel),
+                retriever=AnseriniRetriever(
+                    **kwargs, k=cfg.retrieval.val_k, model=basemodel
+                ),
             )
         )
         test_retrievers = retrievers.factory(
             lambda documents, **kwargs: RetrieverHydrator(
                 store=documents,
-                retriever=AnseriniRetriever(**kwargs, k=topK, model=basemodel),
+                retriever=AnseriniRetriever(
+                    **kwargs, k=cfg.retrieval.k, model=basemodel
+                ),
             )
         )
 
         # Search and evaluate with the base model
         tests.evaluate_retriever(test_retrievers, launcher_index)
 
+        # Search and evaluate with a random reranker
         tests.evaluate_retriever(
             random_scorer.getRetrieverFactory(
-                test_retrievers, batch_size, PowerAdaptativeBatcher()
+                test_retrievers, cfg.retrieval.batch_size, PowerAdaptativeBatcher()
             )
         )
 
@@ -180,7 +156,7 @@ def cli(debug, configuration, host, port, workdir, upload_to_hub: UploadToHub, e
             lossfn=pairwise.PointwiseCrossEntropyLoss(),
             sampler=train_sampler,
             batcher=PowerAdaptativeBatcher(),
-            batch_size=batch_size,
+            batch_size=cfg.learner.batch_size,
         )
 
         monobert_scorer: CrossScorer = CrossScorer(
@@ -195,29 +171,29 @@ def cli(debug, configuration, host, port, workdir, upload_to_hub: UploadToHub, e
         validation = ValidationListener(
             dataset=ds_val,
             retriever=monobert_scorer.getRetriever(
-                val_retrievers(documents), batch_size, PowerAdaptativeBatcher()
+                val_retrievers(documents),
+                cfg.retrieval.batch_size,
+                PowerAdaptativeBatcher(),
             ),
-            validation_interval=validation_interval,
+            validation_interval=cfg.learner.validation_interval,
             metrics={"RR@10": True, "AP": False, "nDCG": False},
         )
 
         # Setup the parameter optimizers
         scheduler = LinearWithWarmup(
-            num_warmup_steps=num_warmup_steps,
-            min_factor=configuration.learner.warmup_min_factor,
+            num_warmup_steps=cfg.learner.num_warmup_steps,
+            min_factor=cfg.learner.warmup_min_factor,
         )
 
         optimizers = [
             ParameterOptimizer(
                 scheduler=scheduler,
-                optimizer=AdamW(lr=configuration.learner.lr, eps=1e-6),
+                optimizer=AdamW(lr=cfg.learner.lr, eps=1e-6),
                 filter=RegexParameterFilter(includes=[r"\.bias$", r"\.LayerNorm\."]),
             ),
             ParameterOptimizer(
                 scheduler=scheduler,
-                optimizer=AdamW(
-                    lr=configuration.learner.lr, weight_decay=1e-2, eps=1e-6
-                ),
+                optimizer=AdamW(lr=cfg.learner.lr, weight_decay=1e-2, eps=1e-6),
             ),
         ]
 
@@ -231,9 +207,9 @@ def cli(debug, configuration, host, port, workdir, upload_to_hub: UploadToHub, e
             # The model to train
             scorer=monobert_scorer,
             # Optimization settings
-            steps_per_epoch=steps_per_epoch,
+            steps_per_epoch=cfg.learner.steps_per_epoch,
             optimizers=get_optimizers(optimizers),
-            max_epochs=max_epochs,
+            max_epochs=cfg.learner.max_epochs,
             # The listeners (here, for validation)
             listeners={"bestval": validation},
             # The hook used for evaluation
@@ -252,7 +228,7 @@ def cli(debug, configuration, host, port, workdir, upload_to_hub: UploadToHub, e
                 tests.evaluate_retriever(
                     best.getRetrieverFactory(
                         test_retrievers,
-                        batch_size,
+                        cfg.learner.batch_size,
                         PowerAdaptativeBatcher(),
                         device=device,
                     ),
