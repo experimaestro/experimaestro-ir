@@ -66,3 +66,8 @@ Sparse Models
 .. autoxpmconfig:: xpmir.neural.splade.Aggregation
 .. autoxpmconfig:: xpmir.neural.splade.MaxAggregation
 .. autoxpmconfig:: xpmir.neural.splade.SumAggregation
+
+From Huggingface
+================
+
+.. autoxpmconfig:: xpmir.neural.huggingface.HFCrossScorer

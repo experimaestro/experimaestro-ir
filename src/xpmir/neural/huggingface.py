@@ -1,10 +1,10 @@
 from xpmir.letor.context import TrainerContext
 from xpmir.letor.records import BaseRecords
-from xpmir.rankers import LearnableScorer
+from xpmir.neural import TorchLearnableScorer
 from experimaestro import Param
 
 
-class HFCrossScorer(LearnableScorer):
+class HFCrossScorer(TorchLearnableScorer):
 
     hf_id: Param[str]
     """the id for the huggingface model"""

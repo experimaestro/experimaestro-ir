@@ -30,7 +30,7 @@ from xpmir.index.sparse import (
     SparseRetrieverIndexBuilder,
 )
 from xpmir.models import AutoModel
-from xpmir.papers.cli import paper_command
+from xpmir.papers.cli import paper_command, UploadToHub
 from xpmir.rankers import Scorer
 from xpmir.rankers.full import FullRetriever
 from xpmir.letor.trainers import Trainer
@@ -46,12 +46,10 @@ logging.basicConfig(level=logging.INFO)
 
 
 @paper_command(package=__package__)
-def cli(debug: bool, configuration, host: str, port: int, workdir: str, env):
+def cli(configuration, host, port, workdir, upload_to_hub: UploadToHub, env):
     """Runs an experiment"""
     # Get launcher tags
     tags = configuration.launcher.tags.split(",") if configuration.launcher.tags else []
-
-    logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
 
     # Number of topics in the validation set
     VAL_SIZE = configuration.learner.validation_size
@@ -336,14 +334,14 @@ def cli(debug: bool, configuration, host: str, port: int, workdir: str, env):
             [
                 ParameterOptimizer(
                     scheduler=scheduler,
-                    optimizer=AdamW(lr=configuration.Learner.lr),
+                    optimizer=AdamW(lr=configuration.learner.lr),
                     filter=RegexParameterFilter(
                         includes=[r"\.bias$", r"\.LayerNorm\."]
                     ),
                 ),
                 ParameterOptimizer(
                     scheduler=scheduler,
-                    optimizer=AdamW(lr=configuration.Learner.lr),
+                    optimizer=AdamW(lr=configuration.learner.lr),
                     filter=RegexParameterFilter(
                         excludes=[r"\.bias$", r"\.LayerNorm\."]
                     ),
@@ -360,13 +358,18 @@ def cli(debug: bool, configuration, host: str, port: int, workdir: str, env):
 
         # evaluate the best model
         splade_retriever = sparse_retriever(best_model, documents)
-        tests.evaluate_retriever(splade_retriever, gpu_launcher_evaluate)
+        tests.evaluate_retriever(
+            splade_retriever, gpu_launcher_evaluate, model_id="SPLADE_doc-RR@10"
+        )
 
         # wait for all the experiments ends
         xp.wait()
 
         # Display metrics for each trained model
         tests.output_results()
+
+        # Upload to HUB if requested
+        upload_to_hub.send_scorer({"SPLADE_doc-RR@10": best_model}, evaluations=tests)
 
 
 if __name__ == "__main__":
