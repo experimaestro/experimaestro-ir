@@ -11,11 +11,9 @@ Welcome to Experimaestro IR documentation!
    neural
    hooks
    text/index
-   pipelines
-   papers
+   papers/index
    pretrained
    misc
-   code/index
 
 
 Install

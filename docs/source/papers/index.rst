@@ -1,6 +1,7 @@
 Papers
 ======
 
+
 .. highlight:: bash
 
 experimaestro-IR contains some reproduction of existing papers, which are listed
@@ -39,3 +40,12 @@ You can look at arguments by using the `--show` option
 .. code-block:: bash
 
     $ xpmir papers monobert msmarco /path/to/workdir small --show
+
+
+Implemented papers
+------------------
+
+.. toctree::
+   :maxdepth: 2
+
+   monobert
