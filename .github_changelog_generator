@@ -1,0 +1,3 @@
+user=experimaestro
+project=experimaestro-ir
+add-sections={"documentation":{"prefix":"**Paper reproduction:**","labels":["paper"]}}
