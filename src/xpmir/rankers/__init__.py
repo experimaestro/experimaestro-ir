@@ -457,13 +457,17 @@ class CollectionBasedRetrievers(Generic[KWARGS]):
         self.kwargs: Dict[str, KWARGS] = {}
 
     def add(self, documents: AdhocDocuments, **kwargs):
+        """Adds a new Adhoc document collection
+
+        This collection is associated with specific keyword arguments"""
         self.kwargs[documents.__identifier__().all] = kwargs
 
     def factory(
         self, retriever_factory: ParametricRetrieverFactory
     ) -> "RetrieverFactory":
-        """Returns a retriever factory - cached the retrievers based on the
-        document collection"""
+        """Returns a retriever factory
+
+        Caches the retrievers based on the document collection"""
         retrievers = {}
 
         def _factory(documents: AdhocDocuments):

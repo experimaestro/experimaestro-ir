@@ -129,6 +129,9 @@ class ValidationListener(LearnerListener):
             for metric in self.metrics.keys():
                 metrics[f"{self.key}/final/{metric}"] = self.top[metric]["value"]
 
+    def monitored(self) -> Iterator[str]:
+        return [key for key, monitored in self.metrics.items() if monitored]
+
     def taskoutputs(self, learner: "Learner"):
         """Experimaestro outputs: returns the best checkpoints for each
         metric"""

@@ -12,8 +12,10 @@ from typing import Optional
 import click
 from importlib import import_module
 import docstring_parser
+from attrs import define
 
-from omegaconf import OmegaConf
+from experimaestro import experiment
+from omegaconf import OmegaConf, MISSING
 from xpmir.configuration import omegaconf_argument
 from xpmir.evaluation import EvaluationsCollection
 import xpmir.papers as papers
@@ -120,6 +122,12 @@ model.rsv("walgreens store sales average", "The average Walgreens salary ranges 
         )
 
 
+@define(kw_only=True)
+class PaperExperiment:
+    id: str = MISSING
+    """The experiment ID"""
+
+
 def paper_command(package=None, schema=None):
     """General command line decorator for an XPM-IR experiment"""
 
@@ -163,7 +171,16 @@ def paper_command(package=None, schema=None):
         ]
 
         def cli(
-            show, debug, configuration, args, upload_to_hub: Optional[str], **kwargs
+            show,
+            debug,
+            configuration,
+            workdir,
+            host,
+            port,
+            args,
+            env,
+            upload_to_hub: Optional[str],
+            **kwargs,
         ):
             nonlocal omegaconf_schema
             assert schema is None or omegaconf_schema is not None
@@ -171,9 +188,11 @@ def paper_command(package=None, schema=None):
             logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
             conf_args = OmegaConf.from_dotlist(args)
 
-            configuration = OmegaConf.merge(configuration, conf_args)
+            configuration: PaperExperiment = OmegaConf.merge(configuration, conf_args)
             if omegaconf_schema is not None:
-                configuration = OmegaConf.merge(omegaconf_schema, configuration)
+                configuration: PaperExperiment = OmegaConf.merge(
+                    omegaconf_schema, configuration
+                )
 
             if show:
                 # flake8: noqa: T201
@@ -195,7 +214,13 @@ def paper_command(package=None, schema=None):
             if "debug" in parameters:
                 kwargs["debug"] = debug
 
-            return fn(configuration, **kwargs)
+            # Run the experiment
+            with experiment(workdir, configuration.id, host=host, port=port) as xp:
+
+                for key, value in env:
+                    xp.setenv(key, value)
+
+                return fn(xp, configuration, **kwargs)
 
         cli.__doc__ = fn.__doc__
         cmd = reduce(lambda fn, decorator: decorator(fn), decorators, cli)

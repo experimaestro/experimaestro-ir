@@ -10,15 +10,16 @@ Using existing models
 ---------------------
 
 You can simply download a model from the Hub using `xpmir.models.AutoModel`.
-Thanks to the [experimaestro framework](https://github.com/experimaestro/experimaestro-python),
-you can either use models in your own experiments or in pure inference mode.
+Thanks to the `experimaestro framework <https://github.com/experimaestro/experimaestro-python>`_,
+you can either use models in your own experiments or in pure inference mode using
+:py:meth:`load_from_hf_hub() <xpmir.models.AutoModel.load_from_hf_hub>`
 
 As experimental models
 ----------------------
 
 In this mode, you can reuse the model in your experiments -- e.g. to compare this model
 with your own, or using it in a complex IR pipeline (e.g. distillation). Please
-refer to the [experimaestro-IR documentation](https://experimaestro-ir.readthedocs.io/)
+refer to the `experimaestro-IR documentation <https://experimaestro-ir.readthedocs.io/>_`
 for more details::
 
     from xpmir.models import AutoModel

@@ -1,5 +1,5 @@
-from attrs import define, Factory
-from omegaconf import MISSING
+from attrs import define, Factory, field
+from xpmir.papers.cli import PaperExperiment
 
 
 @define(kw_only=True)
@@ -14,13 +14,20 @@ class Learner:
     steps_per_epoch: int = 32
     """Number of steps (batches) per epoch"""
 
-    validation_interval: int = 32
+    validation_interval: int = field(default=32)
     batch_size: int = 64
     max_epochs: int = 3200
     num_warmup_steps: int = 10000
     warmup_min_factor: float = 0
     lr: float = 3.0e-6
     requirements: str = "duration=4 days & cuda(mem=24G) * 2"
+
+    @validation_interval.validator
+    def check_validation_interval(self, attribute, value):
+        assert self.max_epochs % value == 0, (
+            f"Number of epochs ({self.max_epochs}) is not a multiple "
+            f"of validation interval ({value})"
+        )
 
 
 @define(kw_only=True)
@@ -36,9 +43,7 @@ class Retrieval:
 
 
 @define(kw_only=True)
-class Monobert:
-    id: str = MISSING
-    """The experiment ID"""
+class Monobert(PaperExperiment):
 
     gpu: bool = True
     """Use GPU for computation"""
