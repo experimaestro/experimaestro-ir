@@ -11,6 +11,8 @@ from typing import (
     Optional,
     Protocol,
     Tuple,
+    Callable,
+    Any,
     TypeVar,
     Union,
     final,
@@ -106,14 +108,6 @@ class Scorer(Config, EasyLogger):
     def eval(self):
         """Put the model in inference/evaluation mode"""
         pass
-
-    def getRetrieverFactory(self, retriever: "RetrieverFactory", *args, **kwargs):
-        """Returns a factory for this scorer, based on another retriever factory"""
-
-        def factory(dataset: AdhocDocuments, **f_kwargs) -> Retriever:
-            return self.getRetriever(retriever(dataset, **f_kwargs), *args, **kwargs)
-
-        return factory
 
     def getRetriever(
         self,
@@ -228,7 +222,6 @@ class LearnableScorer(AbstractLearnableScorer):
         documents: Union[List[ScoredDocument], ScoredDocument, str, List[str]],
         content=False,
     ) -> List[ScoredDocument]:
-
         if isinstance(documents, str):
             documents = [ScoredDocument(None, None, documents)]
         elif isinstance(documents[0], str):
@@ -453,18 +446,10 @@ class ParametricRetrieverFactory(Protocol, Generic[KWARGS]):
 class CollectionBasedRetrievers(Generic[KWARGS]):
     """Handles various retrievers depending on the collection"""
 
-    def __init__(self):
-        self.kwargs: Dict[str, KWARGS] = {}
+    def __init__(self, generator: Callable[[AdhocDocuments], Any]):
+        self.generator = generator
 
-    def add(self, documents: AdhocDocuments, **kwargs):
-        """Adds a new Adhoc document collection
-
-        This collection is associated with specific keyword arguments"""
-        self.kwargs[documents.__identifier__().all] = kwargs
-
-    def factory(
-        self, retriever_factory: ParametricRetrieverFactory
-    ) -> "RetrieverFactory":
+    def factory(self, **kwargs) -> "RetrieverFactory":
         """Returns a retriever factory
 
         Caches the retrievers based on the document collection"""
@@ -472,12 +457,44 @@ class CollectionBasedRetrievers(Generic[KWARGS]):
 
         def _factory(documents: AdhocDocuments):
             dataset_id = documents.__identifier__().all
+
             if dataset_id not in retrievers:
-                kwargs = self.kwargs[documents.__identifier__().all]
-                retrievers[dataset_id] = retriever_factory(documents, **kwargs)
+                retrievers[dataset_id] = self.generator(documents)
+
+            if callable(retrievers[dataset_id]):
+                return retrievers[dataset_id](**kwargs)
+
+            assert not kwargs, f"{kwargs}"
             return retrievers[dataset_id]
 
         return _factory
+
+
+def collection_based_retrievers(
+    generator: Callable[[AdhocDocuments], Union[ParametricRetrieverFactory, Retriever]]
+) -> CollectionBasedRetrievers:
+    """Decorator for collection-dependent retriever factories
+
+    Example of use
+
+    .. highlight:: python
+    .. code-block:: python
+
+        @collection_based_retrievers
+        def retrievers(documents: AdhocDocuments):
+            index = IndexCollection(documents=documents).submit(launcher=launcher_index)
+            return lambda *, k: RetrieverHydrator(store=documents,
+                retriever=AnseriniRetriever(index=index, k=k, model=basemodel)
+            )
+
+        # Then this can be used to get
+        test_retrievers = retrievers.factory(k=100)
+
+    :param generator: A function that, given a document collection, should return
+        either a retriever or a callable that returns a retriever
+    :return: a collection based retriever
+    """
+    return CollectionBasedRetrievers(generator)
 
 
 class RetrieverHydrator(Retriever):

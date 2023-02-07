@@ -26,7 +26,7 @@ from xpmir.letor.optim import (
 from xpmir.letor.samplers import TripletBasedSampler
 from xpmir.measures import AP, RR, P, nDCG
 from xpmir.papers.cli import UploadToHub, paper_command
-from xpmir.rankers import CollectionBasedRetrievers, RandomScorer, RetrieverHydrator
+from xpmir.rankers import collection_based_retrievers, RandomScorer, RetrieverHydrator
 from xpmir.rankers.standard import BM25
 from xpmir.text.huggingface import DualTransformerEncoder
 from xpmir.utils.utils import find_java_home
@@ -94,33 +94,37 @@ def cli(xp: experiment, cfg: Monobert, upload_to_hub: UploadToHub):
     )
 
     # Setup indices and validation/test base retrievers
-    retrievers = CollectionBasedRetrievers()
-
-    msmarco_index = IndexCollection(documents=documents).submit(launcher=launcher_index)
-    retrievers.add(documents, index=msmarco_index)
-
-    val_retrievers = retrievers.factory(
-        lambda documents, **kwargs: RetrieverHydrator(
+    @collection_based_retrievers
+    def retrievers(documents: AdhocDocuments):
+        index = IndexCollection(documents=documents).submit(launcher=launcher_index)
+        return lambda *, k: RetrieverHydrator(
             store=documents,
-            retriever=AnseriniRetriever(
-                **kwargs, k=cfg.retrieval.val_k, model=basemodel
-            ),
+            retriever=AnseriniRetriever(index=index, k=k, model=basemodel),
         )
-    )
-    test_retrievers = retrievers.factory(
-        lambda documents, **kwargs: RetrieverHydrator(
-            store=documents,
-            retriever=AnseriniRetriever(**kwargs, k=cfg.retrieval.k, model=basemodel),
-        )
-    )
+
+    @collection_based_retrievers
+    def model_based_retrievers(documents: AdhocDocuments):
+        def factory(*, base_factory, model):
+            base_retriever = base_factory(documents)
+            return model.getRetriever(
+                base_retriever,
+                cfg.retrieval.batch_size,
+                PowerAdaptativeBatcher(),
+                device=device,
+            )
+
+        return factory
+
+    val_retrievers = retrievers.factory(k=cfg.retrieval.val_k)
+    test_retrievers = retrievers.factory(k=cfg.retrieval.k)
 
     # Search and evaluate with the base model
     tests.evaluate_retriever(test_retrievers, launcher_index)
 
     # Search and evaluate with a random reranker
     tests.evaluate_retriever(
-        random_scorer.getRetrieverFactory(
-            test_retrievers, cfg.retrieval.batch_size, PowerAdaptativeBatcher()
+        model_based_retrievers.factory(
+            base_factory=test_retrievers, model=random_scorer
         )
     )
 
@@ -152,11 +156,9 @@ def cli(xp: experiment, cfg: Monobert, upload_to_hub: UploadToHub):
     # on the validation set
     validation = ValidationListener(
         dataset=ds_val,
-        retriever=monobert_scorer.getRetriever(
-            val_retrievers(documents),
-            cfg.retrieval.batch_size,
-            PowerAdaptativeBatcher(),
-        ),
+        retriever=model_based_retrievers.factory(
+            base_factory=val_retrievers, model=monobert_scorer
+        )(documents),
         validation_interval=cfg.learner.validation_interval,
         metrics={"RR@10": True, "AP": False, "nDCG": False},
     )
@@ -205,14 +207,9 @@ def cli(xp: experiment, cfg: Monobert, upload_to_hub: UploadToHub):
 
     # Evaluate the neural model on test collections
     for metric_name in validation.monitored():
-        model = outputs.listeners["bestval"][metric_name]
+        model = outputs.listeners["bestval"][metric_name]  # type: CrossScorer
         tests.evaluate_retriever(
-            model.getRetrieverFactory(
-                test_retrievers,
-                cfg.learner.batch_size,
-                PowerAdaptativeBatcher(),
-                device=device,
-            ),
+            model_based_retrievers.factory(model=model, base_factory=test_retrievers),
             launcher_evaluate,
             model_id=f"monobert-{metric_name}",
         )

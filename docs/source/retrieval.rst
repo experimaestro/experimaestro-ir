@@ -26,7 +26,16 @@ retrieval, by using a fully fledge retriever first, and then
 re-ranking the results.
 
 .. autoxpmconfig:: xpmir.rankers.TwoStageRetriever
+.. autoxpmconfig:: xpmir.rankers.DuoTwoStageRetriever
 
+Factories
+---------
+
+For evaluation purposes, it might useful to generate retrievers
+on the fly. These classes can be used for this.
+
+.. autoclass:: xpmir.rankers.CollectionBasedRetrievers
+.. autofunction:: xpmir.rankers.collection_based_retrievers
 
 Anserini
 --------

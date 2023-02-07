@@ -125,7 +125,7 @@ class Evaluate(BaseEvaluation, Task):
 class RetrieverFactory(Protocol):
     """Generates a retriever for a given dataset"""
 
-    def __call__(self, dataset: AdhocDocuments, **kwargs) -> Retriever:
+    def __call__(self, dataset: AdhocDocuments) -> Retriever:
         ...
 
 
