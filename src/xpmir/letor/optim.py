@@ -1,3 +1,4 @@
+import threading
 from typing import Any, Callable, List, Optional, TYPE_CHECKING, Union
 from pathlib import Path
 import torch
@@ -5,7 +6,7 @@ import re
 
 from experimaestro import Config, Param, tagspath
 from experimaestro.utils import cleanupdir
-from experimaestro.scheduler.services import Service
+from experimaestro.scheduler.services import WebService
 from xpmir.utils.utils import easylog
 from xpmir.letor.metrics import ScalarMetric
 from .schedulers import Scheduler
@@ -264,13 +265,46 @@ def get_optimizers(optimizers: Optimizers):
     return [ParameterOptimizer(optimizer=optimizers)]
 
 
-class TensorboardService(Service):
+class TensorboardService(WebService):
+    id = "tensorboard"
+
     def __init__(self, path: Path):
+        super().__init__()
+
         self.path = path
         cleanupdir(self.path)
         self.path.mkdir(exist_ok=True, parents=True)
         logger.info("You can monitor learning with:")
         logger.info("tensorboard --logdir=%s", self.path)
+        self.url = None
 
     def add(self, config: Config, path: Path):
         (self.path / tagspath(config)).symlink_to(path)
+
+    def description(self):
+        return "Tensorboard service"
+
+    def close(self):
+        if self.server:
+            self.server.shutdown()
+
+    def _serve(self, running: threading.Event):
+        import tensorboard as tb
+
+        try:
+            logger.info("Starting %s service", self.id)
+            self.program = tb.program.TensorBoard()
+            self.program.configure(
+                host="localhost",
+                logdir=str(self.path.absolute()),
+                path_prefix=f"/services/{self.id}",
+                port=0,
+            )
+            self.server = self.program._make_server()
+
+            self.url = self.server.get_url()
+            running.set()
+            self.server.serve_forever()
+        except Exception:
+            logger.exception("Error while starting tensorboard")
+            running.set()

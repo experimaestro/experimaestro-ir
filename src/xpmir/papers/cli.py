@@ -231,6 +231,7 @@ def paper_command(package=None, schema=None):
                 kwargs["debug"] = debug
 
             # Run the experiment
+            logging.info("Starting experimaestro server (%s:%s)", host, port)
             with experiment(workdir, configuration.id, host=host, port=port) as xp:
 
                 for key, value in env:
