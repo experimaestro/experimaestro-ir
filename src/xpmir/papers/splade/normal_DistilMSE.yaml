@@ -1,3 +1,4 @@
+# The configuration specific for SPLADE_DistilMSE
 id: splade_distilMSE
 gpu: true
 indexation:

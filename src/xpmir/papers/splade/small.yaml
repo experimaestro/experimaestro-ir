@@ -1,11 +1,9 @@
 id: splade-small
-Launcher:
-    gpu: true
-    tags: []
-Indexation:
+gpu: true
+indexation:
     requirements: duration=2 days & cpu(mem=2G)
     training_requirements: duration=2 days & cuda(mem=24G)
-Learner:
+learner:
     validation_size: 10
     # validation for each (steps_per_epoch * validation interval) steps
     steps_per_epoch: 128
@@ -15,13 +13,11 @@ Learner:
     num_warmup_steps: 20
     early_stop: 0
     lr: 2.0e-5
-    min_lambda_q: 3.0e-4
-    min_lambda_d: 1.0e-4
     lambda_q: 3.0e-1
     lambda_d: 1.0e-1
     lamdba_warmup_steps: 300
     requirements: duration=2 days & cuda(mem=8G)
-Evaluation:
+evaluation:
     requirements: duration=2 days & cuda(mem=8G)
 base_retriever:
     topK: 20

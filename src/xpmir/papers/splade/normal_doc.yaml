@@ -1,3 +1,4 @@
+# The configuration specific for SPLADE_doc
 id: splade_doc
 gpu: true
 indexation:

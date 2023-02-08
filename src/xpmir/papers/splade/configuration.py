@@ -36,10 +36,10 @@ class Learner:
     lr: float = 2.0e-5
     """Learning rate for the model"""
 
-    lambda_q: float = 0.5
+    lambda_q: float = 3.0e-4
     """the flop coefficient for query"""
 
-    lambda_d: float = 0.4
+    lambda_d: float = 1.0e-4
     """the flop coefficient for document"""
 
     lamdba_warmup_steps: int = 50000
