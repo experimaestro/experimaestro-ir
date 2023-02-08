@@ -14,7 +14,9 @@ class OmegaConfParamType(click.Choice):
             return OmegaConf.load(path)
 
 
-def omegaconf_argument(name: str, package: str = None):
+def omegaconf_argument(
+    name: str, package: str = None, click_mode=click.argument, **kwargs
+):
     """Provides a choice of YAML configuration (file names)
 
     :param name: the name for the parameter,
@@ -29,6 +31,8 @@ def omegaconf_argument(name: str, package: str = None):
             names.append(item[: -len(YAML_SUFFIX)])
 
     def handler(method):
-        return click.argument(name, type=OmegaConfParamType(package, names))(method)
+        return click_mode(name, type=OmegaConfParamType(package, names), **kwargs)(
+            method
+        )
 
     return handler

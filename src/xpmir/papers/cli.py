@@ -129,7 +129,12 @@ class PaperExperiment:
 
 
 def paper_command(package=None, schema=None):
-    """General command line decorator for an XPM-IR experiment"""
+    """General command line decorator for an XPM-IR experiment
+
+    This annotation adds a set of arguments for the
+
+    HuggingFace upload: the documentation comes from the docstring
+    """
 
     omegaconf_schema = None
     if schema is not None:
@@ -166,7 +171,12 @@ def paper_command(package=None, schema=None):
                 help="Upload the model to Hugging Face Hub with the given identifier",
             ),
             click.argument("workdir", type=Path),
-            omegaconf_argument("configuration", package=package),
+            omegaconf_argument(
+                "--configuration",
+                package=package,
+                click_mode=click.option,
+                required=True,
+            ),
             click.argument("args", nargs=-1, type=click.UNPROCESSED),
         ]
 
@@ -188,6 +198,7 @@ def paper_command(package=None, schema=None):
             logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
             conf_args = OmegaConf.from_dotlist(args)
 
+            print(configuration)
             configuration: PaperExperiment = OmegaConf.merge(configuration, conf_args)
             if omegaconf_schema is not None:
                 configuration: PaperExperiment = OmegaConf.merge(

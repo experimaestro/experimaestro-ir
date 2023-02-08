@@ -27,19 +27,19 @@ Runs an experiment (monobert with "small" configuration, training on msmarco)
 
 .. code-block:: bash
 
-    $ xpmir papers monobert msmarco /path/to/workdir small
+    $ xpmir papers monobert msmarco --configuration small /path/to/workdir
 
 with some overriding arguments
 
 .. code-block:: bash
 
-    $ xpmir papers monobert msmarco /path/to/workdir small learner.lr=2.0e-6 learner.num_warmup_steps=20
+    $ xpmir papers monobert msmarco --configuration small /path/to/workdir learner.lr=2.0e-6 learner.num_warmup_steps=20
 
 You can look at arguments by using the `--show` option
 
 .. code-block:: bash
 
-    $ xpmir papers monobert msmarco /path/to/workdir small --show
+    $ xpmir papers monobert msmarco --configuration small /path/to/workdir --show
 
 
 Implemented papers
