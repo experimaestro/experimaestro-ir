@@ -1,4 +1,4 @@
-type: splade-small
+id: splade-small
 Launcher:
     gpu: true
     tags: []

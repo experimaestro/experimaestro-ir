@@ -1,7 +1,5 @@
-type: splade_doc
-launcher:
-    gpu: true
-    tags: []
+id: splade_doc
+gpu: true
 indexation:
     requirements: duration=2 days & cpu(mem=2G)
     training_requirements: duration=4 days & cuda(mem=24G)
@@ -12,7 +10,7 @@ learner:
     validation_interval: 8
     # maybe it is too large for a gpu of 24G
     splade_batch_size: 48
-    # 150k steps for training
+    # About 50k steps for training
     max_epochs: 400
     num_warmup_steps: 6000
     early_stop: 0

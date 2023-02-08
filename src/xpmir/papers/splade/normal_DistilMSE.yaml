@@ -1,7 +1,5 @@
-type: splade_distilMSE
-launcher:
-    gpu: true
-    tags: []
+id: splade_distilMSE
+gpu: true
 indexation:
     requirements: duration=2 days & cpu(mem=2G)
     training_requirements: duration=4 days & cuda(mem=24G)

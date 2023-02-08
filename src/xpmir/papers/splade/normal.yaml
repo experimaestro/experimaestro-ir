@@ -1,7 +1,5 @@
-type: splade_max
-launcher:
-    gpu: true
-    tags: []
+id: splade_max
+gpu: true
 indexation:
     requirements: duration=2 days & cpu(mem=2G)
     training_requirements: duration=4 days & cuda(mem=24G)

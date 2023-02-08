@@ -198,12 +198,17 @@ def paper_command(package=None, schema=None):
             logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
             conf_args = OmegaConf.from_dotlist(args)
 
-            print(configuration)
             configuration: PaperExperiment = OmegaConf.merge(configuration, conf_args)
             if omegaconf_schema is not None:
                 configuration: PaperExperiment = OmegaConf.merge(
                     omegaconf_schema, configuration
                 )
+
+            print(
+                "Configuration loading success! ",
+                "The experiment will be executed under the following configuration:",
+            )
+            print(configuration)
 
             if show:
                 # flake8: noqa: T201
