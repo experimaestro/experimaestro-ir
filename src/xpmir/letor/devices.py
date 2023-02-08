@@ -63,8 +63,12 @@ class CudaDevice(Device):
     """Fallback to CPU if no GPU is available"""
 
     distributed: Param[bool] = False
-    """Use distributed computation (DDP) when `distributed` is `True` and the
-    number of GPUs greater than 1"""
+    """Flag for using DistributedDataParallel
+
+    When the number of GPUs is greater than one, use
+    torch.nn.parallel.DistributedDataParallel when `distributed` is `True` and
+    the number of GPUs greater than 1. When False, use `torch.nn.DataParallel`
+    """
 
     @cached_property
     def value(self):

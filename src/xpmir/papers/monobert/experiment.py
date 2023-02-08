@@ -8,9 +8,8 @@ from datamaestro import prepare_dataset
 from datamaestro_text.transforms.ir import ShuffledTrainingTripletsLines
 from datamaestro_text.data.ir import AdhocDocuments, Adhoc
 from xpmir.neural.cross import CrossScorer
-from experimaestro import experiment, setmeta, tagspath
+from experimaestro import experiment, setmeta
 from experimaestro.launcherfinder import find_launcher
-from experimaestro.utils import cleanupdir
 from xpmir.datasets.adapters import RandomFold
 from xpmir.evaluation import Evaluations, EvaluationsCollection
 from xpmir.interfaces.anserini import AnseriniRetriever, IndexCollection
@@ -22,6 +21,7 @@ from xpmir.letor.optim import (
     ParameterOptimizer,
     RegexParameterFilter,
     get_optimizers,
+    TensorboardService,
 )
 from xpmir.letor.samplers import TripletBasedSampler
 from xpmir.measures import AP, RR, P, nDCG
@@ -62,11 +62,7 @@ def cli(xp: experiment, cfg: Monobert, upload_to_hub: UploadToHub):
     measures = [AP, P @ 20, nDCG, nDCG @ 10, nDCG @ 20, RR, RR @ 10]
 
     # Creates the directory with tensorboard data
-    runs_path = xp.resultspath / "runs"
-    cleanupdir(runs_path)
-    runs_path.mkdir(exist_ok=True, parents=True)
-    logging.info("You can monitor learning with:")
-    logging.info("tensorboard --logdir=%s", runs_path)
+    tb = xp.add_service(TensorboardService(xp.resultspath / "runs"))
 
     # Datasets: train, validation and test
     documents: AdhocDocuments = prepare_dataset("irds.msmarco-passage.documents")
@@ -201,9 +197,8 @@ def cli(xp: experiment, cfg: Monobert, upload_to_hub: UploadToHub):
     )
 
     # Submit job and link
-    runs_path = runs_path or (experiment.current().resultspath / "runs")
     outputs = learner.submit(launcher=launcher_learner)
-    (runs_path / tagspath(learner)).symlink_to(learner.logpath)
+    tb.add(learner, learner.logpath)
 
     # Evaluate the neural model on test collections
     for metric_name in validation.monitored():

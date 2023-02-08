@@ -177,7 +177,7 @@ class AbstractLearnableScorer(Scorer, Module):
         self.train(False)
 
     @final
-    def initialize(self, random: Optional[np.random.RandomState]):
+    def initialize(self, random: Optional[np.random.RandomState] = None):
         """Initialize a learnable scorer
 
         Initialization can either be determined by a checkpoint (if set) or
@@ -200,6 +200,8 @@ class AbstractLearnableScorer(Scorer, Module):
             self.load_state_dict(torch.load(path / "model.pth"))
 
         self._initialized = True
+
+        return self
 
 
 class LearnableScorer(AbstractLearnableScorer):

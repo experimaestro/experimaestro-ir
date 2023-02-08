@@ -101,8 +101,8 @@ model = AutoModel.load_from_hf_hub("{self.model_id}")
 
 # Use this if you want to actually use the model
 model = AutoModel.load_from_hf_hub("{self.model_id}", as_instance=True)
-model.initialize(None)
-model.rsv("walgreens store sales average", "The average Walgreens salary ranges from approximately $15,000 per year for Customer Service Associate / Cashier to $179,900 per year for District Manager...")
+model.initialize()
+model.rsv("walgreens store sales average", "The average Walgreens salary ranges...")
 ```
 """
         )

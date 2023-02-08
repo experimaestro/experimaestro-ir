@@ -1,10 +1,14 @@
 from typing import Any, Callable, List, Optional, TYPE_CHECKING, Union
-from experimaestro import Config, Param
+from pathlib import Path
 import torch
-from .schedulers import Scheduler
+import re
+
+from experimaestro import Config, Param, tagspath
+from experimaestro.utils import cleanupdir
+from exerimaestro.scheduler.services import Service
 from xpmir.utils.utils import easylog
 from xpmir.letor.metrics import ScalarMetric
-import re
+from .schedulers import Scheduler
 
 if TYPE_CHECKING:
     from xpmir.letor.context import TrainerContext
@@ -37,7 +41,11 @@ class Adam(Optimizer):
 
 
 class AdamW(Optimizer):
-    """Adam optimizer that takes into account the regularization"""
+    """Adam optimizer that takes into account the regularization
+
+    See the `PyTorch documentation
+    <https://pytorch.org/docs/stable/generated/torch.optim.AdamW.html>`_
+    """
 
     lr: Param[float] = 1e-3
     weight_decay: Param[float] = 1e-2
@@ -254,3 +262,15 @@ def get_optimizers(optimizers: Optimizers):
         return [optimizers]
 
     return [ParameterOptimizer(optimizer=optimizers)]
+
+
+class TensorboardService(Service):
+    def __init__(self, path: Path):
+        self.path = path
+        cleanupdir(self.path)
+        self.path.mkdir(exist_ok=True, parents=True)
+        logger.info("You can monitor learning with:")
+        logger.info("tensorboard --logdir=%s", self.path)
+
+    def add(self, config: Config, path: Path):
+        (self.path / tagspath(config)).symlink_to(path)

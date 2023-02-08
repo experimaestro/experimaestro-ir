@@ -2,13 +2,19 @@ Optimization
 ============
 
 
-Parameters
+Optimizers
 ----------
 
-.. autoxpmconfig:: xpmir.letor.optim.ParameterOptimizer
+
 .. autoxpmconfig:: xpmir.letor.optim.Optimizer
+.. autoxpmconfig:: xpmir.letor.optim.Adam
+.. autoxpmconfig:: xpmir.letor.optim.AdamW
+
+.. autoxpmconfig:: xpmir.letor.optim.ParameterOptimizer
 .. autoxpmconfig:: xpmir.letor.optim.ParameterFilter
 .. autoxpmconfig:: xpmir.letor.optim.Module
+
+
 
 
 Batching
