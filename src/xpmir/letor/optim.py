@@ -5,7 +5,7 @@ import re
 
 from experimaestro import Config, Param, tagspath
 from experimaestro.utils import cleanupdir
-from exerimaestro.scheduler.services import Service
+from experimaestro.scheduler.services import Service
 from xpmir.utils.utils import easylog
 from xpmir.letor.metrics import ScalarMetric
 from .schedulers import Scheduler
