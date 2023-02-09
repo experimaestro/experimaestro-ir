@@ -92,6 +92,8 @@ class ValidationListener(LearnerListener):
     """Path to the last checkpoints"""
 
     store_last_checkpoint: Param[bool] = False
+    """Besides the model with the best performance, whether store the last
+    checkpoint of the model or not"""
 
     info: Annotated[Path, pathgenerator("info.json")]
     """Path to the JSON file that contains the metric values at each epoch"""

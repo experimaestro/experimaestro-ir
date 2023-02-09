@@ -61,12 +61,13 @@ logging.basicConfig(level=logging.INFO)
 
 @paper_command(schema=SPLADE, package=__package__)
 def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub):
-    """splade trained with the distillated triplets
+    """SPLADE_DistilMSE: SPLADEv2 trained with the distillated triplets
+
+    Training data from: https://github.com/sebastian-hofstaetter/neural-ranking-kd
 
     From Distillation to Hard Negative Sampling: Making Sparse Neural IR Models
     More Effective (Thibault Formal, Carlos Lassance, Benjamin Piwowarski,
-    Stéphane Clinchant). 2022.
-    https://arxiv.org/abs/2205.04733
+    Stéphane Clinchant). 2022. https://arxiv.org/abs/2205.04733
     """
 
     # Defining the different launchers

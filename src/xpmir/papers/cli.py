@@ -90,7 +90,7 @@ library_name: xpmir
 
         out.write("\n## Using the model")
         out.write(
-            f""")
+            f"""
 The model can be loaded with [experimaestro IR](https://experimaestro-ir.readthedocs.io/en/latest/)
 
 ```py

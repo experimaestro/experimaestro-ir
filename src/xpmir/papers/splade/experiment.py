@@ -53,11 +53,11 @@ logging.basicConfig(level=logging.INFO)
 
 @paper_command(schema=SPLADE, package=__package__)
 def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub):
-    """spladev2 with max aggregation
+    """SPLADE_max: SPLADEv2 with max aggregation
 
     SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval
     (Thibault Formal, Carlos Lassance, Benjamin Piwowarski, Stéphane Clinchant).
-    2021. https://arxiv.org/abs/2205.04733
+    2021. https://arxiv.org/abs/2109.10086
     """
 
     # launchers
