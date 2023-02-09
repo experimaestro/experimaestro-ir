@@ -147,8 +147,8 @@ def cli(xp: experiment, cfg: Monobert, upload_to_hub: UploadToHub):
         )
     ).tag("reranker", "monobert")
 
-    # The validation listener will evaluate the full retriever
-    # (1st stage + reranker) and keep the best performing model
+    # The validation listener evaluates the full retriever
+    # (retriever + reranker) and keep the best performing model
     # on the validation set
     validation = ValidationListener(
         dataset=ds_val,

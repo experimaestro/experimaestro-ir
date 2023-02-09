@@ -49,3 +49,4 @@ Implemented papers
    :maxdepth: 2
 
    monobert
+   splade
