@@ -57,6 +57,7 @@ from xpmir.measures import AP, P, nDCG, RR
 from .configuration import SPLADE
 
 logging.basicConfig(level=logging.INFO)
+# could be deleted, not not sure yet.
 
 
 @paper_command(schema=SPLADE, package=__package__)

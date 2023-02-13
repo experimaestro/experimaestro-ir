@@ -12,7 +12,11 @@ from datamaestro_text.transforms.ir import ShuffledTrainingTripletsLines
 from experimaestro.launcherfinder import find_launcher
 
 from experimaestro import experiment, tag, copyconfig, setmeta
-from xpmir.datasets.adapters import RandomFold, RetrieverBasedCollection
+from xpmir.datasets.adapters import (
+    MemoryTopicStore,
+    RandomFold,
+    RetrieverBasedCollection,
+)
 from xpmir.distributed import DistributedHook
 from xpmir.documents.samplers import RandomDocumentSampler
 from xpmir.evaluation import Evaluations, EvaluationsCollection
@@ -27,11 +31,17 @@ from xpmir.index.sparse import (
     SparseRetriever,
     SparseRetrieverIndexBuilder,
 )
+from xpmir.letor.distillation.pairwise import (
+    DistillationPairwiseTrainer,
+    MSEDifferenceLoss,
+)
+from xpmir.letor.distillation.samplers import (
+    DistillationPairwiseSampler,
+    PairwiseHydrator,
+)
 from xpmir.models import AutoModel
 from xpmir.papers.cli import paper_command, UploadToHub
-from xpmir.rankers import Scorer
 from xpmir.rankers.full import FullRetriever
-from xpmir.letor.trainers import Trainer
 from xpmir.letor.trainers.batchwise import BatchwiseTrainer, SoftmaxCrossEntropy
 from xpmir.letor.batchers import PowerAdaptativeBatcher
 from xpmir.neural.dual import DenseDocumentEncoder, DenseQueryEncoder
@@ -53,9 +63,9 @@ logging.basicConfig(level=logging.INFO)
 
 @paper_command(schema=SPLADE, package=__package__)
 # Run by:
-# $ xpmir papers splade spladeV2 --configuration normal_doc experiment/
+# $ xpmir papers splade spladeV2 --configuration config_name experiment/
 def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub):
-    """SPLADE_max: SPLADEv2 with max aggregation
+    """SPLADE: SPLADEv2 with max aggregation
 
     SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval
     (Thibault Formal, Carlos Lassance, Benjamin Piwowarski, Stéphane Clinchant).
@@ -82,17 +92,11 @@ def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub):
     )  # all the documents for msmarco
     dev = prepare_dataset("irds.msmarco-passage.dev")
     devsmall = prepare_dataset("irds.msmarco-passage.dev.small")  # development
-    train_triples = prepare_dataset(
-        "irds.msmarco-passage.train.docpairs"
-    )  # pair for pairwise learner
+    # All the query text
+    train_topics = prepare_dataset("irds.msmarco-passage.train.queries")
 
     # Index for msmarcos
     index = IndexCollection(documents=documents, storeContents=True).submit()
-
-    triplesid = ShuffledTrainingTripletsLines(
-        seed=123,
-        data=train_triples,
-    ).submit()
 
     # Build a dev. collection for full-ranking (validation) "Efficiently
     # Teaching an Effective Dense Retriever with Balanced Topic Aware
@@ -171,24 +175,18 @@ def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub):
         copyconfig(tasb_retriever).tag("model", "tasb"), gpu_launcher_index
     )
 
+    # Base retrievers for validation
+    # It retrieve all the document of the collection with score 0
+    base_retriever_full = FullRetriever(documents=ds_val.documents)
+
     # define the path to store the result for tensorboard
     tb = xp.add_service(TensorboardService(xp.resultspath / "runs"))
 
-    # generator a batchwise sampler which is an Iterator of ProductRecords()
-    train_sampler = TripletBasedSampler(
-        source=triplesid, index=index
-    )  # the pairwise sampler from the dataset.
-    ibn_sampler = PairwiseInBatchNegativesSampler(
-        sampler=train_sampler
-    )  # generating the batchwise from the pairwise
-
-    # scheduler for trainer
-    scheduler = LinearWithWarmup(num_warmup_steps=cfg.learner.num_warmup_steps)
+    # -----Learning to rank component preparation part-----
 
     # Define the model and the flop loss for regularization
     # Model of class: DotDense()
     # The parameters are the regularization coeff for the query and document
-
     if cfg.learner.model == "splade_max":
         spladev2, flops = spladeV2_max(
             cfg.learner.lambda_q, cfg.learner.lambda_d, cfg.learner.lamdba_warmup_steps
@@ -200,69 +198,148 @@ def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub):
     else:
         raise NotImplementedError
 
-    # Base retrievers for validation
-    # It retrieve all the document of the collection with score 0
-    base_retriever_full = FullRetriever(documents=ds_val.documents)
+    # define the trainer based on different dataset
+    if cfg.learner.dataset == "":
+        train_triples = prepare_dataset(
+            "irds.msmarco-passage.train.docpairs"
+        )  # pair for pairwise learner
 
-    batchwise_trainer_flops = BatchwiseTrainer(
-        batch_size=cfg.learner.splade_batch_size,
-        sampler=ibn_sampler,
-        lossfn=SoftmaxCrossEntropy(),
-        hooks=[flops],
+        triplesid = ShuffledTrainingTripletsLines(
+            seed=123,
+            data=train_triples,
+        ).submit()
+
+        # generator a batchwise sampler which is an Iterator of ProductRecords()
+        train_sampler = TripletBasedSampler(
+            source=triplesid, index=index
+        )  # the pairwise sampler from the dataset.
+        ibn_sampler = PairwiseInBatchNegativesSampler(
+            sampler=train_sampler
+        )  # generating the batchwise from the pairwise
+        batchwise_trainer_flops = BatchwiseTrainer(
+            batch_size=cfg.learner.splade_batch_size,
+            sampler=ibn_sampler,
+            lossfn=SoftmaxCrossEntropy(),
+            hooks=[flops],
+        )
+    elif cfg.learner.dataset == "bert_hard_negative":
+        # hard negatives trained by distillation with cross-encoder
+        # Improving Efficient Neural Ranking Models with Cross-Architecture
+        # Knowledge Distillation, (Sebastian Hofstätter, Sophia Althammer,
+        # Michael Schröder, Mete Sertkan, Allan Hanbury), 2020
+        # In the form of Tuple[Query, Tuple[Document, Document]] without text
+        train_triples_distil = prepare_dataset(
+            "com.github.sebastian-hofstaetter."
+            + "neural-ranking-kd.msmarco.ensemble.teacher"
+        )
+        # Combine the training triplets with the document and queries texts
+        distillation_samples = PairwiseHydrator(
+            samples=train_triples_distil,
+            documentstore=documents,
+            querystore=MemoryTopicStore(topics=train_topics),
+        )
+
+        # Generate a sampler from the samples
+        distil_pairwise_sampler = DistillationPairwiseSampler(
+            samples=distillation_samples
+        )
+
+        batchwise_trainer_flops = DistillationPairwiseTrainer(
+            batch_size=cfg.learner.splade_batch_size,
+            sampler=distil_pairwise_sampler,
+            lossfn=MSEDifferenceLoss(),
+            hooks=[flops],
+        )
+
+    # scheduler for trainer
+    scheduler = LinearWithWarmup(num_warmup_steps=cfg.learner.num_warmup_steps)
+
+    # hooks for the learner
+    if cfg.learner.model == "splade_doc":
+        hooks = [
+            setmeta(
+                DistributedHook(models=[spladev2.encoder]),
+                True,
+            )
+        ]
+    else:
+        hooks = [
+            setmeta(
+                DistributedHook(models=[spladev2.encoder, spladev2.query_encoder]),
+                True,
+            )
+        ]
+
+    # FIXME: define the optimizer: due to a bug during the training of
+    # splade_max and splade_doc
+    distil_optimizers: List = [
+        ParameterOptimizer(
+            scheduler=scheduler,
+            optimizer=AdamW(lr=cfg.learner.lr),
+        )
+    ]
+    false_optimizers: List = [
+        ParameterOptimizer(
+            scheduler=scheduler,
+            optimizer=AdamW(lr=cfg.learner.lr),
+            filter=RegexParameterFilter(includes=[r"\.bias$", r"\.LayerNorm\."]),
+        ),
+        ParameterOptimizer(
+            scheduler=scheduler,
+            optimizer=AdamW(lr=cfg.learner.lr),
+            filter=RegexParameterFilter(excludes=[r"\.bias$", r"\.LayerNorm\."]),
+        ),
+    ]
+
+    # establish the validation listener
+    validation = ValidationListener(
+        dataset=ds_val,
+        # a retriever which use the splade model to score all the
+        # documents and then do the retrieve
+        retriever=spladev2.getRetriever(
+            base_retriever_full,
+            cfg.full_retriever.batch_size_full_retriever,
+            PowerAdaptativeBatcher(),
+            device=device,
+        ),
+        early_stop=cfg.learner.early_stop,
+        validation_interval=cfg.learner.validation_interval,
+        metrics={"RR@10": True, "AP": False, "nDCG@10": False},
+        store_last_checkpoint=True if cfg.learner.model == "splade_doc" else False,
     )
 
-    # run the learner and do the evaluation with the best result
-    def run(
-        scorer: Scorer,
-        trainer: Trainer,
-        optimizers: List,
-        hooks=[],
-        launcher=gpu_launcher_learner,
-    ):
-        # establish the validation listener
-        validation = ValidationListener(
-            dataset=ds_val,
-            # a retriever which use the splade model to score all the
-            # documents and then do the retrieve
-            retriever=scorer.getRetriever(
-                base_retriever_full,
-                cfg.full_retriever.batch_size_full_retriever,
-                PowerAdaptativeBatcher(),
-                device=device,
-            ),
-            early_stop=cfg.learner.early_stop,
-            validation_interval=cfg.learner.validation_interval,
-            metrics={"RR@10": True, "AP": False, "nDCG@10": False},
-            store_last_checkpoint=True if cfg.learner.model == "splade_doc" else False,
-        )
+    # the learner: Put the components together
+    learner = Learner(
+        # Misc settings
+        random=random,
+        device=device,
+        # How to train the model
+        trainer=batchwise_trainer_flops,
+        # the model to be trained
+        scorer=spladev2.tag("model", "splade-v2"),
+        # Optimization settings
+        optimizers=get_optimizers(
+            false_optimizers if cfg.learner.dataset == "" else distil_optimizers
+        ),
+        steps_per_epoch=cfg.learner.steps_per_epoch,
+        use_fp16=True,
+        max_epochs=tag(cfg.learner.max_epochs),
+        # the listener for the validation
+        listeners={"bestval": validation},
+        # the hooks
+        hooks=hooks,
+    )
 
-        # the learner for the splade
-        learner = Learner(
-            # Misc settings
-            random=random,
-            device=device,
-            # How to train the model
-            trainer=trainer,
-            # the model to be trained
-            scorer=scorer,
-            # Optimization settings
-            optimizers=get_optimizers(optimizers),
-            steps_per_epoch=cfg.learner.steps_per_epoch,
-            use_fp16=True,
-            max_epochs=tag(cfg.learner.max_epochs),
-            # the listener for the validation
-            listeners={"bestval": validation},
-            # the hooks
-            hooks=hooks,
-        )
-        # submit the learner and build the symbolique link
-        outputs = learner.submit(launcher=launcher)
-        tb.add(learner, learner.logpath)
+    # submit the learner and build the symbolique link
+    outputs = learner.submit(launcher=gpu_launcher_learner)
+    tb.add(learner, learner.logpath)
 
-        # return the best trained models
-        best = outputs.listeners["bestval"]
-
-        return best
+    # get the trained model
+    trained_model = (
+        outputs.listeners["bestval"]["last_checkpoint"]
+        if cfg.learner.model == "splade_doc"
+        else outputs.listeners["bestval"]["RR@10"]
+    )
 
     # Get a sparse retriever from a dual scorer
     def sparse_retriever(scorer, documents):
@@ -286,50 +363,11 @@ def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub):
             encoder=DenseQueryEncoder(scorer=scorer),
         )
 
-    # hooks for the learner
-    if cfg.learner.model == "splade_doc":
-        hooks = [
-            setmeta(
-                DistributedHook(models=[spladev2.encoder]),
-                True,
-            )
-        ]
-    else:
-        hooks = [
-            setmeta(
-                DistributedHook(models=[spladev2.encoder, spladev2.query_encoder]),
-                True,
-            )
-        ]
-
-    # Do the training process and then return the best model for splade
-    best_models = run(
-        spladev2.tag("model", "splade-v2"),
-        batchwise_trainer_flops,
-        [
-            ParameterOptimizer(
-                scheduler=scheduler,
-                optimizer=AdamW(lr=cfg.learner.lr),
-                filter=RegexParameterFilter(includes=[r"\.bias$", r"\.LayerNorm\."]),
-            ),
-            ParameterOptimizer(
-                scheduler=scheduler,
-                optimizer=AdamW(lr=cfg.learner.lr),
-                filter=RegexParameterFilter(excludes=[r"\.bias$", r"\.LayerNorm\."]),
-            ),
-        ],
-        hooks=hooks,
-        launcher=gpu_launcher_learner,
-    )
-
-    best_model = (
-        best_models["last_checkpoint"]
-        if cfg.learner.model == "splade_doc"
-        else best_models["RR@10"]
-    )
+    # Build a sparse index based on the trained model
+    # and a retriever
+    splade_retriever = sparse_retriever(trained_model, documents)
 
     # evaluate the best model
-    splade_retriever = sparse_retriever(best_model, documents)
     tests.evaluate_retriever(
         splade_retriever,
         gpu_launcher_evaluate,
@@ -344,7 +382,7 @@ def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub):
 
     # Upload to HUB if requested
     upload_to_hub.send_scorer(
-        {f"{cfg.learner.model}-{cfg.learner.dataset}-RR@10": best_model},
+        {f"{cfg.learner.model}-{cfg.learner.dataset}-RR@10": trained_model},
         evaluations=tests,
     )
 
