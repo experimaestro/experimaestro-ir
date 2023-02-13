@@ -80,7 +80,7 @@ class UploadToHub:
 
         out = io.StringIO()
         out.write(
-            f"""---
+            """---
 library_name: xpmir
 ---
 """
@@ -93,23 +93,22 @@ library_name: xpmir
         out.write("\n## Using the model")
         out.write(
             f"""
-The model can be loaded with [experimaestro IR](https://experimaestro-ir.readthedocs.io/en/latest/)
+The model can be loaded with [experimaestro
+IR](https://experimaestro-ir.readthedocs.io/en/latest/)
 
-```py
-from xpmir.models import AutoModel
+```py from xpmir.models import AutoModel
 
-# Model that can be re-used in experiments
-model = AutoModel.load_from_hf_hub("{self.model_id}")
+# Model that can be re-used in experiments model =
+AutoModel.load_from_hf_hub("{self.model_id}")
 
-# Use this if you want to actually use the model
-model = AutoModel.load_from_hf_hub("{self.model_id}", as_instance=True)
-model.initialize()
-model.rsv("walgreens store sales average", "The average Walgreens salary ranges...")
-```
+# Use this if you want to actually use the model model =
+AutoModel.load_from_hf_hub("{self.model_id}", as_instance=True)
+model.initialize() model.rsv("walgreens store sales average", "The average
+Walgreens salary ranges...") ```
 """
         )
 
-        assert len(models) == 1, f"Cannot deal with more than one variant"
+        assert len(models) == 1, "Cannot deal with more than one variant"
         ((key, model),) = list(models.items())
 
         if evaluations is not None:
@@ -157,8 +156,10 @@ def paper_command(package=None, schema=None):
                 "--host",
                 type=str,
                 default=None,
-                help="Server hostname (default to localhost, not suitable if your jobs are remote)",
+                help="Server hostname (default to localhost,"
+                " not suitable if your jobs are remote)",
             ),
+            click.option("--dry-run", is_flag=True, help="Do not submit jobs"),
             click.option(
                 "--port",
                 type=int,
@@ -191,6 +192,7 @@ def paper_command(package=None, schema=None):
             port,
             args,
             env,
+            dry_run,
             upload_to_hub: Optional[str],
             **kwargs,
         ):
@@ -206,15 +208,8 @@ def paper_command(package=None, schema=None):
                     omegaconf_schema, configuration
                 )
 
-            print(
-                "Configuration loading success! ",
-                "The experiment will be executed under the following configuration:",
-            )
-            print(configuration)
-
             if show:
-                # flake8: noqa: T201
-                print(configuration)
+                print(configuration)  # noqa: T201
                 sys.exit(0)
 
             parameters = inspect.signature(fn).parameters
@@ -231,6 +226,9 @@ def paper_command(package=None, schema=None):
 
             if "debug" in parameters:
                 kwargs["debug"] = debug
+
+            if "dry_run" in parameters:
+                kwargs["dry_run"] = dry_run
 
             # Run the experiment
             logging.info("Starting experimaestro server (%s:%s)", host, port)
