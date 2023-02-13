@@ -4,11 +4,12 @@ indexation:
     requirements: duration=2 days & cpu(mem=2G)
     training_requirements: duration=4 days & cuda(mem=24G)
 learner:
+    model: splade_max
     validation_size: 500
     # validation for each (steps_per_epoch * validation interval) steps
     steps_per_epoch: 128
     validation_interval: 8
-    # maybe it is too large for a gpu of 24G
+    # In the paper it is 128 but it is too large for our gpu.
     splade_batch_size: 96
     # 150k steps for training
     max_epochs: 1200

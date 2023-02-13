@@ -49,6 +49,7 @@ from .configuration import SPLADE
 
 
 logging.basicConfig(level=logging.INFO)
+# could be deleted, not not sure yet.
 
 
 @paper_command(schema=SPLADE, package=__package__)
@@ -97,7 +98,7 @@ def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub):
     # Sampling"
     tasb = AutoModel.load_from_hf_hub(
         "xpmir/tas-balanced"
-    )  # create a scorer from huggingfaceuggingface
+    )  # create a scorer from huggingface
 
     # task to train the tas_balanced encoder for the document list and
     # generate an index for retrieval

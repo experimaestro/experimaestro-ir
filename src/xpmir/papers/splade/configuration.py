@@ -10,6 +10,13 @@ class Indexation:
 
 @define(kw_only=True)
 class Learner:
+    model: str = "splade_max"
+    """The model to use for training"""
+
+    dataset: str = ""
+    """The composition of training pairs, default value represent the
+    doc_pair from ir-dataset"""
+
     validation_size: int = 500
     """Number of topics in the validation set"""
 

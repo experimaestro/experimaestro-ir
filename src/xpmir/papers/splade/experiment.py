@@ -43,7 +43,7 @@ from xpmir.letor.optim import (
     TensorboardService,
 )
 from xpmir.rankers.standard import BM25
-from xpmir.neural.splade import spladeV2_max
+from xpmir.neural.splade import spladeV2_max, spladeV2_doc
 from xpmir.measures import AP, P, nDCG, RR
 from .configuration import SPLADE
 
@@ -52,6 +52,8 @@ logging.basicConfig(level=logging.INFO)
 
 
 @paper_command(schema=SPLADE, package=__package__)
+# Run by:
+# $ xpmir papers splade spladeV2 --configuration normal_doc experiment/
 def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub):
     """SPLADE_max: SPLADEv2 with max aggregation
 
@@ -60,7 +62,6 @@ def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub):
     2021. https://arxiv.org/abs/2109.10086
     """
 
-    # launchers
     # Defining the different launchers
     cpu_launcher_index = find_launcher(cfg.indexation.requirements)
     gpu_launcher_index = find_launcher(cfg.indexation.training_requirements)
@@ -135,9 +136,6 @@ def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub):
         trec2019=Evaluations(
             prepare_dataset("irds.msmarco-passage.trec-dl-2019"), measures
         ),
-        trec2020=Evaluations(
-            prepare_dataset("irds.msmarco-passage.trec-dl-2020"), measures
-        ),
         msmarco_dev=Evaluations(devsmall, measures),
     )
 
@@ -190,9 +188,17 @@ def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub):
     # Define the model and the flop loss for regularization
     # Model of class: DotDense()
     # The parameters are the regularization coeff for the query and document
-    spladev2, flops = spladeV2_max(
-        cfg.learner.lambda_q, cfg.learner.lambda_d, cfg.learner.lamdba_warmup_steps
-    )
+
+    if cfg.learner.model == "splade_max":
+        spladev2, flops = spladeV2_max(
+            cfg.learner.lambda_q, cfg.learner.lambda_d, cfg.learner.lamdba_warmup_steps
+        )
+    elif cfg.learner.model == "splade_doc":
+        spladev2, flops = spladeV2_doc(
+            cfg.learner.lambda_q, cfg.learner.lambda_d, cfg.learner.lamdba_warmup_steps
+        )
+    else:
+        raise NotImplementedError
 
     # Base retrievers for validation
     # It retrieve all the document of the collection with score 0
@@ -227,6 +233,7 @@ def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub):
             early_stop=cfg.learner.early_stop,
             validation_interval=cfg.learner.validation_interval,
             metrics={"RR@10": True, "AP": False, "nDCG@10": False},
+            store_last_checkpoint=True if cfg.learner.model == "splade_doc" else False,
         )
 
         # the learner for the splade
@@ -252,8 +259,8 @@ def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub):
         outputs = learner.submit(launcher=launcher)
         tb.add(learner, learner.logpath)
 
-        # return the best trained model here for only RR@10
-        best = outputs.listeners["bestval"]["RR@10"]
+        # return the best trained models
+        best = outputs.listeners["bestval"]
 
         return best
 
@@ -279,8 +286,24 @@ def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub):
             encoder=DenseQueryEncoder(scorer=scorer),
         )
 
+    # hooks for the learner
+    if cfg.learner.model == "splade_doc":
+        hooks = [
+            setmeta(
+                DistributedHook(models=[spladev2.encoder]),
+                True,
+            )
+        ]
+    else:
+        hooks = [
+            setmeta(
+                DistributedHook(models=[spladev2.encoder, spladev2.query_encoder]),
+                True,
+            )
+        ]
+
     # Do the training process and then return the best model for splade
-    best_model = run(
+    best_models = run(
         spladev2.tag("model", "splade-v2"),
         batchwise_trainer_flops,
         [
@@ -295,19 +318,22 @@ def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub):
                 filter=RegexParameterFilter(excludes=[r"\.bias$", r"\.LayerNorm\."]),
             ),
         ],
-        hooks=[
-            setmeta(
-                DistributedHook(models=[spladev2.encoder, spladev2.query_encoder]),
-                True,
-            )
-        ],
+        hooks=hooks,
         launcher=gpu_launcher_learner,
+    )
+
+    best_model = (
+        best_models["last_checkpoint"]
+        if cfg.learner.model == "splade_doc"
+        else best_models["RR@10"]
     )
 
     # evaluate the best model
     splade_retriever = sparse_retriever(best_model, documents)
     tests.evaluate_retriever(
-        splade_retriever, gpu_launcher_evaluate, model_id="SPLADE_max-RR@10"
+        splade_retriever,
+        gpu_launcher_evaluate,
+        model_id=f"{cfg.learner.model}-{cfg.learner.dataset}-RR@10",
     )
 
     # wait for all the experiments ends
@@ -317,7 +343,10 @@ def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub):
     tests.output_results()
 
     # Upload to HUB if requested
-    upload_to_hub.send_scorer({"SPLADE_max-RR@10": best_model}, evaluations=tests)
+    upload_to_hub.send_scorer(
+        {f"{cfg.learner.model}-{cfg.learner.dataset}-RR@10": best_model},
+        evaluations=tests,
+    )
 
 
 if __name__ == "__main__":

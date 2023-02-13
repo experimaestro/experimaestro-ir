@@ -5,6 +5,8 @@ indexation:
     requirements: duration=2 days & cpu(mem=2G)
     training_requirements: duration=4 days & cuda(mem=24G)
 learner:
+    model: splade_max
+    dataset: bert_hard_negative
     validation_size: 500
     # validation for each (steps_per_epoch * validation interval) steps
     steps_per_epoch: 128
