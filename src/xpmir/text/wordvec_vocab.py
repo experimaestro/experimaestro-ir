@@ -1,41 +1,39 @@
-import os
 import pickle
 import hashlib
-from typing import List, Optional
+from typing import Optional
 import numpy as np
 import torch
 from pathlib import Path
 from torch import nn
-from experimaestro import config, param, cache, Param
+from experimaestro import cache, Param
 
 # from onir import vocab, util
 from xpmir.letor import Random
 from xpmir.letor.records import TokenizedTexts
 
 # from onir.interfaces import wordvec
-from xpmir.text import Vocab
+from xpmir.text import TokensEncoder
 from datamaestro_text.data.embeddings import WordEmbeddings
 
-# TODO: add sources to datamaestro
-# _SOURCES = {
-#     'fasttext': {
-#         'wiki-news-300d-1M': wordvec.zip_handler('https://dl.fbaipublicfiles.com/fasttext/vectors-english/wiki-news-300d-1M.vec.zip'),
-#         'crawl-300d-2M': wordvec.zip_handler('https://dl.fbaipublicfiles.com/fasttext/vectors-english/crawl-300d-2M.vec.zip'),
-#     },
-#     'convknrm': {
-#         'knrm-bing': wordvec.convknrm_handler('http://boston.lti.cs.cmu.edu/appendices/WSDM2018-ConvKNRM/K-NRM/bing/'),
-#         'knrm-sogou': wordvec.convknrm_handler('http://boston.lti.cs.cmu.edu/appendices/WSDM2018-ConvKNRM/K-NRM/sogou/'),
-#         'convknrm-bing': wordvec.convknrm_handler('http://boston.lti.cs.cmu.edu/appendices/WSDM2018-ConvKNRM/Conv-KNRM/bing/'),
-#         'convknrm-sogou': wordvec.convknrm_handler('http://boston.lti.cs.cmu.edu/appendices/WSDM2018-ConvKNRM/Conv-KNRM/sogou/')
-#     },
-#     'bionlp': {
-#         'pubmed-pmc': wordvec.gensim_w2v_handler('http://evexdb.org/pmresources/vec-space-models/PubMed-and-PMC-w2v.bin')
-#     },
-#     'nil': wordvec.nil_handler
-# }
+# TODO: add sources to datamaestro _SOURCES = { 'fasttext': {
+# 'wiki-news-300d-1M':
+#     wordvec.zip_handler('https://dl.fbaipublicfiles.com/fasttext/vectors-english/wiki-news-300d-1M.vec.zip'),
+#         'crawl-300d-2M':
+#         wordvec.zip_handler('https://dl.fbaipublicfiles.com/fasttext/vectors-english/crawl-300d-2M.vec.zip'),
+#     }, 'convknrm': { 'knrm-bing':
+#     wordvec.convknrm_handler('http://boston.lti.cs.cmu.edu/appendices/WSDM2018-ConvKNRM/K-NRM/bing/'),
+#         'knrm-sogou':
+#         wordvec.convknrm_handler('http://boston.lti.cs.cmu.edu/appendices/WSDM2018-ConvKNRM/K-NRM/sogou/'),
+#         'convknrm-bing':
+#         wordvec.convknrm_handler('http://boston.lti.cs.cmu.edu/appendices/WSDM2018-ConvKNRM/Conv-KNRM/bing/'),
+#     'convknrm-sogou':
+#     wordvec.convknrm_handler('http://boston.lti.cs.cmu.edu/appendices/WSDM2018-ConvKNRM/Conv-KNRM/sogou/')
+#         }, 'bionlp': { 'pubmed-pmc':
+#     wordvec.gensim_w2v_handler('http://evexdb.org/pmresources/vec-space-models/PubMed-and-PMC-w2v.bin')
+#     }, 'nil': wordvec.nil_handler }
 
 
-class WordvecVocab(Vocab, nn.Module):
+class WordvecVocab(TokensEncoder, nn.Module):
     """Word-based pre-trained embeddings
 
     Args:
@@ -132,8 +130,9 @@ class WordvecUnkVocab(WordvecVocab):
 class WordvecHashVocab(WordvecVocab):
     """Word-based embeddings with hash-based OOV
 
-    A vocabulary in which all unknown terms are assigned a position in a flexible cache based on
-    their hash value. Each position is assigned its own random weight.
+    A vocabulary in which all unknown terms are assigned a position in a
+    flexible cache based on their hash value. Each position is assigned its own
+    random weight.
     """
 
     hashspace: Param[int] = 1000
@@ -152,7 +151,8 @@ class WordvecHashVocab(WordvecVocab):
         except KeyError:
             if self.log_miss:
                 self.logger.debug(f"vocab miss {tok}")
-            # NOTE: use md5 hash (or similar) here because hash() is not consistent across runs
+            # NOTE: use md5 hash (or similar) here because hash() is not
+            # consistent across runs
             item = tok.encode()
             item_hash = int(hashlib.md5(item).hexdigest(), 16)
             item_hash_pos = item_hash % self.hashspace

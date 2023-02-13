@@ -1,7 +1,7 @@
 import torch
 from experimaestro import Param
 from xpmir.neural import TorchLearnableScorer
-from xpmir.text import Vocab
+from xpmir.text import TokensEncoder
 from xpmir.letor.records import BaseRecords
 from xpmir.letor.context import TrainerContext
 
@@ -19,7 +19,7 @@ class InteractionScorer(TorchLearnableScorer):
         dlen: Maximum document length (this can be even shortened by the model)
     """
 
-    vocab: Param[Vocab]
+    vocab: Param[TokensEncoder]
     qlen: Param[int] = 20
     dlen: Param[int] = 2000
 

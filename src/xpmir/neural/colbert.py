@@ -1,6 +1,7 @@
 # ColBERT implementation
 #
-# From https://github.com/stanford-futuredata/ColBERT/blob/v0.2/colbert/modeling/colbert.py
+# From
+# https://github.com/stanford-futuredata/ColBERT/blob/v0.2/colbert/modeling/colbert.py
 
 from typing import List
 from experimaestro import Config, Constant, Param, default, Annotated
@@ -36,9 +37,9 @@ class Colbert(InteractionScorer):
 
     Implementation of the Colbert model from:
 
-        Khattab, Omar, and Matei Zaharia.
-        “ColBERT: Efficient and Effective Passage Search via Contextualized Late Interaction over BERT.”
-        SIGIR 2020, Xi'An, China
+        Khattab, Omar, and Matei Zaharia. “ColBERT: Efficient and Effective
+        Passage Search via Contextualized Late Interaction over BERT.” SIGIR
+        2020, Xi'An, China
 
     For the standard Colbert model, use BERT as the vocab(ulary)
     """
@@ -95,7 +96,3 @@ class Colbert(InteractionScorer):
         documents = self._encode([d.text for d in inputs.documents], True)
 
         return self.similarity(queries, documents)
-
-    @staticmethod
-    def paper_model(self):
-        return Colbert()

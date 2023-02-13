@@ -6,9 +6,8 @@ Huggingface Transformers
 Encoders
 ========
 
-.. autoxpmconfig:: TransformerVocab
+.. autoxpmconfig:: TransformerTokensEncoder
 
-.. autoxpmconfig:: IndependentTransformerVocab
 .. autoxpmconfig:: ContextualizedTextEncoderAdapter
 .. autoxpmconfig:: DualTransformerEncoder
 .. autoxpmconfig:: SentenceTransformerTextEncoder
@@ -18,4 +17,3 @@ Hooks
 =====
 
 .. autoxpmconfig:: LayerFreezer
-.. autoxpmconfig:: DistributedModelHook

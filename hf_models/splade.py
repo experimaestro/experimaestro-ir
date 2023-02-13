@@ -1,5 +1,5 @@
 from typing import Optional
-from xpmir.text.huggingface import TransformerVocab
+from xpmir.text.huggingface import TransformerTokensEncoder
 from xpmir.neural.splade import SpladeTextEncoder, MaxAggregation, DotDense
 from experimaestro.huggingface import ExperimaestroHFHub
 
@@ -7,9 +7,9 @@ from experimaestro.huggingface import ExperimaestroHFHub
 def push_splade(
     variant: str, model_id: str, *, query_model_id: Optional[str] = None, config=None
 ):
-    encoder = TransformerVocab(model_id=model_id, trainable=True)
+    encoder = TransformerTokensEncoder(model_id=model_id, trainable=True)
     query_encoder = (
-        TransformerVocab(model_id=query_model_id, trainable=True)
+        TransformerTokensEncoder(model_id=query_model_id, trainable=True)
         if query_model_id
         else None
     )

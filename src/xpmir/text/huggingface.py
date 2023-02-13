@@ -4,14 +4,13 @@ import logging
 import re
 import torch
 import torch.nn as nn
-from experimaestro import Param, Constant
-from xpmir.context import Context, InitializationHook
+from experimaestro import Param, Constant, deprecate
 from xpmir.distributed import DistributableModel
-from xpmir.letor import DistributedDeviceInformation
 from xpmir.letor.context import InitializationTrainingHook, TrainState
 from xpmir.text.encoders import (
-    ContextualizedTextEncoder,
-    ContextualizedTextEncoderOutput,
+    Encoder,
+    TokensEncoder,
+    Tokenizer,
     DualTextEncoder,
     TextEncoder,
     TripletTextEncoder,
@@ -25,13 +24,12 @@ except Exception:
     raise
 
 from xpmir.letor.records import TokenizedTexts
-import xpmir.text as text
 
 logger = easylog()
 
 
-class TransformerVocab(text.Vocab):
-    """Transformer-based encoder from Huggingface"""
+class BaseTransformer(Encoder):
+    """Base transformer class from Huggingface"""
 
     model_id: Param[str] = "bert-base-uncased"
     """Model ID from huggingface"""
@@ -67,7 +65,7 @@ class TransformerVocab(text.Vocab):
             automodel (type, optional): The class
             used to initialize the model. Defaults to AutoModel.
         """
-        super().initialize(noinit=noinit)
+        super().initialize()
 
         config = AutoConfig.from_pretrained(self.model_id)
         if noinit:
@@ -161,15 +159,6 @@ class TransformerVocab(text.Vocab):
     def maxtokens(self) -> int:
         return self.tokenizer.model_max_length
 
-    def forward(self, toks: TokenizedTexts, all_outputs=False):
-        outputs = self.model(
-            toks.ids.to(self.device),
-            attention_mask=toks.mask.to(self.device) if toks.mask is not None else None,
-        )
-        if all_outputs:
-            return outputs
-        return outputs.last_hidden_state
-
     def dim(self):
         return self.model.config.hidden_size
 
@@ -179,21 +168,41 @@ class TransformerVocab(text.Vocab):
         return self.tokenizer.vocab_size
 
 
+class TransformerTokensEncoder(BaseTransformer, TokensEncoder):
+    """A tokens encoder based on HuggingFace"""
+
+    def forward(self, toks: TokenizedTexts, all_outputs=False):
+        outputs = self.model(
+            toks.ids.to(self.device),
+            attention_mask=toks.mask.to(self.device) if toks.mask is not None else None,
+        )
+        if all_outputs:
+            return outputs
+        return outputs.last_hidden_state
+
+
+@deprecate
+class TransformerVocab(TransformerTokensEncoder):
+    """Old tokens encoder"""
+
+    pass
+
+
 class SentenceTransformerTextEncoder(TextEncoder):
     """A Sentence Transformers text encoder"""
 
-    model_id: Param[str] = "bert-base-uncased"
+    model_id: Param[str] = "sentence-transformers/all-MiniLM-L6-v2"
 
     def initialize(self):
         from sentence_transformers import SentenceTransformer
 
-        self.model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+        self.model = SentenceTransformer(self.model_id)
 
     def forward(self, texts: List[str]) -> torch.Tensor:
         return self.model.encode(texts)
 
 
-class HuggingfaceTokenizer(TextEncoder):
+class HuggingfaceTokenizer(Tokenizer):
     """A tokenizer which encodes the tokens into 0 and 1 vector
     1 represents the text contains the token and 0 otherwise"""
 
@@ -247,17 +256,7 @@ class HuggingfaceTokenizer(TextEncoder):
         return False
 
 
-class IndependentTransformerVocab(TransformerVocab):
-    """Encodes as [CLS] QUERY [SEP]"""
-
-    def __call__(self, tokids):
-        with torch.set_grad_enabled(self.trainable):
-            y = self.model(tokids)
-
-        return y.last_hidden_state
-
-
-class TransformerEncoder(TransformerVocab, TextEncoder, DistributableModel):
+class TransformerEncoder(BaseTransformer, TextEncoder, DistributableModel):
     """Encodes using the [CLS] token"""
 
     maxlen: Param[Optional[int]] = None
@@ -307,62 +306,7 @@ class TransformerTextEncoderAdapter(TextEncoder, DistributableModel):
         self.encoder.model = update(self.encoder.model)
 
 
-class ContextualizedTransformerEncoder(TransformerVocab, ContextualizedTextEncoder):
-    """Returns the contextualized output at the various layers"""
-
-    @property
-    def dimension(self):
-        return self.dim()
-
-    def forward(
-        self,
-        texts: List[str],
-        maxlen=None,
-        only_tokens=True,
-        output_hidden_states=False,
-    ):
-        tokenized = self.batch_tokenize(texts, maxlen=maxlen or self.maxlen, mask=True)
-        with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
-            y = self.model(
-                tokenized.ids,
-                attention_mask=tokenized.mask.to(self.device),
-                output_hidden_states=output_hidden_states,
-            )
-            mask = tokenized.mask
-            ids = tokenized.ids.to(self.device)
-            if only_tokens:
-                mask = (self.CLS != ids) & (self.SEP != ids) & mask.to(self.device)
-            return ContextualizedTextEncoderOutput(
-                ids, mask, y.last_hidden_state, y.hidden_states
-            )
-
-    def with_maxlength(self, maxlen: int):
-        return ContextualizedTextEncoderAdapter(encoder=self, maxlen=maxlen)
-
-
-class ContextualizedTextEncoderAdapter(ContextualizedTextEncoder):
-    encoder: Param[ContextualizedTransformerEncoder]
-    maxlen: Param[Optional[int]] = None
-
-    def initialize(self):
-        self.encoder.initialize()
-
-    def forward(self, texts: List[str], **kwargs):
-        return self.encoder.forward(texts, maxlen=self.maxlen, **kwargs)
-
-    @property
-    def dimension(self):
-        return self.encoder.dimension
-
-    def static(self):
-        return self.encoder.static()
-
-    @property
-    def vocab_size(self):
-        return self.encoder.vocab_size
-
-
-class DualTransformerEncoder(TransformerVocab, DualTextEncoder):
+class DualTransformerEncoder(BaseTransformer, DualTextEncoder):
     """Encodes the (query, document pair) using the [CLS] token
 
     maxlen: Maximum length of the query document pair (in tokens) or None if
@@ -389,17 +333,16 @@ class DualTransformerEncoder(TransformerVocab, DualTextEncoder):
     def dimension(self) -> int:
         return self.model.config.hidden_size
 
-    # def distribute_models(self, update):
-    #     self.model = update(self.model)
 
+class DualDuoBertTransformerEncoder(BaseTransformer, TripletTextEncoder):
+    """Vector encoding of a (query, document, document) triplet
 
-class DualDuoBertTransformerEncoder(TransformerVocab, TripletTextEncoder):
-    """Encoder of the query-document-document pair of the [cls] token
-    Be like: [cls]query[sep]doc1[sep]doc2[sep] with 62 tokens for query
-    and 223 for each document.
+    Be like: [cls] query [sep] doc1 [sep] doc2 [sep]
+
     """
 
     maxlen: Param[Optional[Tuple[int, int, int]]] = (64, 224, 224)
+    """Maximum length for the query, the first document and the second one"""
 
     def initialize(self, noinit=False, automodel=AutoModel):
         super().initialize(noinit, automodel)
@@ -518,7 +461,7 @@ class LayerFreezer(InitializationTrainingHook):
 
     RE_LAYER = re.compile(r"""^(?:encoder|transformer)\.layer\.(\d+)\.""")
 
-    transformer: Param[TransformerVocab]
+    transformer: Param[BaseTransformer]
     """The model"""
 
     freeze_embeddings: Param[bool] = False
@@ -563,30 +506,3 @@ class LayerFreezer(InitializationTrainingHook):
                 if self.should_freeze(name):
                     logger.info("Freezing layer %s", name)
                     param.requires_grad = False
-
-
-# TODO: make the class more generic (but involves changing the models or moving
-# this to the training part)
-class DistributedModelHook(InitializationHook):
-    """Hook to distribute the model processing
-
-    When in multiprocessing/multidevice, use
-    `torch.nn.parallel.DistributedDataParallel`, otherwise use
-    `torch.nn.DataParallel`.
-    """
-
-    transformer: Param[TransformerVocab]
-    """The model"""
-
-    def after(self, state: Context):
-        info = state.device_information
-        if isinstance(info, DistributedDeviceInformation):
-            logger.info("Using a distributed model with rank=%d", info.rank)
-            self.transformer.model = nn.parallel.DistributedDataParallel(
-                self.transformer.model, device_ids=[info.rank]
-            )
-        else:
-            n_gpus = torch.cuda.device_count()
-            if n_gpus > 1:
-                logger.info("Setting up DataParallel for transformer (%d GPUs)", n_gpus)
-                self.transformer.model = torch.nn.DataParallel(self.transformer.model)

@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 from xpmir.letor.records import BaseRecords
-from xpmir.text import Vocab
+from xpmir.text import TokensEncoder
 
 
 # The code below is heavily borrowed from OpenNIR
@@ -35,7 +35,8 @@ class InteractionMatrix(nn.Module):
         self.padding = padding
 
     def forward(self, a_embed, b_embed, a_tok, b_tok):
-        wrap_list = lambda x: x if isinstance(x, list) else [x]
+        def wrap_list(x):
+            return x if isinstance(x, list) else [x]
 
         a_embed = wrap_list(a_embed)
         b_embed = wrap_list(b_embed)
@@ -61,7 +62,7 @@ class InteractionMatrix(nn.Module):
         return torch.stack(simmats, dim=1)
 
     def encode_query_doc(
-        self, encoder: Vocab, inputs: BaseRecords, d_maxlen=None, q_maxlen=None
+        self, encoder: TokensEncoder, inputs: BaseRecords, d_maxlen=None, q_maxlen=None
     ):
         """Returns a (batch x ... x #q x #d) tensor"""
         tokq, q, tokd, d = encoder.enc_query_doc(

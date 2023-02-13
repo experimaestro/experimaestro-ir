@@ -109,6 +109,10 @@ class Scorer(Config, EasyLogger):
         """Put the model in inference/evaluation mode"""
         pass
 
+    def to(self, device):
+        """Move the scorer to another device"""
+        pass
+
     def getRetriever(
         self,
         retriever: "Retriever",

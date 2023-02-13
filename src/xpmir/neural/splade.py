@@ -5,7 +5,7 @@ import torch
 from experimaestro import initializer
 from xpmir.distributed import DistributableModel
 from transformers import AutoModelForMaskedLM
-from xpmir.text.huggingface import TransformerVocab, HuggingfaceTokenizer
+from xpmir.text.huggingface import TransformerTokensEncoder, HuggingfaceTokenizer
 from xpmir.text.encoders import TextEncoder
 from xpmir.neural.dual import DotDense, ScheduledFlopsRegularizer
 from xpmir.utils.utils import easylog
@@ -63,7 +63,7 @@ class SpladeTextEncoder(TextEncoder, DistributableModel):
     as the scorer class
     """
 
-    encoder: Param[TransformerVocab]
+    encoder: Param[TransformerTokensEncoder]
     """The encoder from Hugging Face"""
 
     aggregation: Param[Aggregation]
@@ -102,7 +102,9 @@ def _splade(
 ):
     # Unlike the cross-encoder, here the encoder returns the whole last layer
     # In the paper we use the DistilBERT-based as the checkpoint
-    encoder = TransformerVocab(model_id="distilbert-base-uncased", trainable=True)
+    encoder = TransformerTokensEncoder(
+        model_id="distilbert-base-uncased", trainable=True
+    )
 
     # make use the output of the BERT and do an aggregation
     doc_encoder = SpladeTextEncoder(
@@ -131,7 +133,9 @@ def _splade_doc(
     # The doc_encoder is the traditional one, and the query encoder return a vector
     # contains only 0 and 1
     # In the paper we use the DistilBERT-based as the checkpoint
-    encoder = TransformerVocab(model_id="distilbert-base-uncased", trainable=True)
+    encoder = TransformerTokensEncoder(
+        model_id="distilbert-base-uncased", trainable=True
+    )
 
     # make use the output of the BERT and do an aggregation
     doc_encoder = SpladeTextEncoder(

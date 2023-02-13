@@ -11,9 +11,14 @@ The `text` module groups classes and configurations that compute
 a representation of text -- this includes word embeddings as well
 as contextual word embeddings and document embeddings.
 
+.. autoxpmconfig:: xpmir.text.encoders.Tokenizer
+   :members: pad_sequences, batch_tokenize, pad_tokenid, tok2id, id2tok, lexicon_size
 
-.. autoxpmconfig:: xpmir.text.Vocab
+.. autoxpmconfig:: xpmir.text.encoders.TokensEncoder
+   :members: forward
+
 .. autoxpmconfig:: xpmir.text.encoders.TextEncoder
    :members: forward
+
 .. autoxpmconfig:: xpmir.text.encoders.DualTextEncoder
    :members: forward

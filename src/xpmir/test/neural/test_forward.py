@@ -17,11 +17,10 @@ from xpmir.letor.records import (
     Query,
     TokenizedTexts,
 )
-from xpmir.text import Vocab
-from xpmir.text.encoders import DualTextEncoder, MeanTextEncoder
+from xpmir.text.encoders import TokensEncoder, DualTextEncoder, MeanTextEncoder
 
 
-class RandomVocab(Vocab):
+class RandomTokensEncoder(TokensEncoder):
     DIMENSION = 7
     MAX_WORDS = 100
 
@@ -29,11 +28,11 @@ class RandomVocab(Vocab):
         super().__init__()
         self.map = {}
         self.embed = torch.nn.Embedding.from_pretrained(
-            torch.randn(RandomVocab.MAX_WORDS, RandomVocab.DIMENSION)
+            torch.randn(RandomTokensEncoder.MAX_WORDS, RandomTokensEncoder.DIMENSION)
         )
 
     def dim(self) -> int:
-        return RandomVocab.DIMENSION
+        return RandomTokensEncoder.DIMENSION
 
     @property
     def pad_tokenid(self) -> int:
@@ -84,7 +83,7 @@ def drmm():
     """Drmm factory"""
     from xpmir.neural.interaction.drmm import Drmm
 
-    return Drmm(vocab=RandomVocab(), index=CustomIndex()).instance()
+    return Drmm(vocab=RandomTokensEncoder(), index=CustomIndex()).instance()
 
 
 @registermodel
@@ -93,7 +92,7 @@ def colbert():
     from xpmir.neural.colbert import Colbert
 
     return Colbert(
-        vocab=RandomVocab(), masktoken=False, doctoken=False, querytoken=False
+        vocab=RandomTokensEncoder(), masktoken=False, doctoken=False, querytoken=False
     ).instance()
 
 
@@ -103,8 +102,8 @@ def dotdense():
     from xpmir.neural.siamese import DotDense
 
     return DotDense(
-        encoder=MeanTextEncoder(vocab=RandomVocab()),
-        query_encoder=MeanTextEncoder(vocab=RandomVocab()),
+        encoder=MeanTextEncoder(encoder=RandomTokensEncoder()),
+        query_encoder=MeanTextEncoder(encoder=RandomTokensEncoder()),
     ).instance()
 
 
@@ -114,8 +113,8 @@ def cosinedense():
     from xpmir.neural.siamese import CosineDense
 
     return CosineDense(
-        encoder=MeanTextEncoder(vocab=RandomVocab()),
-        query_encoder=MeanTextEncoder(vocab=RandomVocab()),
+        encoder=MeanTextEncoder(encoder=RandomTokensEncoder()),
+        query_encoder=MeanTextEncoder(encoder=RandomTokensEncoder()),
     ).instance()
 
 
