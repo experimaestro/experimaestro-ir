@@ -51,20 +51,12 @@ class PointwiseRecord:
         self.relevance = relevance
 
 
-class TokenizedTexts:
-    def __init__(
-        self,
-        tokens: List[List[str]],
-        ids: torch.LongTensor,
-        lens: List[int],
-        mask: torch.LongTensor,
-        token_type_ids: torch.LongTensor = None,
-    ):
-        self.tokens = tokens
-        self.ids = ids
-        self.lens = lens
-        self.mask = mask
-        self.token_type_ids = token_type_ids
+class TokenizedTexts(NamedTuple):
+    tokens: List[List[str]]
+    ids: torch.LongTensor
+    lens: List[int]
+    mask: torch.LongTensor
+    token_type_ids: torch.LongTensor = None
 
 
 RT = TypeVar("RT")
