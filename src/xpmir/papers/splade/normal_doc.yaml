@@ -1,5 +1,6 @@
 # The configuration specific for SPLADE_doc
 id: splade_doc
+desc: 'SPLADE_doc: SPLADEv2 model with document encoder only'
 gpu: true
 indexation:
     requirements: duration=2 days & cpu(mem=2G)

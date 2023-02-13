@@ -73,6 +73,7 @@ class UploadToHub:
         models: Dict[str, Scorer],
         *,
         evaluations: Optional[EvaluationsCollection] = None,
+        add_des: str = "",
     ):
         if self.model_id is None:
             return
@@ -86,6 +87,7 @@ library_name: xpmir
         )
 
         out.write(f"# {self.doc.short_description}\n\n")
+        out.write(f"{add_des}\n")
         out.write(f"{self.doc.long_description}\n")
 
         out.write("\n## Using the model")

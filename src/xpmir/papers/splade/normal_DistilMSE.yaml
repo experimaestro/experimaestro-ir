@@ -1,5 +1,6 @@
 # The configuration specific for SPLADE_DistilMSE
 id: splade_distilMSE
+desc: 'SPLADE_DistilMSE: SPLADEv2 trained with the distillated triplets'
 gpu: true
 indexation:
     requirements: duration=2 days & cpu(mem=2G)

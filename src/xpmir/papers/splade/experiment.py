@@ -65,7 +65,7 @@ logging.basicConfig(level=logging.INFO)
 # Run by:
 # $ xpmir papers splade spladeV2 --configuration config_name experiment/
 def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub):
-    """SPLADE: SPLADEv2 with max aggregation
+    """SPLADEv2
 
     SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval
     (Thibault Formal, Carlos Lassance, Benjamin Piwowarski, Stéphane Clinchant).
@@ -384,6 +384,7 @@ def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub):
     upload_to_hub.send_scorer(
         {f"{cfg.learner.model}-{cfg.learner.dataset}-RR@10": trained_model},
         evaluations=tests,
+        add_des=cfg.desc,
     )
 
 

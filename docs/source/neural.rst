@@ -8,6 +8,7 @@ Cross-Encoder
 Models that rely on a joint representation of the query and the document.
 
 .. autoxpmconfig:: xpmir.neural.cross.CrossScorer
+.. autoxpmconfig:: xpmir.neural.cross.DuoCrossScorer
 
 
 Dual models
@@ -31,6 +32,7 @@ Hooks
 
 
 .. autoxpmconfig:: xpmir.neural.dual.FlopsRegularizer
+.. autoxpmconfig:: xpmir.neural.dual.ScheduledFlopsRegularizer
 
 
 Dense models

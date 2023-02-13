@@ -28,6 +28,8 @@ class CrossScorer(TorchLearnableScorer, DistributableModel):
     """
 
     encoder: Param[DualTextEncoder]
+    """an encoder for encoding the concatenated query-document tokens which
+    doesn't contains the final linear layer"""
 
     def __validate__(self):
         super().__validate__()

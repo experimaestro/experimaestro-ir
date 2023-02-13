@@ -1,4 +1,5 @@
 id: splade_max
+desc: 'SPLADE_max: SPLADEv2 with max aggregation'
 gpu: true
 indexation:
     requirements: duration=2 days & cpu(mem=2G)
