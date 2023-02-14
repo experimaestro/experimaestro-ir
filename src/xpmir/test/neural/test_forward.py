@@ -7,6 +7,7 @@ from collections import defaultdict
 from experimaestro import Constant
 from xpmir.index import Index
 from xpmir.letor import Random
+from xpmir.neural.dual import CosineDense, DotDense
 from xpmir.letor.records import (
     Document,
     PairwiseRecord,
@@ -99,8 +100,6 @@ def colbert():
 @registermodel
 def dotdense():
     """Colbert model factory"""
-    from xpmir.neural.siamese import DotDense
-
     return DotDense(
         encoder=MeanTextEncoder(encoder=RandomTokensEncoder()),
         query_encoder=MeanTextEncoder(encoder=RandomTokensEncoder()),
@@ -110,8 +109,6 @@ def dotdense():
 @registermodel
 def cosinedense():
     """Colbert model factory"""
-    from xpmir.neural.siamese import CosineDense
-
     return CosineDense(
         encoder=MeanTextEncoder(encoder=RandomTokensEncoder()),
         query_encoder=MeanTextEncoder(encoder=RandomTokensEncoder()),
