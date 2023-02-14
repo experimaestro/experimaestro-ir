@@ -11,7 +11,7 @@ from datamaestro import prepare_dataset
 from datamaestro_text.transforms.ir import ShuffledTrainingTripletsLines
 from experimaestro.launcherfinder import find_launcher
 
-from experimaestro import experiment, tag, copyconfig, setmeta
+from experimaestro import experiment, tag, copyconfig, setmeta, RunMode
 from xpmir.datasets.adapters import (
     MemoryTopicStore,
     RandomFold,
@@ -64,7 +64,7 @@ logging.basicConfig(level=logging.INFO)
 @paper_command(schema=SPLADE, package=__package__)
 # Run by:
 # $ xpmir papers splade spladeV2 --configuration config_name experiment/
-def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub, dry_run: bool):
+def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub, run_mode: RunMode):
     """SPLADEv2
 
     SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval
@@ -96,9 +96,7 @@ def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub, dry_run: bool):
     train_topics = prepare_dataset("irds.msmarco-passage.train.queries")
 
     # Index for msmarcos
-    index = IndexCollection(documents=documents, storeContents=True).submit(
-        dryrun=dry_run
-    )
+    index = IndexCollection(documents=documents, storeContents=True).submit()
 
     # Build a dev. collection for full-ranking (validation) "Efficiently
     # Teaching an Effective Dense Retriever with Balanced Topic Aware
@@ -123,7 +121,7 @@ def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub, dry_run: bool):
         hooks=[
             setmeta(DistributedHook(models=[tasb.encoder, tasb.query_encoder]), True)
         ],
-    ).submit(dryrun=dry_run, launcher=gpu_launcher_index)
+    ).submit(launcher=gpu_launcher_index)
 
     # A retriever if tas-balanced. We use the index of the faiss.
     # Used it to create the validation dataset.
@@ -154,14 +152,14 @@ def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub, dry_run: bool):
             fold=0,
             sizes=[cfg.learner.validation_size],
             exclude=devsmall.topics,
-        ).submit(dryrun=dry_run),
+        ).submit(),
         retrievers=[
             tasb_retriever,
             AnseriniRetriever(
                 k=cfg.tas_balance_retriever.retTopK, index=index, model=basemodel
             ),
         ],
-    ).submit(dryrun=dry_run, launcher=gpu_launcher_index)
+    ).submit(launcher=gpu_launcher_index)
 
     # compute the baseline performance on the test dataset.
     # Bm25
@@ -209,7 +207,7 @@ def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub, dry_run: bool):
         triplesid = ShuffledTrainingTripletsLines(
             seed=123,
             data=train_triples,
-        ).submit(dryrun=dry_run)
+        ).submit()
 
         # generator a batchwise sampler which is an Iterator of ProductRecords()
         train_sampler = TripletBasedSampler(
@@ -333,7 +331,7 @@ def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub, dry_run: bool):
     )
 
     # submit the learner and build the symbolique link
-    outputs = learner.submit(dryrun=dry_run, launcher=gpu_launcher_learner)
+    outputs = learner.submit(launcher=gpu_launcher_learner)
     tb.add(learner, learner.logpath)
 
     # get the trained model
@@ -356,7 +354,7 @@ def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub, dry_run: bool):
             device=device,
             documents=documents,
             ordered_index=False,
-        ).submit(dryrun=dry_run, launcher=gpu_launcher_index)
+        ).submit(launcher=gpu_launcher_index)
 
         return SparseRetriever(
             index=index,
@@ -379,7 +377,7 @@ def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub, dry_run: bool):
     # wait for all the experiments ends
     xp.wait()
 
-    if not dry_run:
+    if run_mode == RunMode.NORMAL:
         # Display metrics for each trained model
         tests.output_results()
 

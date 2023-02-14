@@ -14,7 +14,7 @@ from importlib import import_module
 import docstring_parser
 from attrs import define
 
-from experimaestro import experiment
+from experimaestro import experiment, RunMode
 from omegaconf import OmegaConf, MISSING
 from xpmir.configuration import omegaconf_argument
 from xpmir.evaluation import EvaluationsCollection
@@ -159,7 +159,12 @@ def paper_command(package=None, schema=None):
                 help="Server hostname (default to localhost,"
                 " not suitable if your jobs are remote)",
             ),
-            click.option("--dry-run", is_flag=True, help="Do not submit jobs"),
+            click.option(
+                "--run-mode",
+                type=click.Choice(RunMode),
+                default=RunMode.NORMAL,
+                help="Sets the run mode",
+            ),
             click.option(
                 "--port",
                 type=int,
@@ -192,7 +197,7 @@ def paper_command(package=None, schema=None):
             port,
             args,
             env,
-            dry_run,
+            run_mode,
             upload_to_hub: Optional[str],
             **kwargs,
         ):
@@ -227,12 +232,14 @@ def paper_command(package=None, schema=None):
             if "debug" in parameters:
                 kwargs["debug"] = debug
 
-            if "dry_run" in parameters:
-                kwargs["dry_run"] = dry_run
+            if "run_mode" in parameters:
+                kwargs["run_mode"] = run_mode
 
             # Run the experiment
             logging.info("Starting experimaestro server (%s:%s)", host, port)
-            with experiment(workdir, configuration.id, host=host, port=port) as xp:
+            with experiment(
+                workdir, configuration.id, host=host, port=port, run_mode=run_mode
+            ) as xp:
 
                 for key, value in env:
                     xp.setenv(key, value)

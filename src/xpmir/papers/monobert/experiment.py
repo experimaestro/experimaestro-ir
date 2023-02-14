@@ -8,7 +8,7 @@ from datamaestro import prepare_dataset
 from datamaestro_text.transforms.ir import ShuffledTrainingTripletsLines
 from datamaestro_text.data.ir import AdhocDocuments, Adhoc
 from xpmir.neural.cross import CrossScorer
-from experimaestro import experiment, setmeta
+from experimaestro import experiment, setmeta, RunMode
 from experimaestro.launcherfinder import find_launcher
 from xpmir.datasets.adapters import RandomFold
 from xpmir.evaluation import Evaluations, EvaluationsCollection
@@ -36,7 +36,7 @@ logging.basicConfig(level=logging.INFO)
 
 
 @paper_command(schema=Monobert, package=__package__)
-def cli(xp: experiment, cfg: Monobert, upload_to_hub: UploadToHub):
+def cli(xp: experiment, cfg: Monobert, upload_to_hub: UploadToHub, run_mode: RunMode):
     """monoBERT trained on MS-Marco
 
     Passage Re-ranking with BERT (Rodrigo Nogueira, Kyunghyun Cho). 2019.
@@ -100,7 +100,7 @@ def cli(xp: experiment, cfg: Monobert, upload_to_hub: UploadToHub):
 
     @collection_based_retrievers
     def model_based_retrievers(documents: AdhocDocuments):
-        def factory(*, base_factory, model):
+        def factory(*, base_factory, model, device=None):
             base_retriever = base_factory(documents)
             return model.getRetriever(
                 base_retriever,
@@ -153,7 +153,7 @@ def cli(xp: experiment, cfg: Monobert, upload_to_hub: UploadToHub):
     validation = ValidationListener(
         dataset=ds_val,
         retriever=model_based_retrievers.factory(
-            base_factory=val_retrievers, model=monobert_scorer
+            base_factory=val_retrievers, model=monobert_scorer, device=device
         )(documents),
         validation_interval=cfg.learner.validation_interval,
         metrics={"RR@10": True, "AP": False, "nDCG": False},
@@ -204,7 +204,9 @@ def cli(xp: experiment, cfg: Monobert, upload_to_hub: UploadToHub):
     for metric_name in validation.monitored():
         model = outputs.listeners["bestval"][metric_name]  # type: CrossScorer
         tests.evaluate_retriever(
-            model_based_retrievers.factory(model=model, base_factory=test_retrievers),
+            model_based_retrievers.factory(
+                model=model, base_factory=test_retrievers, device=device
+            ),
             launcher_evaluate,
             model_id=f"monobert-{metric_name}",
         )
@@ -212,13 +214,14 @@ def cli(xp: experiment, cfg: Monobert, upload_to_hub: UploadToHub):
     # Waits that experiments complete
     xp.wait()
 
-    # Upload to HUB if requested
-    upload_to_hub.send_scorer(
-        {"monobert-RR@10": outputs.listeners["bestval"]["RR@10"]}, evaluations=tests
-    )
+    if run_mode == RunMode.NORMAL:
+        # Upload to HUB if requested
+        upload_to_hub.send_scorer(
+            {"monobert-RR@10": outputs.listeners["bestval"]["RR@10"]}, evaluations=tests
+        )
 
-    # Display metrics for each trained model
-    tests.output_results()
+        # Display metrics for each trained model
+        tests.output_results()
 
 
 if __name__ == "__main__":
