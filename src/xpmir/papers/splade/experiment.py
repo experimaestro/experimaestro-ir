@@ -65,12 +65,7 @@ logging.basicConfig(level=logging.INFO)
 # Run by:
 # $ xpmir papers splade spladeV2 --configuration config_name experiment/
 def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub, run_mode: RunMode):
-    """SPLADEv2
-
-    SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval
-    (Thibault Formal, Carlos Lassance, Benjamin Piwowarski, Stéphane Clinchant).
-    2021. https://arxiv.org/abs/2109.10086
-    """
+    """SPLADEv2 models"""
 
     # Defining the different launchers
     cpu_launcher_index = find_launcher(cfg.indexation.requirements)
@@ -385,7 +380,9 @@ def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub, run_mode: RunMo
         upload_to_hub.send_scorer(
             {f"{cfg.learner.model}-{cfg.learner.dataset}-RR@10": trained_model},
             evaluations=tests,
-            add_des=cfg.desc,
+            tb_logs={
+                f"{cfg.learner.model}-{cfg.learner.dataset}-RR@10": learner.logpath
+            },
         )
 
 

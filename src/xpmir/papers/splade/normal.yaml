@@ -1,5 +1,10 @@
 id: splade_max
-desc: 'SPLADE_max: SPLADEv2 with max aggregation'
+title: 'SPLADE_max: SPLADEv2 with max aggregation'
+description: |
+    SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval
+    (Thibault Formal, Carlos Lassance, Benjamin Piwowarski, Stéphane Clinchant).
+    2021. https://arxiv.org/abs/2109.10086
+
 gpu: true
 indexation:
     requirements: duration=2 days & cpu(mem=2G)
@@ -22,7 +27,7 @@ learner:
     lamdba_warmup_steps: 50000
     requirements: duration=6 days & cuda(mem=24G)
 evaluation:
-    requirements: duration=6 days & cuda(mem=12G)
+    requirements: duration=6 days & cuda(mem=24G)
 base_retriever:
     topK: 1000
 tas_balance_retriever:

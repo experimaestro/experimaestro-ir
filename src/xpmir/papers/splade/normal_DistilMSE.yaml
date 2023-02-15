@@ -1,6 +1,13 @@
 # The configuration specific for SPLADE_DistilMSE
 id: splade_distilMSE
-desc: 'SPLADE_DistilMSE: SPLADEv2 trained with the distillated triplets'
+title: 'SPLADE_DistilMSE: SPLADEv2 trained with the distillated triplets'
+description: |
+    Training data from: https://github.com/sebastian-hofstaetter/neural-ranking-kd
+
+    From Distillation to Hard Negative Sampling: Making Sparse Neural IR Models
+    More Effective (Thibault Formal, Carlos Lassance, Benjamin Piwowarski,
+    Stéphane Clinchant). 2022. https://arxiv.org/abs/2205.04733
+
 gpu: true
 indexation:
     requirements: duration=2 days & cpu(mem=2G)
@@ -24,7 +31,7 @@ learner:
     lamdba_warmup_steps: 50000
     requirements: duration=6 days & cuda(mem=24G)
 evaluation:
-    requirements: duration=6 days & cuda(mem=12G)
+    requirements: duration=6 days & cuda(mem=24G)
 base_retriever:
     topK: 1000
 tas_balance_retriever:

@@ -1,6 +1,11 @@
 # The configuration specific for SPLADE_doc
 id: splade_doc
-desc: 'SPLADE_doc: SPLADEv2 model with document encoder only'
+title: 'SPLADE_doc: SPLADEv2 model with document encoder only'
+description: |
+    SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval
+    (Thibault Formal, Carlos Lassance, Benjamin Piwowarski, Stéphane Clinchant).
+    2021. https://arxiv.org/abs/2109.10086
+
 gpu: true
 indexation:
     requirements: duration=2 days & cpu(mem=2G)

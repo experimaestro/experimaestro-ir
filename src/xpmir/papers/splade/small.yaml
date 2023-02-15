@@ -1,5 +1,13 @@
 id: splade-small
 gpu: true
+title: 'SPLADEv2: version for debug'
+description: |
+    SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval
+    (Thibault Formal, Carlos Lassance, Benjamin Piwowarski, Stéphane Clinchant).
+    2021. https://arxiv.org/abs/2109.10086
+
+    This model will just be trained on msmarco for few iterations(debug)
+
 indexation:
     requirements: duration=2 days & cpu(mem=2G)
     training_requirements: duration=2 days & cuda(mem=24G)

@@ -104,12 +104,13 @@ The model can be loaded with [experimaestro
 IR](https://experimaestro-ir.readthedocs.io/en/latest/)
 
 ```py from xpmir.models import AutoModel
+from xpmir.models import AutoModel
 
-# Model that can be re-used in experiments model =
-AutoModel.load_from_hf_hub("{self.model_id}")
+# Model that can be re-used in experiments
+model = AutoModel.load_from_hf_hub("{self.model_id}")
 
-# Use this if you want to actually use the model model =
-AutoModel.load_from_hf_hub("{self.model_id}", as_instance=True)
+# Use this if you want to actually use the model
+model = AutoModel.load_from_hf_hub("{self.model_id}", as_instance=True)
 model.initialize() model.rsv("walgreens store sales average", "The average
 Walgreens salary ranges...")
 ```

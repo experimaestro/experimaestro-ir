@@ -255,6 +255,13 @@ class OneHotHuggingFaceEncoder(TextEncoder):
         return False
 
 
+@deprecate
+class HuggingfaceTokenizer(OneHotHuggingFaceEncoder):
+    """The old encoder for one hot"""
+
+    pass
+
+
 class TransformerEncoder(BaseTransformer, TextEncoder, DistributableModel):
     """Encodes using the [CLS] token"""
 
