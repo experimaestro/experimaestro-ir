@@ -5,7 +5,7 @@ import torch
 from experimaestro import initializer
 from xpmir.distributed import DistributableModel
 from transformers import AutoModelForMaskedLM
-from xpmir.text.huggingface import TransformerTokensEncoder, HuggingfaceTokenizer
+from xpmir.text.huggingface import TransformerTokensEncoder, OneHotHuggingFaceEncoder
 from xpmir.text.encoders import TextEncoder
 from xpmir.neural.dual import DotDense, ScheduledFlopsRegularizer
 from xpmir.utils.utils import easylog
@@ -142,7 +142,9 @@ def _splade_doc(
         aggregation=aggregation, encoder=encoder, maxlen=256
     )
 
-    query_encoder = HuggingfaceTokenizer(model_id="distilbert-base-uncased", maxlen=30)
+    query_encoder = OneHotHuggingFaceEncoder(
+        model_id="distilbert-base-uncased", maxlen=30
+    )
 
     return DotDense(
         encoder=doc_encoder, query_encoder=query_encoder

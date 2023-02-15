@@ -10,7 +10,6 @@ from xpmir.letor.context import InitializationTrainingHook, TrainState
 from xpmir.text.encoders import (
     Encoder,
     TokensEncoder,
-    Tokenizer,
     DualTextEncoder,
     TextEncoder,
     TripletTextEncoder,
@@ -202,7 +201,7 @@ class SentenceTransformerTextEncoder(TextEncoder):
         return self.model.encode(texts)
 
 
-class HuggingfaceTokenizer(Tokenizer):
+class OneHotHuggingFaceEncoder(TextEncoder):
     """A tokenizer which encodes the tokens into 0 and 1 vector
     1 represents the text contains the token and 0 otherwise"""
 

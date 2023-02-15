@@ -98,6 +98,9 @@ class SPLADE(PaperExperiment):
     gpu: bool = True
     """Use GPU for computation"""
 
+    desc: str = ""
+    """The additional description of the experiment"""
+
     indexation: Indexation = Factory(Indexation)
     learner: Learner = Factory(Learner)
     evaluation: Evaluation = Factory(Evaluation)
