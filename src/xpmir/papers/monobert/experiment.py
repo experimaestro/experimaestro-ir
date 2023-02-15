@@ -213,7 +213,9 @@ def cli(xp: experiment, cfg: Monobert, upload_to_hub: UploadToHub, run_mode: Run
     if run_mode == RunMode.NORMAL:
         # Upload to HUB if requested
         upload_to_hub.send_scorer(
-            {"monobert-RR@10": outputs.listeners["bestval"]["RR@10"]}, evaluations=tests
+            {"monobert-RR@10": outputs.listeners["bestval"]["RR@10"]},
+            evaluations=tests,
+            tb_logs={"monobert-RR@10": learner.logpath},
         )
 
         # Display metrics for each trained model

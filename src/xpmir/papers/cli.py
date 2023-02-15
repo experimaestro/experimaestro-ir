@@ -73,8 +73,16 @@ class UploadToHub:
         models: Dict[str, Scorer],
         *,
         evaluations: Optional[EvaluationsCollection] = None,
+        tb_logs: Dict[str, Path],
         add_des: str = "",
     ):
+        """Upload the scorer(s) to the HuggingFace Hub
+
+        :param models: The models to upload, each with a key
+        :param tb_logs: The tensorboard logs
+        :param evaluations: Models evaluations, defaults to None
+        :param add_des: Extra documentation, defaults to ""
+        """
         if self.model_id is None:
             return
 
@@ -86,9 +94,8 @@ library_name: xpmir
 """
         )
 
-        out.write(f"# {self.doc.short_description}\n\n")
+        out.write(f"{self.doc}\n\n")
         out.write(f"{add_des}\n")
-        out.write(f"{self.doc.long_description}\n")
 
         out.write("\n## Using the model")
         out.write(
@@ -118,7 +125,7 @@ Walgreens salary ranges...") ```
         readme_md = out.getvalue()
 
         logging.info("Uploading to HuggingFace Hub")
-        XPMIRHFHub(model, readme=readme_md).push_to_hub(
+        XPMIRHFHub(model, readme=readme_md, tb_logs=tb_logs).push_to_hub(
             repo_id=self.model_id, config={}
         )
 

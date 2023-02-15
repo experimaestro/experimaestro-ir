@@ -1,5 +1,6 @@
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Union, Dict
+import shutil
 from experimaestro.huggingface import ExperimaestroHFHub
 from experimaestro import Config
 from xpmir.neural.dual import DotDense
@@ -22,15 +23,23 @@ class XPMIRHFHub(ExperimaestroHFHub):
         config: Config,
         variant: Optional[str] = None,
         readme: Optional[str] = None,
+        tb_logs: Optional[Dict[str, Path]] = None,
     ):
         super().__init__(config, variant)
         self.readme = readme
+        self.tb_logs = tb_logs
 
     def _save_pretrained(self, save_directory: Union[str, Path]):
         save_directory = Path(save_directory)
         super()._save_pretrained(save_directory)
         if self.readme:
             (save_directory / "README.md").write_text(self.readme)
+
+        if self.tb_logs:
+            runs_dir = save_directory / "runs"
+            runs_dir.mkdir()
+            for key, path in self.tb_logs.items():
+                shutil.copytree(path, runs_dir / key)
 
 
 class AutoModel:
