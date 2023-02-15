@@ -37,11 +37,7 @@ logging.basicConfig(level=logging.INFO)
 
 @paper_command(schema=Monobert, package=__package__)
 def cli(xp: experiment, cfg: Monobert, upload_to_hub: UploadToHub, run_mode: RunMode):
-    """monoBERT trained on MS-Marco
-
-    Passage Re-ranking with BERT (Rodrigo Nogueira, Kyunghyun Cho). 2019.
-    https://arxiv.org/abs/1901.04085
-    """
+    """monoBERT model"""
 
     # Define the different launchers
     launcher_index = find_launcher(cfg.indexation.requirements)

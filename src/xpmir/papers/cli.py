@@ -128,6 +128,12 @@ class PaperExperiment:
     id: str = MISSING
     """The experiment ID"""
 
+    title: str = ""
+    """The model title"""
+
+    description: str = ""
+    """A description of the model"""
+
 
 def paper_command(package=None, schema=None):
     """General command line decorator for an XPM-IR experiment
@@ -219,21 +225,16 @@ def paper_command(package=None, schema=None):
 
             parameters = inspect.signature(fn).parameters
 
-            doc = docstring_parser.parse(fn.__doc__)
-
-            if "documentation" in parameters:
-                kwargs[
-                    "documentation"
-                ] = f"{doc.short_description}\n\n{doc.long_description}"
-
             if "upload_to_hub" in parameters:
+                if configuration.title == "" and configuration.description == "":
+                    doc = docstring_parser.parse(fn.__doc__)
+                else:
+                    doc = f"# {configuration.title}\n{configuration.description}"
                 kwargs["upload_to_hub"] = UploadToHub(upload_to_hub, doc)
 
-            if "debug" in parameters:
-                kwargs["debug"] = debug
+            kwargs = {**kwargs, "debug": debug, "run_mode": run_mode}
 
-            if "run_mode" in parameters:
-                kwargs["run_mode"] = run_mode
+            kwargs = {key: value for key, value in kwargs.items() if key in parameters}
 
             # Run the experiment
             logging.info("Starting experimaestro server (%s:%s)", host, port)

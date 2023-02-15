@@ -1,4 +1,11 @@
 id: monobert
+title: "monoBERT trained on MS-Marco"
+description: |
+    Passage Re-ranking with BERT (Rodrigo Nogueira, Kyunghyun Cho). 2019.
+    https://arxiv.org/abs/1901.04085
+
+    This model has been trained on MsMarco v1
+
 gpu: true
 indexation:
     requirements: duration=6 days & cpu(mem=4G, cores=8)

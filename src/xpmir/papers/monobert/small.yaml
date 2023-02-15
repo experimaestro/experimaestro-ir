@@ -1,4 +1,11 @@
 id: monobert-small
+title: "monoBERT trained on MS-Marco (debug)"
+description: |
+    Passage Re-ranking with BERT (Rodrigo Nogueira, Kyunghyun Cho). 2019.
+    https://arxiv.org/abs/1901.04085
+
+    This model has been trained on MsMarco v1 but only a few iterations (debug)
+
 indexation:
     requirements: duration=2 days & cpu(mem=4G)
 learner:
