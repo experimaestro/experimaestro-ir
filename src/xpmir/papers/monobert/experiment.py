@@ -96,7 +96,7 @@ def cli(xp: experiment, cfg: Monobert, upload_to_hub: UploadToHub, run_mode: Run
 
     @collection_based_retrievers
     def model_based_retrievers(documents: AdhocDocuments):
-        def factory(*, base_factory, model, device=None):
+        def factory(*, base_factory, model: CrossScorer, device=None):
             base_retriever = base_factory(documents)
             return model.getRetriever(
                 base_retriever,

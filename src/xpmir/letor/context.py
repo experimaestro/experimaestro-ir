@@ -248,7 +248,12 @@ class TrainerContext(Context):
 
         # Cleanup if needed
         if self.oldstate and self.oldstate.path:
-            rmtree(self.oldstate.path)
+            try:
+                rmtree(self.oldstate.path)
+            except OSError as e:
+                # We continue the learning process in those cases
+                logger.error("OS Error while trying to remove directory %s", e)
+
             self.oldstate = None
 
     def copy(self, path: Path):

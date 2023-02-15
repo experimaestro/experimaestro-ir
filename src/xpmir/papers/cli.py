@@ -95,7 +95,7 @@ library_name: xpmir
         )
 
         out.write(f"{self.doc}\n\n")
-        out.write(f"{add_des}\n")
+        out.write(f"{add_des}\n\n")
 
         out.write("\n## Using the model")
         out.write(
@@ -111,7 +111,9 @@ AutoModel.load_from_hf_hub("{self.model_id}")
 # Use this if you want to actually use the model model =
 AutoModel.load_from_hf_hub("{self.model_id}", as_instance=True)
 model.initialize() model.rsv("walgreens store sales average", "The average
-Walgreens salary ranges...") ```
+Walgreens salary ranges...")
+```
+
 """
         )
 
@@ -119,7 +121,7 @@ Walgreens salary ranges...") ```
         ((key, model),) = list(models.items())
 
         if evaluations is not None:
-            out.write("\n## Results\n")
+            out.write("\n## Results\n\n")
             evaluations.output_model_results(key, file=out)
 
         readme_md = out.getvalue()
