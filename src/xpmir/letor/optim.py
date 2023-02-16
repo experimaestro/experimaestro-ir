@@ -4,7 +4,8 @@ from pathlib import Path
 import torch
 import re
 
-from experimaestro import Config, Param, tagspath
+from experimaestro import Config, Param, tagspath, TaskOutput, Task
+from experimaestro.scheduler import Job, Listener
 from experimaestro.utils import cleanupdir
 from experimaestro.scheduler.services import WebService
 from xpmir.utils.utils import easylog
@@ -265,6 +266,22 @@ def get_optimizers(optimizers: Optimizers):
     return [ParameterOptimizer(optimizer=optimizers)]
 
 
+class TensorboardServiceListener(Listener):
+    def __init__(self, source: Path, target: Path):
+        self.source = source
+        self.target = target
+
+    def job_state(self, job: Job):
+        if not job.state.notstarted():
+            if not self.source.is_symlink():
+                try:
+                    self.source.symlink_to(self.target)
+                except Exception:
+                    logger.exception(
+                        "Cannot symlink %s to %s", self.source, self.target
+                    )
+
+
 class TensorboardService(WebService):
     id = "tensorboard"
 
@@ -278,8 +295,17 @@ class TensorboardService(WebService):
         logger.info("tensorboard --logdir=%s", self.path)
         self.url = None
 
-    def add(self, config: Config, path: Path):
-        (self.path / tagspath(config)).symlink_to(path)
+    def add(self, task: Union[TaskOutput, Task], path: Path):
+        # Wait until config has started
+        if isinstance(task, TaskOutput):
+            task = task.__xpm__.task
+
+        if job := task.__xpm__.job:
+            job.scheduler.addlistener(
+                TensorboardServiceListener(self.path / tagspath(task), path)
+            )
+        else:
+            logger.error("Task was not started: cannot link to tensorboard job path")
 
     def description(self):
         return "Tensorboard service"
