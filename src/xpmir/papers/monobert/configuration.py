@@ -33,14 +33,10 @@ class Learner:
 
 
 @define(kw_only=True)
-class Evaluation:
-    requirements: str = "duration=2 days & cuda(mem=24G)"
-
-
-@define(kw_only=True)
 class Retrieval:
     k: int = 1000
     batch_size: int = 512
+    requirements: str = "duration=2 days & cuda(mem=24G)"
 
 
 @define(kw_only=True)
@@ -48,5 +44,4 @@ class Monobert(RerankerMSMarcoV1Configuration):
 
     indexation: Indexation = Factory(Indexation)
     monobert: Learner = Factory(Learner)
-    evaluation: Evaluation = Factory(Evaluation)
     retrieval: Retrieval = Factory(Retrieval)

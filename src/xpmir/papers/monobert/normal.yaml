@@ -21,8 +21,6 @@ monobert:
     warmup_min_factor: 0
     lr: 3.0e-6
     requirements: duration=4 days & cuda(mem=24G) * 2
-evaluation:
-    requirements: duration=2 days & cuda(mem=24G)
 retrieval:
+    requirements: duration=2 days & cuda(mem=24G)
     k: 1000
-    val_k: 1000

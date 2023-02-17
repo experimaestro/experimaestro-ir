@@ -31,46 +31,18 @@ class DuoBERTExperiment(MonoBERTExperiment):
     cfg: DuoBERT
 
     def run(self):
-        """Runs an experiment"""
-        # Run monobert
         cfg = self.cfg
         monobert_results = super().run()
         monobert_scorer = monobert_results.models["monobert-RR@10"]
-
-        monobert_retrievers = partial(
-            self.model_based_retrievers,
-            scorer=monobert_scorer,
-            retrievers=self.test_retrievers,
-            device=self.device,
-        )
-
-        monobert_based_retrievers = partial(
-            monobert_retrievers,
-            batch_size=cfg.retrieval.batch_size,
-            batcher=PowerAdaptativeBatcher(),
-            device=self.device,
-        )
-
-        monobert_val_retrievers = partial(
-            monobert_based_retrievers, k=cfg.monobert.validation_top_k
-        )
-        val_retrievers = partial(
-            monobert_val_retrievers, k=cfg.duobert.validation_top_k
-        )
-
-        monobert_test_retrievers = partial(
-            monobert_retrievers, k=cfg.monobert.test_top_k
-        )
-        test_retrievers = partial(monobert_test_retrievers, k=cfg.duobert.test_top_k)
 
         # ------Start the code for the duobert
 
         # Define the trainer for the duobert
         duobert_trainer = pairwise.DuoPairwiseTrainer(
-            lossfn=pairwise.DuoLogProbaLoss().tag("loss", "duo_logp"),
+            lossfn=pairwise.PairwiseLossWithTarget().tag("loss", "duo_logp"),
             sampler=self.train_sampler,
             batcher=PowerAdaptativeBatcher(),
-            batch_size=cfg.duobert_learner.batch_size,
+            batch_size=cfg.duobert.batch_size,
         )
 
         # The scorer(model) for the duobert
@@ -78,16 +50,18 @@ class DuoBERTExperiment(MonoBERTExperiment):
             encoder=DualDuoBertTransformerEncoder(trainable=True, dropout=0.1)
         ).tag("duo-reranker", "duobert")
 
-        duobert_validation = ValidationListener(
-            dataset=self.ds_val,
-            retriever=duobert_scorer.getRetriever(
-                val_retrievers(self.documents),
-                cfg.duobert.batch_size,
-                PowerAdaptativeBatcher(),
-                device=self.device,
-            ),
-            validation_interval=cfg.duobert.validation_interval,
-            metrics={"RR@10": True, "AP": False, "nDCG": False},
+        # Validation: we use monoBERT but only keep validation_top_k
+        # results
+
+        monobert_val_retrievers = partial(
+            self.model_based_retrievers,
+            retrievers=partial(self.retrievers, k=cfg.duobert.base_validation_top_k),
+            top_k=cfg.duobert.validation_top_k,
+            scorer=monobert_scorer,
+        )
+
+        val_retriever = self.model_based_retrievers(
+            self.documents, retrievers=monobert_val_retrievers, scorer=duobert_scorer
         )
 
         # The validation listener evaluates the full retriever
@@ -95,13 +69,8 @@ class DuoBERTExperiment(MonoBERTExperiment):
         # on the validation set
         validation = ValidationListener(
             dataset=self.ds_val,
-            retriever=self.model_based_retrievers(
-                self.documents,
-                retrievers=val_retrievers,
-                scorer=duobert_scorer,
-                device=self.device,
-            ),
-            validation_interval=cfg.monobert.validation_interval,
+            retriever=val_retriever,
+            validation_interval=cfg.duobert.validation_interval,
             metrics={"RR@10": True, "AP": False, "nDCG": False},
         )
 
@@ -115,11 +84,11 @@ class DuoBERTExperiment(MonoBERTExperiment):
             # The model to train
             scorer=duobert_scorer,
             # Optimization settings
-            steps_per_epoch=self.duobert.steps_per_epoch,
+            steps_per_epoch=cfg.duobert.steps_per_epoch,
             optimizers=get_optimizers(self.optimizers),
-            max_epochs=self.duobert.max_epochs,
+            max_epochs=cfg.duobert.max_epochs,
             # The listeners (here, for validation)
-            listeners={"bestval": duobert_validation},
+            listeners={"bestval": validation},
             # The hook used for evaluation
             hooks=[setmeta(DistributedHook(models=[duobert_scorer]), True)],
         )
@@ -128,13 +97,26 @@ class DuoBERTExperiment(MonoBERTExperiment):
         outputs = learner.submit(launcher=self.launcher_learner)
 
         # Evaluate the neural model on test collections
+
+        monobert_test_retrievers = partial(
+            self.model_based_retrievers,
+            retrievers=partial(self.retrievers, k=cfg.retrieval.base_k),
+            top_k=cfg.retrieval.k,
+            scorer=monobert_scorer,
+        )
+        test_retrievers = partial(
+            self.model_based_retrievers,
+            retrievers=monobert_test_retrievers,
+            scorer=duobert_scorer,
+        )
+
         for metric_name in validation.monitored():
             model = outputs.listeners["bestval"][metric_name]  # type: CrossScorer
             self.tests.evaluate_retriever(
                 partial(
                     self.model_based_retrievers,
                     scorer=model,
-                    retrievers=self.test_retrievers,
+                    retrievers=test_retrievers,
                     device=self.device,
                 ),
                 self.launcher_evaluate,
@@ -148,6 +130,6 @@ class DuoBERTExperiment(MonoBERTExperiment):
         )
 
 
-@paper_command(package=__package__)
+@paper_command(package=__package__, schema=DuoBERT)
 def cli(xp: experiment, cfg: DuoBERT):
     return DuoBERTExperiment(xp, cfg).run()

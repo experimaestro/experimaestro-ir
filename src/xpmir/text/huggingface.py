@@ -347,7 +347,10 @@ class DualDuoBertTransformerEncoder(BaseTransformer, TripletTextEncoder):
 
     """
 
-    maxlen: Param[Optional[Tuple[int, int, int]]] = (64, 224, 224)
+    maxlen_query: Param[int] = 64
+    """Maximum length for the query, the first document and the second one"""
+
+    maxlen_doc: Param[int] = 224
     """Maximum length for the query, the first document and the second one"""
 
     def initialize(self, noinit=False, automodel=AutoModel):
@@ -358,26 +361,27 @@ class DualDuoBertTransformerEncoder(BaseTransformer, TripletTextEncoder):
         self,
         texts: List[Tuple[str, str, str]],
         batch_first=True,
-        maxlen=(
-            64,
-            224,
-            224,
-        ),  # for query, first document and second document respectively
         mask=False,
     ) -> TokenizedTexts:
 
         assert batch_first, "Batch first is the only option"
 
         query = self.tokenizer(
-            [triplet[0] for triplet in texts], max_length=maxlen[0], truncation=True
+            [triplet[0] for triplet in texts],
+            max_length=self.maxlen_query,
+            truncation=True,
         )
 
         document_1 = self.tokenizer(
-            [triplet[1] for triplet in texts], max_length=maxlen[1], truncation=True
+            [triplet[1] for triplet in texts],
+            max_length=self.maxlen_doc,
+            truncation=True,
         )
 
         document_2 = self.tokenizer(
-            [triplet[2] for triplet in texts], max_length=maxlen[2], truncation=True
+            [triplet[2] for triplet in texts],
+            max_length=self.maxlen_doc,
+            truncation=True,
         )
 
         new_input_ids = []

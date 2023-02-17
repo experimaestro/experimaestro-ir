@@ -10,10 +10,11 @@ validation_size: 10
 
 indexation:
     requirements: duration=2 days & cpu(mem=4G)
-evaluation:
-    requirements: duration=2 days & cuda(mem=8G)
+
 retrieval:
+    requirements: duration=2 days & cuda(mem=8G)
     k: 20
+    monobert_k: 40
 
 monobert:
     steps_per_epoch: 32

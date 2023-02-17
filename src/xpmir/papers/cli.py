@@ -4,6 +4,7 @@ from functools import reduce
 import inspect
 import io
 import logging
+import json
 import sys
 from typing import Dict, List
 from pathlib import Path
@@ -223,7 +224,7 @@ def paper_command(package=None, schema=None):
                     sys.exit(1)
 
             if show:
-                print(configuration)  # noqa: T201
+                print(json.dumps(OmegaConf.to_container(configuration)))  # noqa: T201
                 sys.exit(0)
 
             parameters = inspect.signature(fn).parameters
@@ -252,12 +253,8 @@ def paper_command(package=None, schema=None):
                 results = fn(xp, configuration, **kwargs)
                 xp.wait()
 
-                if isinstance(results, PaperResults):
-                    if (
-                        run_mode == RunMode.NORMAL
-                        and upload_to_hub is not None
-                        and "upload_to_hub" not in parameters
-                    ):
+                if isinstance(results, PaperResults) and run_mode == RunMode.NORMAL:
+                    if upload_to_hub is not None and "upload_to_hub" not in parameters:
                         upload_to_hub.send_scorer(
                             results.models,
                             evaluations=results.evaluations,

@@ -37,7 +37,7 @@ class MonoBERTExperiment(RerankerMSMarcoV1Experiment):
     def __init__(self, xp: experiment, cfg: Monobert):
         super().__init__(xp, cfg)
         self.launcher_learner = find_launcher(cfg.monobert.requirements)
-        self.launcher_evaluate = find_launcher(cfg.evaluation.requirements)
+        self.launcher_evaluate = find_launcher(cfg.retrieval.requirements)
 
         scheduler = LinearWithWarmup(
             num_warmup_steps=cfg.monobert.num_warmup_steps,

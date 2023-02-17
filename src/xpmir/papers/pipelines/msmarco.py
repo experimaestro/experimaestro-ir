@@ -76,7 +76,7 @@ class MSMarcoV1Experiment:
 
 @define(kw_only=True)
 class RerankerMSMarcoV1Configuration(MSMarcoV1Configuration):
-    validation_size: int = 1000
+    validation_size: int = 500
     """Number of validation topics"""
 
 
