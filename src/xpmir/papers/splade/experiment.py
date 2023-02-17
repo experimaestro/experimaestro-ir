@@ -11,7 +11,7 @@ from datamaestro import prepare_dataset
 from datamaestro_text.transforms.ir import ShuffledTrainingTripletsLines
 from experimaestro.launcherfinder import find_launcher
 
-from experimaestro import experiment, tag, copyconfig, setmeta, RunMode
+from experimaestro import experiment, tag, copyconfig, setmeta
 from xpmir.datasets.adapters import (
     MemoryTopicStore,
     RandomFold,
@@ -40,7 +40,7 @@ from xpmir.letor.distillation.samplers import (
     PairwiseHydrator,
 )
 from xpmir.models import AutoModel
-from xpmir.papers.cli import paper_command, UploadToHub
+from xpmir.papers.cli import paper_command
 from xpmir.rankers.full import FullRetriever
 from xpmir.letor.trainers.batchwise import BatchwiseTrainer, SoftmaxCrossEntropy
 from xpmir.letor.batchers import PowerAdaptativeBatcher
@@ -56,6 +56,7 @@ from xpmir.rankers.standard import BM25
 from xpmir.neural.splade import spladeV2_max, spladeV2_doc
 from xpmir.measures import AP, P, nDCG, RR
 from .configuration import SPLADE
+from xpmir.papers.results import PaperResults
 
 
 logging.basicConfig(level=logging.INFO)
@@ -64,7 +65,7 @@ logging.basicConfig(level=logging.INFO)
 @paper_command(schema=SPLADE, package=__package__)
 # Run by:
 # $ xpmir papers splade spladeV2 --configuration config_name experiment/
-def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub, run_mode: RunMode):
+def cli(xp: experiment, cfg: SPLADE):
     """SPLADEv2 models"""
 
     # Defining the different launchers
@@ -369,21 +370,11 @@ def cli(xp: experiment, cfg: SPLADE, upload_to_hub: UploadToHub, run_mode: RunMo
         model_id=f"{cfg.learner.model}-{cfg.learner.dataset}-RR@10",
     )
 
-    # wait for all the experiments ends
-    xp.wait()
-
-    if run_mode == RunMode.NORMAL:
-        # Display metrics for each trained model
-        tests.output_results()
-
-        # Upload to HUB if requested
-        upload_to_hub.send_scorer(
-            {f"{cfg.learner.model}-{cfg.learner.dataset}-RR@10": trained_model},
-            evaluations=tests,
-            tb_logs={
-                f"{cfg.learner.model}-{cfg.learner.dataset}-RR@10": learner.logpath
-            },
-        )
+    return PaperResults(
+        models={f"{cfg.learner.model}-{cfg.learner.dataset}-RR@10": trained_model},
+        evaluations=tests,
+        tb_logs={f"{cfg.learner.model}-{cfg.learner.dataset}-RR@10": learner.logpath},
+    )
 
 
 if __name__ == "__main__":
