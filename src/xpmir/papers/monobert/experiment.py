@@ -1,4 +1,4 @@
-from functools import partial
+from functools import partial, lru_cache
 import logging
 
 from xpmir.distributed import DistributedHook
@@ -18,9 +18,9 @@ from xpmir.letor.optim import (
 from xpmir.papers.cli import paper_command
 from xpmir.rankers.standard import BM25
 from xpmir.text.huggingface import DualTransformerEncoder
-from .configuration import Monobert
 from xpmir.papers.results import PaperResults
 from xpmir.papers.pipelines.msmarco import RerankerMSMarcoV1Experiment
+from .configuration import Monobert, Learner as LearnerConfig
 
 logging.basicConfig(level=logging.INFO)
 
@@ -32,6 +32,8 @@ class MonoBERTExperiment(RerankerMSMarcoV1Experiment):
     monobert model
     """
 
+    cfg: Monobert
+
     basemodel = BM25().tag("model", "bm25")
 
     def __init__(self, xp: experiment, cfg: Monobert):
@@ -39,22 +41,32 @@ class MonoBERTExperiment(RerankerMSMarcoV1Experiment):
         self.launcher_learner = find_launcher(cfg.monobert.requirements)
         self.launcher_evaluate = find_launcher(cfg.retrieval.requirements)
 
-        scheduler = LinearWithWarmup(
-            num_warmup_steps=cfg.monobert.num_warmup_steps,
-            min_factor=cfg.monobert.warmup_min_factor,
+    @lru_cache
+    def get_optimizers(self, cfg: LearnerConfig):
+        scheduler = (
+            LinearWithWarmup(
+                num_warmup_steps=cfg.num_warmup_steps,
+                min_factor=cfg.warmup_min_factor,
+            )
+            if cfg.scheduler
+            else None
         )
 
-        self.optimizers = [
-            ParameterOptimizer(
-                scheduler=scheduler,
-                optimizer=AdamW(lr=cfg.monobert.lr, eps=1e-6),
-                filter=RegexParameterFilter(includes=[r"\.bias$", r"\.LayerNorm\."]),
-            ),
-            ParameterOptimizer(
-                scheduler=scheduler,
-                optimizer=AdamW(lr=cfg.monobert.lr, weight_decay=1e-2, eps=1e-6),
-            ),
-        ]
+        return get_optimizers(
+            [
+                ParameterOptimizer(
+                    scheduler=scheduler,
+                    optimizer=AdamW(lr=cfg.lr, eps=1e-6),
+                    filter=RegexParameterFilter(
+                        includes=[r"\.bias$", r"\.LayerNorm\."]
+                    ),
+                ),
+                ParameterOptimizer(
+                    scheduler=scheduler,
+                    optimizer=AdamW(lr=cfg.lr, weight_decay=1e-2, eps=1e-6),
+                ),
+            ]
+        )
 
     def run(self) -> PaperResults:
         """monoBERT model"""
@@ -104,7 +116,7 @@ class MonoBERTExperiment(RerankerMSMarcoV1Experiment):
             scorer=monobert_scorer,
             # Optimization settings
             steps_per_epoch=cfg.monobert.steps_per_epoch,
-            optimizers=get_optimizers(self.optimizers),
+            optimizers=self.get_optimizers(cfg.monobert),
             max_epochs=cfg.monobert.max_epochs,
             # The listeners (here, for validation)
             listeners={"bestval": validation},

@@ -355,7 +355,15 @@ class DualDuoBertTransformerEncoder(BaseTransformer, TripletTextEncoder):
 
     def initialize(self, noinit=False, automodel=AutoModel):
         super().initialize(noinit, automodel)
-        self.model.embeddings.token_type_embeddings = nn.Embedding(3, self.dimension)
+
+        # Add an extra token type
+        data = self.model.embeddings.token_type_embeddings.weight.data
+        if len(data) < 3:
+            logger.info("Adding an extra token type in transformer")
+            data = torch.cat((data, torch.zeros(1, data.shape[1])))
+            self.model.embeddings.token_type_embeddings = nn.Embedding.from_pretrained(
+                data, freeze=False
+            )
 
     def batch_tokenize(
         self,
@@ -416,7 +424,7 @@ class DualDuoBertTransformerEncoder(BaseTransformer, TripletTextEncoder):
                 query["input_ids"][index]
                 + document_1["input_ids"][index][1:]
                 + document_2["input_ids"][index][1:]
-                + [0] * (maxlen - length_factory[index][3])
+                + [self.pad_tokenid] * (maxlen - length_factory[index][3])
             )
             new_attention_mask.append(
                 [1] * length_factory[index][3]
@@ -445,7 +453,7 @@ class DualDuoBertTransformerEncoder(BaseTransformer, TripletTextEncoder):
 
     def forward(self, texts: List[Tuple[str, str, str]]):
 
-        tokenized = self.batch_tokenize(texts, mask=True, maxlen=self.maxlen)
+        tokenized = self.batch_tokenize(texts, mask=True)
 
         with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
             y = self.model(

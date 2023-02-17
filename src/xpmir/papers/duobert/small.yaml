@@ -26,15 +26,17 @@ monobert:
     warmup_min_factor: 0.1
     requirements: duration=2 days & cuda(mem=8G)
     validation_top_k: 20
+    scheduler: false
 
 duobert:
     steps_per_epoch: 32
     validation_interval: 1
     batch_size: 16
-    max_epochs: 4
+    max_epochs: 16
     num_warmup_steps: 20
     warmup_min_factor: 0
     lr: 3.0e-6
+    scheduler: false
     requirements: duration=2 days & cuda(mem=8G) * 2
 
     base_validation_top_k: 20

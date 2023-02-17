@@ -23,6 +23,7 @@ from xpmir.text.huggingface import DualDuoBertTransformerEncoder
 from xpmir.papers.monobert.experiment import MonoBERTExperiment
 from xpmir.papers.results import PaperResults
 from .configuration import DuoBERT
+from xpmir.letor.schedulers import LinearWithWarmup
 
 logging.basicConfig(level=logging.INFO)
 
@@ -85,13 +86,15 @@ class DuoBERTExperiment(MonoBERTExperiment):
             scorer=duobert_scorer,
             # Optimization settings
             steps_per_epoch=cfg.duobert.steps_per_epoch,
-            optimizers=get_optimizers(self.optimizers),
+            optimizers=self.get_optimizers(cfg.duobert),
             max_epochs=cfg.duobert.max_epochs,
             # The listeners (here, for validation)
             listeners={"bestval": validation},
             # The hook used for evaluation
             hooks=[setmeta(DistributedHook(models=[duobert_scorer]), True)],
+            use_fp16=True,
         )
+        self.tb.add(learner, learner.logpath)
 
         # Submit job and link
         outputs = learner.submit(launcher=self.launcher_learner)

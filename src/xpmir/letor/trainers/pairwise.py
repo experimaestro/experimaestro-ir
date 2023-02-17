@@ -1,4 +1,5 @@
 from dataclasses import InitVar
+import math
 import sys
 from typing import Iterator
 import torch
@@ -198,20 +199,29 @@ class PairwiseTrainer(LossTrainer):
 
 
 class PairwiseLossWithTarget(Config):
-    pass
+    NAME = "?"
+    weight: Param[float] = 1.0
+
+    def initialize(self, ranker: LearnableScorer):
+        pass
+
+    def process(self, scores: Tensor, targets: Tensor, context: TrainerContext):
+        value = self.compute(scores, targets, context)
+        context.add_loss(Loss(f"duo-{self.NAME}", value, self.weight))
 
 
 class PairwiseLossWithTarget(PairwiseLossWithTarget):
-    NAME = "DuoLogProbaLoss"
+    NAME = "logproba"
 
-    def compute(self, score: Tensor, target: Tensor, context: TrainerContext):
-        return self.loss(score, target)
+    def initialize(self, ranker: LearnableScorer):
+        self.loss = {
+            ScorerOutputType.REAL: nn.BCEWithLogitsLoss,
+            ScorerOutputType.LOG_PROBABILITY: None,
+            ScorerOutputType.PROBABILITY: nn.BCELoss,
+        }[ranker.outputType]()
 
-    def process(self, scores: Tensor, target: Tensor, context: TrainerContext):
-        # TODO: adapt the loss to the scorer output (see PairwiseLoss)
-        self.loss = nn.BCEWithLogitsLoss()
-        value = self.compute(scores, target, context)
-        context.add_loss(Loss(f"pair-{self.NAME}", value, self.weight))
+    def compute(self, scores: Tensor, targets: Tensor, context: TrainerContext):
+        return self.loss(scores, targets)
 
 
 class DuoPairwiseTrainer(LossTrainer):
@@ -230,6 +240,12 @@ class DuoPairwiseTrainer(LossTrainer):
     def initialize(self, random: np.random.RandomState, context: TrainerContext):
         super().initialize(random, context)
         self.lossfn.initialize(self.ranker)
+
+        self.score_threshold = {
+            ScorerOutputType.LOG_PROBABILITY: math.log(0.5),
+            ScorerOutputType.PROBABILITY: 0.5,
+            ScorerOutputType.REAL: 0,
+        }[self.ranker.outputType]
         foreach(context.hooks(PairwiseLoss), lambda loss: loss.initialize(self.ranker))
         self.sampler.initialize(random)
         self.sampler_iter = self.sampler.pairwise_iter()
@@ -238,9 +254,7 @@ class DuoPairwiseTrainer(LossTrainer):
         while True:
             batch = PairwiseRecordsWithTarget()
             for _, record in zip(range(self.batch_size), self.sampler_iter):
-                # randomly swap the first and second document Test: some errors
-                # maybe related here. modify the 0.5 to 1 to see the source of
-                # the error
+                # randomly swap the first and second document
                 if self.random.random() < 0.5:
                     batch.add(
                         PairwiseRecordWithTarget(
@@ -259,10 +273,7 @@ class DuoPairwiseTrainer(LossTrainer):
         # Get the next batch and compute the scores for each query/document
         # forward pass
         rel_scores = self.ranker(records, self.context)  # shape: (bs)
-        targets = records.get_target().to(rel_scores.device())
-
-        # print(rel_scores)
-        # print(torch.Tensor(records.get_target()))
+        targets = torch.Tensor(records.get_target()).to(rel_scores.device)
 
         if torch.isnan(rel_scores).any() or torch.isinf(rel_scores).any():
             self.logger.error("nan or inf relevance score detected. Aborting.")
@@ -288,8 +299,5 @@ class DuoPairwiseTrainer(LossTrainer):
 
     def acc(self, scores_by_record, target) -> Tensor:
         with torch.no_grad():
-            count = scores_by_record.shape[0]  # batch_size
-            pos = scores_by_record > 0
-            return (
-                torch.logical_not(torch.logical_xor(pos, target))
-            ).sum().float() / count
+            positives = scores_by_record > self.score_threshold
+            return (positives == target).sum() / len(positives)

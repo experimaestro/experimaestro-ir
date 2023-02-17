@@ -23,6 +23,7 @@ class Learner:
     warmup_min_factor: float = 0
     lr: float = 3.0e-6
     requirements: str = "duration=4 days & cuda(mem=24G) * 2"
+    scheduler: bool = True
 
     @validation_interval.validator
     def check_validation_interval(self, attribute, value):
