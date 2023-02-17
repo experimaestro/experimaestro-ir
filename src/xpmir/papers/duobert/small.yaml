@@ -1,7 +1,7 @@
 id: duobert-small
 title: "DuoBERT (debug version)"
 description: |
-    DuoBERT model
+    DuoBERT model (debug version)
 
         R. Nogueira, W. Yang, K. Cho, et J. Lin, « Multi-Stage Document Ranking with BERT », arXiv:1910.14424 [cs], oct. 2019. http://arxiv.org/abs/1910.14424
 

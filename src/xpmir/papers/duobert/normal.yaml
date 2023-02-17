@@ -1,10 +1,10 @@
-id: monobert
-title: "monoBERT trained on MS-Marco"
+id: duobert
+title: "DuoBERT"
 description: |
-    Passage Re-ranking with BERT (Rodrigo Nogueira, Kyunghyun Cho). 2019.
-    https://arxiv.org/abs/1901.04085
+    DuoBERT model
 
-    This model has been trained on MsMarco v1
+        R. Nogueira, W. Yang, K. Cho, et J. Lin, « Multi-Stage Document Ranking with BERT », arXiv:1910.14424 [cs], oct. 2019. http://arxiv.org/abs/1910.14424
+
 
 gpu: true
 indexation:
