@@ -1,4 +1,4 @@
-type: duobert-small
+id: duobert-small
 launcher:
     gpu: true
     tags: []

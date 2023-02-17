@@ -1,5 +1,5 @@
 from attrs import define, Factory, field
-from xpmir.papers.cli import PaperExperiment
+from xpmir.papers.pipelines.msmarco import RerankerMSMarcoV1Configuration
 
 
 @define(kw_only=True)
@@ -15,6 +15,8 @@ class Learner:
     """Number of steps (batches) per epoch"""
 
     validation_interval: int = field(default=32)
+    validation_top_k: int = 1000
+
     batch_size: int = 64
     max_epochs: int = 3200
     num_warmup_steps: int = 10000
@@ -38,17 +40,13 @@ class Evaluation:
 @define(kw_only=True)
 class Retrieval:
     k: int = 1000
-    val_k: int = 1000
     batch_size: int = 512
 
 
 @define(kw_only=True)
-class Monobert(PaperExperiment):
-
-    gpu: bool = True
-    """Use GPU for computation"""
+class Monobert(RerankerMSMarcoV1Configuration):
 
     indexation: Indexation = Factory(Indexation)
-    learner: Learner = Factory(Learner)
+    monobert: Learner = Factory(Learner)
     evaluation: Evaluation = Factory(Evaluation)
     retrieval: Retrieval = Factory(Retrieval)

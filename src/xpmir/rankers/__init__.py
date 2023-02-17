@@ -1,6 +1,7 @@
 # This package contains all rankers
 
 from experimaestro import tqdm
+
 from enum import Enum
 from pathlib import Path
 from typing import (
@@ -12,7 +13,6 @@ from typing import (
     Protocol,
     Tuple,
     Callable,
-    Any,
     TypeVar,
     Union,
     final,
@@ -137,6 +137,19 @@ class Scorer(Config, EasyLogger):
             device=device,
             top_k=top_k if top_k else None,
         )
+
+
+def documents_retriever(
+    documents: AdhocDocuments,
+    *,
+    retrievers: "RetrieverFactory" = None,
+    scorer: Scorer = None,
+    **kwargs,
+):
+    """Helper function"""
+    assert retrievers is not None, "The retrievers have not been given"
+    assert scorer is not None, "The scorer has not been given"
+    return scorer.getRetriever(retrievers(documents), **kwargs)
 
 
 class RandomScorer(Scorer):
@@ -441,7 +454,32 @@ class DuoTwoStageRetriever(AbstractTwoStageRetriever):
             return scores.tolist()
 
 
+ARGS = TypeVar("ARGS")
 KWARGS = TypeVar("KWARGS")
+T = TypeVar("T")
+
+
+class DocumentsFunction(Protocol, Generic[KWARGS, ARGS, T]):
+    def __call__(self, documents: AdhocDocuments, *args: ARGS, **kwargs: KWARGS) -> T:
+        ...
+
+
+def document_cache(fn: DocumentsFunction[KWARGS, ARGS, T]):
+    """Cache"""
+    retrievers = {}
+
+    def _fn(*args: ARGS, **kwargs: KWARGS):
+        def cached(documents: AdhocDocuments) -> T:
+            dataset_id = documents.__identifier__().all
+
+            if dataset_id not in retrievers:
+                retrievers[dataset_id] = fn(documents, *args, **kwargs)
+
+            return retrievers[dataset_id]
+
+        return cached
+
+    return _fn
 
 
 class ParametricRetrieverFactory(Protocol, Generic[KWARGS]):
@@ -452,7 +490,13 @@ class ParametricRetrieverFactory(Protocol, Generic[KWARGS]):
 class CollectionBasedRetrievers(Generic[KWARGS]):
     """Handles various retrievers depending on the collection"""
 
-    def __init__(self, generator: Callable[[AdhocDocuments], Any]):
+    def __init__(
+        self,
+        generator: Callable[
+            [AdhocDocuments], Union[ParametricRetrieverFactory, Retriever]
+        ],
+    ):
+        """Given a document collection, returns a factory"""
         self.generator = generator
 
     def factory(self, **kwargs) -> "RetrieverFactory":

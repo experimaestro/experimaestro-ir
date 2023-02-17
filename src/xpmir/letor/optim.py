@@ -301,9 +301,12 @@ class TensorboardService(WebService):
             task = task.__xpm__.task
 
         if job := task.__xpm__.job:
-            job.scheduler.addlistener(
-                TensorboardServiceListener(self.path / tagspath(task), path)
-            )
+            if job.scheduler is not None:
+                job.scheduler.addlistener(
+                    TensorboardServiceListener(self.path / tagspath(task), path)
+                )
+            else:
+                logger.debug("No scheduler: not adding the tensorboard data")
         else:
             logger.error("Task was not started: cannot link to tensorboard job path")
 

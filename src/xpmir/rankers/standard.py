@@ -12,3 +12,9 @@ class BM25(Model):
 
     k1: Param[float] = 0.9
     b: Param[float] = 0.4
+
+
+class QLDirichlet(Model):
+    """Query likelihood (Dirichlet smoothing) model definition"""
+
+    mu: Param[float] = 1000

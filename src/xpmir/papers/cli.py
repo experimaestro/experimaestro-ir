@@ -12,15 +12,17 @@ from typing import Optional
 import click
 from importlib import import_module
 import docstring_parser
-from attrs import define
-
+from termcolor import cprint
+import omegaconf
 from experimaestro import experiment, RunMode
-from omegaconf import OmegaConf, MISSING
+from omegaconf import OmegaConf
 from xpmir.configuration import omegaconf_argument
 from xpmir.evaluation import EvaluationsCollection
 import xpmir.papers as papers
 from xpmir.models import XPMIRHFHub
 from xpmir.rankers import Scorer
+from xpmir.papers.results import PaperResults
+from xpmir.papers.pipelines import PaperExperiment
 
 
 class ExperimentsCli(click.MultiCommand):
@@ -109,12 +111,11 @@ from xpmir.models import AutoModel
 # Model that can be re-used in experiments
 model = AutoModel.load_from_hf_hub("{self.model_id}")
 
-# Use this if you want to actually use the model
-model = AutoModel.load_from_hf_hub("{self.model_id}", as_instance=True)
-model.initialize() model.rsv("walgreens store sales average", "The average
-Walgreens salary ranges...")
+# Use this if you want to actually use the model model =
+AutoModel.load_from_hf_hub("{self.model_id}", as_instance=True)
+model.initialize()
+model.rsv("walgreens store sales average", "The average Walgreens salary ranges...")
 ```
-
 """
         )
 
@@ -131,18 +132,6 @@ Walgreens salary ranges...")
         XPMIRHFHub(model, readme=readme_md, tb_logs=tb_logs).push_to_hub(
             repo_id=self.model_id, config={}
         )
-
-
-@define(kw_only=True)
-class PaperExperiment:
-    id: str = MISSING
-    """The experiment ID"""
-
-    title: str = ""
-    """The model title"""
-
-    description: str = ""
-    """A description of the model"""
 
 
 def paper_command(package=None, schema=None):
@@ -225,9 +214,13 @@ def paper_command(package=None, schema=None):
 
             configuration: PaperExperiment = OmegaConf.merge(configuration, conf_args)
             if omegaconf_schema is not None:
-                configuration: PaperExperiment = OmegaConf.merge(
-                    omegaconf_schema, configuration
-                )
+                try:
+                    configuration: PaperExperiment = OmegaConf.merge(
+                        omegaconf_schema, configuration
+                    )
+                except omegaconf.errors.ConfigKeyError as e:
+                    cprint(f"Error in configuration:\n\n{e}", "red", file=sys.stderr)
+                    sys.exit(1)
 
             if show:
                 print(configuration)  # noqa: T201
@@ -235,12 +228,13 @@ def paper_command(package=None, schema=None):
 
             parameters = inspect.signature(fn).parameters
 
-            if "upload_to_hub" in parameters:
+            if upload_to_hub is not None:
                 if configuration.title == "" and configuration.description == "":
                     doc = docstring_parser.parse(fn.__doc__)
                 else:
                     doc = f"# {configuration.title}\n{configuration.description}"
-                kwargs["upload_to_hub"] = UploadToHub(upload_to_hub, doc)
+                upload_to_hub = UploadToHub(upload_to_hub, doc)
+                kwargs["upload_to_hub"] = upload_to_hub
 
             kwargs = {**kwargs, "debug": debug, "run_mode": run_mode}
 
@@ -255,7 +249,23 @@ def paper_command(package=None, schema=None):
                 for key, value in env:
                     xp.setenv(key, value)
 
-                return fn(xp, configuration, **kwargs)
+                results = fn(xp, configuration, **kwargs)
+                xp.wait()
+
+                if isinstance(results, PaperResults):
+                    if (
+                        run_mode == RunMode.NORMAL
+                        and upload_to_hub is not None
+                        and "upload_to_hub" not in parameters
+                    ):
+                        upload_to_hub.send_scorer(
+                            results.models,
+                            evaluations=results.evaluations,
+                            tb_logs=results.tb_logs,
+                        )
+
+                    results.evaluations.output_results()
+                return results
 
         cli.__doc__ = fn.__doc__
         cmd = reduce(lambda fn, decorator: decorator(fn), decorators, cli)

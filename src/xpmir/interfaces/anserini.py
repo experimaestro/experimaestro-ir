@@ -10,6 +10,7 @@ import sys
 from typing import List
 from experimaestro import tqdm as xpmtqdm, Task, Meta
 
+from datamaestro_text.data.ir import AdhocDocumentStore
 import datamaestro_text.data.ir.csv as ir_csv
 from datamaestro_text.data.ir.trec import (
     AdhocDocuments,
@@ -20,8 +21,8 @@ from datamaestro_text.data.ir.trec import (
 from experimaestro import Param, param, pathoption, progress, task
 from tqdm import tqdm
 from xpmir.index.anserini import Index
-from xpmir.rankers import Retriever, ScoredDocument
-from xpmir.rankers.standard import BM25, Model
+from xpmir.rankers import Retriever, ScoredDocument, RetrieverHydrator, document_cache
+from xpmir.rankers.standard import BM25, QLDirichlet, Model
 from xpmir.utils.utils import Handler, StreamGenerator
 
 
@@ -262,8 +263,12 @@ class AnseriniRetriever(Retriever):
         modelhandler = Handler()
 
         @modelhandler()
-        def handle(bm25: BM25):
+        def handle_bm25(bm25: BM25):
             self.searcher.set_bm25(bm25.k1, bm25.b)
+
+        @modelhandler()
+        def handle_qld(qld: QLDirichlet):
+            self.searcher.set_qld(qld.mu)
 
         modelhandler[self.model]
 
@@ -277,3 +282,38 @@ class AnseriniRetriever(Retriever):
             ScoredDocument(hit.docid, hit.score, hit.contents if content else None)
             for hit in hits
         ]
+
+
+@document_cache
+def index_builder(
+    documents: AdhocDocuments, *, launcher=None, **index_params
+) -> IndexCollection:
+    return IndexCollection(documents=documents, **index_params).submit(
+        launcher=launcher
+    )
+
+
+def retriever(
+    index_builder: IndexCollection,
+    documents: AdhocDocuments,
+    *,
+    content=True,
+    k: int = None,
+    model: Model = None,
+):
+    index = index_builder(documents)
+
+    index_retriever = AnseriniRetriever(
+        index=index, k=k or AnseriniRetriever.k, model=model
+    )
+
+    # Use hydrator
+    if content:
+        if isinstance(documents, AdhocDocumentStore):
+            return RetrieverHydrator(store=documents, retriever=index_retriever)
+
+        assert (
+            index.storeRaw or index.storeContents
+        ), "Index does not store content, and no store"
+
+    return index_retriever

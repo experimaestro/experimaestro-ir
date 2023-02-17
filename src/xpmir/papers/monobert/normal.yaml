@@ -9,8 +9,10 @@ description: |
 gpu: true
 indexation:
     requirements: duration=6 days & cpu(mem=4G, cores=8)
-learner:
-    validation_size: 500
+
+validation_size: 500
+
+monobert:
     steps_per_epoch: 32
     validation_interval: 32
     batch_size: 64
