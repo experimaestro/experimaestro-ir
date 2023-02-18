@@ -378,8 +378,10 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
 
 
 class DuoTwoStageRetriever(AbstractTwoStageRetriever):
-    """The two stage retriever for duobert. The way of the inference is different from
-    the normal monobert.
+    """The two stage retriever for pairwise scorers.
+
+    For pairwise scorer, we need to aggregate the pairwise scores in some
+    way.
     """
 
     def _retrieve(
@@ -398,10 +400,8 @@ class DuoTwoStageRetriever(AbstractTwoStageRetriever):
         """call the _retrieve function by using the batcher and do an
         aggregation of all the scores
         """
-        # topk from the monobert
-        scoredDocuments_previous = self.retriever.retrieve(
-            query, content=True
-        )  # list[ScoredDocument]
+        # get the documents from the retriever
+        scoredDocuments_previous = self.retriever.retrieve(query, content=True)
 
         # transform them into the pairs.(doc_1, doc_2)
         pairs = []

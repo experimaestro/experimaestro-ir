@@ -42,6 +42,33 @@ You can look at arguments by using the `--show` option
     $ xpmir papers monobert msmarco --configuration small /path/to/workdir --show
 
 
+Configuration
+-------------
+
+Papers experimental parameters are defined by data classes. The main
+one is :py:class:`xpmir.papers.pipelines.PaperExperiment` that
+defines an id (for experimaestro), a title and a description.
+These informations can be used e.g. when uploading the trained
+models on HuggingFace.
+
+.. autoclass:: xpmir.papers.pipelines.PaperExperiment
+    :members:
+
+Pipelines
+---------
+
+Pipelines factorize the code necessary to run some experiments:
+for instance, training re-rankers on MS-Marco is usually performed
+with similar training data, evaluation datasets.
+
+
+.. toctree::
+    :maxdepth: 2
+
+    pipelines/msmarco
+
+
+
 Implemented papers
 ------------------
 

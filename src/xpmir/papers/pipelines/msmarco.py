@@ -34,16 +34,27 @@ class MSMarcoV1Configuration(PaperExperiment):
 
 
 class MSMarcoV1Experiment:
+    devsmall: Adhoc
+    """A set of 500 topics used for evaluation"""
+
+    dev: Adhoc
+    """A set of topics used for validation"""
+
+    tests: EvaluationsCollection
+    """The collections on which the models are evaluated"""
+
     def __init__(self, xp: experiment, cfg: MSMarcoV1Configuration):
         self.cfg = cfg
-        self.device = CudaDevice() if cfg.gpu else Device()
+        self.device = (
+            CudaDevice() if cfg.gpu else Device()
+        )  #: the device (CPU/GPU) for the experiment
 
         self.random = Random(seed=0)
 
         # Datasets: train, validation and test
         self.documents: AdhocDocuments = prepare_dataset(
             "irds.msmarco-passage.documents"
-        )
+        )  #: MS-Marco document collection
         self.devsmall: Adhoc = prepare_dataset("irds.msmarco-passage.dev.small")
         self.dev: Adhoc = prepare_dataset("irds.msmarco-passage.dev")
 
@@ -81,9 +92,9 @@ class RerankerMSMarcoV1Configuration(MSMarcoV1Configuration):
 
 
 class RerankerMSMarcoV1Experiment(MSMarcoV1Experiment):
-    cfg: RerankerMSMarcoV1Configuration
-
     """Base class for reranker-based MS-Marco v1 experiments"""
+
+    cfg: RerankerMSMarcoV1Configuration
 
     def __init__(self, xp: experiment, cfg: RerankerMSMarcoV1Configuration):
         super().__init__(xp, cfg)
@@ -127,6 +138,7 @@ class RerankerMSMarcoV1Experiment(MSMarcoV1Experiment):
                 self.model_based_retrievers,
                 retrievers=self.test_retrievers,
                 scorer=random_scorer,
+                device=None,
             )
         )
 

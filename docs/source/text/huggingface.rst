@@ -8,7 +8,6 @@ Encoders
 
 .. autoxpmconfig:: TransformerTokensEncoder
 
-.. autoxpmconfig:: ContextualizedTextEncoderAdapter
 .. autoxpmconfig:: DualTransformerEncoder
 .. autoxpmconfig:: SentenceTransformerTextEncoder
 .. autoxpmconfig:: OneHotHuggingFaceEncoder
