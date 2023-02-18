@@ -94,10 +94,10 @@ class DuoBERTExperiment(MonoBERTExperiment):
             hooks=[setmeta(DistributedHook(models=[duobert_scorer]), True)],
             use_fp16=True,
         )
-        self.tb.add(learner, learner.logpath)
 
         # Submit job and link
         outputs = learner.submit(launcher=self.launcher_learner)
+        self.tb.add(learner, learner.logpath)
 
         # Evaluate the neural model on test collections
 
