@@ -403,7 +403,8 @@ class DuoTwoStageRetriever(AbstractTwoStageRetriever):
         # get the documents from the retriever
         scoredDocuments_previous = self.retriever.retrieve(query, content=True)
 
-        # transform them into the pairs.(doc_1, doc_2)
+        # transform them into the pairs (i, j)
+        # for i != j ranging from 1 to nb of documents
         pairs = []
         for i in range(len(scoredDocuments_previous)):
             for j in range(len(scoredDocuments_previous)):
@@ -418,6 +419,7 @@ class DuoTwoStageRetriever(AbstractTwoStageRetriever):
         _scores_pairs = []  # the scores for each pair of documents
         self._batcher.process(pairs, self._retrieve, query, _scores_pairs)
 
+        # Use the sum aggregation strategy
         _scores_pairs = torch.Tensor(_scores_pairs).reshape(
             len(scoredDocuments_previous), -1
         )

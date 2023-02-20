@@ -1,6 +1,6 @@
 from attrs import define
 from experimaestro import experiment
-from functools import partial
+from functools import partial, cached_property
 import logging
 
 from datamaestro import prepare_dataset
@@ -58,16 +58,6 @@ class MSMarcoV1Experiment:
         self.devsmall: Adhoc = prepare_dataset("irds.msmarco-passage.dev.small")
         self.dev: Adhoc = prepare_dataset("irds.msmarco-passage.dev")
 
-        # Defines how we sample train examples
-        # (using the shuffled pre-computed triplets from MS Marco)
-        train_triples = prepare_dataset("irds.msmarco-passage.train.docpairs")
-        triplesid = ShuffledTrainingTripletsLines(
-            seed=123,
-            data=train_triples,
-        ).submit()
-
-        self.train_sampler = TripletBasedSampler(source=triplesid, index=self.documents)
-
         measures = [AP, P @ 20, nDCG, nDCG @ 10, nDCG @ 20, RR, RR @ 10]
 
         # Prepares the test collections evaluation
@@ -96,6 +86,23 @@ class RerankerMSMarcoV1Experiment(MSMarcoV1Experiment):
 
     cfg: RerankerMSMarcoV1Configuration
 
+    ds_val: RandomFold
+    """MS-Marco validation set"""
+
+    @cached_property
+    def train_sampler(self) -> TripletBasedSampler:
+        """Train sampler
+
+        By default, this uses shuffled pre-computed triplets from MS Marco
+        """
+        train_triples = prepare_dataset("irds.msmarco-passage.train.docpairs")
+        triplesid = ShuffledTrainingTripletsLines(
+            seed=123,
+            data=train_triples,
+        ).submit()
+
+        return TripletBasedSampler(source=triplesid, index=self.documents)
+
     def __init__(self, xp: experiment, cfg: RerankerMSMarcoV1Configuration):
         super().__init__(xp, cfg)
 
@@ -120,18 +127,20 @@ class RerankerMSMarcoV1Experiment(MSMarcoV1Experiment):
             anserini.retriever,
             anserini.index_builder(launcher=self.launcher_index),
             model=self.basemodel,
-        )
+        )  #: Anserini based retrievers
 
         self.model_based_retrievers = partial(
             documents_retriever,
             batch_size=cfg.retrieval.batch_size,
             batcher=PowerAdaptativeBatcher(),
             device=self.device,
-        )
+        )  #: Model-based retrievers
 
-        self.test_retrievers = partial(self.retrievers, k=cfg.retrieval.k)
+        self.test_retrievers = partial(
+            self.retrievers, k=cfg.retrieval.k
+        )  #: Test retrievers
 
-        # Search and evaluate with a random reranker
+        # Search and evaluate with a random re-ranker
         random_scorer = RandomScorer(random=self.random).tag("reranker", "random")
         self.tests.evaluate_retriever(
             partial(

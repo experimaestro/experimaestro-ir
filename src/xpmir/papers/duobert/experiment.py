@@ -15,15 +15,11 @@ import xpmir.letor.trainers.pairwise as pairwise
 from xpmir.neural.cross import CrossScorer, DuoCrossScorer
 from experimaestro import experiment, setmeta
 from xpmir.letor.batchers import PowerAdaptativeBatcher
-from xpmir.letor.optim import (
-    get_optimizers,
-)
 from xpmir.papers.cli import paper_command
 from xpmir.text.huggingface import DualDuoBertTransformerEncoder
 from xpmir.papers.monobert.experiment import MonoBERTExperiment
 from xpmir.papers.results import PaperResults
 from .configuration import DuoBERT
-from xpmir.letor.schedulers import LinearWithWarmup
 
 logging.basicConfig(level=logging.INFO)
 

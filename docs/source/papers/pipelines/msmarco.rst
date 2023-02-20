@@ -6,6 +6,8 @@ MS-Marco pipelines
 Base
 ----
 
+The base experiment is controlled by the following configuration
+
 .. autoclass:: MSMarcoV1Configuration
    :members:
 
