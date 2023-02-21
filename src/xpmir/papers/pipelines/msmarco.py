@@ -35,7 +35,6 @@ from xpmir.neural.dual import DenseDocumentEncoder, DenseQueryEncoder
 from xpmir.index.faiss import IndexBackedFaiss, FaissRetriever
 from xpmir.distributed import DistributedHook
 from xpmir.rankers.full import FullRetriever
-from xpmir.rankers.standard import BM25
 
 
 from . import PaperExperiment
@@ -247,6 +246,10 @@ class SPLADEMSMarcoV1Experiment(MSMarcoV1Experiment):
         self.cpu_launcher_index = find_launcher(cfg.indexation.requirements)
         self.gpu_launcher_index = find_launcher(cfg.indexation.training_requirements)
 
+        # Sets the working directory and the name of the xp
+        # Needed by Pyserini
+        xp.setenv("JAVA_HOME", find_java_home())
+
         # define the test set
         self.tests = EvaluationsCollection(
             msmarco_dev=Evaluations(self.devsmall, self.measures),
@@ -296,9 +299,6 @@ class SPLADEMSMarcoV1Experiment(MSMarcoV1Experiment):
             encoder=DenseQueryEncoder(scorer=tasb),
         )
 
-        # TODO: maybe could be removed later
-        basemodel = BM25()
-
         # building the validation dataset. Based on the existing dataset and the
         # top retrieved doc from tas-balanced and bm25
         self.ds_val = RetrieverBasedCollection(
@@ -314,7 +314,7 @@ class SPLADEMSMarcoV1Experiment(MSMarcoV1Experiment):
                 anserini.AnseriniRetriever(
                     k=cfg.tas_balance_retriever.retTopK,
                     index=self.index,
-                    model=basemodel,
+                    model=self.basemodel,
                 ),
             ],
         ).submit(launcher=self.gpu_launcher_index)
@@ -322,7 +322,7 @@ class SPLADEMSMarcoV1Experiment(MSMarcoV1Experiment):
         # compute the baseline performance on the test dataset.
         # Bm25
         bm25_retriever = anserini.AnseriniRetriever(
-            k=cfg.base_retriever.topK, index=self.index, model=basemodel
+            k=cfg.base_retriever.topK, index=self.index, model=self.basemodel
         )
         self.tests.evaluate_retriever(
             copyconfig(bm25_retriever).tag("model", "bm25"), self.cpu_launcher_index

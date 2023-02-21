@@ -52,6 +52,9 @@ class Learner:
     lamdba_warmup_steps: int = 50000
     """The numbers of the warmup steps for the lambda to reach the max value"""
 
+    scheduler: bool = True
+    """Whether use a scheduler to control the learning rate"""
+
     requirements: str = "duration=6 days & cuda(mem=24G)"
 
     @validation_interval.validator
