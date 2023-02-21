@@ -26,4 +26,8 @@ Re-ranking
 First stage rankers
 -------------------
 
-To be done...
+.. autoclass:: SPLADEMSMarcoV1Configuration
+   :members:
+
+.. autoclass:: SPLADEMSMarcoV1Experiment
+   :members:
