@@ -56,7 +56,7 @@ class MonoBERTExperiment(RerankerMSMarcoV1Experiment):
             [
                 ParameterOptimizer(
                     scheduler=scheduler,
-                    optimizer=AdamW(lr=cfg.lr, eps=1e-6),
+                    optimizer=AdamW(lr=cfg.lr, weight_decay=0, eps=1e-6),
                     filter=RegexParameterFilter(
                         includes=[r"\.bias$", r"\.LayerNorm\."]
                     ),
