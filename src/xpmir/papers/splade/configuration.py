@@ -1,5 +1,5 @@
 from attrs import define, Factory, field
-from xpmir.papers.cli import PaperExperiment
+from xpmir.papers.pipelines.msmarco import SPLADEMSMarcoV1Configuration
 
 
 @define(kw_only=True)
@@ -93,10 +93,7 @@ class FullRetriever:
 
 
 @define(kw_only=True)
-class SPLADE(PaperExperiment):
-
-    gpu: bool = True
-    """Use GPU for computation"""
+class SPLADE(SPLADEMSMarcoV1Configuration):
 
     indexation: Indexation = Factory(Indexation)
     learner: Learner = Factory(Learner)
