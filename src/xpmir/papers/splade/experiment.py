@@ -337,31 +337,23 @@ def cli(xp: experiment, cfg: SPLADE):
         else outputs.listeners["bestval"]["RR@10"]
     )
 
-    # Get a sparse retriever from a dual scorer
-    def sparse_retriever(scorer, documents):
-        """Builds a sparse retriever
-        Used to evaluate the scorer
-        """
-        # build a retriever for the documents
-        index = SparseRetrieverIndexBuilder(
-            batch_size=512,
-            batcher=PowerAdaptativeBatcher(),
-            encoder=DenseDocumentEncoder(scorer=scorer),
-            device=device,
-            documents=documents,
-            ordered_index=False,
-        ).submit(launcher=gpu_launcher_index)
+    # build a retriever for the documents
+    sparse_index = SparseRetrieverIndexBuilder(
+        batch_size=512,
+        batcher=PowerAdaptativeBatcher(),
+        encoder=DenseDocumentEncoder(scorer=trained_model),
+        device=device,
+        documents=documents,
+        ordered_index=False,
+    ).submit(launcher=gpu_launcher_index)
 
-        return SparseRetriever(
-            index=index,
-            topk=cfg.base_retriever.topK,
-            batchsize=1,
-            encoder=DenseQueryEncoder(scorer=scorer),
-        )
-
-    # Build a sparse index based on the trained model
-    # and a retriever
-    splade_retriever = sparse_retriever(trained_model, documents)
+    # Build the sparse retriever based on the index
+    splade_retriever = SparseRetriever(
+        index=sparse_index,
+        topk=cfg.base_retriever.topK,
+        batchsize=1,
+        encoder=DenseQueryEncoder(scorer=trained_model),
+    )
 
     # evaluate the best model
     tests.evaluate_retriever(
