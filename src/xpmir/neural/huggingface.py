@@ -5,6 +5,7 @@ from experimaestro import Param
 
 
 class HFCrossScorer(TorchLearnableScorer):
+    """Load a cross scorer model from the huggingface"""
 
     hf_id: Param[str]
     """the id for the huggingface model"""

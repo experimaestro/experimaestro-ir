@@ -32,7 +32,10 @@ class AdhocTopicFold(AdhocTopics):
     """ID-based topic selection"""
 
     ids: Param[List[str]]
+    """A set of the ids for the topics where we select from"""
+
     topics: Param[AdhocTopics]
+    """The collection of the topics"""
 
     def iter(self):
         ids = set(self.ids)
@@ -43,7 +46,10 @@ class AdhocTopicFold(AdhocTopics):
 
 class AdhocAssessmentFold(AdhocAssessments):
     ids: Param[List[str]]
+    """A set of the ids for the assessments where we select from"""
+
     qrels: Param[AdhocAssessments]
+    """The collection of the assessments"""
 
     @cache("assessements.qrels")
     def trecpath(self, path):
@@ -382,6 +388,7 @@ class MemoryTopicStore(TextStore):
     """View a set of topics as a (in memory) text store"""
 
     topics: Param[AdhocTopics]
+    """The collection of the topics to build the store"""
 
     @cached_property
     def store(self):

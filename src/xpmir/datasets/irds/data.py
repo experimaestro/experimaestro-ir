@@ -12,6 +12,7 @@ import ir_datasets
 
 class IRDSId(Config):
     irds: Option[str]
+    """The id to load the dataset from ir_datasets"""
 
     @classmethod
     def __xpmid__(cls):

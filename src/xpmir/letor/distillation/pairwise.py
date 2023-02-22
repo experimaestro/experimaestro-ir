@@ -14,6 +14,8 @@ from xpmir.rankers import LearnableScorer
 
 
 class DistillationPairwiseLoss(Config, nn.Module):
+    """The abstract loss for pairwise distillation"""
+
     weight: Param[float] = 1.0
     NAME = "?"
 
@@ -91,14 +93,10 @@ class DistillationKLLoss(DistillationPairwiseLoss):
 
 
 class DistillationPairwiseTrainer(LossTrainer):
-    """Pairwse trainer
-
-    Arguments:
-
-    lossfn: The loss function to use
-    """
+    """Pairwise trainer for distillation"""
 
     sampler: Param[DistillationPairwiseSampler]
+    """The sampler"""
 
     lossfn: Param[DistillationPairwiseLoss]
     """The distillation pairwise batch function"""

@@ -212,6 +212,10 @@ class ValidationListener(LearnerListener):
 
 
 class LearnerOutput(NamedTuple):
+    """The data structure for the output of a learner. It contains a dictionary
+    where the key is the name of the listener and the value is the output of
+    that listener"""
+
     listeners: Dict[str, Any]
 
 

@@ -50,16 +50,10 @@ class IndexBackedFaiss(FaissIndex, Task):
 
     During executions, InitializationHooks are used (pre/post)
 
-    Attributes:
-
-    index: The index that contains the raw documents and their ids
-    encoder: The text encoder for documents
-    batchsize: How many documents are processed at once
-
     """
 
     encoder: Param[TextEncoder]
-    """Encoder for texts"""
+    """Encoder for document texts"""
 
     batchsize: Meta[int] = 1
     """The batch size used when computing representations of documents"""
@@ -77,7 +71,8 @@ class IndexBackedFaiss(FaissIndex, Task):
     """The index type as a factory string
 
     See https://github.com/facebookresearch/faiss/wiki/Faiss-indexes
-    for the full list oqf indices
+    for the full list of indices
+
     and https://github.com/facebookresearch/faiss/wiki/The-index-factory
     for the combination of the index factory
     """
@@ -205,17 +200,16 @@ class IndexBackedFaiss(FaissIndex, Task):
 
 
 class FaissRetriever(Retriever):
-    """Retriever based on Faiss
-
-    Attributes:
-
-    encoder: The query encoder
-    index: The FAISS index
-    """
+    """Retriever based on Faiss"""
 
     encoder: Param[TextEncoder]
+    """The query encoder"""
+
     index: Param[FaissIndex]
+    """The faiss index"""
+
     topk: Param[int]
+    """the number of documents to be retrieved"""
 
     @initializer
     def initialize(self):

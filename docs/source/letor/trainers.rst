@@ -52,3 +52,25 @@ Other
 *****
 
 .. autoxpmconfig:: xpmir.letor.trainers.multiple.MultipleTrainer
+
+
+Distillation Trainers
+
+=====================
+
+Pairwise
+********
+
+Trainer
+-------
+
+.. autoxpmconfig:: xpmir.letor.distillation.pairwise.DistillationPairwiseTrainer
+
+Losses
+------
+
+.. autoxpmconfig:: xpmir.letor.distillation.pairwise.DistillationPairwiseLoss
+   :members: compute
+
+.. autoxpmconfig:: xpmir.letor.distillation.pairwise.MSEDifferenceLoss
+.. autoxpmconfig:: xpmir.letor.distillation.pairwise.DistillationKLLoss

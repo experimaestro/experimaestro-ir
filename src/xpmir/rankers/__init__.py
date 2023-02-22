@@ -49,6 +49,9 @@ logger = easylog()
 
 
 class ScoredDocument:
+    """A data structure which contains the id, the content(optional) and a
+    calculated score for a document"""
+
     def __init__(self, docid: Optional[str], score: float, content: str = None):
         self.docid = docid
         self.score = score

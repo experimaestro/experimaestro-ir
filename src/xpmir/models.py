@@ -77,6 +77,7 @@ class AutoModel:
         encoder = SentenceTransformer(hf_id)
         return DotDense(encoder=encoder)
 
+    @staticmethod
     def cross_encoder_model(hf_id: str, max_length: int = 512):
         """Loads from huggingface hub in to a form of a cross-scorer, it returns
         a sentence_transformer model for cross encoder"""
