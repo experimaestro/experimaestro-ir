@@ -4,7 +4,6 @@
 # https://arxiv.org/abs/2109.10086
 
 import logging
-from typing import List
 from functools import lru_cache
 
 from experimaestro.launcherfinder import find_launcher
@@ -28,7 +27,6 @@ from xpmir.neural.dual import DenseDocumentEncoder, DenseQueryEncoder
 from xpmir.letor.optim import (
     ParameterOptimizer,
     AdamW,
-    RegexParameterFilter,
     get_optimizers,
 )
 from xpmir.rankers.standard import BM25
@@ -62,28 +60,14 @@ class SPLADEExperiment(SPLADEMSMarcoV1Experiment):
             if cfg.scheduler
             else None
         )
-        # FIXME: define the optimizer: due to a bug during the training of
-        # splade_max and splade_doc
-        distil_optimizers: List = [
-            ParameterOptimizer(
-                scheduler=scheduler,
-                optimizer=AdamW(lr=cfg.lr),
-            )
-        ]
-        false_optimizers: List = [
-            ParameterOptimizer(
-                scheduler=scheduler,
-                optimizer=AdamW(lr=cfg.lr),
-                filter=RegexParameterFilter(includes=[r"\.bias$", r"\.LayerNorm\."]),
-            ),
-            ParameterOptimizer(
-                scheduler=scheduler,
-                optimizer=AdamW(lr=cfg.lr),
-                filter=RegexParameterFilter(excludes=[r"\.bias$", r"\.LayerNorm\."]),
-            ),
-        ]
+
         return get_optimizers(
-            false_optimizers if cfg.dataset == "" else distil_optimizers
+            [
+                ParameterOptimizer(
+                    scheduler=scheduler,
+                    optimizer=AdamW(lr=cfg.lr),
+                )
+            ]
         )
 
     def run(self) -> PaperResults:
