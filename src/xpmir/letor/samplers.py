@@ -588,6 +588,7 @@ class TeacherModelBasedHardNegativesTripletSampler(Task, Sampler):
             for batch in tqdm(self.iter_batches()):
 
                 # scores in shape: [batch_size, 2]
+                self.teacher_model.eval()
                 scores = self.teacher_model(batch)
                 scores = scores.reshape(2, -1).T
 
