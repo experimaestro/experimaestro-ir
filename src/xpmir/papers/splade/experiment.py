@@ -32,7 +32,7 @@ from xpmir.letor.optim import (
 from xpmir.rankers.standard import BM25
 from xpmir.neural.splade import spladeV2_max, spladeV2_doc
 from xpmir.papers.results import PaperResults
-from xpmir.papers.pipelines.msmarco import SPLADEMSMarcoV1Experiment
+from .pipelines import SPLADEMSMarcoV1Experiment
 from .configuration import SPLADE, Learner as LearnerConfig
 
 logging.basicConfig(level=logging.INFO)
