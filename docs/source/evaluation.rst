@@ -24,7 +24,7 @@ Metrics are backed up by the module ir_measures
 List of defined measures
 
 .. automodule:: xpmir.measures
-    :members: AP, P, RR, nDCG
+    :members: AP, P, RR, nDCG, R
 
 Measures can be used with the @ operator. Exemple:
 

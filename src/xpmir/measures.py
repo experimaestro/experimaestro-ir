@@ -40,3 +40,6 @@ RR = Measure(identifier="RR")
 
 nDCG = Measure(identifier="nDCG")
 """Normalized Discounted Cumulated Gain"""
+
+R = Measure(identifier="R")
+"""Precision at rank"""
