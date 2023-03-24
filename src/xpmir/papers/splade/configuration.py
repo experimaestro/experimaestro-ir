@@ -1,5 +1,5 @@
 from attrs import define, Factory, field
-from xpmir.papers.pipelines.msmarco import SPLADEMSMarcoV1Configuration
+from .pipelines import SPLADEMSMarcoV1Configuration
 
 
 @define(kw_only=True)
