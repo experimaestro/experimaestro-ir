@@ -9,6 +9,7 @@ import sys
 from typing import Dict, List
 from pathlib import Path
 import pkgutil
+from attrs import define
 from typing import Optional
 import click
 from importlib import import_module
@@ -269,6 +270,15 @@ def paper_command(package=None, schema=None):
         return cmd
 
     return _decorate
+
+
+def define_kw(*args, **kwargs):
+    """Method to define keyword only dataclasses
+
+    Configurations are keyword-only
+    """
+
+    return define(*args, **kwargs)
 
 
 papers_cli = PapersCli(help="Runs an experiment from a paper")

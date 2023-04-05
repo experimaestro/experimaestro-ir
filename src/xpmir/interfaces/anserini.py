@@ -7,7 +7,7 @@ import os
 import re
 import subprocess
 import sys
-from typing import List
+from typing import List, Optional
 from experimaestro import tqdm as xpmtqdm, Task, Meta
 
 from datamaestro_text.data.ir import AdhocDocumentStore
@@ -272,14 +272,20 @@ class AnseriniRetriever(Retriever):
 
         modelhandler[self.model]
 
-    def getindex(self) -> Index:
+    def _get_store(self) -> Optional[Index]:
         """Returns the associated index (if any)"""
-        return self.index
+        if self.index.storeContents:
+            return self.index
 
     def retrieve(self, query: str, content=False) -> List[ScoredDocument]:
         hits = self.searcher.search(query, k=self.k)
+        store = self.get_store()
         return [
-            ScoredDocument(hit.docid, hit.score, hit.contents if content else None)
+            ScoredDocument(
+                hit.docid,
+                hit.score,
+                hit.contents or store.document_text(hit.docid) if content else None,
+            )
             for hit in hits
         ]
 

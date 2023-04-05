@@ -63,6 +63,16 @@ class AdhocAssessments(ir.AdhocAssessments, IRDSId):
 
 
 class AdhocDocuments(ir.AdhocDocumentStore, IRDSId):
+    """Wraps an ir datasets collection -- and provide a default text
+    value depending on the collection itself"""
+
+    @cached_property
+    def _doc_text(self):
+        cls = self.dataset.docs_cls()
+        if issubclass(cls, ir_datasets.datasets.cord19.Cord19Doc):
+            return lambda doc: f"{doc.title}\n{doc.abstract}"
+        return lambda doc: doc.text
+
     def iter(self) -> Iterator[ir.AdhocDocument]:
         """Returns an iterator over adhoc documents"""
         for int_docid, doc in enumerate(self.dataset.docs_iter()):
@@ -77,11 +87,6 @@ class AdhocDocuments(ir.AdhocDocumentStore, IRDSId):
     @cached_property
     def store(self):
         return self.dataset.docs_store()
-
-    def _doc_text(self, doc) -> str:
-        # if self.has_title and doc.title:
-        #     return f"{doc.title}\n{doc.text}"
-        return doc.text
 
     def document_text(self, docid: str) -> str:
         return self._doc_text(self.store.get(docid))

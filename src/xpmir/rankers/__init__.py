@@ -24,7 +24,6 @@ import torch.nn as nn
 import numpy as np
 from experimaestro import Param, Config, Meta, DataPath
 from datamaestro_text.data.ir import (
-    AdhocIndex as Index,
     AdhocDocuments,
     AdhocDocumentStore,
 )
@@ -285,6 +284,9 @@ class DuoLearnableScorer(AbstractLearnableScorer):
 class Retriever(Config):
     """A retriever is a model to return top-scored documents given a query"""
 
+    store: Param[Optional[AdhocDocumentStore]] = None
+    """Give the document store associated with this retriever"""
+
     def initialize(self):
         pass
 
@@ -315,9 +317,12 @@ class Retriever(Config):
         """
         raise NotImplementedError()
 
-    def getindex(self) -> Index:
-        """Returns the associated index (if any)"""
-        raise NotImplementedError()
+    def _store(self) -> Optional[AdhocDocumentStore]:
+        """Returns the associated document store (if any) that can be
+        used to get the full text of the documents"""
+
+    def get_store(self) -> Optional[AdhocDocumentStore]:
+        return self.store or self._store()
 
 
 class AbstractTwoStageRetriever(Retriever):
