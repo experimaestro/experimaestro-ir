@@ -328,7 +328,7 @@ class DualTransformerEncoder(BaseTransformer, DualTextEncoder):
 
         with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
             kwargs = {}
-            if tokenized.token_type_ids:
+            if tokenized.token_type_ids is not None:
                 kwargs["token_type_ids"] = tokenized.token_type_ids.to(self.device)
 
             y = self.model(
