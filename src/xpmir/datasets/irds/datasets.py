@@ -45,6 +45,9 @@ class Dataset(AbstractDataset):
     def prepare(self, download=True):
         ds: IRDSId = super().prepare(download=download)
         ds.irds = self.irds_id
+        if download:
+            self.download()
+
         return ds
 
     @property
@@ -58,7 +61,7 @@ class Qrels(Dataset):
 
     def download(self, force=False):
         # Triggers download
-        self.irds_ds.qrels_iter()
+        next(self.irds_ds.qrels_iter())
         return True
 
     def _prepare(self, download=False) -> AdhocDocuments:
@@ -71,7 +74,7 @@ class Queries(Dataset):
 
     def download(self, force=False):
         # Triggers download
-        self.irds_ds.queries_iter()
+        next(self.irds_ds.queries_iter())
         return True
 
     def _prepare(self, download=False) -> AdhocDocuments:
@@ -89,7 +92,7 @@ class Documents(Dataset):
 
     def download(self, force=False):
         # Triggers download
-        self.irds_ds.docs_iter()
+        next(self.irds_ds.docs_iter())
         return True
 
     def _prepare(self, download=False) -> AdhocDocuments:
