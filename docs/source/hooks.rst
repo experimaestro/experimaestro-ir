@@ -29,8 +29,8 @@ Hooks can be used to modify the learning process
 
 
 
-GPU Hooks
----------
+Distributed
+-----------
 
 Hooks can be used to distribute a model over GPUs
 

@@ -1,14 +1,13 @@
 import sys
 from itertools import chain
+import pandas as pd
 from pathlib import Path
 from typing import DefaultDict, Dict, List, Protocol, Union, Tuple
 import ir_measures
 from datamaestro_text.data.ir import Adhoc, AdhocAssessments, AdhocDocuments
 from experimaestro import Task, Param, pathgenerator, Annotated, tags, TagDict
-from datamaestro_text.data.ir.trec import (
-    TrecAdhocRun,
-    TrecAdhocResults,
-)
+from datamaestro_text.data.ir import AdhocResults
+from datamaestro_text.data.ir.trec import TrecAdhocRun, TrecAdhocResults
 from xpmir.measures import Measure
 import xpmir.measures as m
 from xpmir.metrics import evaluator
@@ -137,7 +136,7 @@ class Evaluations:
     dataset: Adhoc
     measures: List[Measure]
     results: List[BaseEvaluation]
-    per_tag: Dict[TagDict, TrecAdhocResults]
+    per_tag: Dict[TagDict, AdhocResults]
 
     def __init__(self, dataset: Adhoc, measures: List[Measure]):
         self.dataset = dataset
@@ -147,12 +146,12 @@ class Evaluations:
 
     def evaluate_retriever(
         self, retriever: Union[Retriever, RetrieverFactory], launcher: Launcher = None
-    ) -> Tuple[Retriever, TrecAdhocResults]:
+    ) -> Tuple[Retriever, AdhocResults]:
         """Evaluates a retriever"""
         if not isinstance(retriever, Retriever):
             retriever = retriever(self.dataset.documents)
 
-        evaluation: TrecAdhocResults = Evaluate(
+        evaluation: AdhocResults = Evaluate(
             retriever=retriever, measures=self.measures, dataset=self.dataset
         ).submit(launcher=launcher)
         self.add(evaluation)
@@ -168,6 +167,9 @@ class Evaluations:
         self.results.extend(results)
 
     def output_results_per_tag(self, file=sys.stdout):
+        return self.to_dataframe().to_markdown(file)
+
+    def to_dataframe(self) -> pd.DataFrame:
         # Get all the tags
         tags = list(
             set(chain(*[tags_dict.keys() for tags_dict in self.per_tags.keys()]))
@@ -183,24 +185,27 @@ class Evaluations:
             to_process.append((tags_dict, results))
 
         # Table header
-        file.write(f"| {' | '.join(tags)}")
-        file.write(f" | {' | '.join(metrics)} |")
-        file.write("\n")
-        file.write(f"| {' | '.join('---' for _ in tags)}")
-        file.write(f" | {' | '.join('---' for _ in metrics)} |")
-        file.write("\n")
+        columns = []
+        for tag in tags:
+            columns.append(["tag", tag])
+        for metric in metrics:
+            columns.append(["metric", metric])
 
         # Output the results
+        rows = []
         for tags_dict, results in to_process:
+            row = []
             # tag values
             for k in tags:
-                file.write(f'| {str(tags_dict.get(k, ""))}')
+                row.append(str(tags_dict.get(k, "")))
 
             # metric values
             for metric in metrics:
-                file.write(f' | {str(results.get(metric, ""))}')
-            file.write(" |\n")
-        file.write("\n")
+                row.append(results.get(metric, ""))
+            rows.append(row)
+
+        index = pd.MultiIndex.from_tuples(columns)
+        return pd.DataFrame(rows, columns=index)
 
 
 class EvaluationsCollection:
@@ -212,7 +217,7 @@ class EvaluationsCollection:
 
     collection: Dict[str, Evaluations]
 
-    per_model: Dict[str, List[Tuple[str, TrecAdhocResults]]]
+    per_model: Dict[str, List[Tuple[str, AdhocResults]]]
     """List of results per model"""
 
     def __init__(self, **collection: Evaluations):
@@ -227,7 +232,7 @@ class EvaluationsCollection:
         overwrite: bool = False,
     ):
         """Evaluate a retriever for all the evaluations in this collection (the
-        tasks are submitted to experimaestro the scheduler)"""
+        tasks are submitted to the experimaestro scheduler)"""
         if model_id is not None and not overwrite:
             assert (
                 model_id not in self.per_model
@@ -257,6 +262,15 @@ class EvaluationsCollection:
                     f"### Results for {evaluation.__xpm__.tags()}" f"""\n{results}\n""",
                     file=file,
                 )
+
+    def to_dataframe(self) -> pd.DataFrame:
+        """Returns a Pandas dataframe"""
+        all_data = []
+        for key, evaluations in self.collection.items():
+            data = evaluations.to_dataframe()
+            data.dataset = key
+            all_data.append(data)
+        return pd.concat(all_data, ignore_index=True)
 
     def output_results_per_tag(self, file=sys.stdout):
         """Outputs the results for each collection, based on the retriever tags

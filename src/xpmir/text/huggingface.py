@@ -325,11 +325,14 @@ class DualTransformerEncoder(BaseTransformer, DualTextEncoder):
 
     def forward(self, texts: List[Tuple[str, str]]):
         tokenized = self.batch_tokenize(texts, maxlen=self.maxlen, mask=True)
+
         with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
+            kwargs = {}
+            if tokenized.token_type_ids:
+                kwargs["token_type_ids"] = tokenized.token_type_ids.to(self.device)
+
             y = self.model(
-                tokenized.ids,
-                token_type_ids=tokenized.token_type_ids.to(self.device),
-                attention_mask=tokenized.mask.to(self.device),
+                tokenized.ids, attention_mask=tokenized.mask.to(self.device), **kwargs
             )
 
         # Assumes that [CLS] is the first token
