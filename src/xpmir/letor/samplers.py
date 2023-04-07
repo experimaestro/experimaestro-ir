@@ -296,7 +296,7 @@ class NegativeSamplerListener(LearnerListener, ModelBasedSampler):
 
     sampling_interval: Param[int] = 128
 
-    def initialize(self, key: str, learner: "Learner", context: TrainerContext):
+    def initialize(self, learner: "Learner", context: TrainerContext):
         pass
 
     def __call__(self, state: TrainerContext) -> bool:

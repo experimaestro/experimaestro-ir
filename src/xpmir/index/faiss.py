@@ -255,8 +255,8 @@ class FaissBuildListener(LearnerListener, BaseIndexBackedFaiss):
     faisspath: Annotated[Path, pathgenerator("faisspath")]
     """The path to store the faiss index"""
 
-    def initialize(self, key: str, learner: "Learner", context: TrainerContext):
-        super().initialize(key, learner, context)
+    def initialize(self, learner: "Learner", context: TrainerContext):
+        super().initialize(learner, context)
         self.faisspath.mkdir(exist_ok=True, parents=True)
 
     def __call__(self, state: TrainerContext) -> bool:
