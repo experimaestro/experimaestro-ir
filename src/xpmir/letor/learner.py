@@ -289,10 +289,6 @@ class Learner(Task, EasyLogger):
 
     def __validate__(self):
         assert self.optimizers, "At least one optimizer should be defined"
-        assert len(set(listener.id for listener in self.listeners)) == len(
-            self.listeners
-        ), "IDs of listeners should be unique"
-
         return super().__validate__()
 
     def taskoutputs(self) -> LearnerOutput:
