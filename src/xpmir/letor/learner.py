@@ -25,6 +25,7 @@ from xpmir.letor.context import (
     StepTrainingHook,
     TrainState,
     TrainerContext,
+    ValidationHook,
 )
 from xpmir.letor.metrics import Metrics
 from xpmir.rankers import (
@@ -40,6 +41,9 @@ class LearnerListener(Config):
     """Hook for learner
 
     Performs some operations after a learning epoch"""
+
+    id: Param[str]
+    """Unique ID to identify the listener"""
 
     def initialize(self, key: str, learner: "Learner", context: TrainerContext):
         self.key = key
@@ -105,6 +109,9 @@ class ValidationListener(LearnerListener):
     """Number of epochs without improvement after which we stop learning.
     Should be a multiple of validation_interval or 0 (no early stopping)"""
 
+    hooks: Param[List[ValidationHook]] = []
+    """The list of the hooks during the validation"""
+
     def __validate__(self):
         assert (
             self.early_stop % self.validation_interval == 0
@@ -164,6 +171,11 @@ class ValidationListener(LearnerListener):
         # listeners have not stopped yet)
         if self.should_stop(state.epoch - 1):
             return True
+
+        foreach(
+            self.hooks,
+            lambda hook: hook.before(self.context),
+        )
 
         if state.epoch % self.validation_interval == 0:
             # Compute validation metrics
@@ -252,7 +264,7 @@ class Learner(Task, EasyLogger):
     optimizers: Param[List[ParameterOptimizer]]
     """The list of parameter optimizers"""
 
-    listeners: Param[Dict[str, LearnerListener]]
+    listeners: Param[List[LearnerListener]]
     """Listeners are in charge of handling the validation of the model, and
     saving the relevant checkpoints"""
 
@@ -278,14 +290,17 @@ class Learner(Task, EasyLogger):
 
     def __validate__(self):
         assert self.optimizers, "At least one optimizer should be defined"
+        assert len(set(listener.id for listener in self.listeners)) == len(
+            self.listeners
+        ), "IDs of listeners should be unique"
+
         return super().__validate__()
 
     def taskoutputs(self) -> LearnerOutput:
         """Object returned when submitting the task"""
         return LearnerOutput(
             listeners={
-                key: listener.taskoutputs(self)
-                for key, listener in self.listeners.items()
+                listener.id: listener.taskoutputs(self) for listener in self.listeners
             }
         )
 
@@ -332,8 +347,8 @@ class Learner(Task, EasyLogger):
 
         # Initialize the context and the listeners
         self.trainer.initialize(self.random.state, self.context)
-        for key, listener in self.listeners.items():
-            listener.initialize(key, self, self.context)
+        for listener in self.listeners:
+            listener.initialize(listener.id, self, self.context)
 
         self.logger.info("Moving to device %s", device_information.device)
         self.scorer.to(device_information.device)
@@ -377,7 +392,7 @@ class Learner(Task, EasyLogger):
 
                 # Call listeners
                 stop = True
-                for listener in self.listeners.values():
+                for listener in self.listeners:
                     # listener.__call__ returns True if we should stop
                     stop = listener(state) and stop
 
@@ -401,7 +416,7 @@ class Learner(Task, EasyLogger):
             if state is not None and not state.cached:
                 # Set the hyper-parameters
                 metrics = {}
-                for listener in self.listeners.values():
+                for listener in self.listeners:
                     listener.update_metrics(metrics)
                 self.context.writer.add_hparams(self.__tags__, metrics)
 

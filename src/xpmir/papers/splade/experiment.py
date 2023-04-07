@@ -128,6 +128,7 @@ class SPLADEExperiment(SPLADEMSMarcoV1Experiment):
 
         # establish the validation listener
         validation = ValidationListener(
+            id="validation",
             dataset=self.ds_val,
             # a retriever which use the splade model to score all the
             # documents and then do the retrieve
@@ -158,7 +159,7 @@ class SPLADEExperiment(SPLADEMSMarcoV1Experiment):
             use_fp16=True,
             max_epochs=tag(cfg.learner.max_epochs),
             # the listener for the validation
-            listeners={"bestval": validation},
+            listeners=[validation],
             # the hooks
             hooks=hooks,
         )

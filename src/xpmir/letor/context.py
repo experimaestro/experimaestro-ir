@@ -120,6 +120,12 @@ class TrainingHook(Config):
     pass
 
 
+class ValidationHook(Config):
+    """Base class for all the validation hooks"""
+
+    pass
+
+
 class StepTrainingHook(TrainingHook):
     """Base class for hooks called at each step (before/after)"""
 

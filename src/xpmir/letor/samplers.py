@@ -225,7 +225,7 @@ class PointwiseModelBasedSampler(PointwiseSampler, ModelBasedSampler):
             record.document.text = self.index.document_text(record.document.docid)
         return record
 
-    def readrecords(self, runpath):
+    def readrecords(self):
         pos_records, neg_records = [], []
         for title, positives, negatives in self._itertopics():
             for docno, rel, score in positives:

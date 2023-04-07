@@ -2,7 +2,7 @@
 
 https://github.com/facebookresearch/faiss
 """
-
+from functools import lru_cache, partial
 from pathlib import Path
 from typing import Callable, Iterator, List, Optional, Tuple
 from experimaestro import Config, initializer
@@ -32,25 +32,41 @@ except ModuleNotFoundError:
     raise
 
 
-class FaissIndex(Config):
-    """FAISS Index"""
-
+class BaseFaissIndex(Config):
     normalize: Param[bool]
     """Whether vectors should be normalized (L2)"""
-
-    faiss_index: Annotated[Path, pathgenerator("faiss.dat")]
-    """Path to the file containing the index"""
 
     documents: Param[AdhocDocumentStore]
     """The set of documents"""
 
+    def get_index(self):
+        raise NotImplementedError(f"get_index in {self.__class__}")
 
-class IndexBackedFaiss(FaissIndex, Task):
+
+class FaissIndex(BaseFaissIndex):
+    """FAISS Index, static version, where the index are fixed once finish the
+    computation"""
+
+    faiss_index: Param[Path]
+    """Path to the file containing the index"""
+
+    @lru_cache
+    def get_index(self):
+        return faiss.read_index(str(self.faiss_index))
+
+
+class BaseIndexBackedFaiss(Config):
     """Constructs a FAISS index backed up by an index
 
     During executions, InitializationHooks are used (pre/post)
 
     """
+
+    normalize: Param[bool]
+    """Whether vectors should be normalized (L2)"""
+
+    documents: Param[AdhocDocumentStore]
+    """The set of documents"""
 
     encoder: Param[TextEncoder]
     """Encoder for document texts"""
@@ -119,10 +135,7 @@ class IndexBackedFaiss(FaissIndex, Task):
         # Here we may use just a part of the document to train the index
         index.train(sample)
 
-    def execute(self):
-        self.device.execute(self._execute)
-
-    def _execute(self, device_information: DeviceInformation):
+    def _execute(self, faiss_index: Path, device_information: DeviceInformation):
         # Initialization hooks
         context = Context(device_information, hooks=self.hooks)
         foreach(context.hooks(InitializationHook), lambda hook: hook.before(context))
@@ -177,7 +190,7 @@ class IndexBackedFaiss(FaissIndex, Task):
                 )
 
         logging.info("Writing FAISS index (%d documents)", index.ntotal)
-        faiss.write_index(index, str(self.faiss_index))
+        faiss.write_index(index, str(faiss_index))
         step_iter.update()
 
     def encode(self, batch: List[str], data: List):
@@ -199,13 +212,47 @@ class IndexBackedFaiss(FaissIndex, Task):
         return self.documents.docid_internal2external(docid)
 
 
+class DynamicFaissIndex(BaseIndexBackedFaiss, BaseFaissIndex):
+    """A faiss index which could be updated through the listener"""
+
+    def get_index(self):
+        # TODO
+        if self._index is None:
+            # First calculation of the index, create a intial path in the disk
+            ...
+        else:
+            # get the index in the new path.
+            ...
+
+
+class IndexBackedFaiss(BaseIndexBackedFaiss, Task):
+    """Constructs a FAISS index backed up by an index
+
+    During executions, InitializationHooks are used (pre/post)
+
+    """
+
+    faiss_index: Annotated[Path, pathgenerator("faiss.dat")]
+    """Path to the file containing the index"""
+
+    def execute(self):
+        self.device.execute(partial(self._execute, self.faiss_index))
+
+    def taskoutput(self):
+        return FaissIndex(
+            normalize=self.normalize,
+            documents=self.documents,
+            faiss_index=self.faiss_index,
+        )
+
+
 class FaissRetriever(Retriever):
     """Retriever based on Faiss"""
 
     encoder: Param[TextEncoder]
     """The query encoder"""
 
-    index: Param[FaissIndex]
+    index: Param[BaseFaissIndex]
     """The faiss index"""
 
     topk: Param[int]
@@ -213,11 +260,8 @@ class FaissRetriever(Retriever):
 
     @initializer
     def initialize(self):
-        logger.info("FAISS retriever (1/2): initializing the encoder")
+        logger.info("FAISS retriever: initializing the encoder")
         self.encoder.initialize()
-        logger.info("FAISS retriever (2/2): reading the index")
-        self._index = faiss.read_index(str(self.index.faiss_index))
-        logger.info("FAISS retriever: initialized")
 
     def retrieve(self, query: str) -> List[ScoredDocument]:
         """Retrieves a documents, returning a list sorted by decreasing score"""
@@ -227,10 +271,12 @@ class FaissRetriever(Retriever):
             if self.index.normalize:
                 encoded_query /= encoded_query.norm(2)
 
-            values, indices = self._index.search(encoded_query.cpu().numpy(), self.topk)
+            values, indices = self.index.get_index().search(
+                encoded_query.cpu().numpy(), self.topk
+            )
             return [
                 ScoredDocument(
-                    self.index.docid_internal2external(int(ix)), float(value)
+                    self.index.documents.docid_internal2external(int(ix)), float(value)
                 )
                 for ix, value in zip(indices[0], values[0])
                 if ix >= 0
