@@ -9,7 +9,6 @@ import sys
 from typing import Dict, List
 from pathlib import Path
 import pkgutil
-from attrs import define
 from typing import Optional
 import click
 from importlib import import_module
@@ -17,14 +16,15 @@ import docstring_parser
 from termcolor import cprint
 import omegaconf
 from experimaestro import experiment, RunMode
-from omegaconf import OmegaConf
+from omegaconf import OmegaConf, SCMode
 from xpmir.configuration import omegaconf_argument
 from xpmir.evaluation import EvaluationsCollection
 import xpmir.papers as papers
 from xpmir.models import XPMIRHFHub
 from xpmir.rankers import Scorer
 from xpmir.papers.results import PaperResults
-from xpmir.papers.pipelines import PaperExperiment
+from xpmir.papers.helpers import PaperExperiment
+from xpmir.letor.optim import TensorboardService
 
 
 class ExperimentsCli(click.MultiCommand):
@@ -136,12 +136,15 @@ model.rsv("walgreens store sales average", "The average Walgreens salary ranges.
         )
 
 
-def paper_command(package=None, schema=None):
+def paper_command(package=None, schema=None, tensorboard_service=False):
     """General command line decorator for an XPM-IR experiment
 
     This annotation adds a set of arguments for the
 
     HuggingFace upload: the documentation comes from the docstring
+
+    :param tensorboard_service: If true, register a tensorboard service and transmits it
+        as ``tensorboard_service`` to function
     """
 
     omegaconf_schema = None
@@ -228,6 +231,9 @@ def paper_command(package=None, schema=None):
                 print(json.dumps(OmegaConf.to_container(configuration)))  # noqa: T201
                 sys.exit(0)
 
+            configuration = OmegaConf.to_container(
+                configuration, structured_config_mode=SCMode.INSTANTIATE
+            )
             parameters = inspect.signature(fn).parameters
 
             if upload_to_hub is not None:
@@ -247,6 +253,10 @@ def paper_command(package=None, schema=None):
             with experiment(
                 workdir, configuration.id, host=host, port=port, run_mode=run_mode
             ) as xp:
+                if tensorboard_service:
+                    kwargs["tensorboard_service"] = xp.add_service(
+                        TensorboardService(xp.resultspath / "runs")
+                    )
 
                 for key, value in env:
                     xp.setenv(key, value)
@@ -270,15 +280,6 @@ def paper_command(package=None, schema=None):
         return cmd
 
     return _decorate
-
-
-def define_kw(*args, **kwargs):
-    """Method to define keyword only dataclasses
-
-    Configurations are keyword-only
-    """
-
-    return define(*args, **kwargs)
 
 
 papers_cli = PapersCli(help="Runs an experiment from a paper")

@@ -1,4 +1,5 @@
-from attrs import define, Factory
+from attrs import Factory
+from xpmir.papers.helpers import configuration
 from xpmir.papers.monobert.configuration import (
     Monobert,
     Learner as BaseLearner,
@@ -6,17 +7,17 @@ from xpmir.papers.monobert.configuration import (
 )
 
 
-@define(kw_only=True)
+@configuration()
 class Retrieval(BaseRetrieval):
     base_k: int = 30
 
 
-@define(kw_only=True)
+@configuration()
 class Learner(BaseLearner):
     base_validation_top_k: int = 30
 
 
-@define(kw_only=True)
+@configuration()
 class DuoBERT(Monobert):
     duobert: Learner = Factory(Learner)
     retrieval: Retrieval = Factory(Retrieval)

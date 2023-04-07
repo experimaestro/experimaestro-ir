@@ -23,7 +23,9 @@ from tqdm import tqdm
 from xpmir.index.anserini import Index
 from xpmir.rankers import Retriever, ScoredDocument, RetrieverHydrator, document_cache
 from xpmir.rankers.standard import BM25, QLDirichlet, Model
-from xpmir.utils.utils import Handler, StreamGenerator
+from xpmir.utils.utils import Handler, StreamGenerator, needs_java
+
+pyserini_java = needs_java(11)
 
 
 def anserini_classpath():
@@ -49,6 +51,7 @@ def javacommand():
     return command
 
 
+@pyserini_java
 @param("documents", type=AdhocDocuments)
 @param("threads", default=8, ignored=True)
 @pathoption("path", "index")
@@ -201,6 +204,7 @@ class IndexCollection(Index, Task):
         asyncio.run(run([str(s) for s in command]))
 
 
+@pyserini_java
 @param("index", Index)
 @param("topics", AdhocTopics)
 @param("model", Model)
@@ -242,6 +246,7 @@ class SearchCollection:
         sys.exit(p.returncode)
 
 
+@pyserini_java
 class AnseriniRetriever(Retriever):
     """An Anserini-based retriever
 

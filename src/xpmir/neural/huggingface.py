@@ -18,9 +18,12 @@ class HFCrossScorer(TorchLearnableScorer, DistributableModel):
     max_length: Param[int] = None
     """the max length for the transformer model"""
 
+    @property
+    def device(self):
+        return self._dummy_param.device
+
     def __post_init__(self):
-        # FIXME: consider how to treat with the device
-        self.device = torch.nn.Parameter(torch.Tensor()).device
+        self._dummy_param = torch.nn.Parameter(torch.Tensor())
 
         self.config = AutoConfig.from_pretrained(self.hf_id)
         self.model = AutoModelForSequenceClassification.from_pretrained(

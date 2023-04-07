@@ -39,12 +39,12 @@ class BaseTransformer(Encoder):
     layer: Param[int] = 0
     """Layer to use (0 is the last, -1 to use them all)"""
 
-    # FIXME: should be in a hook rather than here?
+    # FIXME: move this into a hook
     dropout: Param[Optional[float]] = 0
     """Define a dropout for all the layers"""
 
-    CLS: int  # id=101
-    SEP: int  # id=102
+    CLS: int
+    SEP: int
 
     @cached_property
     def tokenizer(self):

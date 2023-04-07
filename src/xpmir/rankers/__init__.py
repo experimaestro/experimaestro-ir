@@ -141,14 +141,21 @@ class Scorer(Config, EasyLogger):
         )
 
 
-def documents_retriever(
+def scorer_retriever(
     documents: AdhocDocuments,
     *,
-    retrievers: "RetrieverFactory" = None,
-    scorer: Scorer = None,
+    retrievers: "RetrieverFactory",
+    scorer: Scorer,
     **kwargs,
 ):
-    """Helper function"""
+    """Helper function that returns a two stage retriever. This is useful
+    when used with partial (when the scorer is not known).
+
+    :param documents: The document collection
+    :param retrievers: A retriever factory
+    :param scorer: The scorer
+    :return: A retriever, calling the :meth:scorer.getRetriever
+    """
     assert retrievers is not None, "The retrievers have not been given"
     assert scorer is not None, "The scorer has not been given"
     return scorer.getRetriever(retrievers(documents), **kwargs)

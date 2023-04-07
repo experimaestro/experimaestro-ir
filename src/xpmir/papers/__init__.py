@@ -1,5 +1,20 @@
 import attr
 
+try:
+    from typing import dataclass_transform
+except ImportError:
+    from typing_extensions import dataclass_transform
+
+
+@dataclass_transform(kw_only_default=True)
+def configuration(*args, **kwargs):
+    """Method to define keyword only dataclasses
+
+    Configurations are keyword-only
+    """
+
+    return attr.define(*args, kw_only=True, slots=False, hash=True, eq=True, **kwargs)
+
 
 @attr.define()
 class Experiment:
