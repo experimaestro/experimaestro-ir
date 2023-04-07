@@ -42,6 +42,8 @@ scorers, some are have learnable parameters.
 .. autoxpmconfig:: xpmir.rankers.RandomScorer
 .. autoxpmconfig:: xpmir.rankers.LearnableScorer
 
+.. autofunction:: scorer_retriever
+
 Retrievers
 ==========
 

@@ -1,16 +1,16 @@
-from pathlib import Path
 import sys
-from typing import DefaultDict, Dict, List, Protocol, Union
+from itertools import chain
+import pandas as pd
+from pathlib import Path
+from typing import DefaultDict, Dict, List, Protocol, Union, Tuple
+import ir_measures
 from datamaestro_text.data.ir import Adhoc, AdhocAssessments, AdhocDocuments
-from experimaestro import Task, Param, pathgenerator, Annotated
-from datamaestro_text.data.ir.trec import (
-    TrecAdhocRun,
-    TrecAdhocResults,
-)
+from experimaestro import Task, Param, pathgenerator, Annotated, tags, TagDict
+from datamaestro_text.data.ir import AdhocResults
+from datamaestro_text.data.ir.trec import TrecAdhocRun, TrecAdhocResults
 from xpmir.measures import Measure
 import xpmir.measures as m
 from xpmir.metrics import evaluator
-import ir_measures
 from xpmir.rankers import Retriever
 
 from experimaestro.launchers import Launcher
@@ -47,7 +47,7 @@ class BaseEvaluation(Task):
     def _execute(self, run, assessments):
         """Evaluate an IR ad-hoc run with trec-eval"""
 
-        evaluator = get_evaluator([m() for m in self.measures], assessments)
+        evaluator = get_evaluator([measure() for measure in self.measures], assessments)
 
         def print_line(fp, measure, scope, value):
             fp.write("{:25s}{:8s}{:.4f}\n".format(measure, scope, value))
@@ -108,7 +108,7 @@ class RunEvaluation(BaseEvaluation, Task):
 
 
 class Evaluate(BaseEvaluation, Task):
-    """Evaluate a retriever directly (without generating the run explicitely)"""
+    """Evaluate a retriever directly (without generating the run explicitly)"""
 
     dataset: Param[Adhoc]
     """The dataset for retrieval"""
@@ -136,27 +136,76 @@ class Evaluations:
     dataset: Adhoc
     measures: List[Measure]
     results: List[BaseEvaluation]
+    per_tag: Dict[TagDict, AdhocResults]
 
     def __init__(self, dataset: Adhoc, measures: List[Measure]):
         self.dataset = dataset
         self.measures = measures
         self.results = []
+        self.per_tags = {}
 
     def evaluate_retriever(
         self, retriever: Union[Retriever, RetrieverFactory], launcher: Launcher = None
-    ):
+    ) -> Tuple[Retriever, AdhocResults]:
         """Evaluates a retriever"""
         if not isinstance(retriever, Retriever):
             retriever = retriever(self.dataset.documents)
 
-        evaluation = Evaluate(
+        evaluation: AdhocResults = Evaluate(
             retriever=retriever, measures=self.measures, dataset=self.dataset
         ).submit(launcher=launcher)
         self.add(evaluation)
-        return evaluation
+
+        # Use retriever tags
+        retriever_tags = tags(retriever)
+        if retriever_tags:
+            self.per_tags[retriever_tags] = evaluation
+
+        return retriever, evaluation
 
     def add(self, *results: BaseEvaluation):
         self.results.extend(results)
+
+    def output_results_per_tag(self, file=sys.stdout):
+        return self.to_dataframe().to_markdown(file)
+
+    def to_dataframe(self) -> pd.DataFrame:
+        # Get all the tags
+        tags = list(
+            set(chain(*[tags_dict.keys() for tags_dict in self.per_tags.keys()]))
+        )
+        tags.sort()
+
+        # Get all the results and metrics
+        to_process = []
+        metrics = set()
+        for tags_dict, evaluate in self.per_tags.items():
+            results = evaluate.get_results()
+            metrics.update(results.keys())
+            to_process.append((tags_dict, results))
+
+        # Table header
+        columns = []
+        for tag in tags:
+            columns.append(["tag", tag])
+        for metric in metrics:
+            columns.append(["metric", metric])
+
+        # Output the results
+        rows = []
+        for tags_dict, results in to_process:
+            row = []
+            # tag values
+            for k in tags:
+                row.append(str(tags_dict.get(k, "")))
+
+            # metric values
+            for metric in metrics:
+                row.append(results.get(metric, ""))
+            rows.append(row)
+
+        index = pd.MultiIndex.from_tuples(columns)
+        return pd.DataFrame(rows, columns=index)
 
 
 class EvaluationsCollection:
@@ -167,7 +216,9 @@ class EvaluationsCollection:
     """
 
     collection: Dict[str, Evaluations]
-    per_model: Dict[str, List[Evaluate]]
+
+    per_model: Dict[str, List[Tuple[str, AdhocResults]]]
+    """List of results per model"""
 
     def __init__(self, **collection: Evaluations):
         self.collection = collection
@@ -178,18 +229,22 @@ class EvaluationsCollection:
         retriever: Union[Retriever, RetrieverFactory],
         launcher: Launcher = None,
         model_id: str = None,
+        overwrite: bool = False,
     ):
         """Evaluate a retriever for all the evaluations in this collection (the
-        tasks are submitted to experimaestro the scheduler)"""
-        results = []
-        for key, evaluations in self.collection.items():
-            result = evaluations.evaluate_retriever(retriever, launcher)
-            results.append((key, evaluations, result))
-
-        if model_id is not None:
+        tasks are submitted to the experimaestro scheduler)"""
+        if model_id is not None and not overwrite:
             assert (
                 model_id not in self.per_model
             ), f"Model with ID `{model_id}` was already evaluated"
+
+        results = []
+        for key, evaluations in self.collection.items():
+            _retriever, result = evaluations.evaluate_retriever(retriever, launcher)
+            results.append((key, result))
+
+        # Adds to per model results
+        if model_id is not None:
             self.per_model[model_id] = results
 
         return results
@@ -208,6 +263,24 @@ class EvaluationsCollection:
                     file=file,
                 )
 
+    def to_dataframe(self) -> pd.DataFrame:
+        """Returns a Pandas dataframe"""
+        all_data = []
+        for key, evaluations in self.collection.items():
+            data = evaluations.to_dataframe()
+            data.dataset = key
+            all_data.append(data)
+        return pd.concat(all_data, ignore_index=True)
+
+    def output_results_per_tag(self, file=sys.stdout):
+        """Outputs the results for each collection, based on the retriever tags
+        to build the table
+        """
+        # Loop over all collections
+        for key, evaluations in self.collection.items():
+            print(f"## Dataset {key}\n", file=file)  # noqa: T201
+            evaluations.output_results_per_tag(file)
+
     def output_model_results(self, model_id: str, file=sys.stdout):
         """Outputs the result of a model over various datasets (in markdown format)
 
@@ -216,7 +289,7 @@ class EvaluationsCollection:
         """
         all_results = {}
         all_metrics = set()
-        for key, _, evaluation in self.per_model[model_id]:
+        for key, evaluation in self.per_model[model_id]:
             all_results[key] = evaluation.get_results()
             all_metrics.update(all_results[key].keys())
         all_metrics = sorted(all_metrics)

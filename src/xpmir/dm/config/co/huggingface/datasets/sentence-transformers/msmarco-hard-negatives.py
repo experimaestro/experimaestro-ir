@@ -1,4 +1,4 @@
-# See documentation on http://experimaestro.github.io/datamaestro/
+# See documentation on https://datamaestro.readthedocs.io
 
 from datamaestro.definitions import datatasks, datatags, dataset
 from datamaestro_text.data.ir.huggingface import HuggingFacePairwiseSampleDataset

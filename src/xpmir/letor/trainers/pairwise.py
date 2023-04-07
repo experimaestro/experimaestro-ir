@@ -73,6 +73,11 @@ class LogSoftmaxLoss(PairwiseLoss):
 
     NAME = "ranknet"
 
+    def __initialize__(self, ranker: LearnableScorer):
+        assert (
+            ranker.outputType != ScorerOutputType.PROBABILITY
+        ), "Probability outputs are not handled"
+
     def compute(self, scores: torch.Tensor, info: TrainerContext):
         return -F.logsigmoid(scores[:, 0] - scores[:, 1]).mean()
 
@@ -81,9 +86,12 @@ RanknetLoss = LogSoftmaxLoss
 
 
 class HingeLoss(PairwiseLoss):
+    """Hinge loss"""
+
     NAME = "hinge"
 
     margin: Param[float] = 1.0
+    """The margin for the Hinge loss"""
 
     def compute(self, rel_scores_by_record, info: TrainerContext):
         return F.relu(
@@ -92,29 +100,25 @@ class HingeLoss(PairwiseLoss):
 
 
 class BCEWithLogLoss(nn.Module):
-    def __call__(self, log_probs, info: TrainerContext):
-        assert info.metrics is not None, "No metrics object in context"
+    """Custom cross-entropy loss when outputs are log probabilities"""
 
+    def __call__(self, log_probs: torch.Tensor, targets: torch.Tensor):
         # Assumes target is a two column matrix (rel. / not rel.)
-        rel_cost, nrel_cost = (
-            -log_probs[:, 0].mean(),
-            -(1.0 - log_probs[:, 1].exp()).log().mean(),
+
+        loss = (
+            -log_probs[targets > 0].sum() + (1.0 - log_probs[targets == 0].exp()).sum()
         )
-        info.metrics.add(
-            ScalarMetric("pairwise-pce-rel", rel_cost.item(), len(log_probs))
-        )
-        info.metrics.add(
-            ScalarMetric("pairwise-pce-nrel", nrel_cost.item(), len(log_probs))
-        )
-        return (rel_cost + nrel_cost) / 2
+
+        return loss / log_probs.numel()
 
 
 class PointwiseCrossEntropyLoss(PairwiseLoss):
-    """Regular PCE (>0 for relevant, 0 otherwise)
-    Uses the ranker output type:
+    """Point-wise cross-entropy loss
+
+    This loss adapts to the ranker output type:
     - If real, uses a BCELossWithLogits (sigmoid transformation)
     - If probability, uses the BCELoss
-    - If log probability, uses a custom BCE loss
+    - If log probability, uses a BCEWithLogLoss
     """
 
     NAME = "pointwise-cross-entropy"

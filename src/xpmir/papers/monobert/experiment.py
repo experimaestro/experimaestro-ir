@@ -1,154 +1,173 @@
-from functools import partial, lru_cache
+from functools import partial
 import logging
 
 from xpmir.distributed import DistributedHook
 from xpmir.letor.learner import Learner, ValidationListener
-from xpmir.letor.schedulers import LinearWithWarmup
 import xpmir.letor.trainers.pairwise as pairwise
 from xpmir.neural.cross import CrossScorer
 from experimaestro import experiment, setmeta
 from experimaestro.launcherfinder import find_launcher
 from xpmir.letor.batchers import PowerAdaptativeBatcher
 from xpmir.letor.optim import (
-    AdamW,
-    ParameterOptimizer,
-    RegexParameterFilter,
-    get_optimizers,
+    TensorboardService,
 )
 from xpmir.papers.cli import paper_command
 from xpmir.rankers.standard import BM25
 from xpmir.text.huggingface import DualTransformerEncoder
 from xpmir.papers.results import PaperResults
-from xpmir.papers.pipelines.msmarco import RerankerMSMarcoV1Experiment
-from .configuration import Monobert, Learner as LearnerConfig
+from xpmir.utils.functools import cache
+from xpmir.papers.helpers.msmarco import (
+    v1_docpairs_sampler,
+    v1_tests,
+    v1_validation_dataset,
+    v1_passages,
+)
+from .configuration import Monobert
+import xpmir.interfaces.anserini as anserini
+from xpmir.rankers import scorer_retriever, RandomScorer
 
 logging.basicConfig(level=logging.INFO)
 
 
-class MonoBERTExperiment(RerankerMSMarcoV1Experiment):
-    """MonoBERT experiment
+@cache
+def get_retrievers(cfg: Monobert):
+    """Returns retrievers
 
-    This class can be used for experiments that depend on the training of a
-    monobert model
+
+    :param cfg: The configuration
+    :return: A tuple composed of (1) a retriever factory based on the base model
+        (BM25) and (2)
     """
+    launcher_index = cfg.indexation.launcher
 
-    cfg: Monobert
+    base_model = BM25().tag("model", "bm25")
 
-    basemodel = BM25().tag("model", "bm25")
+    retrievers = partial(
+        anserini.retriever,
+        anserini.index_builder(launcher=launcher_index),
+        model=base_model,
+    )  #: Anserini based retrievers
 
-    def __init__(self, xp: experiment, cfg: Monobert):
-        super().__init__(xp, cfg)
-        self.launcher_learner = find_launcher(cfg.monobert.requirements)
-        self.launcher_evaluate = find_launcher(cfg.retrieval.requirements)
+    model_based_retrievers = partial(
+        scorer_retriever,
+        batch_size=cfg.retrieval.batch_size,
+        batcher=PowerAdaptativeBatcher(),
+        device=cfg.device,
+    )  #: Model-based retrievers
 
-    @lru_cache
-    def get_optimizers(self, cfg: LearnerConfig):
-        scheduler = (
-            LinearWithWarmup(
-                num_warmup_steps=cfg.num_warmup_steps,
-                min_factor=cfg.warmup_min_factor,
-            )
-            if cfg.scheduler
-            else None
+    return retrievers, model_based_retrievers
+
+
+def run(
+    xp: experiment, cfg: Monobert, tensorboard_service: TensorboardService
+) -> PaperResults:
+    """monoBERT model"""
+
+    launcher_learner = find_launcher(cfg.monobert.requirements)
+    launcher_evaluate = find_launcher(cfg.retrieval.requirements)
+    device = cfg.device
+    random = cfg.random
+
+    documents = v1_passages()
+    ds_val = v1_validation_dataset(cfg.validation)
+
+    tests = v1_tests()
+
+    # Setup indices and validation/test base retrievers
+    retrievers, model_based_retrievers = get_retrievers(cfg)
+
+    test_retrievers = partial(retrievers, k=cfg.retrieval.k)  #: Test retrievers
+
+    # Search and evaluate with a random re-ranker
+    random_scorer = RandomScorer(random=random).tag("scorer", "random")
+    tests.evaluate_retriever(
+        partial(
+            model_based_retrievers,
+            retrievers=test_retrievers,
+            scorer=random_scorer,
+            device=None,
         )
+    )
 
-        return get_optimizers(
-            [
-                ParameterOptimizer(
-                    scheduler=scheduler,
-                    optimizer=AdamW(lr=cfg.lr, weight_decay=0, eps=1e-6),
-                    filter=RegexParameterFilter(
-                        includes=[r"\.bias$", r"\.LayerNorm\."]
-                    ),
-                ),
-                ParameterOptimizer(
-                    scheduler=scheduler,
-                    optimizer=AdamW(lr=cfg.lr, weight_decay=1e-2, eps=1e-6),
-                ),
-            ]
+    # Search and evaluate with the base model
+    tests.evaluate_retriever(test_retrievers, cfg.indexation.launcher)
+
+    # Define the different launchers
+    val_retrievers = partial(retrievers, k=cfg.monobert.validation_top_k)
+
+    # define the trainer for monobert
+    monobert_trainer = pairwise.PairwiseTrainer(
+        lossfn=pairwise.PointwiseCrossEntropyLoss(),
+        sampler=v1_docpairs_sampler(),
+        batcher=PowerAdaptativeBatcher(),
+        batch_size=cfg.monobert.optimization.batch_size,
+    )
+
+    monobert_scorer: CrossScorer = CrossScorer(
+        encoder=DualTransformerEncoder(
+            model_id="bert-base-uncased", trainable=True, maxlen=512, dropout=0.1
         )
+    ).tag("scorer", "monobert")
 
-    def run(self) -> PaperResults:
-        """monoBERT model"""
-
-        cfg = self.cfg
-
-        # Define the different launchers
-        val_retrievers = partial(self.retrievers, k=cfg.monobert.validation_top_k)
-
-        # define the trainer for monobert
-        monobert_trainer = pairwise.PairwiseTrainer(
-            lossfn=pairwise.PointwiseCrossEntropyLoss(),
-            sampler=self.train_sampler,
-            batcher=PowerAdaptativeBatcher(),
-            batch_size=cfg.monobert.batch_size,
-        )
-
-        monobert_scorer: CrossScorer = CrossScorer(
-            encoder=DualTransformerEncoder(
-                model_id="bert-base-uncased", trainable=True, maxlen=512, dropout=0.1
-            )
-        ).tag("reranker", "monobert")
-
-        # The validation listener evaluates the full retriever
-        # (retriever + reranker) and keep the best performing model
-        # on the validation set
-        validation = ValidationListener(
-            dataset=self.ds_val,
-            retriever=self.model_based_retrievers(
-                self.documents,
-                retrievers=val_retrievers,
-                scorer=monobert_scorer,
-                device=self.device,
-            ),
-            validation_interval=cfg.monobert.validation_interval,
-            metrics={"RR@10": True, "AP": False, "nDCG": False},
-        )
-
-        # The learner trains the model
-        learner = Learner(
-            # Misc settings
-            device=self.device,
-            random=self.random,
-            # How to train the model
-            trainer=monobert_trainer,
-            # The model to train
+    # The validation listener evaluates the full retriever
+    # (retriever + scorer) and keep the best performing model
+    # on the validation set
+    validation = ValidationListener(
+        dataset=ds_val,
+        retriever=model_based_retrievers(
+            documents,
+            retrievers=val_retrievers,
             scorer=monobert_scorer,
-            # Optimization settings
-            steps_per_epoch=cfg.monobert.steps_per_epoch,
-            optimizers=self.get_optimizers(cfg.monobert),
-            max_epochs=cfg.monobert.max_epochs,
-            # The listeners (here, for validation)
-            listeners={"bestval": validation},
-            # The hook used for evaluation
-            hooks=[setmeta(DistributedHook(models=[monobert_scorer]), True)],
+            device=device,
+        ),
+        validation_interval=cfg.monobert.validation_interval,
+        metrics={"RR@10": True, "AP": False, "nDCG": False},
+    )
+
+    # The learner trains the model
+    learner = Learner(
+        # Misc settings
+        device=device,
+        random=random,
+        # How to train the model
+        trainer=monobert_trainer,
+        # The model to train
+        scorer=monobert_scorer,
+        # Optimization settings
+        steps_per_epoch=cfg.monobert.optimization.steps_per_epoch,
+        optimizers=cfg.monobert.optimization.optimizer,
+        max_epochs=cfg.monobert.optimization.max_epochs,
+        # The listeners (here, for validation)
+        listeners={"bestval": validation},
+        # The hook used for evaluation
+        hooks=[setmeta(DistributedHook(models=[monobert_scorer]), True)],
+    )
+
+    # Submit job and link
+    outputs = learner.submit(launcher=launcher_learner)
+    tensorboard_service.add(learner, learner.logpath)
+
+    # Evaluate the neural model on test collections
+    for metric_name in validation.monitored():
+        model = outputs.listeners["bestval"][metric_name]  # type: CrossScorer
+        tests.evaluate_retriever(
+            partial(
+                model_based_retrievers,
+                scorer=model,
+                retrievers=test_retrievers,
+                device=device,
+            ),
+            launcher_evaluate,
+            model_id=f"monobert-{metric_name}",
         )
 
-        # Submit job and link
-        outputs = learner.submit(launcher=self.launcher_learner)
-        self.tb.add(learner, learner.logpath)
-
-        # Evaluate the neural model on test collections
-        for metric_name in validation.monitored():
-            model = outputs.listeners["bestval"][metric_name]  # type: CrossScorer
-            self.tests.evaluate_retriever(
-                partial(
-                    self.model_based_retrievers,
-                    scorer=model,
-                    retrievers=self.test_retrievers,
-                    device=self.device,
-                ),
-                self.launcher_evaluate,
-                model_id=f"monobert-{metric_name}",
-            )
-
-        return PaperResults(
-            models={"monobert-RR@10": outputs.listeners["bestval"]["RR@10"]},
-            evaluations=self.tests,
-            tb_logs={"monobert-RR@10": learner.logpath},
-        )
+    return PaperResults(
+        models={"monobert-RR@10": outputs.listeners["bestval"]["RR@10"]},
+        evaluations=tests,
+        tb_logs={"monobert-RR@10": learner.logpath},
+    )
 
 
-@paper_command(schema=Monobert, package=__package__)
-def cli(xp: experiment, cfg: Monobert):
-    return MonoBERTExperiment(xp, cfg).run()
+@paper_command(schema=Monobert, package=__package__, tensorboard_service=True)
+def cli(xp: experiment, cfg: Monobert, tensorboard_service: TensorboardService):
+    return run(xp, cfg, tensorboard_service)

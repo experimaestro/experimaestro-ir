@@ -229,7 +229,8 @@ class PairwiseRecords(BaseRecords):
 
 
 class PairwiseRecordsWithTarget(PairwiseRecords):
-    # The target of the Pairwise records in Duobert case
+    """Pairwise records associated with a label (saying which document is better)"""
+
     target: List[int]
 
     def __init__(self):

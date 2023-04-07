@@ -65,6 +65,6 @@ Anserini
 FAISS
 -----
 
-.. autoxpmconfig:: xpmir.index.faiss.Index
+.. autoxpmconfig:: xpmir.index.faiss.FaissIndex
 .. autoxpmconfig:: xpmir.index.faiss.IndexBackedFaiss
 .. autoxpmconfig:: xpmir.index.faiss.FaissRetriever

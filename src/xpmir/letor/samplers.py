@@ -84,7 +84,7 @@ class BatchwiseSampler(Sampler):
 
 
 class ModelBasedSampler(Sampler):
-    """Retriever-based sampler
+    """Base class for retriever-based sampler
 
     Attributes:
         dataset: The topics and assessments
@@ -94,10 +94,25 @@ class ModelBasedSampler(Sampler):
     dataset: Param[Adhoc]
     retriever: Param[Retriever]
 
-    def getdocuments(self, docids: List[str]):
-        self._documents = [
-            self.retriever.collection().document_text(docid) for docid in docids
-        ]
+    _store: AdhocDocumentStore
+
+    def __validate__(self) -> None:
+        super().__validate__()
+
+        assert (
+            self.retriever.get_store() is not None
+        ), "The retriever has no associated document store"
+
+    def initialize(self, random):
+        super().initialize(random)
+        self._store = self.retriever.get_store()
+
+    def document_text(self, doc_id):
+        """Returns the document textual content"""
+        text = self._store.document_text(doc_id)
+        if text is None:
+            logger.warning(f"Document {doc_id} has no content")
+        return text
 
     @cache("run")
     def _itertopics(
@@ -214,7 +229,6 @@ class PointwiseModelBasedSampler(PointwiseSampler, ModelBasedSampler):
         super().initialize(random)
 
         self.retriever.initialize()
-        self.index = self.retriever.index
         self.pos_records, self.neg_records = self.readrecords()
         self.logger.info(
             "Loaded %d/%d pos/neg records", len(self.pos_records), len(self.neg_records)
@@ -222,7 +236,7 @@ class PointwiseModelBasedSampler(PointwiseSampler, ModelBasedSampler):
 
     def prepare(self, record: PointwiseRecord):
         if record.document.text is None:
-            record.document.text = self.index.document_text(record.document.docid)
+            record.document.text = self.document_text(record.document.docid)
         return record
 
     def readrecords(self):
@@ -252,7 +266,6 @@ class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
         super().initialize(random)
 
         self.retriever.initialize()
-        self.index = self.retriever.index
         self.topics: List[Tuple[str, List, List]] = self._readrecords()
 
     def _readrecords(self):
@@ -265,9 +278,7 @@ class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
         text = None
         while text is None:
             docid, rel, score = samples[self.random.randint(0, len(samples))]
-            text = self.index.document_text(docid)
-            if text is None:
-                logger.warning(f"Document {docid} has no content")
+            text = self.document_text(docid)
         return Document(docid, text, score)
 
     def pairwise_iter(self) -> SerializableIterator[PairwiseRecord]:

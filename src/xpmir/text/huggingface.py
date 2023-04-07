@@ -39,12 +39,12 @@ class BaseTransformer(Encoder):
     layer: Param[int] = 0
     """Layer to use (0 is the last, -1 to use them all)"""
 
-    # FIXME: should be in a hook rather than here?
+    # FIXME: move this into a hook
     dropout: Param[Optional[float]] = 0
     """Define a dropout for all the layers"""
 
-    CLS: int  # id=101
-    SEP: int  # id=102
+    CLS: int
+    SEP: int
 
     @cached_property
     def tokenizer(self):
@@ -325,11 +325,14 @@ class DualTransformerEncoder(BaseTransformer, DualTextEncoder):
 
     def forward(self, texts: List[Tuple[str, str]]):
         tokenized = self.batch_tokenize(texts, maxlen=self.maxlen, mask=True)
+
         with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
+            kwargs = {}
+            if tokenized.token_type_ids is not None:
+                kwargs["token_type_ids"] = tokenized.token_type_ids.to(self.device)
+
             y = self.model(
-                tokenized.ids,
-                token_type_ids=tokenized.token_type_ids.to(self.device),
-                attention_mask=tokenized.mask.to(self.device),
+                tokenized.ids, attention_mask=tokenized.mask.to(self.device), **kwargs
             )
 
         # Assumes that [CLS] is the first token

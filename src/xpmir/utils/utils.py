@@ -5,8 +5,19 @@ from pathlib import Path
 import re
 from subprocess import run
 import tempfile
+from experimaestro import SubmitHook, Job, Launcher, submit_hook_decorator
 from threading import Thread
-from typing import BinaryIO, Callable, Iterator, List, TextIO, TypeVar, Union, Iterable
+from typing import (
+    BinaryIO,
+    Callable,
+    Iterator,
+    List,
+    TextIO,
+    TypeVar,
+    Union,
+    Iterable,
+)
+from .functools import cache
 
 T = TypeVar("T")
 
@@ -151,25 +162,67 @@ class EasyLogger:
         return logger
 
 
-def find_java_home() -> str:
+@cache
+def find_java_home(min_version: int = 6) -> str:
     """Find JAVA HOME"""
+    paths = []
 
     # (1) Use environment variable
     if java_home := os.environ.get("JAVA_HOME", None):
-        return java_home
+        paths.append(Path(java_home) / "bin" / "java")
+
+    # Try java
+    paths.append("java")
 
     # (2) Use java -XshowSettings:properties
-    try:
-        p = run(
-            ["java", "-XshowSettings:properties", "-version"],
-            check=True,
-            capture_output=True,
-        )
-        if m := re.search(rb".*\n\s+java.home = (.*)\n.*", p.stderr, re.MULTILINE):
-            return m[1].decode()
+    for p in paths:
+        try:
+            p = run(
+                [p, "-XshowSettings:properties", "-version"],
+                check=True,
+                capture_output=True,
+            )
 
-    except Exception:
-        # silently ignore
-        pass
+            if m := re.search(
+                rb".*\n\s+java.version = (\d+)\.[\d\.]+\n.*", p.stderr, re.MULTILINE
+            ):
+                version = int(m[1].decode())
+                if min_version <= version:
+                    if m := re.search(
+                        rb".*\n\s+java.home = (.*)\n.*", p.stderr, re.MULTILINE
+                    ):
+                        return m[1].decode()
+                else:
+                    logging.info(
+                        "Java search (version >= %d): skipping %s", min_version, p
+                    )
 
-    raise FileNotFoundError("Java home not found")
+        except Exception:
+            # silently ignore
+            pass
+
+    raise FileNotFoundError(f"Java (version >= {min_version}) not found")
+
+
+class NeedsJava(SubmitHook):
+    """Experimaestro hook that ensures that JAVA_HOME is set"""
+
+    def __init__(self, version: int):
+        self.version = version
+
+    def __spec__(self):
+        return self.version
+
+    def __call__(self, job: Job, launcher: Launcher):
+        job.environ["JAVA_HOME"] = find_java_home(self.version)
+
+
+@cache
+def needs_java(version: int):
+    """Decorator for tasks requiring java
+
+    This decorator adds an experimaestro task hook that sets the java version
+
+    :param version: required major version
+    """
+    return submit_hook_decorator(NeedsJava(version))
