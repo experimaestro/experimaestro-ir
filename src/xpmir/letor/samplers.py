@@ -1,10 +1,5 @@
 from pathlib import Path
-from typing import (
-    Iterator,
-    List,
-    Optional,
-    Tuple,
-)
+from typing import Iterator, List, Optional, Tuple, Dict
 import numpy as np
 from datamaestro_text.data.ir import (
     Adhoc,
@@ -35,6 +30,9 @@ from xpmir.utils.iter import (
     SkippingIterator,
 )
 from datamaestro_text.interfaces.plaintext import read_tsv
+from xpmir.letor.learner import LearnerListener, Learner
+from xpmir.letor.context import TrainerContext
+
 
 logger = easylog()
 
@@ -294,6 +292,23 @@ class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
         return RandomSerializableIterator(self.random, iter)
 
 
+class NegativeSamplerListener(LearnerListener, ModelBasedSampler):
+
+    sampling_interval: Param[int] = 128
+
+    def initialize(self, key: str, learner: "Learner", context: TrainerContext):
+        pass
+
+    def __call__(self, state: TrainerContext) -> bool:
+        pass
+
+    def update_metrics(self, metrics: Dict[str, float]):
+        pass
+
+    def taskoutputs(self, learner: "Learner"):
+        pass
+
+
 class PairwiseInBatchNegativesSampler(BatchwiseSampler):
     """An in-batch negative sampler constructured from a pairwise one"""
 
@@ -407,7 +422,7 @@ class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
 
 # --- Dataloader
 
-# FIXME: A class for loading the data, need to move the other places.
+# A class for loading the data, need to move the other places.
 class PairwiseSampleDatasetFromTSV(PairwiseSampleDataset):
     """Read the pairwise sample dataset from a csv file"""
 
@@ -420,11 +435,11 @@ class PairwiseSampleDatasetFromTSV(PairwiseSampleDataset):
             query = triplet[0]
             positives = triplet[2].split(" ")
             negatives = triplet[4].split(" ")
-            # FIXME: at the moment, I don't have some good idea to store the algo
+            # at the moment, I don't have some good idea to store the algo
             yield PairwiseSample(query, positives, negatives)
 
 
-# FIXME: A class for loading the data, need to move the other places.
+# A class for loading the data, need to move the other places.
 class PairwiseSamplerFromTSV(PairwiseSampler):
 
     pairwise_samples_path: Param[Path]
@@ -594,7 +609,7 @@ class TeacherModelBasedHardNegativesTripletSampler(Task, Sampler):
         # create the file
         self.hard_negative_triplet.parent.mkdir(parents=True, exist_ok=True)
 
-        # FIXME: make the tqdm progressing wrt one record, not a batch of records
+        # make the tqdm progressing wrt one record, not a batch of records
         with self.hard_negative_triplet.open("wt") as fp:
             for batch in tqdm(self.iter_batches()):
 

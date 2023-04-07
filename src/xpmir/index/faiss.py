@@ -4,7 +4,7 @@ https://github.com/facebookresearch/faiss
 """
 from functools import lru_cache, partial
 from pathlib import Path
-from typing import Callable, Iterator, List, Optional, Tuple
+from typing import Callable, Iterator, List, Optional, Tuple, Dict
 from experimaestro import Config, initializer
 import torch
 import numpy as np
@@ -22,6 +22,8 @@ from xpmir.letor import (
 from xpmir.utils.utils import batchiter, easylog, foreach
 from xpmir.documents.samplers import DocumentSampler
 from xpmir.context import Context, Hook, InitializationHook
+from xpmir.letor.learner import LearnerListener, Learner
+from xpmir.letor.context import TrainerContext
 
 logger = easylog()
 
@@ -216,7 +218,6 @@ class DynamicFaissIndex(BaseIndexBackedFaiss, BaseFaissIndex):
     """A faiss index which could be updated through the listener"""
 
     def get_index(self):
-        # TODO
         if self._index is None:
             # First calculation of the index, create a intial path in the disk
             ...
@@ -244,6 +245,28 @@ class IndexBackedFaiss(BaseIndexBackedFaiss, Task):
             documents=self.documents,
             faiss_index=self.faiss_index,
         )
+
+
+class FaissBuildListener(LearnerListener, BaseIndexBackedFaiss):
+
+    indexing_interval: Param[int] = 128
+    """During how many epochs we recompute the index"""
+
+    faisspath: Annotated[Path, pathgenerator("faisspath")]
+    """The path to store the faiss index"""
+
+    def initialize(self, key: str, learner: "Learner", context: TrainerContext):
+        super().initialize(key, learner, context)
+        self.faisspath.mkdir(exist_ok=True, parents=True)
+
+    def __call__(self, state: TrainerContext) -> bool:
+        pass
+
+    def update_metrics(self, metrics: Dict[str, float]):
+        pass
+
+    def taskoutputs(self, learner: "Learner"):
+        pass
 
 
 class FaissRetriever(Retriever):
