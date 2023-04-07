@@ -113,6 +113,7 @@ def run(
     # (retriever + scorer) and keep the best performing model
     # on the validation set
     validation = ValidationListener(
+        id="bestval",
         dataset=ds_val,
         retriever=model_based_retrievers(
             documents,
@@ -138,7 +139,7 @@ def run(
         optimizers=cfg.monobert.optimization.optimizer,
         max_epochs=cfg.monobert.optimization.max_epochs,
         # The listeners (here, for validation)
-        listeners={"bestval": validation},
+        listeners=[validation],
         # The hook used for evaluation
         hooks=[setmeta(DistributedHook(models=[monobert_scorer]), True)],
     )
