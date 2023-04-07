@@ -82,6 +82,7 @@ def run(xp: experiment, cfg: DuoBERT, tensorboard_service: TensorboardService):
     # (retriever + reranker) and keep the best performing model
     # on the validation set
     validation = ValidationListener(
+        id="bestval",
         dataset=ds_val,
         retriever=val_retriever,
         validation_interval=cfg.duobert.validation_interval,
@@ -102,7 +103,7 @@ def run(xp: experiment, cfg: DuoBERT, tensorboard_service: TensorboardService):
         optimizers=cfg.duobert.optimization.optimizer,
         max_epochs=cfg.duobert.optimization.max_epochs,
         # The listeners (here, for validation)
-        listeners={"bestval": validation},
+        listeners=[validation],
         # The hook used for evaluation
         hooks=[setmeta(DistributedHook(models=[duobert_scorer]), True)],
         use_fp16=True,

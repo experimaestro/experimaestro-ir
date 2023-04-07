@@ -128,7 +128,7 @@ class SPLADEExperiment(SPLADEMSMarcoV1Experiment):
 
         # establish the validation listener
         validation = ValidationListener(
-            id="validation",
+            id="bestval",
             dataset=self.ds_val,
             # a retriever which use the splade model to score all the
             # documents and then do the retrieve
