@@ -44,8 +44,7 @@ class LearnerListener(Config):
     id: Param[str]
     """Unique ID to identify the listener"""
 
-    def initialize(self, key: str, learner: "Learner", context: TrainerContext):
-        self.key = key
+    def initialize(self, learner: "Learner", context: TrainerContext):
         self.learner = learner
         self.context = context
 
@@ -113,8 +112,8 @@ class ValidationListener(LearnerListener):
             self.early_stop % self.validation_interval == 0
         ), "Early stop should be a multiple of the validation interval"
 
-    def initialize(self, key: str, learner: "Learner", context: TrainerContext):
-        super().initialize(key, learner, context)
+    def initialize(self, learner: "Learner", context: TrainerContext):
+        super().initialize(learner, context)
 
         self.retriever.initialize()
         self.bestpath.mkdir(exist_ok=True, parents=True)
@@ -132,7 +131,7 @@ class ValidationListener(LearnerListener):
         if self.top:
             # Just use another key
             for metric in self.metrics.keys():
-                metrics[f"{self.key}/final/{metric}"] = self.top[metric]["value"]
+                metrics[f"{self.id}/final/{metric}"] = self.top[metric]["value"]
 
     def monitored(self) -> Iterator[str]:
         return [key for key, monitored in self.metrics.items() if monitored]
@@ -178,11 +177,11 @@ class ValidationListener(LearnerListener):
                 value = means[metric]
 
                 self.context.writer.add_scalar(
-                    f"{self.key}/{metric}/mean", value, state.step
+                    f"{self.id}/{metric}/mean", value, state.step
                 )
 
                 self.context.writer.add_histogram(
-                    f"{self.key}/{metric}",
+                    f"{self.id}/{metric}",
                     np.array(list(details[metric].values()), dtype=np.float32),
                     state.step,
                 )
@@ -338,7 +337,7 @@ class Learner(Task, EasyLogger):
         # Initialize the context and the listeners
         self.trainer.initialize(self.random.state, self.context)
         for listener in self.listeners:
-            listener.initialize(listener.id, self, self.context)
+            listener.initialize(self, self.context)
 
         self.logger.info("Moving to device %s", device_information.device)
         self.scorer.to(device_information.device)
