@@ -23,7 +23,8 @@ from xpmir.utils.utils import batchiter, easylog, foreach
 from xpmir.documents.samplers import DocumentSampler
 from xpmir.context import Context, Hook, InitializationHook
 from xpmir.letor.learner import LearnerListener, Learner
-from xpmir.letor.context import TrainerContext
+from xpmir.letor.context import TrainerContext, TrainState
+from xpmir.neural.dual import DenseDocumentEncoder, DenseQueryEncoder
 
 logger = easylog()
 
@@ -255,12 +256,34 @@ class FaissBuildListener(LearnerListener, BaseIndexBackedFaiss):
     faisspath: Annotated[Path, pathgenerator("faisspath")]
     """The path to store the faiss index"""
 
+    topk: Param[int]
+    """How many documents to be retrieved for the faiss retriever"""
+
     def initialize(self, learner: "Learner", context: TrainerContext):
         super().initialize(learner, context)
         self.faisspath.mkdir(exist_ok=True, parents=True)
 
-    def __call__(self, state: TrainerContext) -> bool:
-        pass
+    def __call__(self, state: TrainState) -> bool:
+
+        if state.epoch % self.indexing_interval == 0:
+            # update the encoder to the one been trained
+            self.encoder = DenseDocumentEncoder(scorer=state.model)
+
+            # execute the code to generate the faiss index.
+            self.device.execute(partial(self._execute, self.faisspath))
+
+            # How to make the negative builder get to know this retriever?
+            self.retriever = FaissRetriever(
+                encoder=DenseQueryEncoder(),
+                index=FaissIndex(
+                    normalize=self.normalize,
+                    documents=self.documents,
+                    faiss_index=self.faisspath,
+                ),
+                topk=self.topk,
+            )
+
+        return False
 
     def update_metrics(self, metrics: Dict[str, float]):
         pass

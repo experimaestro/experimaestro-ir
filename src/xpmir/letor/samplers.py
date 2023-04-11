@@ -9,7 +9,6 @@ from datamaestro_text.data.ir import (
     AdhocDocumentStore,
 )
 from experimaestro import Config, Param, tqdm, Task, Annotated, pathgenerator
-from experimaestro.annotations import cache
 import torch
 from xpmir.datasets.adapters import TextStore
 from xpmir.letor.records import (
@@ -31,7 +30,8 @@ from xpmir.utils.iter import (
 )
 from datamaestro_text.interfaces.plaintext import read_tsv
 from xpmir.letor.learner import LearnerListener, Learner
-from xpmir.letor.context import TrainerContext
+from xpmir.letor.context import TrainerContext, TrainState
+from xpmir.letor.trainers.pairwise import PairwiseTrainer
 
 
 logger = easylog()
@@ -112,7 +112,6 @@ class ModelBasedSampler(Sampler):
             logger.warning(f"Document {doc_id} has no content")
         return text
 
-    @cache("run")
     def _itertopics(
         self, runpath: Path
     ) -> Iterator[
@@ -122,101 +121,61 @@ class ModelBasedSampler(Sampler):
         documents"""
         self.logger.info("Reading topics and retrieving documents")
 
-        if not runpath.is_file():
-            tmprunpath = runpath.with_suffix(".tmp")
+        # Read the assessments
+        self.logger.info("Reading assessments")
+        assessments = {}  # type: Dict[str, Dict[str, float]]
+        for qrels in self.dataset.assessments.iter():
+            doc2rel = {}
+            assessments[qrels.qid] = doc2rel
+            for qrel in qrels.assessments:
+                doc2rel[qrel.docno] = qrel.rel
+        self.logger.info("Read assessments for %d topics", len(assessments))
 
-            with tmprunpath.open("wt") as fp:
+        self.logger.info("Retrieving documents for each topic")
+        queries = []
+        for query in self.dataset.topics.iter():
+            queries.append(query)
 
-                # Read the assessments
-                self.logger.info("Reading assessments")
-                assessments = {}  # type: Dict[str, Dict[str, float]]
-                for qrels in self.dataset.assessments.iter():
-                    doc2rel = {}
-                    assessments[qrels.qid] = doc2rel
-                    for qrel in qrels.assessments:
-                        doc2rel[qrel.docno] = qrel.rel
-                self.logger.info("Read assessments for %d topics", len(assessments))
+        # Retrieve documents
+        skipped = 0
+        for query in tqdm(queries):
+            qassessments = assessments.get(query.qid, None)
+            if not qassessments:
+                skipped += 1
+                self.logger.warning("Skipping topic %s (no assessments)", query.qid)
+                continue
 
-                self.logger.info("Retrieving documents for each topic")
-                queries = []
-                for query in self.dataset.topics.iter():
-                    queries.append(query)
+            # Write all the positive documents
+            positives = []
+            for docno, rel in qassessments.items():
+                if rel > 0:
+                    positives.append((docno, rel, 0))
 
-                # Retrieve documents
-                skipped = 0
-                for query in tqdm(queries):
-                    qassessments = assessments.get(query.qid, None)
-                    if not qassessments:
-                        skipped += 1
-                        self.logger.warning(
-                            "Skipping topic %s (no assessments)", query.qid
-                        )
-                        continue
-
-                    # Write all the positive documents
-                    positives = []
-                    for docno, rel in qassessments.items():
-                        if rel > 0:
-                            fp.write(
-                                f"{query.text if not positives else ''}"
-                                f"\t{docno}\t0.\t{rel}\n"
-                            )
-                            positives.append((docno, rel, 0))
-
-                    if not positives:
-                        self.logger.debug(
-                            "Skipping topic %s (no relevant documents)", query.qid
-                        )
-                        skipped += 1
-                        continue
-
-                    scoreddocuments = self.retriever.retrieve(
-                        query.text
-                    )  # type: List[ScoredDocument]
-
-                    negatives = []
-                    for rank, sd in enumerate(scoreddocuments):
-                        # Get the assessment (assumes not relevant)
-                        rel = qassessments.get(sd.docid, 0)
-                        if rel > 0:
-                            continue
-
-                        negatives.append((sd.docid, rel, sd.score))
-                        fp.write(f"\t{sd.docid}\t{sd.score}\t{rel}\n")
-
-                    assert len(positives) > 0 and len(negatives) > 0
-                    yield query.text, positives, negatives
-
-                # Finally, move the cache file in place...
-                self.logger.info(
-                    "Processed %d topics (%d skipped)", len(queries), skipped
+            if not positives:
+                self.logger.debug(
+                    "Skipping topic %s (no relevant documents)", query.qid
                 )
-                tmprunpath.rename(runpath)
-        else:
-            # Read from cache
-            self.logger.info("Reading records from file %s", runpath)
-            with runpath.open("rt") as fp:
-                positives = []
-                negatives = []
-                oldtitle = ""
+                skipped += 1
+                continue
 
-                for line in fp.readlines():
-                    title, docno, score, rel = line.rstrip().split("\t")
-                    if title:
-                        if oldtitle:
-                            yield oldtitle, positives, negatives
-                        positives = []
-                        negatives = []
-                    else:
-                        title = oldtitle
-                    title = title or oldtitle
-                    rel = int(rel)
-                    (positives if rel > 0 else negatives).append(
-                        (docno, rel, float(score))
-                    )
-                    oldtitle = title
+            scoreddocuments = self.retriever.retrieve(
+                query.text
+            )  # type: List[ScoredDocument]
 
-                yield oldtitle, positives, negatives
+            negatives = []
+            for _, sd in enumerate(scoreddocuments):
+                # Get the assessment (assumes not relevant)
+                rel = qassessments.get(sd.docid, 0)
+                if rel > 0:
+                    continue
+
+                negatives.append((sd.docid, rel, sd.score))
+
+            assert len(positives) > 0 and len(negatives) > 0
+            yield query.text, positives, negatives
+
+        # Finally, move the cache file in place...
+        self.logger.info("Processed %d topics (%d skipped)", len(queries), skipped)
 
 
 class PointwiseModelBasedSampler(PointwiseSampler, ModelBasedSampler):
@@ -295,12 +254,36 @@ class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
 class NegativeSamplerListener(LearnerListener, ModelBasedSampler):
 
     sampling_interval: Param[int] = 128
+    """During how many epochs we recompute the negatives"""
+
+    negativepath: Annotated[Path, pathgenerator("negatives")]
+    """The path to store the generated negative path"""
+
+    dataset: Param[Adhoc]
+    """The dataset which we try to sample the negatives on"""
+
+    # How to get the retriever from the faiss index builder?
+    retriever: Retriever
+    """The faiss retriever"""
 
     def initialize(self, learner: "Learner", context: TrainerContext):
-        pass
+        super().initialize(learner, context)
+        self.negativepath.mkdir(exist_ok=True, parents=True)
 
-    def __call__(self, state: TrainerContext) -> bool:
-        pass
+    def __call__(self, state: TrainState) -> bool:
+        # modify the code of the _itertopics, which store the negatives somewhere.
+        if isinstance(state.trainer, PairwiseTrainer):
+            state.trainer.sampler = PairwiseModelBasedSampler(
+                dataset=self.dataset, retriever=self.retriever
+            )
+        else:
+            state.trainer.sampler = PointwiseModelBasedSampler(
+                dataset=self.dataset, retriever=self.retriever
+            )
+
+        # Where to call the intialize method of this sampler(trainer) again?
+        # state.trainer.initialize()
+        return False
 
     def update_metrics(self, metrics: Dict[str, float]):
         pass
