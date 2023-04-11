@@ -1,3 +1,4 @@
+from enum import Enum
 import logging
 import torch
 import json
@@ -36,6 +37,15 @@ from xpmir.letor.optim import ParameterOptimizer, ScheduledOptimizer
 logger = easylog()
 
 
+class LearnerListenerStatus(Enum):
+    NO_DECISION = 0
+    STOP = 1
+    DONT_STOP = 2
+
+    def update(self, other: "LearnerListenerStatus") -> "LearnerListenerStatus":
+        return LearnerListenerStatus(max(self.value, other.value))
+
+
 class LearnerListener(Config):
     """Hook for learner
 
@@ -48,13 +58,9 @@ class LearnerListener(Config):
         self.learner = learner
         self.context = context
 
-    def __call__(self, state: TrainerContext) -> bool:
-        """Process and returns whether the training process should stop
-
-        Returns:
-            bool: True if the learning process should stop
-        """
-        return False
+    def __call__(self, state: TrainerContext) -> LearnerListenerStatus:
+        """Process and returns whether the training process should stop"""
+        return LearnerListenerStatus.NO_DECISION
 
     def update_metrics(self, metrics: Dict[str, float]):
         """Add metrics"""
@@ -156,16 +162,16 @@ class ValidationListener(LearnerListener):
             epochs_since_imp = (epoch or self.context.epoch) - max(
                 info["epoch"] for key, info in self.top.items() if self.metrics[key]
             )
-            return epochs_since_imp >= self.early_stop
+            if epochs_since_imp >= self.early_stop:
+                return LearnerListenerStatus.STOP
 
-        # No, proceed...
-        return False
+        return LearnerListenerStatus.DONT_STOP
 
     def __call__(self, state: TrainerContext):
         # Check that we did not stop earlier (when loading from checkpoint / if other
         # listeners have not stopped yet)
-        if self.should_stop(state.epoch - 1):
-            return True
+        if self.should_stop(state.epoch - 1) == LearnerListenerStatus.STOP:
+            return LearnerListenerStatus.STOP
 
         if state.epoch % self.validation_interval == 0:
             # Compute validation metrics
@@ -221,7 +227,6 @@ class LearnerOutput(NamedTuple):
     listeners: Dict[str, Any]
 
 
-# Checkpoints
 class Learner(Task, EasyLogger):
     """Model Learner
 
@@ -380,12 +385,12 @@ class Learner(Task, EasyLogger):
                     self.context.save_checkpoint()
 
                 # Call listeners
-                stop = True
+                decision = LearnerListenerStatus.NO_DECISION
                 for listener in self.listeners:
                     # listener.__call__ returns True if we should stop
-                    stop = listener(state) and stop
+                    decision = decision.update(listener(state))
 
-                if stop:
+                if decision == LearnerListenerStatus.STOP:
                     self.logger.warn(
                         "stopping after epoch {epoch} ({early_stop} epochs) since "
                         "all listeners asked for it"
