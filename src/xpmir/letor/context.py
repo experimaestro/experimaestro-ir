@@ -43,6 +43,9 @@ class TrainState:
     steps: int
     """The number of steps (each epoch is composed of sptes)"""
 
+    path: Optional[Path]
+    """Path to the last checkpoint (when saved)"""
+
     def __init__(
         self,
         model: "AbstractLearnableScorer",

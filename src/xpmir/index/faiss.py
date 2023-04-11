@@ -24,7 +24,6 @@ from xpmir.documents.samplers import DocumentSampler
 from xpmir.context import Context, Hook, InitializationHook
 from xpmir.letor.learner import LearnerListener, Learner
 from xpmir.letor.context import TrainerContext, TrainState
-from xpmir.neural.dual import DenseDocumentEncoder, DenseQueryEncoder
 
 logger = easylog()
 
@@ -220,11 +219,15 @@ class DynamicFaissIndex(BaseIndexBackedFaiss, BaseFaissIndex):
 
     def get_index(self):
         if self._index is None:
-            # First calculation of the index, create a intial path in the disk
-            ...
-        else:
-            # get the index in the new path.
-            ...
+            self._index = faiss.read_index(str(self.faiss_index))
+        return self._index
+
+    def update(self, path: Path):
+        # Update the index and store it at the path
+        # execute the code to generate the faiss index.
+        self.device.execute(partial(self._execute, path))
+        self.faiss_index = path
+        self._index = None
 
 
 class IndexBackedFaiss(BaseIndexBackedFaiss, Task):
@@ -248,40 +251,25 @@ class IndexBackedFaiss(BaseIndexBackedFaiss, Task):
         )
 
 
-class FaissBuildListener(LearnerListener, BaseIndexBackedFaiss):
+class FaissBuildListener(LearnerListener):
 
     indexing_interval: Param[int] = 128
     """During how many epochs we recompute the index"""
 
-    faisspath: Annotated[Path, pathgenerator("faisspath")]
-    """The path to store the faiss index"""
-
-    topk: Param[int]
-    """How many documents to be retrieved for the faiss retriever"""
+    indexbackedfaiss: Param[DynamicFaissIndex]
+    """The faiss object"""
 
     def initialize(self, learner: "Learner", context: TrainerContext):
         super().initialize(learner, context)
-        self.faisspath.mkdir(exist_ok=True, parents=True)
 
     def __call__(self, state: TrainState) -> bool:
 
         if state.epoch % self.indexing_interval == 0:
-            # update the encoder to the one been trained
-            self.encoder = DenseDocumentEncoder(scorer=state.model)
 
-            # execute the code to generate the faiss index.
-            self.device.execute(partial(self._execute, self.faisspath))
-
-            # How to make the negative builder get to know this retriever?
-            self.retriever = FaissRetriever(
-                encoder=DenseQueryEncoder(),
-                index=FaissIndex(
-                    normalize=self.normalize,
-                    documents=self.documents,
-                    faiss_index=self.faisspath,
-                ),
-                topk=self.topk,
-            )
+            # state.path = 'checkpoint/epoch-00000XX/'
+            path = state.path / "listeners" / self.id / "faiss.dat"
+            path.mkdir(exist_ok=True, parents=True)
+            self.indexbackedfaiss.update(path)
 
         return False
 

@@ -31,8 +31,6 @@ from xpmir.utils.iter import (
 from datamaestro_text.interfaces.plaintext import read_tsv
 from xpmir.letor.learner import LearnerListener, Learner
 from xpmir.letor.context import TrainerContext, TrainState
-from xpmir.letor.trainers.pairwise import PairwiseTrainer
-
 
 logger = easylog()
 
@@ -251,39 +249,19 @@ class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
         return RandomSerializableIterator(self.random, iter)
 
 
-class NegativeSamplerListener(LearnerListener, ModelBasedSampler):
+class NegativeSamplerListener(LearnerListener):
 
     sampling_interval: Param[int] = 128
     """During how many epochs we recompute the negatives"""
 
-    negativepath: Annotated[Path, pathgenerator("negatives")]
-    """The path to store the generated negative path"""
-
-    dataset: Param[Adhoc]
-    """The dataset which we try to sample the negatives on"""
-
-    # How to get the retriever from the faiss index builder?
-    retriever: Retriever
-    """The faiss retriever"""
+    sampler: Param[ModelBasedSampler]
+    """The model based sampler to extract the negatives"""
 
     def initialize(self, learner: "Learner", context: TrainerContext):
-        super().initialize(learner, context)
-        self.negativepath.mkdir(exist_ok=True, parents=True)
+        pass
 
     def __call__(self, state: TrainState) -> bool:
-        # modify the code of the _itertopics, which store the negatives somewhere.
-        if isinstance(state.trainer, PairwiseTrainer):
-            state.trainer.sampler = PairwiseModelBasedSampler(
-                dataset=self.dataset, retriever=self.retriever
-            )
-        else:
-            state.trainer.sampler = PointwiseModelBasedSampler(
-                dataset=self.dataset, retriever=self.retriever
-            )
-
-        # Where to call the intialize method of this sampler(trainer) again?
-        # state.trainer.initialize()
-        return False
+        pass
 
     def update_metrics(self, metrics: Dict[str, float]):
         pass
