@@ -1,3 +1,4 @@
+from enum import Enum
 import logging
 import torch
 import json
@@ -25,7 +26,6 @@ from xpmir.letor.context import (
     StepTrainingHook,
     TrainState,
     TrainerContext,
-    ValidationHook,
 )
 from xpmir.letor.metrics import Metrics
 from xpmir.rankers import (
@@ -37,9 +37,17 @@ from xpmir.letor.optim import ParameterOptimizer, ScheduledOptimizer
 logger = easylog()
 
 
+class LearnerListenerStatus(Enum):
+    NO_DECISION = 0
+    STOP = 1
+    DONT_STOP = 2
+
+    def update(self, other: "LearnerListenerStatus") -> "LearnerListenerStatus":
+        return LearnerListenerStatus(max(self.value, other.value))
+
+
 class LearnerListener(Config):
     """Hook for learner
-
     Performs some operations after a learning epoch"""
 
     id: Param[str]
@@ -49,13 +57,9 @@ class LearnerListener(Config):
         self.learner = learner
         self.context = context
 
-    def __call__(self, state: TrainState) -> bool:
-        """Process and returns whether the training process should stop
-
-        Returns:
-            bool: True if the learning process should stop
-        """
-        return False
+    def __call__(self, state: TrainState) -> LearnerListenerStatus:
+        """Process and returns whether the training process should stop"""
+        return LearnerListenerStatus.NO_DECISION
 
     def update_metrics(self, metrics: Dict[str, float]):
         """Add metrics"""
@@ -68,7 +72,6 @@ class LearnerListener(Config):
 
 class ValidationListener(LearnerListener):
     """Learning validation early-stopping
-
     Computes a validation metric and stores the best result. If early_stop is
     set (> 0), then it signals to the learner that the learning process can
     stop.
@@ -107,9 +110,6 @@ class ValidationListener(LearnerListener):
     early_stop: Param[int] = 0
     """Number of epochs without improvement after which we stop learning.
     Should be a multiple of validation_interval or 0 (no early stopping)"""
-
-    hooks: Param[List[ValidationHook]] = []
-    """The list of the hooks during the validation"""
 
     def __validate__(self):
         assert (
@@ -160,21 +160,16 @@ class ValidationListener(LearnerListener):
             epochs_since_imp = (epoch or self.context.epoch) - max(
                 info["epoch"] for key, info in self.top.items() if self.metrics[key]
             )
-            return epochs_since_imp >= self.early_stop
+            if epochs_since_imp >= self.early_stop:
+                return LearnerListenerStatus.STOP
 
-        # No, proceed...
-        return False
+        return LearnerListenerStatus.DONT_STOP
 
     def __call__(self, state: TrainState):
         # Check that we did not stop earlier (when loading from checkpoint / if other
         # listeners have not stopped yet)
-        if self.should_stop(state.epoch - 1):
-            return True
-
-        foreach(
-            self.hooks,
-            lambda hook: hook.before(self.context),
-        )
+        if self.should_stop(state.epoch - 1) == LearnerListenerStatus.STOP:
+            return LearnerListenerStatus.STOP
 
         if state.epoch % self.validation_interval == 0:
             # Compute validation metrics
@@ -230,14 +225,11 @@ class LearnerOutput(NamedTuple):
     listeners: Dict[str, Any]
 
 
-# Checkpoints
 class Learner(Task, EasyLogger):
     """Model Learner
-
     The learner task is generic, and takes two main arguments: (1) the scorer
     defines the model (e.g. DRMM), and (2) the trainer defines how the model
     should be trained (e.g. pointwise, pairwise, etc.)
-
     When submitted, it returns a dictionary based on the `listeners`
     """
 
@@ -281,8 +273,6 @@ class Learner(Task, EasyLogger):
 
     hooks: Param[List[Hook]] = []
     """Global learning hooks
-
-
     :class:`Initialization hooks <xpmir.context.InitializationHook>` are called
     before and after the initialization of the trainer and listeners.
     """
@@ -292,7 +282,6 @@ class Learner(Task, EasyLogger):
         assert len(set(listener.id for listener in self.listeners)) == len(
             self.listeners
         ), "IDs of listeners should be unique"
-
         return super().__validate__()
 
     def taskoutputs(self) -> LearnerOutput:
@@ -390,12 +379,12 @@ class Learner(Task, EasyLogger):
                     self.context.save_checkpoint()
 
                 # Call listeners
-                stop = True
+                decision = LearnerListenerStatus.NO_DECISION
                 for listener in self.listeners:
                     # listener.__call__ returns True if we should stop
-                    stop = listener(state) and stop
+                    decision = decision.update(listener(state))
 
-                if stop:
+                if decision == LearnerListenerStatus.STOP:
                     self.logger.warn(
                         "stopping after epoch {epoch} ({early_stop} epochs) since "
                         "all listeners asked for it"
