@@ -33,7 +33,7 @@ class RerankerMSMarcoV1Configuration(NeuralIRExperiment):
 
 
 @configuration()
-class DenseRetrievalMSMarcoV1Configuration(NeuralIRExperiment):
+class DualRetrievalMSMarcoV1Configuration(NeuralIRExperiment):
     """Configuration for rerankers"""
 
     validation: ValidationSample = Factory(ValidationSample)
