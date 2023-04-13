@@ -43,23 +43,19 @@ Losses
 .. autoxpmconfig:: xpmir.letor.trainers.pairwise.PairwiseLoss
    :members: compute
 
+
 .. autoxpmconfig:: xpmir.letor.trainers.pairwise.CrossEntropyLoss
-.. autoxpmconfig:: xpmir.letor.trainers.pairwise.SoftmaxLoss
-.. autoxpmconfig:: xpmir.letor.trainers.pairwise.LogSoftmaxLoss
 .. autoxpmconfig:: xpmir.letor.trainers.pairwise.HingeLoss
+.. autoxpmconfig:: xpmir.letor.trainers.pairwise.PointwiseCrossEntropyLoss
+
 
 Other
 *****
 
 .. autoxpmconfig:: xpmir.letor.trainers.multiple.MultipleTrainer
 
-
-Distillation Trainers
-
-=====================
-
-Pairwise
-********
+Distillation: Pairwise
+**********************
 
 Trainer
 -------

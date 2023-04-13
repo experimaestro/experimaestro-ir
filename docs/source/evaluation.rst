@@ -9,10 +9,10 @@ Evaluation
 .. autoxpmconfig:: xpmir.evaluation.Evaluate
 
 .. autoclass:: xpmir.evaluation.Evaluations
-    :members: evaluate_retriever, add
+    :members: evaluate_retriever, add, to_dataframe
 
 .. autoclass:: xpmir.evaluation.EvaluationsCollection
-    :members: evaluate_retriever
+    :members: evaluate_retriever, to_dataframe
 
 Metrics
 -------
