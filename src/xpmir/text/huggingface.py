@@ -483,13 +483,13 @@ class LayerFreezer(InitializationTrainingHook):
     RE_LAYER = re.compile(r"""^(?:encoder|transformer)\.layer\.(\d+)\.""")
 
     transformer: Param[BaseTransformer]
-    """The model"""
+    """The model for which parameters should be frozen"""
 
     freeze_embeddings: Param[bool] = False
     """Whether embeddings should be frozen"""
 
     frozen: Param[int] = 0
-    """Number of frozen layers (can be negative, i.e. -1 meaning until the last
+    """Number of frozen layers, counting from the first processing layers (can be negative, i.e. -1 meaning until the last
     layer excluded, etc. / 0 means no layer)"""
 
     def __init__(self):
