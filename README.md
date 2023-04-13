@@ -7,6 +7,10 @@ Information Retrieval module for [experimaestro](https://experimaestro-python.re
 
 The full documentation can be read at [IR@experimaestro](https://experimaestro-ir.readthedocs.io/).
 
+## ⚠ Version 1.0 roadmap
+
+Version 1.0 will be released before SIGIR 2023. This version aims to clean-up some design issues that are summarized in the [roadmap](https://github.com/experimaestro/experimaestro-ir/issues/9), so expect some changes in the API before the release.
+
 ## Install
 
 Base experimaestro-IR can be installed with `pip install xpmir`.
@@ -40,8 +44,9 @@ Functionalities can be added by installing optional dependencies:
     - ColBERT
 - Paper reproduction:
     - *MonoBERT* (Passage Re-ranking with BERT. Rodrigo Nogueira and Kyunghyun Cho. 2019)
-    - (planned) *DuoBERT* (Multi-Stage Document Ranking with BERT. Rodrigo Nogueira, Wei Yang, Kyunghyun Cho, Jimmy Lin. 2019)
-    - (planned) *Splade v2* (SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval, Thibault Formal, Carlos Lassance, Benjamin Piwowarski, and Stéphane Clinchant. SIGIR 2021)
+    - (alpha) *DuoBERT* (Multi-Stage Document Ranking with BERT. Rodrigo Nogueira, Wei Yang, Kyunghyun Cho, Jimmy Lin. 2019)
+    - (beta) *Splade v2* (SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval, Thibault Formal, Carlos Lassance, Benjamin Piwowarski, and Stéphane Clinchant. SIGIR 2021)
+    - (planned) ANCE
 - Pre-trained models
     - [HuggingFace](https://huggingface.co) [integration](https://experimaestro-ir.readthedocs.io/en/latest/pretrained.html) (direct, through the Sentence Transformers library)
 
