@@ -11,26 +11,6 @@ description: |
 indexation:
     requirements: duration=2 days & cpu(mem=2G)
     training_requirements: duration=2 days & cuda(mem=24G)
-learner:
-    validation_size: 10
-    # validation for each (steps_per_epoch * validation interval) steps
-    steps_per_epoch: 128
-    validation_interval: 1
-    splade_batch_size: 48
-    max_epochs: 4
-    num_warmup_steps: 20
-    early_stop: 0
-    lr: 2.0e-5
-    lambda_q: 3.0e-1
-    lambda_d: 1.0e-1
-    lamdba_warmup_steps: 300
-    requirements: duration=2 days & cuda(mem=8G)
-evaluation:
-    requirements: duration=2 days & cuda(mem=8G)
-base_retriever:
-    topK: 20
-tas_balance_retriever:
-    retTopK: 10
     # See FAISS guidelines
     # https://github.com/facebookresearch/faiss/wiki/Guidelines-to-choose-an-index
     # TREC COVID has 192509 documents
@@ -38,5 +18,24 @@ tas_balance_retriever:
     indexspec: OPQ4_16,IVF2048_HNSW32,PQ4
     # 30*K and 256*K
     faiss_max_traindocs:  65_536
-full_retriever:
+
+splade:
+    optimization:
+        steps_per_epoch: 128
+        splade_batch_size: 48
+        max_epochs: 4
+        num_warmup_steps: 20
+        lr: 2.0e-5
+
+    model: splade_max
+    validation_interval: 1
+    lambda_q: 3.0e-1
+    lambda_d: 1.0e-1
+    lamdba_warmup_steps: 300
+    requirements: duration=2 days & cuda(mem=8G)
+
+retrieval:
+    requirements: duration=2 days & cuda(mem=8G)
+    topK: 20
+    retTopK: 10
     batch_size_full_retriever: 20
