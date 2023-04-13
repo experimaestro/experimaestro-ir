@@ -23,8 +23,13 @@ from xpmir.utils.utils import foreach
 
 
 class PairwiseLoss(Config, nn.Module):
+    """Base class for any pairwise loss"""
+
     NAME = "?"
+
     weight: Param[float] = 1.0
+    """The weight :math:`w` with which the loss is multiplied (useful when
+    combining with other ones)"""
 
     def initialize(self, ranker: LearnableScorer):
         pass
@@ -34,15 +39,32 @@ class PairwiseLoss(Config, nn.Module):
         context.add_loss(Loss(f"pair-{self.NAME}", value, self.weight))
 
     def compute(self, scores: Tensor, info: TrainerContext) -> Tensor:
-        """
-        Compute the loss
-        Arguments:
-        - scores: A (batch x 2) tensor (positive/negative)
+
+        """Computes the loss
+
+        :param scores: A (batch x 2) tensor (positive/negative)
+        :param info: the trainer context
+        :return: a torch scalar
         """
         raise NotImplementedError()
 
 
 class CrossEntropyLoss(PairwiseLoss):
+    r"""Cross-Entropy Loss
+
+    Computes the cross-entropy loss
+
+    Classification loss (relevant vs non-relevant) where the logit
+    is equal to the difference between the relevant and the non relevant
+    document (or equivalently, softmax then mean log probability of relevant documents)
+    Reference: C. Burges et al., “Learning to rank using gradient descent,” 2005.
+
+    *warning*: this loss assumes the score returned by the scorer is a logit
+
+    .. math::
+
+        \frac{w}{N} \sum_{(s^+,s-)} \log \frac{\exp(s^+)}{\exp(s^+)+\exp(s^-)}
+    """
     NAME = "cross-entropy"
 
     def compute(self, rel_scores_by_record, info: TrainerContext):
@@ -54,39 +76,14 @@ class CrossEntropyLoss(PairwiseLoss):
         return F.cross_entropy(rel_scores_by_record, target, reduction="mean")
 
 
-class SoftmaxLoss(PairwiseLoss):
-    """Contrastive loss"""
-
-    NAME = "softmax"
-
-    def compute(self, rel_scores_by_record, info: TrainerContext):
-        return torch.mean(1.0 - F.softmax(rel_scores_by_record, dim=1)[:, 0])
-
-
-class LogSoftmaxLoss(PairwiseLoss):
-    """RankNet loss or log-softmax loss
-    Classification loss (relevant vs non-relevant) where the logit
-    is equal to the difference between the relevant and the non relevant
-    document (or equivalently, softmax then mean log probability of relevant documents)
-    Reference: C. Burges et al., “Learning to rank using gradient descent,” 2005.
-    """
-
-    NAME = "ranknet"
-
-    def __initialize__(self, ranker: LearnableScorer):
-        assert (
-            ranker.outputType != ScorerOutputType.PROBABILITY
-        ), "Probability outputs are not handled"
-
-    def compute(self, scores: torch.Tensor, info: TrainerContext):
-        return -F.logsigmoid(scores[:, 0] - scores[:, 1]).mean()
-
-
-RanknetLoss = LogSoftmaxLoss
-
-
 class HingeLoss(PairwiseLoss):
-    """Hinge loss"""
+    r"""Hinge (or max-margin) loss
+
+    .. math::
+
+       \frac{w}{N} \sum_{(s^+,s-)} \max(0, m - (s^+ - s^-))
+
+    """
 
     NAME = "hinge"
 
@@ -113,12 +110,21 @@ class BCEWithLogLoss(nn.Module):
 
 
 class PointwiseCrossEntropyLoss(PairwiseLoss):
-    """Point-wise cross-entropy loss
+    r"""Point-wise cross-entropy loss
+
+    This is a point-wise loss adapted as a pairwise one.
 
     This loss adapts to the ranker output type:
+
     - If real, uses a BCELossWithLogits (sigmoid transformation)
     - If probability, uses the BCELoss
     - If log probability, uses a BCEWithLogLoss
+
+    .. math::
+
+        \frac{w}{2N} \sum_{(s^+,s-)} \log \frac{\exp(s^+)}{\exp(s^+)+\exp(s^-)}
+        + \log \frac{\exp(s^-)}{\exp(s^+)+\exp(s^-)}
+
     """
 
     NAME = "pointwise-cross-entropy"
