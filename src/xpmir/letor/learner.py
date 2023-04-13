@@ -58,7 +58,7 @@ class LearnerListener(Config):
         self.learner = learner
         self.context = context
 
-    def __call__(self, state: TrainerContext) -> LearnerListenerStatus:
+    def __call__(self, state: TrainState) -> LearnerListenerStatus:
         """Process and returns whether the training process should stop"""
         return LearnerListenerStatus.NO_DECISION
 
@@ -167,7 +167,7 @@ class ValidationListener(LearnerListener):
 
         return LearnerListenerStatus.DONT_STOP
 
-    def __call__(self, state: TrainerContext):
+    def __call__(self, state: TrainState):
         # Check that we did not stop earlier (when loading from checkpoint / if other
         # listeners have not stopped yet)
         if self.should_stop(state.epoch - 1) == LearnerListenerStatus.STOP:
