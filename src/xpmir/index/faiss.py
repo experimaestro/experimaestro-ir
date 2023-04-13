@@ -227,6 +227,8 @@ class DynamicFaissIndex(BaseIndexBackedFaiss, BaseFaissIndex):
         # execute the code to generate the faiss index.
         self.device.execute(partial(self._execute, path))
         self.faiss_index = path
+
+        # clear the previous cache
         self._index = None
 
 

@@ -103,6 +103,10 @@ class ModelBasedSampler(Sampler):
         super().initialize(random)
         self._store = self.retriever.get_store()
 
+    def update(self):
+        """The abstract class for update the sampler"""
+        raise NotImplementedError("update not implemented in f{self.__class__}")
+
     def document_text(self, doc_id):
         """Returns the document textual content"""
         text = self._store.document_text(doc_id)
@@ -204,6 +208,9 @@ class PointwiseModelBasedSampler(PointwiseSampler, ModelBasedSampler):
 
         return pos_records, neg_records
 
+    def update(self):
+        self.pos_records, self.neg_records = self.readrecords()
+
     def record_iter(self) -> Iterator[PointwiseRecord]:
         npos = len(self.pos_records)
         nneg = len(self.neg_records)
@@ -236,6 +243,9 @@ class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
             text = self.document_text(docid)
         return Document(docid, text, score)
 
+    def update(self):
+        self.topics = self._readrecords()
+
     def pairwise_iter(self) -> SerializableIterator[PairwiseRecord]:
         def iter(random):
             while True:
@@ -258,10 +268,12 @@ class NegativeSamplerListener(LearnerListener):
     """The model based sampler to extract the negatives"""
 
     def initialize(self, learner: "Learner", context: TrainerContext):
-        pass
+        super().initialize(learner, context)
 
     def __call__(self, state: TrainState) -> bool:
-        pass
+
+        self.sampler = ...  # The rebuilt samplers
+        self.sampler.update()
 
     def update_metrics(self, metrics: Dict[str, float]):
         pass
