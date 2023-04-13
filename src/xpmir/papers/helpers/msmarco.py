@@ -32,6 +32,7 @@ class RerankerMSMarcoV1Configuration(NeuralIRExperiment):
     validation: ValidationSample = Factory(ValidationSample)
 
 
+@configuration()
 class DualMSMarcoV1Configuration(NeuralIRExperiment):
     """Configuration for sparse retriever"""
 
