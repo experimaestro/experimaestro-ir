@@ -1,12 +1,10 @@
 import logging
 
-from experimaestro import experiment
+from experimaestro import experiment, setmeta
 from experimaestro.launcherfinder import find_launcher
 from xpmir.letor.batchers import PowerAdaptativeBatcher
-from xpmir.letor.optim import (
-    TensorboardService,
-)
-from xpmir.letor.samplers import NegativeSamplerListener
+from xpmir.letor.optim import TensorboardService
+from xpmir.letor.samplers import NegativeSamplerListener, PairwiseModelBasedSampler
 from xpmir.papers.cli import paper_command
 from xpmir.rankers.standard import BM25
 from xpmir.papers.results import PaperResults
@@ -14,10 +12,24 @@ from xpmir.papers.helpers.msmarco import (
     v1_tests,
     v1_validation_dataset,
     v1_passages,
+    v1_docpairs_sampler,
+    v1_dev,
 )
 from .configuration import ANCE
 import xpmir.interfaces.anserini as anserini
-from xpmir.index.faiss import FaissBuildListener, DynamicFaissIndex
+from xpmir.index.faiss import (
+    FaissBuildListener,
+    DynamicFaissIndex,
+    FaissRetriever,
+    IndexBackedFaiss,
+)
+from xpmir.datasets.adapters import RetrieverBasedCollection
+import xpmir.letor.trainers.pairwise as pairwise
+from xpmir.text.huggingface import TransformerEncoder
+from xpmir.neural.dual import DotDense
+from xpmir.letor.learner import ValidationListener, Learner
+from xpmir.distributed import DistributedHook
+from xpmir.rankers.full import FullRetriever
 
 logging.basicConfig(level=logging.INFO)
 
@@ -27,18 +39,34 @@ def run(
 ) -> PaperResults:
     """monoBERT model"""
 
+    basemodel = BM25().tag("model", "bm25")
+
     launcher_learner = find_launcher(cfg.ance.requirements)
     launcher_evaluate = find_launcher(cfg.retrieval.requirements)
     launcher_index = find_launcher(cfg.indexation.requirements)
-    device = cfg.device  # noqa F401
-    random = cfg.random  # noqa F401
+    launcher_training_index = find_launcher(cfg.indexation.training_requirements)
 
-    documents = v1_passages()  # noqa F401
-    ds_val = v1_validation_dataset(cfg.validation)  # noqa F401
+    device = cfg.device
+    random = cfg.random
+
+    documents = v1_passages()
+    ds_val_all = v1_validation_dataset(cfg.validation)
+
+    ds_val = RetrieverBasedCollection(
+        dataset=ds_val_all,
+        retrievers=[
+            anserini.AnseriniRetriever(
+                k=cfg.retrieval.retTopK, index=anserini.index_builder, model=basemodel
+            ),
+        ],
+    ).submit(launcher=launcher_index)
+
+    # Base retrievers for validation
+    # It retrieve all the document of the collection with score 0 to avoid
+    # scoring all the documents in the validation stage
+    base_retriever_full = FullRetriever(documents=ds_val.documents)
 
     tests = v1_tests()
-
-    basemodel = BM25().tag("model", "bm25")
 
     # evaluate the baseline
     bm25_retriever = anserini.AnseriniRetriever(
@@ -48,30 +76,100 @@ def run(
     )
     tests.evaluate_retriever(bm25_retriever, launcher_index)
 
-    ance_trainer = ...  # noqa F401
-    ance_model = ...  # noqa F401
-    validation_listener = ...  # noqa F401
-    faiss_listener = FaissBuildListener(  # noqa F401
-        indexing_interval=cfg.ance.indexing_interval,
-        indexbackedfaiss=DynamicFaissIndex(
-            normalize=False,
-            encoder=...,
-            indexspec=cfg.ance.indexspec,
-            batchsize=2048,
+    ance_trainer = pairwise.PairwiseTrainer(
+        lossfn=pairwise.PointwiseCrossEntropyLoss(),
+        sampler=v1_docpairs_sampler(),
+        batcher=PowerAdaptativeBatcher(),
+        batch_size=cfg.ance.optimization.batch_size,
+    )
+
+    ance_model = DotDense(
+        encoder=TransformerEncoder(maxlen=512, model_id="roberta-base", trainable=True)
+    )
+
+    validation_listener = ValidationListener(
+        id="bestval",
+        dataset=ds_val,
+        retriever=ance_model.getRetriever(
+            retriever=base_retriever_full,
+            batch_size=cfg.retrieval.batch_size_full_retriever,
             batcher=PowerAdaptativeBatcher(),
-            device=cfg.device,
-            hooks=...,
+            device=device,
+        ),
+        early_stop=cfg.ance.early_stop,
+        validation_interval=cfg.ance.validation_interval,
+        metrics={"RR@10": True, "AP": False, "nDCG@10": False},
+    )
+
+    # A faiss index which could be updated during the training
+    dynamic_faiss = DynamicFaissIndex(
+        documents=documents,
+        normalize=False,
+        encoder=ance_model.encoder,
+        indexspec=cfg.indexation.indexspec,
+        batchsize=2048,
+        batcher=PowerAdaptativeBatcher(),
+        device=device,
+        hooks=[setmeta(DistributedHook(models=[ance_model.encoder]), True)],
+    )
+
+    faiss_listener = FaissBuildListener(
+        id="faissbuilder",
+        indexing_interval=cfg.ance.indexing_interval,
+        indexbackedfaiss=dynamic_faiss,
+    )
+
+    sampler_listener = NegativeSamplerListener(
+        id="negativebuilder",
+        sampling_interval=cfg.ance.sampling_interval,
+        sampler=PairwiseModelBasedSampler(
+            dataset=v1_dev(),
+            retriever=FaissRetriever(
+                encoder=ance_model.encoder,
+                index=dynamic_faiss,
+                topk=cfg.retrieval.negative_sampler_topk,
+            ),
         ),
     )
-    sampler_listener = NegativeSamplerListener(...)  # noqa F401
 
-    learner = ...
+    learner = Learner(
+        # Misc settings
+        random=random,
+        device=device,
+        # How to train the model
+        trainer=ance_trainer,
+        # the model to be trained
+        scorer=ance_model.tag("model", "ance"),
+        # Optimization settings
+        optimizers=cfg.ance.optimization.optimizer,
+        steps_per_epoch=cfg.ance.optimization.steps_per_epoch,
+        use_fp16=True,
+        max_epochs=cfg.ance.optimization.max_epochs,
+        # the listener for the validation
+        listeners=[validation_listener, faiss_listener, sampler_listener],
+        # the hooks
+        hooks=[setmeta(DistributedHook(models=[ance_model.encoder]), True)],
+    )
 
     outputs = learner.submit(launcher=launcher_learner)
     tensorboard_service.add(learner, learner.logpath)
 
-    ance_final_index = ...  # noqa F401
-    ance_retriever = ...
+    ance_final_index = IndexBackedFaiss(
+        normalize=False,
+        documents=documents,
+        encoder=ance_model.encoder,
+        indexspec=cfg.indexation.indexspec,
+        batchsize=2048,
+        batcher=PowerAdaptativeBatcher(),
+        device=device,
+        hooks=[setmeta(DistributedHook(models=[ance_model.encoder]), True)],
+    ).submit(launcher=launcher_training_index)
+
+    ance_retriever = FaissRetriever(
+        encoder=ance_model.encoder,
+        index=ance_final_index,
+        topk=cfg.retrieval.topK,
+    )
 
     tests.evaluate_retriever(
         ance_retriever,
@@ -80,9 +178,9 @@ def run(
     )
 
     return PaperResults(
-        models={"monobert-RR@10": outputs.listeners["bestval"]["RR@10"]},
+        models={"ance-RR@10": outputs.listeners["bestval"]["RR@10"]},
         evaluations=tests,
-        tb_logs={"monobert-RR@10": learner.logpath},
+        tb_logs={"ance-RR@10": learner.logpath},
     )
 
 

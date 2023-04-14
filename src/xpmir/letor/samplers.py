@@ -269,10 +269,11 @@ class NegativeSamplerListener(LearnerListener):
 
     def initialize(self, learner: "Learner", context: TrainerContext):
         super().initialize(learner, context)
+        self.sampler.initialize()
 
     def __call__(self, state: TrainState) -> bool:
 
-        self.sampler = ...  # The rebuilt samplers
+        state.trainer.sampler = self.sampler  # The rebuilt sampler
         self.sampler.update()
 
     def update_metrics(self, metrics: Dict[str, float]):

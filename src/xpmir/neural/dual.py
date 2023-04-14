@@ -1,7 +1,6 @@
 from typing import List, Optional
 import torch
 from experimaestro import Param
-from xpmir.distributed import DistributableModel
 from xpmir.letor.batchers import Batcher
 from xpmir.neural import DualRepresentationScorer
 from xpmir.rankers import Retriever
@@ -140,7 +139,7 @@ class CosineDense(Dense):
         return documents / documents.norm(dim=1, keepdim=True)
 
 
-class DotDense(Dense, DistributableModel):
+class DotDense(Dense):
     """Dual model based on inner product."""
 
     def __validate__(self):
