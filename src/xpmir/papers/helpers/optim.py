@@ -24,6 +24,7 @@ class TransformerOptimization:
 
     lr: float = 3.0e-6
     weight_decay: float = 1e-2
+    eps: float = 1e-8
 
     @cached_property
     def optimizer(self):
@@ -40,7 +41,7 @@ class TransformerOptimization:
             [
                 ParameterOptimizer(
                     scheduler=scheduler,
-                    optimizer=AdamW(lr=self.lr, weight_decay=0, eps=self.lr),
+                    optimizer=AdamW(lr=self.lr, weight_decay=0, eps=self.eps),
                     filter=RegexParameterFilter(
                         includes=[r"\.bias$", r"\.LayerNorm\."]
                     ),
@@ -48,7 +49,7 @@ class TransformerOptimization:
                 ParameterOptimizer(
                     scheduler=scheduler,
                     optimizer=AdamW(
-                        lr=self.lr, weight_decay=self.weight_decay, eps=self.lr
+                        lr=self.lr, weight_decay=self.weight_decay, eps=self.eps
                     ),
                 ),
             ]
