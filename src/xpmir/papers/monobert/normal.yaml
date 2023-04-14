@@ -23,6 +23,7 @@ monobert:
         warmup_min_facor: 0
         weight_decay: 0.01
         lr: 3.0e-6
+        eps: 1.0e-6
 
     validation_interval: 32
     requirements: duration=4 days & cuda(mem=24G) * 2
