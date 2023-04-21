@@ -5,6 +5,7 @@ from typing import Iterator, Tuple
 from experimaestro import Option
 import datamaestro_text.data.ir as ir
 import ir_datasets
+from ir_datasets.formats.trec import TrecQuery
 
 # Interface between ir_datasets and datamaestro:
 # provides adapted data types
@@ -28,10 +29,7 @@ class AdhocTopics(ir.AdhocTopics, IRDSId):
         """Returns an iterator over topics"""
         ds = ir_datasets.load(self.irds)
 
-        from ir_datasets.formats.trec import TrecQuery
-
         if issubclass(ds.queries_cls(), (TrecQuery,)):
-
             for query in ds.queries_iter():
                 yield ir.AdhocTopic(query.query_id, query.title, {})
         else:
@@ -66,6 +64,9 @@ class AdhocDocuments(ir.AdhocDocumentStore, IRDSId):
     """Wraps an ir datasets collection -- and provide a default text
     value depending on the collection itself"""
 
+    # List of fields
+    # self.dataset.docs_cls()._fields
+
     @cached_property
     def _doc_text(self):
         cls = self.dataset.docs_cls()
@@ -93,10 +94,6 @@ class AdhocDocuments(ir.AdhocDocumentStore, IRDSId):
 
     def docid_internal2external(self, ix: int):
         return self.dataset.docs_iter()[ix].doc_id
-
-    @cached_property
-    def has_title(self):
-        return "title" in self.dataset.docs_cls()._fields
 
     def document(self, ix):
         d = self.dataset.docs_iter()[ix]
