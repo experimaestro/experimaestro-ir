@@ -5,6 +5,8 @@ try:
 except ImportError:
     from typing_extensions import dataclass_transform
 
+from functools import cached_property as attrs_cached_property  # noqa: F401
+
 
 @dataclass_transform(kw_only_default=True)
 def configuration(*args, **kwargs):

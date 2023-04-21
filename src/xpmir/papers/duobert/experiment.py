@@ -97,7 +97,7 @@ def run(xp: experiment, cfg: DuoBERT, tensorboard_service: TensorboardService):
         # How to train the model
         trainer=duobert_trainer,
         # The model to train
-        scorer=duobert_scorer,
+        model=duobert_scorer,
         # Optimization settings
         steps_per_epoch=cfg.duobert.optimization.steps_per_epoch,
         optimizers=cfg.duobert.optimization.optimizer,

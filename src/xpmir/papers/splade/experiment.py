@@ -152,7 +152,7 @@ class SPLADEExperiment(SPLADEMSMarcoV1Experiment):
             # How to train the model
             trainer=batchwise_trainer_flops,
             # the model to be trained
-            scorer=spladev2.tag("model", "splade-v2"),
+            model=spladev2.tag("model", "splade-v2"),
             # Optimization settings
             optimizers=self.get_optimizers(cfg.learner),
             steps_per_epoch=cfg.learner.steps_per_epoch,
