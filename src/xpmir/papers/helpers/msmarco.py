@@ -32,6 +32,13 @@ class RerankerMSMarcoV1Configuration(NeuralIRExperiment):
     validation: ValidationSample = Factory(ValidationSample)
 
 
+@configuration()
+class DualMSMarcoV1Configuration(NeuralIRExperiment):
+    """Configuration for sparse retriever"""
+
+    validation: ValidationSample = Factory(ValidationSample)
+
+
 # MsMarco v1
 
 v1_passages: Callable[[], AdhocDocuments] = partial_cache(
