@@ -201,7 +201,7 @@ def run(
         # How to train the model
         trainer=batchwise_trainer_flops,
         # the model to be trained
-        scorer=spladev2.tag("model", "splade-v2"),
+        model=spladev2.tag("model", "splade-v2"),
         # Optimization settings
         optimizers=cfg.splade.optimization.optimizer,
         steps_per_epoch=cfg.splade.optimization.steps_per_epoch,

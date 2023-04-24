@@ -29,10 +29,9 @@ from xpmir.letor.context import (
 )
 from xpmir.letor.metrics import Metrics
 from xpmir.rankers import (
-    AbstractLearnableScorer,
     Retriever,
 )
-from xpmir.letor.optim import ParameterOptimizer, ScheduledOptimizer
+from xpmir.letor.optim import Module, ParameterOptimizer, ScheduledOptimizer
 
 logger = easylog()
 
@@ -144,7 +143,7 @@ class ValidationListener(LearnerListener):
         """Experimaestro outputs: returns the best checkpoints for each
         metric"""
         res = {
-            key: copyconfig(learner.scorer, checkpoint=str(self.bestpath / key))
+            key: copyconfig(learner.model, checkpoint=str(self.bestpath / key))
             for key, store in self.metrics.items()
             if store
         }
@@ -227,7 +226,8 @@ class LearnerOutput(NamedTuple):
 
 class Learner(Task, EasyLogger):
     """Model Learner
-    The learner task is generic, and takes two main arguments: (1) the scorer
+
+    The learner task is generic, and takes two main arguments: (1) the model
     defines the model (e.g. DRMM), and (2) the trainer defines how the model
     should be trained (e.g. pointwise, pairwise, etc.)
     When submitted, it returns a dictionary based on the `listeners`
@@ -240,7 +240,7 @@ class Learner(Task, EasyLogger):
     trainer: Param[Trainer]
     """Specifies how to train the model"""
 
-    scorer: Param[AbstractLearnableScorer]
+    model: Param[Module]
     """Defines the model that scores documents"""
 
     max_epochs: Param[int] = 1000
@@ -310,7 +310,7 @@ class Learner(Task, EasyLogger):
             self.max_epochs,
             self.steps_per_epoch,
             self.trainer,
-            self.scorer,
+            self.model,
             self.optimizer,
         )
 
@@ -331,7 +331,7 @@ class Learner(Task, EasyLogger):
 
         # Initialize the scorer and trainer
         self.logger.info("Scorer initialization")
-        self.scorer.initialize(self.random.state)
+        self.model.initialize(self.random.state)
 
         # Initialize the context and the listeners
         self.trainer.initialize(self.random.state, self.context)
@@ -339,11 +339,11 @@ class Learner(Task, EasyLogger):
             listener.initialize(self, self.context)
 
         self.logger.info("Moving to device %s", device_information.device)
-        self.scorer.to(device_information.device)
+        self.model.to(device_information.device)
         self.trainer.to(device_information.device)
         num_training_steps = self.max_epochs * self.steps_per_epoch
         self.optimizer.initialize(
-            self.optimizers, num_training_steps, self.scorer, self.use_fp16
+            self.optimizers, num_training_steps, self.model, self.use_fp16
         )
 
         foreach(

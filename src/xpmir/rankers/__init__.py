@@ -577,7 +577,7 @@ class RetrieverHydrator(Retriever):
         return self.retriever.initialize()
 
     def retrieve(self, query: str, content=False) -> List[ScoredDocument]:
-        results = self.retriever.retrieve(query, content)
+        results = self.retriever.retrieve(query, content=False)
 
         if content:
             for result in results:

@@ -19,8 +19,7 @@ from experimaestro.utils import cleanupdir
 from contextlib import contextmanager
 
 if TYPE_CHECKING:
-    from xpmir.rankers import AbstractLearnableScorer
-    from xpmir.letor.optim import ScheduledOptimizer
+    from xpmir.letor.optim import ScheduledOptimizer, Module
     from xpmir.letor.trainers import Trainer
 
 logger = easylog()
@@ -48,7 +47,7 @@ class TrainState:
 
     def __init__(
         self,
-        model: "AbstractLearnableScorer",
+        model: "Module",
         trainer: "Trainer",
         optimizer: "ScheduledOptimizer",
         epoch=0,
@@ -153,7 +152,7 @@ class TrainerContext(Context):
     """Contains all the information about the training context
     for a spefic
 
-    This object is used when training to provide scorers and losses'
+    This object is used when training to provide models and losses'
     with extra information - as well as the possibility to add
     regularization losses
     """
@@ -177,7 +176,7 @@ class TrainerContext(Context):
         max_epoch: int,
         steps_per_epoch: int,
         trainer,
-        ranker: "AbstractLearnableScorer",
+        model: "Module",
         optimizer: "ScheduledOptimizer",
     ):
         super().__init__(device_information)
@@ -189,7 +188,7 @@ class TrainerContext(Context):
         self._scope = []
         self._losses = None
 
-        self.state = TrainState(ranker, trainer, optimizer)
+        self.state = TrainState(model, trainer, optimizer)
 
     @property
     def writer(self):

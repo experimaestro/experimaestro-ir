@@ -123,15 +123,6 @@ class Collection(Dataset):
     assessements: Qrels
     topics: Queries
 
-    # FIXME: find a proper way to get the collection path
-    # @property
-    # def datapath(self):
-    #     return Path(self.irds_ds._dlc._path)
-
-    # def hasfiles(self):
-    #     print(self.irds_id)
-    #     return self.irds_ds._dlc._path is not None
-
     def _prepare(self, download=False) -> AdhocDocuments:
         return Adhoc(
             id=self.fullid,
@@ -159,6 +150,7 @@ IRDS_NO_WARNING_KEY = "IR_DATASETS_SKIP_DEPRECATED_WARNING"
 
 @contextmanager
 def no_deprecated_warnings():
+    """Context manager to remove ir dataset warnings"""
     old = os.environ.get(IRDS_NO_WARNING_KEY, "")
     os.environ[IRDS_NO_WARNING_KEY] = "true"
     yield None
@@ -166,7 +158,7 @@ def no_deprecated_warnings():
 
 
 def build(repository):
-    """Builds a repository by using ir_datasets registry"""
+    """Builds a datamaestro repository by using ir_datasets registry"""
     datasets = {}
     bykey = {}
 

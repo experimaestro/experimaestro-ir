@@ -133,7 +133,7 @@ def run(
         # How to train the model
         trainer=monobert_trainer,
         # The model to train
-        scorer=monobert_scorer,
+        model=monobert_scorer,
         # Optimization settings
         steps_per_epoch=cfg.monobert.optimization.steps_per_epoch,
         optimizers=cfg.monobert.optimization.optimizer,
