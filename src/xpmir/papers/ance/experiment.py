@@ -139,7 +139,7 @@ def run(
         # How to train the model
         trainer=ance_trainer,
         # the model to be trained
-        scorer=ance_model.tag("model", "ance"),
+        model=ance_model.tag("model", "ance"),
         # Optimization settings
         optimizers=cfg.ance.optimization.optimizer,
         steps_per_epoch=cfg.ance.optimization.steps_per_epoch,
