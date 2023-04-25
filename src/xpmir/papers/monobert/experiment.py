@@ -2,13 +2,14 @@ from functools import partial
 import logging
 
 from xpmir.distributed import DistributedHook
-from xpmir.letor.learner import Learner, ValidationListener
+from xpmir.learning.learner import Learner
+from xpmir.letor.learner import ValidationListener
 import xpmir.letor.trainers.pairwise as pairwise
 from xpmir.neural.cross import CrossScorer
 from experimaestro import experiment, setmeta
 from experimaestro.launcherfinder import find_launcher
-from xpmir.letor.batchers import PowerAdaptativeBatcher
-from xpmir.letor.optim import (
+from xpmir.learning.batchers import PowerAdaptativeBatcher
+from xpmir.learning.optim import (
     TensorboardService,
 )
 from xpmir.papers.cli import paper_command

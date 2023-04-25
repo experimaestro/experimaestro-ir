@@ -1,8 +1,8 @@
 import torch
 from experimaestro import Param
 from xpmir.distributed import DistributableModel
-from xpmir.letor.batchers import Batcher
-from xpmir.letor.context import TrainerContext
+from xpmir.learning.batchers import Batcher
+from xpmir.learning.context import TrainerContext
 from xpmir.letor.records import (
     BaseRecords,
     PairwiseRecords,

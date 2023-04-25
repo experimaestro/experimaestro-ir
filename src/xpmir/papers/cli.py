@@ -24,7 +24,7 @@ from xpmir.models import XPMIRHFHub
 from xpmir.rankers import Scorer
 from xpmir.papers.results import PaperResults
 from xpmir.papers.helpers import PaperExperiment
-from xpmir.letor.optim import TensorboardService
+from xpmir.learning.optim import TensorboardService
 
 
 class ExperimentsCli(click.MultiCommand):

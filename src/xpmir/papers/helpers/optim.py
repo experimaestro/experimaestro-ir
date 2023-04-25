@@ -1,11 +1,11 @@
 from functools import cached_property
-from xpmir.letor.optim import (
+from xpmir.learning.optim import (
     AdamW,
     ParameterOptimizer,
     RegexParameterFilter,
     get_optimizers,
 )
-from xpmir.letor.schedulers import LinearWithWarmup
+from xpmir.learning.schedulers import LinearWithWarmup
 from xpmir.papers import configuration
 
 

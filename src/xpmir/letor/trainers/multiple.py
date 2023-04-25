@@ -1,7 +1,7 @@
 from typing import Dict, Iterator
 from experimaestro import Param
 import numpy as np
-from xpmir.letor.context import (
+from xpmir.learning.context import (
     TrainerContext,
 )
 from . import Trainer

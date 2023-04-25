@@ -3,7 +3,7 @@ from experimaestro import Param
 from xpmir.neural import TorchLearnableScorer
 from xpmir.text import TokensEncoder
 from xpmir.letor.records import BaseRecords
-from xpmir.letor.context import TrainerContext
+from xpmir.learning.context import TrainerContext
 
 
 class InteractionScorer(TorchLearnableScorer):

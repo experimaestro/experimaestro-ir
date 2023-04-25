@@ -6,13 +6,13 @@ Optimizers
 ----------
 
 
-.. autoxpmconfig:: xpmir.letor.optim.Optimizer
-.. autoxpmconfig:: xpmir.letor.optim.Adam
-.. autoxpmconfig:: xpmir.letor.optim.AdamW
+.. autoxpmconfig:: xpmir.learning.optim.Optimizer
+.. autoxpmconfig:: xpmir.learning.optim.Adam
+.. autoxpmconfig:: xpmir.learning.optim.AdamW
 
-.. autoxpmconfig:: xpmir.letor.optim.ParameterOptimizer
-.. autoxpmconfig:: xpmir.letor.optim.ParameterFilter
-.. autoxpmconfig:: xpmir.letor.optim.Module
+.. autoxpmconfig:: xpmir.learning.optim.ParameterOptimizer
+.. autoxpmconfig:: xpmir.learning.optim.ParameterFilter
+.. autoxpmconfig:: xpmir.learning.optim.Module
 
 
 
@@ -20,8 +20,8 @@ Optimizers
 Batching
 --------
 
-.. autoxpmconfig:: xpmir.letor.batchers.Batcher
-.. autoxpmconfig:: xpmir.letor.batchers.PowerAdaptativeBatcher
+.. autoxpmconfig:: xpmir.learning.batchers.Batcher
+.. autoxpmconfig:: xpmir.learning.batchers.PowerAdaptativeBatcher
 
 Devices
 -------
@@ -37,5 +37,5 @@ the way to use it (i.e. multi-gpu settings).
 Schedulers
 ----------
 
-.. automodule:: xpmir.letor.schedulers
+.. automodule:: xpmir.learning.schedulers
     :members:

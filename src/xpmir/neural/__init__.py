@@ -2,12 +2,12 @@ import itertools
 from typing import Iterable, List, Optional
 import torch
 import torch.nn as nn
-from xpmir.letor.batchers import Sliceable
+from xpmir.learning.batchers import Sliceable
 
-from xpmir.letor.context import TrainerContext
+from xpmir.learning.context import TrainerContext
 from xpmir.letor.records import BaseRecords
-from xpmir.letor.optim import Module
-from xpmir.rankers import AbstractLearnableScorer, LearnableScorer
+from xpmir.learning.optim import Module
+from xpmir.rankers import LearnableScorer
 
 
 class TorchLearnableScorer(LearnableScorer, Module):

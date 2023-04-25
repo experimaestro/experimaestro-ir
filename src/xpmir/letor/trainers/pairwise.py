@@ -7,7 +7,7 @@ from torch import nn
 from torch.functional import Tensor
 import torch.nn.functional as F
 from experimaestro import Config, Param
-from xpmir.letor.context import Loss
+from xpmir.learning.context import Loss
 from xpmir.letor.metrics import ScalarMetric
 from xpmir.letor.records import (
     PairwiseRecord,

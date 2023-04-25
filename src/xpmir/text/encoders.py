@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 
 from experimaestro import Config, Param
-from xpmir.letor.optim import Module
+from xpmir.learning.optim import Module
 from xpmir.letor.records import TokenizedTexts
 from xpmir.utils.utils import EasyLogger
 

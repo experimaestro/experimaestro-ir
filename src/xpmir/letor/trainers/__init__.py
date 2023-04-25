@@ -6,8 +6,8 @@ from xpmir.letor.metrics import ScalarMetric
 from xpmir.letor.samplers import Sampler, SerializableIterator
 from xpmir.letor.records import BaseRecords
 from xpmir.utils.utils import EasyLogger, easylog
-from xpmir.letor.batchers import Batcher
-from xpmir.letor.context import (
+from xpmir.learning.batchers import Batcher
+from xpmir.learning.context import (
     TrainingHook,
     TrainerContext,
 )
@@ -33,7 +33,10 @@ class Trainer(Config, EasyLogger):
         context: TrainerContext,
     ):
         self.random = random
+        # Old style (to be deprecated)
         self.ranker = context.state.model
+        # Generic style
+        self.model = context.state.model
         self.context = context
 
         foreach(self.hooks, self.context.add_hook)

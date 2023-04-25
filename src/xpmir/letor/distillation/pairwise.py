@@ -5,7 +5,7 @@ from torch import nn
 from torch.functional import Tensor
 from experimaestro import Config, Param
 from xpmir.letor.records import Document, PairwiseRecord, PairwiseRecords
-from xpmir.letor.context import Loss
+from xpmir.learning.context import Loss
 from xpmir.letor.trainers import TrainerContext, LossTrainer
 from xpmir.utils.utils import batchiter, foreach
 from .samplers import DistillationPairwiseSampler, PairwiseDistillationSample

@@ -8,7 +8,7 @@ from experimaestro import Config, Constant, Param, default, Annotated
 import torch
 from torch import nn
 import torch.nn.functional as F
-from xpmir.letor.context import TrainerContext
+from xpmir.learning.context import TrainerContext
 from xpmir.letor.records import BaseRecords
 from xpmir.neural.interaction import InteractionScorer
 

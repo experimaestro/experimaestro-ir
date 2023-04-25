@@ -1,12 +1,12 @@
 from typing import List, Optional
 import torch
 from experimaestro import Param
-from xpmir.letor.batchers import Batcher
+from xpmir.learning.batchers import Batcher
 from xpmir.neural import DualRepresentationScorer
 from xpmir.rankers import Retriever
 from xpmir.utils.utils import easylog, foreach
 from xpmir.text.encoders import TextEncoder
-from xpmir.letor.context import Loss, TrainerContext, TrainingHook
+from xpmir.learning.context import Loss, TrainerContext, TrainingHook
 from xpmir.letor.metrics import ScalarMetric
 
 logger = easylog()
