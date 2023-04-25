@@ -7,12 +7,13 @@ import logging
 
 from experimaestro.launcherfinder import find_launcher
 
-from xpmir.letor.optim import (
+from xpmir.learning.optim import (
     TensorboardService,
 )
 from experimaestro import experiment, setmeta
 from xpmir.distributed import DistributedHook
-from xpmir.letor.learner import Learner, ValidationListener
+from xpmir.learning.learner import Learner
+from xpmir.letor.learner import ValidationListener
 from xpmir.index.sparse import (
     SparseRetriever,
     SparseRetrieverIndexBuilder,
@@ -23,7 +24,7 @@ from xpmir.letor.distillation.pairwise import (
 )
 from xpmir.papers.cli import paper_command
 from xpmir.letor.trainers.batchwise import BatchwiseTrainer, SoftmaxCrossEntropy
-from xpmir.letor.batchers import PowerAdaptativeBatcher
+from xpmir.learning.batchers import PowerAdaptativeBatcher
 from xpmir.neural.dual import DenseDocumentEncoder, DenseQueryEncoder
 from xpmir.rankers.standard import BM25
 from xpmir.neural.splade import spladeV2_max, spladeV2_doc

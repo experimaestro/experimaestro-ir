@@ -12,7 +12,7 @@ from experimaestro import Annotated, Meta, Task, pathgenerator, Param, tqdm
 import logging
 from datamaestro_text.data.ir import AdhocDocumentStore
 from xpmir.rankers import Retriever, ScoredDocument
-from xpmir.letor.batchers import Batcher
+from xpmir.learning.batchers import Batcher
 from xpmir.text.encoders import TextEncoder
 from xpmir.letor import (
     Device,

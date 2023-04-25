@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from experimaestro import Param, Config
 from xpmir.letor.records import PointwiseRecords
 from xpmir.letor.trainers import LossTrainer
-from xpmir.letor.context import TrainerContext
+from xpmir.learning.context import Loss, TrainerContext
 from xpmir.rankers import LearnableScorer, ScorerOutputType
 
 
@@ -55,7 +55,7 @@ class PointwiseTrainer(LossTrainer):
     """Pointwise trainer"""
 
     lossfn: Param[PointwiseLoss] = MSELoss()
-    """Loss function to use (mse, mse-nil, l1, l1pos, smoothl1, cross_entropy, cross_entropy_logits, softmax, mean)"""
+    """Loss function to use"""
 
     def initialize(self, random: np.random.RandomState, ranker, context):
         super().initialize(random, context)

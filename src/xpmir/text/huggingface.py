@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 from experimaestro import Param, Constant, deprecate
 from xpmir.distributed import DistributableModel
-from xpmir.letor.context import InitializationTrainingHook, TrainState
+from xpmir.learning.context import InitializationTrainingHook, TrainState
 from xpmir.text.encoders import (
     Encoder,
     TokensEncoder,
@@ -489,8 +489,10 @@ class LayerFreezer(InitializationTrainingHook):
     """Whether embeddings should be frozen"""
 
     frozen: Param[int] = 0
-    """Number of frozen layers, counting from the first processing layers (can be negative, i.e. -1 meaning until the last
-    layer excluded, etc. / 0 means no layer)"""
+    """Number of frozen layers
+
+    Counting from the first processing layers (can be negative, i.e. -1 meaning
+    until the last layer excluded, etc. / 0 means no layer)"""
 
     def __init__(self):
         self._initialized = False

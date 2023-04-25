@@ -3,7 +3,7 @@ import itertools
 from typing import List, Optional
 import random
 import torch
-from xpmir.letor.context import TrainerContext
+from xpmir.learning.context import TrainerContext
 from xpmir.rankers import ScoredDocument
 from xpmir.rankers.full import FullRetrieverRescorer
 from xpmir.neural.dual import DualRepresentationScorer

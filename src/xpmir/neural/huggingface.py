@@ -1,4 +1,4 @@
-from xpmir.letor.context import TrainerContext
+from xpmir.learning.context import TrainerContext
 from xpmir.letor.records import BaseRecords
 from xpmir.neural import TorchLearnableScorer
 from experimaestro import Param

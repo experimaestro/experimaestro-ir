@@ -17,8 +17,8 @@ Learning to rank is handled by various classes :
 
 The main class is the Learner task.
 
-.. autoxpmconfig:: xpmir.letor.learner.Learner
-.. autonamedtuple:: xpmir.letor.learner.LearnerOutput
+.. autoxpmconfig:: xpmir.learning.learner.Learner
+.. autonamedtuple:: xpmir.learning.learner.LearnerOutput
 
 
 Listeners
@@ -26,10 +26,10 @@ Listeners
 
 Listeners can be used to monitor the learning process
 
-.. autoxpmconfig:: xpmir.letor.learner.LearnerListener
+.. autoxpmconfig:: xpmir.learning.learner.LearnerListener
    :members: __call__
 
-.. autoxpmconfig:: xpmir.letor.learner.ValidationListener
+.. autoxpmconfig:: xpmir.letor.ValidationListener
 
 Scorers
 =======

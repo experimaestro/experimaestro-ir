@@ -4,8 +4,8 @@ import torch
 import torch.nn.functional as F
 from experimaestro import Config, Param, initializer
 from xpmir.letor.samplers import BatchwiseSampler, BatchwiseRecords
-from xpmir.letor.context import Loss, TrainerContext, TrainerContext
-from xpmir.rankers import LearnableScorer, ScorerOutputType
+from xpmir.learning.context import Loss, TrainerContext
+from xpmir.rankers import ScorerOutputType
 from xpmir.letor.trainers import LossTrainer
 import numpy as np
 

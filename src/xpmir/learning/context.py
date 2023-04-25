@@ -19,7 +19,7 @@ from experimaestro.utils import cleanupdir
 from contextlib import contextmanager
 
 if TYPE_CHECKING:
-    from xpmir.letor.optim import ScheduledOptimizer, Module
+    from xpmir.learning.optim import ScheduledOptimizer, Module
     from xpmir.letor.trainers import Trainer
 
 logger = easylog()

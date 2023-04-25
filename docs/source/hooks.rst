@@ -16,7 +16,7 @@ Inference
 Learning
 --------
 
-.. currentmodule:: xpmir.letor.context
+.. currentmodule:: xpmir.learning.context
 
 Hooks can be used to modify the learning process
 

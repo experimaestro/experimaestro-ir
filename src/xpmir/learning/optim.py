@@ -13,7 +13,7 @@ from xpmir.letor.metrics import ScalarMetric
 from .schedulers import Scheduler
 
 if TYPE_CHECKING:
-    from xpmir.letor.context import TrainerContext
+    from xpmir.learning.context import TrainerContext
 
 logger = easylog()
 

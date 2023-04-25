@@ -28,9 +28,9 @@ from datamaestro_text.data.ir import (
     AdhocDocumentStore,
 )
 from xpmir.letor import Device, Random
-from xpmir.letor.batchers import Batcher
-from xpmir.letor.context import TrainerContext
-from xpmir.letor.optim import Module
+from xpmir.learning.batchers import Batcher
+from xpmir.learning.context import TrainerContext
+from xpmir.learning.optim import Module
 from xpmir.letor.records import (
     Document,
     BaseRecords,

@@ -15,7 +15,7 @@ from experimaestro import (
     Constant,
 )
 from datamaestro_text.data.ir import AdhocDocument, AdhocDocumentStore
-from xpmir.letor.batchers import Batcher
+from xpmir.learning.batchers import Batcher
 from xpmir.utils.utils import batchiter, easylog
 from xpmir.letor import Device, DEFAULT_DEVICE
 from xpmir.text.encoders import TextEncoder
