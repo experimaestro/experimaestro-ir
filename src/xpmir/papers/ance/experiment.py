@@ -4,7 +4,11 @@ from experimaestro import experiment, setmeta
 from experimaestro.launcherfinder import find_launcher
 from xpmir.letor.batchers import PowerAdaptativeBatcher
 from xpmir.letor.optim import TensorboardService
-from xpmir.letor.samplers import NegativeSamplerListener, PairwiseModelBasedSampler
+from xpmir.letor.samplers import (
+    NegativeSamplerListener,
+    PairwiseModelBasedSampler,
+    PairwiseListSamplers,
+)
 from xpmir.papers.cli import paper_command
 from xpmir.rankers.standard import BM25
 from xpmir.papers.results import PaperResults
@@ -76,13 +80,6 @@ def run(
     )
     tests.evaluate_retriever(bm25_retriever, launcher_index)
 
-    ance_trainer = pairwise.PairwiseTrainer(
-        lossfn=pairwise.PointwiseCrossEntropyLoss(),
-        sampler=v1_docpairs_sampler(),
-        batcher=PowerAdaptativeBatcher(),
-        batch_size=cfg.ance.optimization.batch_size,
-    )
-
     ance_model = DotDense(
         encoder=TransformerEncoder(maxlen=512, model_id="roberta-base", trainable=True)
     )
@@ -120,16 +117,27 @@ def run(
     )
 
     sampler_listener = NegativeSamplerListener(
-        id="negativebuilder",
-        sampling_interval=cfg.ance.sampling_interval,
-        sampler=PairwiseModelBasedSampler(
-            dataset=v1_dev(),
-            retriever=FaissRetriever(
-                encoder=ance_model.encoder,
-                index=dynamic_faiss,
-                topk=cfg.retrieval.negative_sampler_topk,
-            ),
+        id="negativebuilder", sampling_interval=cfg.ance.sampling_interval
+    )
+
+    # We warm up the ance model with the bm25 samplers and the swap to the
+    # model_based_sampler
+    modelbasedsampler = PairwiseModelBasedSampler(
+        dataset=v1_dev(),
+        retriever=FaissRetriever(
+            encoder=ance_model.encoder,
+            index=dynamic_faiss,
+            topk=cfg.retrieval.negative_sampler_topk,
         ),
+    )
+
+    ance_sampler = PairwiseListSamplers([v1_docpairs_sampler(), modelbasedsampler])
+
+    ance_trainer = pairwise.PairwiseTrainer(
+        lossfn=pairwise.PointwiseCrossEntropyLoss(),
+        sampler=ance_sampler,
+        batcher=PowerAdaptativeBatcher(),
+        batch_size=cfg.ance.optimization.batch_size,
     )
 
     learner = Learner(

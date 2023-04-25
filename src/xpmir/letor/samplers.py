@@ -282,20 +282,19 @@ class NegativeSamplerListener(LearnerListener):
     sampling_interval: Param[int] = 128
     """During how many epochs we recompute the negatives"""
 
-    sampler: Param[PairwiseListSamplers]
-    """The model based sampler to extract the negatives"""
-
     def initialize(self, learner: "Learner", context: TrainerContext):
         self.change = True
         super().initialize(learner, context)
+        self.sampler_index = 0
 
     def __call__(self, state: TrainState) -> bool:
 
         if state.epoch % self.sampling_interval == 0:
             if self.change:  # First time to change the sampler
-                self.sampler.swap()
+                self.sampler_index += 1
+                state.trainer.sampler.pairwise_iter().set_current(self.sampler_index)
                 self.change = False
-            self.sampler.current_sampler.update()
+            state.trainer.sampler[self.sampler_index].update()
 
     def update_metrics(self, metrics: Dict[str, float]):
         pass
