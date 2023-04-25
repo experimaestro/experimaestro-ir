@@ -2,8 +2,9 @@ import logging
 
 from experimaestro import experiment, setmeta
 from experimaestro.launcherfinder import find_launcher
-from xpmir.letor.batchers import PowerAdaptativeBatcher
-from xpmir.letor.optim import TensorboardService
+from xpmir.learning.batchers import PowerAdaptativeBatcher
+from xpmir.learning.optim import TensorboardService
+from xpmir.learning.learner import Learner
 from xpmir.letor.samplers import (
     NegativeSamplerListener,
     PairwiseModelBasedSampler,
@@ -31,7 +32,7 @@ from xpmir.datasets.adapters import RetrieverBasedCollection
 import xpmir.letor.trainers.pairwise as pairwise
 from xpmir.text.huggingface import TransformerEncoder
 from xpmir.neural.dual import DotDense
-from xpmir.letor.learner import ValidationListener, Learner
+from xpmir.letor.learner import ValidationListener
 from xpmir.distributed import DistributedHook
 from xpmir.rankers.full import FullRetriever
 

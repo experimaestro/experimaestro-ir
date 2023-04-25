@@ -22,8 +22,8 @@ from xpmir.letor import (
 from xpmir.utils.utils import batchiter, easylog, foreach
 from xpmir.documents.samplers import DocumentSampler
 from xpmir.context import Context, Hook, InitializationHook
-from xpmir.letor.learner import LearnerListener, Learner
-from xpmir.letor.context import TrainerContext, TrainState
+from xpmir.learning.learner import LearnerListener, Learner
+from xpmir.learning.context import TrainerContext, TrainState
 
 logger = easylog()
 

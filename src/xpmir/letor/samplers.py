@@ -30,8 +30,8 @@ from xpmir.utils.iter import (
     ListwiseSerializableIterator,
 )
 from datamaestro_text.interfaces.plaintext import read_tsv
-from xpmir.letor.learner import LearnerListener, Learner
-from xpmir.letor.context import TrainerContext, TrainState
+from xpmir.learning.learner import LearnerListener, Learner
+from xpmir.learning.context import TrainerContext, TrainState
 
 logger = easylog()
 
