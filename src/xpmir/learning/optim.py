@@ -9,7 +9,7 @@ from experimaestro.scheduler import Job, Listener
 from experimaestro.utils import cleanupdir
 from experimaestro.scheduler.services import WebService
 from xpmir.utils.utils import easylog
-from xpmir.letor.metrics import ScalarMetric
+from xpmir.learning.metrics import ScalarMetric
 from .schedulers import Scheduler
 
 if TYPE_CHECKING:

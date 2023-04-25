@@ -8,7 +8,7 @@ from xpmir.rankers import Retriever
 from xpmir.utils.utils import easylog, foreach
 from xpmir.text.encoders import TextEncoder
 from xpmir.learning.context import Loss, TrainerContext, TrainingHook
-from xpmir.letor.metrics import ScalarMetric
+from xpmir.learning.metrics import ScalarMetric
 
 logger = easylog()
 

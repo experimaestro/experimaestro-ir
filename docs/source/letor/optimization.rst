@@ -29,9 +29,9 @@ Devices
 The devices configuration allow to select both the device to use for computation and
 the way to use it (i.e. multi-gpu settings).
 
-.. autoxpmconfig:: xpmir.letor.devices.Device
+.. autoxpmconfig:: xpmir.learning.devices.Device
 
-.. autoxpmconfig:: xpmir.letor.devices.CudaDevice
+.. autoxpmconfig:: xpmir.learning.devices.CudaDevice
 
 
 Schedulers
