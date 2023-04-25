@@ -27,6 +27,7 @@ from xpmir.utils.iter import (
     SerializableIterator,
     SerializableIteratorAdapter,
     SkippingIterator,
+    ListwiseSerializableIterator,
 )
 from datamaestro_text.interfaces.plaintext import read_tsv
 from xpmir.letor.learner import LearnerListener, Learner
@@ -259,22 +260,42 @@ class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
         return RandomSerializableIterator(self.random, iter)
 
 
+class PairwiseListSamplers(PairwiseSampler):
+    """A list of pairwise samplers which could be changed during the learning
+    procedure"""
+
+    samplers: Param[List[PairwiseSampler]]
+    """The list of samplers to be used"""
+
+    def initialize(self, random: Optional[np.random.RandomState]):
+        for sampler in self.samplers:
+            sampler.initialize(random)
+
+    def pairwise_iter(self) -> ListwiseSerializableIterator[PairwiseRecord]:
+        return ListwiseSerializableIterator(
+            [sampler.pairwise_iter() for sampler in self.samplers]
+        )
+
+
 class NegativeSamplerListener(LearnerListener):
 
     sampling_interval: Param[int] = 128
     """During how many epochs we recompute the negatives"""
 
-    sampler: Param[ModelBasedSampler]
+    sampler: Param[PairwiseListSamplers]
     """The model based sampler to extract the negatives"""
 
     def initialize(self, learner: "Learner", context: TrainerContext):
+        self.change = True
         super().initialize(learner, context)
-        self.sampler.initialize()
 
     def __call__(self, state: TrainState) -> bool:
 
-        state.trainer.sampler = self.sampler  # The rebuilt sampler
-        self.sampler.update()
+        if state.epoch % self.sampling_interval == 0:
+            if self.change:  # First time to change the sampler
+                self.sampler.swap()
+                self.change = False
+            self.sampler.current_sampler.update()
 
     def update_metrics(self, metrics: Dict[str, float]):
         pass

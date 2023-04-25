@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Callable, Dict, Generic, Iterable, Iterator, Protocol, TypeVar
+from typing import Callable, Dict, Generic, Iterable, Iterator, Protocol, TypeVar, List
 from xpmir.utils.utils import easylog
 from abc import abstractmethod
 
@@ -142,3 +142,32 @@ class SkippingIterator(GenericSerializableIterator[T]):
     def next(self):
         self.position += 1
         return next(self.iterator)
+
+
+class ListwiseSerializableIterator(SerializableIterator[T]):
+    """An iterator based on a list of samplers, where we need to load and get
+    the state_dict of all the samplers"""
+
+    def __init__(self, iterators: List[SerializableIterator]):
+        self.iterator_index = 0
+        self.iterators = iterators
+
+    def set_current(self, index):
+        # save the previous
+        assert index < len(self.iterators)
+        self.iterator_index = index
+
+    def state_dict(self) -> Dict:
+        return {
+            "current": self.iterator_index,
+            "states": [iterator.state_dict() for iterator in self.iterators],
+        }
+
+    def load_state_dict(self, state):
+        for iterator, state in zip(self.iterators, state["states"]):
+            iterator.load_state_dict(state)
+
+        self.iterator_index = state["current"]
+
+    def __next__(self):
+        return next(self.iterators[self.iterator_index])
