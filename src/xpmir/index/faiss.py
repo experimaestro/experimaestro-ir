@@ -4,7 +4,7 @@ https://github.com/facebookresearch/faiss
 """
 from functools import lru_cache, partial
 from pathlib import Path
-from typing import Callable, Iterator, List, Optional, Tuple, Dict
+from typing import Callable, Iterator, List, Optional, Tuple
 from experimaestro import Config, initializer
 import torch
 import numpy as np
@@ -22,8 +22,6 @@ from xpmir.letor import (
 from xpmir.utils.utils import batchiter, easylog, foreach
 from xpmir.documents.samplers import DocumentSampler
 from xpmir.context import Context, Hook, InitializationHook
-from xpmir.learning.learner import LearnerListener, Learner
-from xpmir.learning.context import TrainerContext, TrainState
 
 logger = easylog()
 
@@ -245,41 +243,12 @@ class IndexBackedFaiss(BaseIndexBackedFaiss, Task):
     def execute(self):
         self.device.execute(partial(self._execute, self.faiss_index))
 
-    def taskoutput(self):
+    def config(self):
         return FaissIndex(
             normalize=self.normalize,
             documents=self.documents,
             faiss_index=self.faiss_index,
         )
-
-
-class FaissBuildListener(LearnerListener):
-
-    indexing_interval: Param[int] = 128
-    """During how many epochs we recompute the index"""
-
-    indexbackedfaiss: Param[DynamicFaissIndex]
-    """The faiss object"""
-
-    def initialize(self, learner: "Learner", context: TrainerContext):
-        super().initialize(learner, context)
-
-    def __call__(self, state: TrainState) -> bool:
-
-        if state.epoch % self.indexing_interval == 0:
-
-            # state.path = 'checkpoint/epoch-00000XX/'
-            path = state.path / "listeners" / self.id / "faiss.dat"
-            path.mkdir(exist_ok=True, parents=True)
-            self.indexbackedfaiss.update(path)
-
-        return False
-
-    def update_metrics(self, metrics: Dict[str, float]):
-        pass
-
-    def taskoutputs(self, learner: "Learner"):
-        pass
 
 
 class FaissRetriever(Retriever):

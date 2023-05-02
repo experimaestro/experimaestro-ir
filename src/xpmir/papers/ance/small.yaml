@@ -1,0 +1,29 @@
+id: ance-small
+title: 'ANCE'
+description: |
+    ANCE syncronise implementation
+
+gpu: true
+indexation:
+    training_requirements: duration=4 days & cuda(mem=24G)
+    indexspec: Flat
+
+ance:
+    optimization:
+        steps_per_epoch: 16
+        batch_size: 16
+        max_epochs: 32
+        lr: 1.0e-5
+        num_warmup_steps: 30
+
+    validation_interval: 8
+    indexing_interval: 16
+    sampling_interval: 16
+    requirements: duration=2 days & cuda(mem=24G)
+
+retrieval:
+    requirements: duration=2 days & cuda(mem=24G)
+    topK: 1000
+    retTopK: 50
+    batch_size_full_retriever: 200
+    negative_sampler_topk: 200

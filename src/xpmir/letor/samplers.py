@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Iterator, List, Optional, Tuple, Dict
+from typing import Iterator, List, Optional, Tuple
 import numpy as np
 from datamaestro_text.data.ir import (
     Adhoc,
@@ -30,8 +30,6 @@ from xpmir.utils.iter import (
     ListwiseSerializableIterator,
 )
 from datamaestro_text.interfaces.plaintext import read_tsv
-from xpmir.learning.learner import LearnerListener, Learner
-from xpmir.learning.context import TrainerContext, TrainState
 
 logger = easylog()
 
@@ -116,7 +114,7 @@ class ModelBasedSampler(Sampler):
         return text
 
     def _itertopics(
-        self, runpath: Path
+        self,
     ) -> Iterator[
         Tuple[str, List[Tuple[str, int, float]], List[Tuple[str, int, float]]]
     ]:
@@ -189,7 +187,7 @@ class PointwiseModelBasedSampler(PointwiseSampler, ModelBasedSampler):
         super().initialize(random)
 
         self.retriever.initialize()
-        self.pos_records, self.neg_records = self.readrecords()
+        # self.pos_records, self.neg_records = self.readrecords()
         self.logger.info(
             "Loaded %d/%d pos/neg records", len(self.pos_records), len(self.neg_records)
         )
@@ -229,7 +227,7 @@ class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
         super().initialize(random)
 
         self.retriever.initialize()
-        self.topics: List[Tuple[str, List, List]] = self._readrecords()
+        # self.topics: List[Tuple[str, List, List]] = self._readrecords()
 
     def _readrecords(self):
         topics = []
@@ -275,32 +273,6 @@ class PairwiseListSamplers(PairwiseSampler):
         return ListwiseSerializableIterator(
             [sampler.pairwise_iter() for sampler in self.samplers]
         )
-
-
-class NegativeSamplerListener(LearnerListener):
-
-    sampling_interval: Param[int] = 128
-    """During how many epochs we recompute the negatives"""
-
-    def initialize(self, learner: "Learner", context: TrainerContext):
-        self.change = True
-        super().initialize(learner, context)
-        self.sampler_index = 0
-
-    def __call__(self, state: TrainState) -> bool:
-
-        if state.epoch % self.sampling_interval == 0:
-            if self.change:  # First time to change the sampler
-                self.sampler_index += 1
-                state.trainer.sampler.pairwise_iter().set_current(self.sampler_index)
-                self.change = False
-            state.trainer.sampler[self.sampler_index].update()
-
-    def update_metrics(self, metrics: Dict[str, float]):
-        pass
-
-    def taskoutputs(self, learner: "Learner"):
-        pass
 
 
 class PairwiseInBatchNegativesSampler(BatchwiseSampler):

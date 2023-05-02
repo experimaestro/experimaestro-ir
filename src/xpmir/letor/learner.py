@@ -20,6 +20,7 @@ from xpmir.rankers import (
     Retriever,
 )
 from xpmir.learning.learner import LearnerListener, Learner, LearnerListenerStatus
+from xpmir.index.faiss import DynamicFaissIndex
 
 logger = easylog()
 
@@ -169,3 +170,61 @@ class ValidationListener(LearnerListener):
 
         # Early stopping?
         return self.should_stop()
+
+
+class NegativeSamplerListener(LearnerListener):
+
+    sampling_interval: Param[int] = 128
+    """During how many epochs we recompute the negatives"""
+
+    def initialize(self, learner: "Learner", context: TrainerContext):
+        self.change = True
+        super().initialize(learner, context)
+        self.sampler_index = 0
+
+    def __call__(self, state: TrainState) -> bool:
+
+        if state.epoch % self.sampling_interval == 0:
+            if self.change:  # First time to change the sampler
+                self.sampler_index += 1
+                state.trainer.sampler.pairwise_iter().set_current(self.sampler_index)
+                self.change = False
+            state.trainer.sampler.samplers[self.sampler_index].update()
+
+        return LearnerListenerStatus.NO_DECISION
+
+    def update_metrics(self, metrics: Dict[str, float]):
+        pass
+
+    def taskoutputs(self, learner: "Learner"):
+        pass
+
+
+class FaissBuildListener(LearnerListener):
+
+    indexing_interval: Param[int] = 128
+    """During how many epochs we recompute the index"""
+
+    indexbackedfaiss: Param[DynamicFaissIndex]
+    """The faiss object"""
+
+    def initialize(self, learner: "Learner", context: TrainerContext):
+        super().initialize(learner, context)
+
+    def __call__(self, state: TrainState) -> bool:
+
+        if state.epoch % self.indexing_interval == 0:
+
+            # state.path = 'checkpoint/epoch-00000XX/'
+            path = state.path / "listeners" / self.id
+            path.mkdir(exist_ok=True, parents=True)
+            path = path / "faiss.dat"
+            self.indexbackedfaiss.update(path)
+
+        return LearnerListenerStatus.NO_DECISION
+
+    def update_metrics(self, metrics: Dict[str, float]):
+        pass
+
+    def taskoutputs(self, learner: "Learner"):
+        pass

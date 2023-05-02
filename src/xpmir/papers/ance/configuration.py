@@ -35,7 +35,7 @@ class Retrieval:
     retTopK: int = 50
     """Top-K when building the validation set"""
 
-    negative_sampler_topk = 200
+    negative_sampler_topk: int = 200
     """How many documents are retrieved when trying to extract the negatives"""
 
     batch_size_full_retriever: int = 200

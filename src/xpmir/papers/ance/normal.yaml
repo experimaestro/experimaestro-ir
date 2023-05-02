@@ -1,9 +1,7 @@
-id: splade_max
-title: 'SPLADE_max: SPLADEv2 with max aggregation'
+id: ance
+title: 'ANCE'
 description: |
-    SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval
-    (Thibault Formal, Carlos Lassance, Benjamin Piwowarski, Stéphane Clinchant).
-    2021. https://arxiv.org/abs/2109.10086
+    ANCE syncronise implementation
 
 gpu: true
 indexation:
@@ -11,10 +9,10 @@ indexation:
     training_requirements: duration=4 days & cuda(mem=24G)
     indexspec: Flat
 
-splade:
+ance:
     optimization:
         steps_per_epoch: 128
-        batch_size: 96
+        batch_size: 128
         max_epochs: 1200
         lr: 1.0e-5
         num_warmup_steps: 6000

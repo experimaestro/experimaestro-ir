@@ -6,7 +6,6 @@ from xpmir.learning.batchers import PowerAdaptativeBatcher
 from xpmir.learning.optim import TensorboardService
 from xpmir.learning.learner import Learner
 from xpmir.letor.samplers import (
-    NegativeSamplerListener,
     PairwiseModelBasedSampler,
     PairwiseListSamplers,
 )
@@ -23,7 +22,6 @@ from xpmir.papers.helpers.msmarco import (
 from .configuration import ANCE
 import xpmir.interfaces.anserini as anserini
 from xpmir.index.faiss import (
-    FaissBuildListener,
     DynamicFaissIndex,
     FaissRetriever,
     IndexBackedFaiss,
@@ -32,7 +30,11 @@ from xpmir.datasets.adapters import RetrieverBasedCollection
 import xpmir.letor.trainers.pairwise as pairwise
 from xpmir.text.huggingface import TransformerEncoder
 from xpmir.neural.dual import DotDense
-from xpmir.letor.learner import ValidationListener
+from xpmir.letor.learner import (
+    ValidationListener,
+    NegativeSamplerListener,
+    FaissBuildListener,
+)
 from xpmir.distributed import DistributedHook
 from xpmir.rankers.full import FullRetriever
 
@@ -61,7 +63,9 @@ def run(
         dataset=ds_val_all,
         retrievers=[
             anserini.AnseriniRetriever(
-                k=cfg.retrieval.retTopK, index=anserini.index_builder, model=basemodel
+                k=cfg.retrieval.retTopK,
+                index=anserini.index_builder()(documents=documents),
+                model=basemodel,
             ),
         ],
     ).submit(launcher=launcher_index)
@@ -75,15 +79,15 @@ def run(
 
     # evaluate the baseline
     bm25_retriever = anserini.AnseriniRetriever(
-        k=cfg.retrieval.k,
-        index=anserini.index_builder(launcher=launcher_index),
+        k=cfg.retrieval.topK,
+        index=anserini.index_builder(launcher=launcher_index)(documents),
         model=basemodel,
     )
     tests.evaluate_retriever(bm25_retriever, launcher_index)
 
-    ance_model = DotDense(
-        encoder=TransformerEncoder(maxlen=512, model_id="roberta-base", trainable=True)
-    )
+    encoder = TransformerEncoder(maxlen=512, model_id="roberta-base", trainable=True)
+
+    ance_model = DotDense(encoder=encoder)
 
     validation_listener = ValidationListener(
         id="bestval",
@@ -103,12 +107,12 @@ def run(
     dynamic_faiss = DynamicFaissIndex(
         documents=documents,
         normalize=False,
-        encoder=ance_model.encoder,
+        encoder=encoder,
         indexspec=cfg.indexation.indexspec,
         batchsize=2048,
         batcher=PowerAdaptativeBatcher(),
         device=device,
-        hooks=[setmeta(DistributedHook(models=[ance_model.encoder]), True)],
+        hooks=[setmeta(DistributedHook(models=[encoder]), True)],
     )
 
     faiss_listener = FaissBuildListener(
@@ -126,13 +130,15 @@ def run(
     modelbasedsampler = PairwiseModelBasedSampler(
         dataset=v1_dev(),
         retriever=FaissRetriever(
-            encoder=ance_model.encoder,
+            encoder=encoder,
             index=dynamic_faiss,
             topk=cfg.retrieval.negative_sampler_topk,
         ),
     )
 
-    ance_sampler = PairwiseListSamplers([v1_docpairs_sampler(), modelbasedsampler])
+    ance_sampler = PairwiseListSamplers(
+        samplers=[v1_docpairs_sampler(), modelbasedsampler]
+    )
 
     ance_trainer = pairwise.PairwiseTrainer(
         lossfn=pairwise.PointwiseCrossEntropyLoss(),
@@ -157,25 +163,28 @@ def run(
         # the listener for the validation
         listeners=[validation_listener, faiss_listener, sampler_listener],
         # the hooks
-        hooks=[setmeta(DistributedHook(models=[ance_model.encoder]), True)],
+        hooks=[setmeta(DistributedHook(models=[encoder]), True)],
     )
 
     outputs = learner.submit(launcher=launcher_learner)
     tensorboard_service.add(learner, learner.logpath)
 
+    # get the trained model
+    trained_model = outputs.listeners["bestval"]["RR@10"]
+
     ance_final_index = IndexBackedFaiss(
         normalize=False,
         documents=documents,
-        encoder=ance_model.encoder,
+        encoder=trained_model.encoder,
         indexspec=cfg.indexation.indexspec,
         batchsize=2048,
         batcher=PowerAdaptativeBatcher(),
         device=device,
-        hooks=[setmeta(DistributedHook(models=[ance_model.encoder]), True)],
+        hooks=[setmeta(DistributedHook(models=[trained_model.encoder]), True)],
     ).submit(launcher=launcher_training_index)
 
     ance_retriever = FaissRetriever(
-        encoder=ance_model.encoder,
+        encoder=trained_model.encoder,
         index=ance_final_index,
         topk=cfg.retrieval.topK,
     )
