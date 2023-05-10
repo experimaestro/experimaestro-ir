@@ -4,7 +4,7 @@ https://github.com/facebookresearch/faiss
 """
 from functools import lru_cache, partial
 from pathlib import Path
-from typing import Callable, Iterator, List, Optional, Tuple
+from typing import Callable, Iterator, List, Optional, Tuple, Dict
 from experimaestro import Config, initializer
 import torch
 import numpy as np
@@ -286,3 +286,32 @@ class FaissRetriever(Retriever):
                 for ix, value in zip(indices[0], values[0])
                 if ix >= 0
             ]
+
+    def retrieve_all(self, queries: Dict[str, str]) -> Dict[str, List[ScoredDocument]]:
+        """Input is a dictionary of query {id:text},
+        return the a dictionary of {query_id: List of ScoredDocuments under the query}
+        """
+        queries = list(queries.items())
+        all_queries = [query for _, query in queries]
+        all_ids = [qid for qid, _ in queries]
+
+        with torch.no_grad():
+            self.encoder.eval()  # pass the model to the evaluation model
+            encoded_queries = self.encoder(all_queries)  # shape = bs*dimension
+            if self.index.normalize:
+                encoded_queries /= encoded_queries.norm(2)
+
+            values, indices = self.index.get_index().search(
+                encoded_queries.cpu().numpy(), self.topk
+            )
+
+        return {
+            qid: [
+                ScoredDocument(
+                    self.index.documents.docid_internal2external(int(ix)), float(value)
+                )
+                for ix, value in zip(indices[index], values[index])
+                if ix >= 0
+            ]
+            for index, qid in enumerate(all_ids)
+        }

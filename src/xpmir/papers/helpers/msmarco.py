@@ -48,6 +48,12 @@ v1_devsmall: Callable[[], Adhoc] = partial_cache(
     prepare_dataset, "irds.msmarco-passage.dev.small"
 )
 v1_dev: Callable[[], Adhoc] = partial_cache(prepare_dataset, "irds.msmarco-passage.dev")
+v1_train: Callable[[], Adhoc] = partial_cache(
+    prepare_dataset, "irds.msmarco-passage.train"
+)
+v1_train_judged: Callable[[], Adhoc] = partial_cache(
+    prepare_dataset, "irds.msmarco-passage.train.judged"
+)
 v1_measures = [AP, P @ 20, nDCG, nDCG @ 10, nDCG @ 20, RR, RR @ 10]
 
 

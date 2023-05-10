@@ -30,6 +30,7 @@ from xpmir.utils.iter import (
     ListwiseSerializableIterator,
 )
 from datamaestro_text.interfaces.plaintext import read_tsv
+from xpmir.utils.utils import batchiter
 
 logger = easylog()
 
@@ -90,6 +91,8 @@ class ModelBasedSampler(Sampler):
     retriever: Param[Retriever]
 
     _store: AdhocDocumentStore
+    batch_size: Param[int] = 0
+    """The batch_size for retrieving"""
 
     def __validate__(self) -> None:
         super().__validate__()
@@ -178,6 +181,80 @@ class ModelBasedSampler(Sampler):
         # Finally, move the cache file in place...
         self.logger.info("Processed %d topics (%d skipped)", len(queries), skipped)
 
+    def _itertopics_batchwise(
+        self,
+    ) -> Iterator[
+        Tuple[str, List[Tuple[str, int, float]], List[Tuple[str, int, float]]]
+    ]:
+        """Iterates over topics, returning retrieved positives and negatives
+        documents"""
+        self.logger.info("Reading topics and retrieving documents")
+
+        # Read the assessments
+        self.logger.info("Reading assessments")
+        assessments = {}  # type: Dict[str, Dict[str, float]]
+        for qrels in self.dataset.assessments.iter():
+            doc2rel = {}
+            assessments[qrels.qid] = doc2rel
+            for qrel in qrels.assessments:
+                doc2rel[qrel.docno] = qrel.rel
+        self.logger.info("Read assessments for %d topics", len(assessments))
+
+        queries = []
+        for query in self.dataset.topics.iter():
+            queries.append(query)
+
+        # remove the queries without the assessments, and building the positives
+        self.logger.info("Getting the positive documents for each topic")
+        skipped = 0
+        all_positives = []  # List[List]
+        queries_not_skipped = []  # stores all the queries which are ready for retrieval
+        for query in tqdm(queries):
+            qassessments = assessments.get(query.qid, None)
+            if not qassessments:
+                skipped += 1
+                self.logger.warning("Skipping topic %s (no assessments)", query.qid)
+                continue
+
+            # Write all the positive documents
+            positives = []
+            for docno, rel in qassessments.items():
+                if rel > 0:
+                    positives.append((docno, rel, 0))
+
+            if not positives:
+                self.logger.debug(
+                    "Skipping topic %s (no relevant documents)", query.qid
+                )
+                skipped += 1
+                continue
+
+            queries_not_skipped.append(query)
+            all_positives.append(positives)
+
+        self.logger.info("%d skipped", skipped)
+
+        all_negatives = []
+        for batch in tqdm(batchiter(self.batch_size, queries_not_skipped)):
+            scoreddocuments_batch = self.retriever.retrieve_all(
+                {query.qid: query.text for query in batch}
+            )  # Dict[str, List[ScoredDocument]]
+            for (qid, scoreddocuments) in scoreddocuments_batch.items():
+                negatives = []
+                qassessments = assessments.get(qid, None)
+                for sd in scoreddocuments:
+                    rel = qassessments.get(sd.docid, 0)
+                    if rel > 0:
+                        continue
+
+                negatives.append((sd.docid, rel, sd.score))
+            all_negatives.append(negatives)
+
+        for query, positives, negatives in zip(
+            queries_not_skipped, all_positives, all_negatives
+        ):
+            yield query.text, positives, negatives
+
 
 class PointwiseModelBasedSampler(PointwiseSampler, ModelBasedSampler):
     relevant_ratio: Param[float] = 0.5
@@ -187,6 +264,7 @@ class PointwiseModelBasedSampler(PointwiseSampler, ModelBasedSampler):
         super().initialize(random)
 
         self.retriever.initialize()
+        # we don't need to sampling during the initialization for ance.
         # self.pos_records, self.neg_records = self.readrecords()
         self.logger.info(
             "Loaded %d/%d pos/neg records", len(self.pos_records), len(self.neg_records)
@@ -199,11 +277,18 @@ class PointwiseModelBasedSampler(PointwiseSampler, ModelBasedSampler):
 
     def readrecords(self):
         pos_records, neg_records = [], []
-        for title, positives, negatives in self._itertopics():
-            for docno, rel, score in positives:
-                self.pos_records.append(PointwiseRecord(title, docno, None, score, rel))
-            for docno, rel, score in negatives:
-                self.neg_records.append(PointwiseRecord(title, docno, None, score, rel))
+        if self.batch_size == 0:
+            for title, positives, negatives in self._itertopics():
+                for docno, rel, score in positives:
+                    pos_records.append(PointwiseRecord(title, docno, None, score, rel))
+                for docno, rel, score in negatives:
+                    neg_records.append(PointwiseRecord(title, docno, None, score, rel))
+        else:
+            for title, positives, negatives in self._itertopics_batchwise():
+                for docno, rel, score in positives:
+                    pos_records.append(PointwiseRecord(title, docno, None, score, rel))
+                for docno, rel, score in negatives:
+                    neg_records.append(PointwiseRecord(title, docno, None, score, rel))
 
         return pos_records, neg_records
 
@@ -227,12 +312,17 @@ class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
         super().initialize(random)
 
         self.retriever.initialize()
+        # we don't need to sampling during the initialization for ance.
         # self.topics: List[Tuple[str, List, List]] = self._readrecords()
 
     def _readrecords(self):
         topics = []
-        for title, positives, negatives in self._itertopics():
-            topics.append((title, positives, negatives))
+        if self.batch_size == 0:
+            for title, positives, negatives in self._itertopics():
+                topics.append((title, positives, negatives))
+        else:
+            for title, positives, negatives in self._itertopics_batchwise():
+                topics.append((title, positives, negatives))
         return topics
 
     def sample(self, samples: List[Tuple[str, int, float]]):

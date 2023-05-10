@@ -163,11 +163,11 @@ class ListwiseSerializableIterator(SerializableIterator[T]):
             "states": [iterator.state_dict() for iterator in self.iterators],
         }
 
-    def load_state_dict(self, state):
-        for iterator, state in zip(self.iterators, state["states"]):
+    def load_state_dict(self, states):
+        for iterator, state in zip(self.iterators, states["states"]):
             iterator.load_state_dict(state)
 
-        self.iterator_index = state["current"]
+        self.iterator_index = states["current"]
 
     def __next__(self):
         return next(self.iterators[self.iterator_index])

@@ -17,7 +17,7 @@ from xpmir.papers.helpers.msmarco import (
     v1_validation_dataset,
     v1_passages,
     v1_docpairs_sampler,
-    v1_dev,
+    v1_train_judged,
 )
 from .configuration import ANCE
 import xpmir.interfaces.anserini as anserini
@@ -128,12 +128,13 @@ def run(
     # We warm up the ance model with the bm25 samplers and the swap to the
     # model_based_sampler
     modelbasedsampler = PairwiseModelBasedSampler(
-        dataset=v1_dev(),
+        dataset=v1_train_judged(),
         retriever=FaissRetriever(
             encoder=encoder,
             index=dynamic_faiss,
             topk=cfg.retrieval.negative_sampler_topk,
         ),
+        batch_size=1024,
     )
 
     ance_sampler = PairwiseListSamplers(
