@@ -320,7 +320,7 @@ class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
     def sample(self, samples: List[Tuple[str, int, float]]):
         text = None
         while text is None:
-            docid, rel, score = samples[self.random.randint(0, len(samples))]
+            docid, _, score = samples[self.random.randint(0, len(samples))]
             text = self.document_text(docid)
         return Document(docid, text, score)
 
