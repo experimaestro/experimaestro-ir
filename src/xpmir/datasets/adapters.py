@@ -267,6 +267,16 @@ class AdhocDocumentSubset(AdhocDocuments):
             yield AdhocDocument(docid, content)
 
 
+class AdhocDocumentSubsetStore(AdhocDocumentSubset, AdhocDocumentStore):
+    def document_text(self, docid: str) -> str:
+        """Returns the text of the document given its id"""
+        return self.base.document_text(docid)
+
+    def docid_internal2external(self, docid: int):
+        """Converts an internal collection ID (integer) to an external ID"""
+        return self.docids[docid]
+
+
 class AdhocDocumentSubsetSlice:
     def __init__(
         self, subset: AdhocDocumentSubset, docids: List[str], internal_ids: List[int]
@@ -326,7 +336,7 @@ class RetrieverBasedCollection(Task):
             id="",  # No need to have a more specific id since it is generated
             topics=self.dataset.topics,
             assessments=self.dataset.assessments,
-            documents=AdhocDocumentSubset(
+            documents=AdhocDocumentSubsetStore(
                 id="", base=self.dataset.documents, docids_path=self.docids_path
             ),
         )

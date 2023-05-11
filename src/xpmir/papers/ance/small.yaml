@@ -27,3 +27,5 @@ retrieval:
     retTopK: 50
     batch_size_full_retriever: 200
     negative_sampler_topk: 200
+    max_query: 65536
+    trainTopK: 50

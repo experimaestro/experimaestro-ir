@@ -42,6 +42,14 @@ class Retrieval:
     """How many documents to be process once to in the
     FullRetrieverScorer(batch_size)"""
 
+    max_query: int = 80_000
+    """Avoid to sampling all the queries in the negative sampling stage
+    value around bs*steps_per_epoch*sampling_interval"""
+
+    trainTopK: int = 50
+    """Avoid to indexing all the documents in the original dataset when sampling
+    negatives"""
+
 
 @configuration()
 class ANCE(DualMSMarcoV1Configuration):

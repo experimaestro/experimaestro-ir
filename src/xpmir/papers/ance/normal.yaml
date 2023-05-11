@@ -5,21 +5,21 @@ description: |
 
 gpu: true
 indexation:
-    requirements: duration=2 days
+    requirements: duration=4 days & cpu(cores=8)
     training_requirements: duration=4 days & cuda(mem=24G)
     indexspec: Flat
 
 ance:
     optimization:
-        steps_per_epoch: 128
-        batch_size: 64
-        max_epochs: 1200
+        steps_per_epoch: 100
+        batch_size: 16
+        max_epochs: 1000
         lr: 1.0e-5
         num_warmup_steps: 6000
 
-    validation_interval: 8
-    indexing_interval: 600
-    sampling_interval: 600
+    validation_interval: 10
+    indexing_interval: 100
+    sampling_interval: 100
     requirements: duration=5 days & cuda(mem=24G) * 2 & cpu(cores=40)
 
 retrieval:
@@ -27,4 +27,6 @@ retrieval:
     topK: 1000
     retTopK: 50
     batch_size_full_retriever: 200
-    negative_sampler_topk: 200
+    negative_sampler_topk: 10
+    max_query: 65536
+    trainTopK: 30
