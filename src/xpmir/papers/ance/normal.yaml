@@ -20,7 +20,7 @@ ance:
     validation_interval: 10
     indexing_interval: 100
     sampling_interval: 100
-    requirements: duration=5 days & cuda(mem=24G) * 2 & cpu(cores=40)
+    requirements: duration=5 days & cuda(mem=23G) * 2 & cpu(cores=8)
 
 retrieval:
     requirements: duration=2 days & cuda(mem=24G)
