@@ -1,61 +1,18 @@
-from typing import Dict, Iterator, List
-from experimaestro import Config, Param
-import torch.nn as nn
+from typing import Dict
+from experimaestro import Param
 import numpy as np
-from xpmir.letor.metrics import ScalarMetric
+from xpmir.learning.metrics import ScalarMetric
 from xpmir.letor.samplers import Sampler, SerializableIterator
 from xpmir.letor.records import BaseRecords
-from xpmir.utils.utils import EasyLogger, easylog
+from xpmir.utils.utils import easylog
 from xpmir.learning.batchers import Batcher
 from xpmir.learning.context import (
-    TrainingHook,
     TrainerContext,
 )
+from xpmir.learning.trainers import Trainer
 
-from xpmir.utils.utils import foreach
 
 logger = easylog()
-
-
-class Trainer(Config, EasyLogger):
-    """Generic trainer"""
-
-    hooks: Param[List[TrainingHook]] = []
-    """Hooks for this trainer: this includes the losses, but can be adapted for
-        other uses
-
-        The specific list of hooks depends on the specific trainer
-    """
-
-    def initialize(
-        self,
-        random: np.random.RandomState,
-        context: TrainerContext,
-    ):
-        self.random = random
-        # Old style (to be deprecated)
-        self.ranker = context.state.model
-        # Generic style
-        self.model = context.state.model
-        self.context = context
-
-        foreach(self.hooks, self.context.add_hook)
-
-    def to(self, device):
-        """Change the computing device (if this is needed)"""
-        foreach(self.context.hooks(nn.Module), lambda hook: hook.to(device))
-
-    def iter_batches(self) -> Iterator:
-        raise NotImplementedError
-
-    def process_batch(self, batch):
-        raise NotImplementedError()
-
-    def load_state_dict(self, state: Dict):
-        raise NotImplementedError()
-
-    def state_dict(self):
-        raise NotImplementedError()
 
 
 class LossTrainer(Trainer):

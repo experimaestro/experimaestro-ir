@@ -2,7 +2,7 @@ from experimaestro.launcherfinder import find_launcher
 from omegaconf import MISSING
 from xpmir.letor import Random
 
-from xpmir.letor.devices import Device, CudaDevice
+from xpmir.learning.devices import Device, CudaDevice
 from xpmir.papers import configuration, attrs_cached_property
 
 

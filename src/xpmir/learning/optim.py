@@ -2,6 +2,7 @@ import threading
 from typing import Any, Callable, List, Optional, TYPE_CHECKING, Union
 from pathlib import Path
 import torch
+import numpy as np
 import re
 
 from experimaestro import Config, Param, tagspath, TaskOutput, Task
@@ -9,7 +10,7 @@ from experimaestro.scheduler import Job, Listener
 from experimaestro.utils import cleanupdir
 from experimaestro.scheduler.services import WebService
 from xpmir.utils.utils import easylog
-from xpmir.letor.metrics import ScalarMetric
+from xpmir.learning.metrics import ScalarMetric
 from .schedulers import Scheduler
 
 if TYPE_CHECKING:
@@ -66,6 +67,15 @@ class Module(Config, torch.nn.Module):
 
     def __call__(self, *args, **kwargs):
         return torch.nn.Module.__call__(self, *args, **kwargs)
+
+    def initialize(self, random: Optional[np.random.RandomState]):
+        """Initialize the module using the random number generator
+
+        :param random: The random number generator.
+            If None, the model parameters will be loaded after
+            initialization
+        """
+        pass
 
 
 class ParameterFilter(Config):

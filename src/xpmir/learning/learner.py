@@ -15,14 +15,15 @@ from experimaestro import (
 import numpy as np
 from xpmir.context import Hook, InitializationHook
 from xpmir.utils.utils import EasyLogger, easylog, foreach
-from xpmir.letor import DEFAULT_DEVICE, Device, DeviceInformation, Random
-from xpmir.letor.trainers import Trainer
+from xpmir.learning.devices import DEFAULT_DEVICE, Device, DeviceInformation
+from xpmir.learning import Random
+from xpmir.learning.trainers import Trainer
 from xpmir.learning.context import (
     StepTrainingHook,
     TrainState,
     TrainerContext,
 )
-from xpmir.letor.metrics import Metrics
+from xpmir.learning.metrics import Metrics
 
 from .optim import Module, ParameterOptimizer, ScheduledOptimizer
 from .batchers import RecoverableOOMError

@@ -13,14 +13,14 @@ from typing import (
 from shutil import rmtree
 from xpmir.context import Context, InitializationHook
 from xpmir.utils.utils import easylog
-from xpmir.letor import DeviceInformation
-from xpmir.letor.metrics import Metric, Metrics
+from xpmir.learning.devices import DeviceInformation
+from xpmir.learning.metrics import Metric, Metrics
 from experimaestro.utils import cleanupdir
 from contextlib import contextmanager
 
 if TYPE_CHECKING:
     from xpmir.learning.optim import ScheduledOptimizer, Module
-    from xpmir.letor.trainers import Trainer
+    from xpmir.learning.trainers import Trainer
 
 logger = easylog()
 
