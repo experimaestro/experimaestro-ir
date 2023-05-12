@@ -114,6 +114,8 @@ def run(
         metrics={"RR@10": True, "AP": False, "nDCG@10": False},
     )
 
+    # better separate the warmup learning and mined training
+
     # A faiss index which could be updated during the training
     dynamic_faiss = DynamicFaissIndex(
         documents=documents,  # number of documents may be reduced
