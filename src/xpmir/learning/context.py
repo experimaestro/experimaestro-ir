@@ -17,6 +17,8 @@ from xpmir.learning.devices import DeviceInformation
 from xpmir.learning.metrics import Metric, Metrics
 from experimaestro.utils import cleanupdir
 from contextlib import contextmanager
+from experimaestro import Param
+from xpmir.index.faiss import DynamicFaissIndex
 
 if TYPE_CHECKING:
     from xpmir.learning.optim import ScheduledOptimizer, Module
@@ -136,6 +138,21 @@ class StepTrainingHook(TrainingHook):
 
     def before(self, state: "TrainerContext"):
         """Called before a training step"""
+
+
+class InitFaissIndexBuildingHook(InitializationHook):
+    """Build the index at the beginning for modelbasedsamplers"""
+
+    indexbackedfaiss: Param[DynamicFaissIndex]
+
+    def after(self, context: Context):
+        pass
+
+    def before(self, context: Context):
+        path = context.path / "init_faiss_index"
+        path.mkdir(exist_ok=True, parents=True)
+        path = path / "faiss.dat"
+        self.indexbackedfaiss.update(path)
 
 
 class InitializationTrainingHook(InitializationHook):

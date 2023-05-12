@@ -5,10 +5,7 @@ from experimaestro.launcherfinder import find_launcher
 from xpmir.learning.batchers import PowerAdaptativeBatcher
 from xpmir.learning.optim import TensorboardService
 from xpmir.learning.learner import Learner
-from xpmir.letor.samplers import (
-    PairwiseModelBasedSampler,
-    PairwiseListSamplers,
-)
+from xpmir.letor.samplers import PairwiseModelBasedSampler
 from xpmir.papers.cli import paper_command
 from xpmir.rankers.standard import BM25
 from xpmir.papers.results import PaperResults
@@ -20,6 +17,7 @@ from xpmir.papers.helpers.msmarco import (
     v1_train_judged,
 )
 from .configuration import ANCE
+from xpmir.neural.dual import DenseDocumentEncoder, DenseQueryEncoder
 import xpmir.interfaces.anserini as anserini
 from xpmir.index.faiss import (
     DynamicFaissIndex,
@@ -37,6 +35,7 @@ from xpmir.letor.learner import (
 )
 from xpmir.distributed import DistributedHook
 from xpmir.rankers.full import FullRetriever
+from xpmir.learning.context import InitFaissIndexBuildingHook
 
 logging.basicConfig(level=logging.INFO)
 
@@ -48,6 +47,7 @@ def run(
 
     basemodel = BM25().tag("model", "bm25")
 
+    launcher_learner_warmup = find_launcher(cfg.ance_warmup.requirements)
     launcher_learner = find_launcher(cfg.ance.requirements)
     launcher_evaluate = find_launcher(cfg.retrieval.requirements)
     launcher_index = find_launcher(cfg.indexation.requirements)
@@ -100,6 +100,66 @@ def run(
 
     ance_model = DotDense(encoder=encoder)
 
+    validation_listener_warmup = ValidationListener(
+        id="bestval",
+        dataset=ds_val,
+        retriever=ance_model.getRetriever(
+            retriever=base_retriever_full,
+            batch_size=cfg.retrieval.batch_size_full_retriever,
+            batcher=PowerAdaptativeBatcher(),
+            device=device,
+        ),
+        early_stop=cfg.ance_warmup.early_stop,
+        validation_interval=cfg.ance_warmup.validation_interval,
+        metrics={"RR@10": True, "AP": False, "nDCG@10": False},
+    )
+
+    # better separate the warmup learning and mined training
+    ance_warmup_trainer = pairwise.PairwiseTrainer(
+        lossfn=pairwise.PointwiseCrossEntropyLoss(),
+        sampler=v1_docpairs_sampler(),
+        batcher=PowerAdaptativeBatcher(),
+        batch_size=cfg.ance_warmup.optimization.batch_size,
+    )
+
+    warmup_learner = Learner(
+        # Misc settings
+        random=random,
+        device=device,
+        # How to train the model
+        trainer=ance_warmup_trainer,
+        # the model to be trained
+        model=ance_model.tag("model", "ance"),
+        # Optimization settings
+        optimizers=cfg.ance_warmup.optimization.optimizer,
+        steps_per_epoch=cfg.ance_warmup.optimization.steps_per_epoch,
+        use_fp16=True,
+        max_epochs=cfg.ance_warmup.optimization.max_epochs,
+        # the listener for the validation
+        listeners=[validation_listener_warmup],
+        # the hooks
+        hooks=[setmeta(DistributedHook(models=[encoder]), True)],
+    )
+
+    warmup_outputs = warmup_learner.submit(launcher=launcher_learner_warmup)
+    tensorboard_service.add(warmup_learner, warmup_learner.logpath)
+
+    warmup_model = warmup_outputs.listeners["bestval"]["RR@10"]
+    warmup_encoder = DenseDocumentEncoder(scorer=warmup_model)
+    warmup_encoder_query = DenseQueryEncoder(scorer=warmup_model)
+
+    # A faiss index which could be updated during the training
+    dynamic_faiss = DynamicFaissIndex(
+        documents=documents,  # number of documents may be reduced
+        normalize=False,
+        encoder=warmup_encoder,
+        indexspec=cfg.indexation.indexspec,
+        batchsize=2048,
+        batcher=PowerAdaptativeBatcher(),
+        device=device,
+        hooks=[setmeta(DistributedHook(models=[warmup_encoder]), True)],
+    )
+
     validation_listener = ValidationListener(
         id="bestval",
         dataset=ds_val,
@@ -112,20 +172,6 @@ def run(
         early_stop=cfg.ance.early_stop,
         validation_interval=cfg.ance.validation_interval,
         metrics={"RR@10": True, "AP": False, "nDCG@10": False},
-    )
-
-    # better separate the warmup learning and mined training
-
-    # A faiss index which could be updated during the training
-    dynamic_faiss = DynamicFaissIndex(
-        documents=documents,  # number of documents may be reduced
-        normalize=False,
-        encoder=encoder,
-        indexspec=cfg.indexation.indexspec,
-        batchsize=2048,
-        batcher=PowerAdaptativeBatcher(),
-        device=device,
-        hooks=[setmeta(DistributedHook(models=[encoder]), True)],
     )
 
     faiss_listener = FaissBuildListener(
@@ -143,22 +189,17 @@ def run(
     modelbasedsampler = PairwiseModelBasedSampler(
         dataset=v1_train_judged(),
         retriever=FaissRetriever(
-            encoder=encoder,
+            encoder=warmup_encoder_query,
             index=dynamic_faiss,
             topk=cfg.retrieval.negative_sampler_topk,
         ),
         batch_size=1024,
         max_query=cfg.retrieval.max_query,
-        require_initialization=False,
-    )
-
-    ance_sampler = PairwiseListSamplers(
-        samplers=[v1_docpairs_sampler(), modelbasedsampler]
     )
 
     ance_trainer = pairwise.PairwiseTrainer(
         lossfn=pairwise.PointwiseCrossEntropyLoss(),
-        sampler=ance_sampler,
+        sampler=modelbasedsampler,
         batcher=PowerAdaptativeBatcher(),
         batch_size=cfg.ance.optimization.batch_size,
     )
@@ -179,7 +220,10 @@ def run(
         # the listener for the validation
         listeners=[validation_listener, faiss_listener, sampler_listener],
         # the hooks
-        hooks=[setmeta(DistributedHook(models=[encoder]), True)],
+        hooks=[
+            setmeta(DistributedHook(models=[encoder]), True),
+            InitFaissIndexBuildingHook(indexbackedfaiss=dynamic_faiss),
+        ],
     )
 
     outputs = learner.submit(launcher=launcher_learner)

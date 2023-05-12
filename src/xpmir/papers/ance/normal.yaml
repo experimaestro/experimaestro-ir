@@ -12,9 +12,9 @@ indexation:
 ance:
     optimization:
         steps_per_epoch: 100
-        batch_size: 16
+        batch_size: 8
         max_epochs: 1000
-        lr: 2.0e-4
+        lr: 1.0e-6
         num_warmup_steps: 5000
         LAMB: true
         weight_decay: 0
@@ -23,6 +23,19 @@ ance:
     indexing_interval: 100
     sampling_interval: 100
     requirements: duration=5 days & cuda(mem=23G) * 2 & cpu(cores=8)
+
+ance_warmup:
+    optimization:
+        batch_size: 32
+        steps_per_epoch: 100
+        max_epochs: 800
+        lr: 2.0e-4
+        num_warmup_steps: 1000
+        LAMB: true
+        weight_decay: 0
+
+    validation_interval: 20
+    requirements: duration=4 days & cuda(mem=23G) * 2
 
 retrieval:
     requirements: duration=2 days & cuda(mem=24G)

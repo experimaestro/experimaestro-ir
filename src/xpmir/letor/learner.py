@@ -178,18 +178,12 @@ class NegativeSamplerListener(LearnerListener):
     """During how many epochs we recompute the negatives"""
 
     def initialize(self, learner: "Learner", context: TrainerContext):
-        self.change = True
         super().initialize(learner, context)
-        self.sampler_index = 0
 
     def __call__(self, state: TrainState) -> bool:
 
         if state.epoch % self.sampling_interval == 0:
-            if self.change:  # First time to change the sampler
-                self.sampler_index += 1
-                state.trainer.sampler.pairwise_iter().set_current(self.sampler_index)
-                self.change = False
-            state.trainer.sampler.samplers[self.sampler_index].update()
+            state.trainer.sampler.update()
 
         return LearnerListenerStatus.NO_DECISION
 

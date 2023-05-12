@@ -26,6 +26,16 @@ class Learner:
 
 
 @configuration()
+class WarmupLearner:
+    requirements: str = "duration=2 days & cuda(mem=24G) * 2"
+
+    validation_interval: int = field(default=32)
+    early_stop: int = 0
+
+    optimization: TransformerOptimization = Factory(TransformerOptimization)
+
+
+@configuration()
 class Retrieval:
     requirements: str = "duration=2 days & cuda(mem=24G)"
     topK: int = 1000
@@ -56,4 +66,5 @@ class ANCE(DualMSMarcoV1Configuration):
 
     indexation: Indexation = Factory(Indexation)
     retrieval: Retrieval = Factory(Retrieval)
+    ance_warmup: WarmupLearner = Factory(WarmupLearner)
     ance: Learner = Factory(Learner)
