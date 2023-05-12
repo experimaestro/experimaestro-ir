@@ -15,6 +15,7 @@ ance:
         max_epochs: 32
         lr: 1.0e-5
         num_warmup_steps: 30
+        LAMB: true
 
     validation_interval: 8
     indexing_interval: 16

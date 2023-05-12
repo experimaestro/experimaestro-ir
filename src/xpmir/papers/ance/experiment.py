@@ -59,16 +59,16 @@ def run(
     documents = v1_passages()
     ds_val_all = v1_validation_dataset(cfg.validation)
 
-    documents_train = RetrieverBasedCollection(
-        dataset=v1_train_judged(),
-        retrievers=[
-            anserini.AnseriniRetriever(
-                k=cfg.retrieval.trainTopK,
-                index=anserini.index_builder()(documents=documents),
-                model=basemodel,
-            ),
-        ],
-    ).submit(launcher=launcher_index)
+    # documents_train = RetrieverBasedCollection(
+    #     dataset=v1_train_judged(),
+    #     retrievers=[
+    #         anserini.AnseriniRetriever(
+    #             k=cfg.retrieval.trainTopK,
+    #             index=anserini.index_builder()(documents=documents),
+    #             model=basemodel,
+    #         ),
+    #     ],
+    # ).submit(launcher=launcher_index)
 
     ds_val = RetrieverBasedCollection(
         dataset=ds_val_all,
@@ -116,7 +116,7 @@ def run(
 
     # A faiss index which could be updated during the training
     dynamic_faiss = DynamicFaissIndex(
-        documents=documents_train.documents,  # number of documents are reduced
+        documents=documents,  # number of documents may be reduced
         normalize=False,
         encoder=encoder,
         indexspec=cfg.indexation.indexspec,
@@ -139,7 +139,7 @@ def run(
     # We warm up the ance model with the bm25 samplers and the swap to the
     # model_based_sampler
     modelbasedsampler = PairwiseModelBasedSampler(
-        dataset=documents_train,
+        dataset=v1_train_judged(),
         retriever=FaissRetriever(
             encoder=encoder,
             index=dynamic_faiss,

@@ -24,6 +24,28 @@ class Optimizer(Config):
         raise NotImplementedError()
 
 
+class LAMB(Optimizer):
+    """Wrapper for LAMB optimizer for Pytorch"""
+
+    lr: Param[float] = 1e-3
+    """Learning rate"""
+
+    weight_decay: Param[float] = 0.0
+    """Weight decay (L2)"""
+
+    eps: Param[float] = 1e-8
+
+    def __call__(self, parameters):
+        from torch_optimizer import Lamb
+
+        return Lamb(
+            parameters,
+            lr=self.lr,
+            weight_decay=self.weight_decay,
+            eps=self.eps,
+        )
+
+
 class Adam(Optimizer):
     """Wrapper for Adam optimizer in PyTorch"""
 
