@@ -223,11 +223,12 @@ class DynamicFaissIndex(BaseIndexBackedFaiss, BaseFaissIndex):
     def update(self, path: Path):
         # Update the index and store it at the path
         # execute the code to generate the faiss index.
-        self.device.execute(partial(self._execute, path))
-        self.faiss_index = path
 
         # clear the previous cache
         self._index = None
+
+        self.device.execute(partial(self._execute, path))
+        self.faiss_index = path
 
 
 class IndexBackedFaiss(BaseIndexBackedFaiss, Task):
@@ -302,7 +303,7 @@ class FaissRetriever(Retriever):
                 encoded_queries /= encoded_queries.norm(2)
 
             values, indices = self.index.get_index().search(
-                encoded_queries.cpu().numpy(), self.topk
+                np.ascontiguousarray(encoded_queries.cpu().numpy()), self.topk
             )
 
         return {
@@ -315,3 +316,18 @@ class FaissRetriever(Retriever):
             ]
             for index, qid in enumerate(all_ids)
         }
+
+
+class InitFaissIndexBuildingHook(InitializationHook):
+    """Build the index at the beginning for modelbasedsamplers"""
+
+    indexbackedfaiss: Param[DynamicFaissIndex]
+
+    def after(self, context: Context):
+        pass
+
+    def before(self, context: Context):
+        path = context.path / "init_faiss_index"
+        path.mkdir(exist_ok=True, parents=True)
+        path = path / "faiss.dat"
+        self.indexbackedfaiss.update(path)
