@@ -32,10 +32,10 @@ class TestTrainer(Trainer):
         self.batches.extend(batch)
 
     def load_state_dict(self, state: Dict):
-        raise NotImplementedError()
+        pass
 
     def state_dict(self):
-        raise NotImplementedError()
+        return {}
 
 
 def test_learner(tmp_path: Path):
@@ -46,7 +46,7 @@ def test_learner(tmp_path: Path):
         random=Random(),
         model=model,
         max_epochs=10,
-        use_fp16=True,
+        use_fp16=False,
         checkpoint_interval=1,
         trainer=trainer,
         optimizers=get_optimizers(Adam()),

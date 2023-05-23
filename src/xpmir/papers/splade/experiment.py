@@ -25,7 +25,7 @@ from xpmir.letor.distillation.pairwise import (
 from xpmir.papers.cli import paper_command
 from xpmir.letor.trainers.batchwise import BatchwiseTrainer, SoftmaxCrossEntropy
 from xpmir.learning.batchers import PowerAdaptativeBatcher
-from xpmir.neural.dual import DenseDocumentEncoder, DenseQueryEncoder
+from xpmir.neural.dual import Dense
 from xpmir.rankers.standard import BM25
 from xpmir.neural.splade import spladeV2_max, spladeV2_doc
 from xpmir.papers.results import PaperResults
@@ -79,7 +79,7 @@ def run(
     tests.evaluate_retriever(bm25_retriever, cpu_launcher_index)
 
     # tas-balanced
-    tasb = AutoModel.load_from_hf_hub("xpmir/tas-balanced").tag(
+    tasb: Dense = AutoModel.load_from_hf_hub("xpmir/tas-balanced").tag(
         "model", "tasb"
     )  # create a scorer from huggingface
 
@@ -92,7 +92,7 @@ def run(
             documents=documents,
             max_count=cfg.indexation.faiss_max_traindocs,
         ),  # Just use a fraction of the dataset for training
-        encoder=DenseDocumentEncoder(scorer=tasb),
+        encoder=tasb.encoder,
         batchsize=2048,
         batcher=PowerAdaptativeBatcher(),
         hooks=[
@@ -103,7 +103,7 @@ def run(
     tasb_retriever = FaissRetriever(
         index=tasb_index,
         topk=cfg.retrieval.topK,
-        encoder=DenseQueryEncoder(scorer=tasb),
+        encoder=tasb.encoder,
     )
 
     tests.evaluate_retriever(tasb_retriever, gpu_launcher_index)
@@ -229,7 +229,7 @@ def run(
     sparse_index = SparseRetrieverIndexBuilder(
         batch_size=512,
         batcher=PowerAdaptativeBatcher(),
-        encoder=DenseDocumentEncoder(scorer=trained_model),
+        encoder=trained_model.encoder,
         device=device,
         documents=documents,
         ordered_index=False,
@@ -240,7 +240,7 @@ def run(
         index=sparse_index,
         topk=cfg.retrieval.topK,
         batchsize=1,
-        encoder=DenseQueryEncoder(scorer=trained_model),
+        encoder=trained_model._query_encoder,
     )
 
     # evaluate the best model

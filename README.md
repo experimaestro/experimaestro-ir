@@ -19,6 +19,11 @@ Functionalities can be added by installing optional dependencies:
 - `pip install xpmir[neural]` to install neural-IR packages (torch, etc.)
 - `pip install xpmir[anserini]` to install Anserini related packages
 
+For the development version, you can:
+
+- If you just want the development version: install with `pip install git+https://github.com/experimaestro/experimaestro-ir.git`
+- If you want to edit the code: clone and then do a `pip install -e .` within the directory
+
 ## What's inside?
 
 - Collection management (using datamaestro)

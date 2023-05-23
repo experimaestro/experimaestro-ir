@@ -258,7 +258,7 @@ class Learner(Task, EasyLogger):
                 metrics = {}
                 for listener in self.listeners:
                     listener.update_metrics(metrics)
-                self.context.writer.add_hparams(self.__tags__, metrics)
+                self.context.writer.add_hparams(getattr(self, "__tags__", {}), metrics)
 
     def iter_train(self, device_information) -> Iterator[TrainState]:
         """Train iteration"""

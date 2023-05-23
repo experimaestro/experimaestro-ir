@@ -1,12 +1,12 @@
 # Experimaestro
 
-experimaestro>=0.23.0
-datamaestro>=0.8.16
-datamaestro_text>=2023.4.5
+experimaestro>=0.24.0
+datamaestro>=0.8.13
+datamaestro_text>=2023.2.3
 ir_datasets
 docstring_parser
 xpmir_rust == 0.20.*
-omegaconf
+omegaconf>=2.2
 attrs
 
 # --- SKIP_DOCBUILD ---

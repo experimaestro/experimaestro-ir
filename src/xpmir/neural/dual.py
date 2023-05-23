@@ -96,37 +96,6 @@ class Dense(DualVectorScorer):
         return cls(encoder, **kwargs)
 
 
-class DenseBaseEncoder(TextEncoder):
-    """A text encoder adapter for dense scorers (either query or document encoder)"""
-
-    scorer: Param[Dense]
-
-    def initialize(self):
-        self.scorer.initialize(None)
-
-
-class DenseDocumentEncoder(DenseBaseEncoder):
-    @property
-    def dimension(self):
-        """Returns the dimension of the representation"""
-        return self.scorer.encoder.dimension
-
-    def forward(self, texts: List[str]) -> torch.Tensor:
-        """Returns a matrix encoding the provided texts"""
-        return self.scorer.encode_documents(texts)
-
-
-class DenseQueryEncoder(DenseBaseEncoder):
-    @property
-    def dimension(self):
-        """Returns the dimension of the representation"""
-        return self.scorer._query_encoder.dimension
-
-    def forward(self, texts: List[str]) -> torch.Tensor:
-        """Returns a matrix encoding the provided texts"""
-        return self.scorer.encode_queries(texts)
-
-
 class CosineDense(Dense):
     """Dual model based on cosine similarity."""
 

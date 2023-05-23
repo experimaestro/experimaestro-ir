@@ -3,9 +3,17 @@ from typing import Any, Callable, List, Optional, TYPE_CHECKING, Union
 from pathlib import Path
 import torch
 import numpy as np
+import logging
 import re
 
-from experimaestro import Config, Param, tagspath, TaskOutput, Task
+from experimaestro import (
+    Config,
+    Param,
+    tagspath,
+    TaskOutput,
+    Task,
+    PathBasedSerializedConfig,
+)
 from experimaestro.scheduler import Job, Listener
 from experimaestro.utils import cleanupdir
 from experimaestro.scheduler.services import WebService
@@ -98,6 +106,15 @@ class Module(Config, torch.nn.Module):
             initialization
         """
         pass
+
+
+class ModuleLoader(PathBasedSerializedConfig):
+    def initialize(self):
+        """Loads the model from disk using the given serialization path"""
+        logging.info("Loading model from disk: %s", self.path)
+        self.config.initialize(None)
+        data = torch.load(self.path)
+        self.config.load_state_dict(data)
 
 
 class ParameterFilter(Config):

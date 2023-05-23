@@ -3,7 +3,6 @@
 from experimaestro import tqdm
 
 from enum import Enum
-from pathlib import Path
 from typing import (
     Dict,
     Generic,
@@ -22,7 +21,7 @@ import torch
 import torch.nn as nn
 
 import numpy as np
-from experimaestro import Param, Config, Meta, DataPath
+from experimaestro import Param, Config, Meta
 from datamaestro_text.data.ir import (
     AdhocDocuments,
     AdhocDocumentStore,
@@ -180,9 +179,6 @@ class RandomScorer(Scorer):
 class AbstractLearnableScorer(Scorer, Module):
     """Base class for all learnable scorer"""
 
-    checkpoint: DataPath[Optional[Path]]
-    """A checkpoint path from which the model should be loaded (or None otherwise)"""
-
     __call__ = nn.Module.__call__
     to = nn.Module.to
 
@@ -212,18 +208,14 @@ class AbstractLearnableScorer(Scorer, Module):
         if self._initialized:
             return
 
-        if self.checkpoint is None:
-            # Sets the current random seed
-            if random is not None:
-                seed = random.randint((2**32) - 1)
-                torch.manual_seed(seed)
-                torch.cuda.manual_seed_all(seed)
+        # Sets the current random seed
+        if random is not None:
+            seed = random.randint((2**32) - 1)
+            torch.manual_seed(seed)
+            torch.cuda.manual_seed_all(seed)
             self._initialize(random)
         else:
-            logger.info("Loading model from path %s", self.checkpoint)
-            path = Path(self.checkpoint)
             self._initialize(None)
-            self.load_state_dict(torch.load(path / "model.pth"))
 
         self._initialized = True
 
