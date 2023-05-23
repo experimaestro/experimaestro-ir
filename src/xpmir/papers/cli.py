@@ -249,7 +249,9 @@ def paper_command(package=None, schema=None, tensorboard_service=False):
             kwargs = {key: value for key, value in kwargs.items() if key in parameters}
 
             # Run the experiment
-            logging.info("Starting experimaestro server (%s:%s)", host, port)
+            if run_mode == RunMode.NORMAL:
+                logging.info("Starting experimaestro server (%s:%s)", host, port)
+
             with experiment(
                 workdir, configuration.id, host=host, port=port, run_mode=run_mode
             ) as xp:

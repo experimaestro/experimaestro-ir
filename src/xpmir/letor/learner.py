@@ -5,7 +5,6 @@ from typing import Dict, Iterator
 from datamaestro_text.data.ir import Adhoc
 from experimaestro import (
     Param,
-    copyconfig,
     pathgenerator,
     Annotated,
 )
@@ -20,6 +19,7 @@ from xpmir.rankers import (
     Retriever,
 )
 from xpmir.learning.learner import LearnerListener, Learner, LearnerListenerStatus
+from xpmir.learning.optim import ModuleLoader
 
 logger = easylog()
 
@@ -99,13 +99,16 @@ class ValidationListener(LearnerListener):
         """Experimaestro outputs: returns the best checkpoints for each
         metric"""
         res = {
-            key: copyconfig(learner.model, checkpoint=str(self.bestpath / key))
+            key: ModuleLoader(
+                config=learner.model, path=self.bestpath / key / TrainState.MODEL_PATH
+            )
             for key, store in self.metrics.items()
             if store
         }
         if self.store_last_checkpoint:
-            res["last_checkpoint"] = copyconfig(
-                learner.scorer, checkpoint=str(self.last_checkpoint_path)
+            res["last_checkpoint"] = ModuleLoader(
+                config=learner.scorer,
+                path=str(self.last_checkpoint_path / TrainState.MODEL_PATH),
             )
 
         return res

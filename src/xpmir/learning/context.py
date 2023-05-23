@@ -36,6 +36,8 @@ class Loss(NamedTuple):
 class TrainState:
     """Represents a training state for serialization"""
 
+    MODEL_PATH = "model.pth"
+
     epoch: int
     """The epoch"""
 
@@ -89,7 +91,7 @@ class TrainState:
         with (path / "info.json").open("wt") as fp:
             json.dump(self.state_dict(), fp)
 
-        torch.save(self.model.state_dict(), path / "model.pth")
+        torch.save(self.model.state_dict(), path / TrainState.MODEL_PATH)
         torch.save(self.trainer.state_dict(), path / "trainer.pth")
         torch.save(self.optimizer.state_dict(), path / "optimizer.pth")
 
@@ -98,7 +100,7 @@ class TrainState:
     def load(self, path, onlyinfo=False):
         """Loads the state from disk"""
         if not onlyinfo:
-            self.model.load_state_dict(torch.load(path / "model.pth"))
+            self.model.load_state_dict(torch.load(path / TrainState.MODEL_PATH))
             self.trainer.load_state_dict(torch.load(path / "trainer.pth"))
             self.optimizer.load_state_dict(torch.load(path / "optimizer.pth"))
 
@@ -109,7 +111,7 @@ class TrainState:
 
     def copy_model(self, path: Path):
         assert self.path is not None
-        for name in ["model.pth", "info.json"]:
+        for name in [TrainState.MODEL_PATH, "info.json"]:
             os.link(self.path / name, path / name)
 
 
