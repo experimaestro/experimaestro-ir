@@ -100,7 +100,7 @@ def run(
     ance_model = DotDense(encoder=encoder)
 
     validation_listener_warmup = ValidationListener(
-        id="bestval",
+        id="bestval_w",
         dataset=ds_val,
         retriever=ance_model.getRetriever(
             retriever=base_retriever_full,
@@ -143,7 +143,7 @@ def run(
     warmup_outputs = warmup_learner.submit(launcher=launcher_learner_warmup)
     tensorboard_service.add(warmup_learner, warmup_learner.logpath)
 
-    warmup_model = warmup_outputs.listeners["bestval"]["RR@10"]
+    warmup_model = warmup_outputs.listeners[validation_listener_warmup.id]["RR@10"]
     warmup_encoder = warmup_model.encoder
 
     # A faiss index which could be updated during the training
@@ -230,7 +230,7 @@ def run(
     tensorboard_service.add(learner, learner.logpath)
 
     # get the trained model
-    trained_model = outputs.listeners["bestval"]["last_checkpoint"]
+    trained_model = outputs.listeners[validation_listener.id]["last_checkpoint"]
 
     ance_final_index = IndexBackedFaiss(
         normalize=False,
@@ -256,7 +256,7 @@ def run(
     )
 
     return PaperResults(
-        models={"ance-RR@10": outputs.listeners["bestval"]["RR@10"]},
+        models={"ance-RR@10": outputs.listeners[validation_listener.id]["RR@10"]},
         evaluations=tests,
         tb_logs={"ance-RR@10": learner.logpath},
     )
