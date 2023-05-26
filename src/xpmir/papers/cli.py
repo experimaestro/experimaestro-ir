@@ -274,7 +274,7 @@ def paper_command(package=None, schema=None, tensorboard_service=False):
                             tb_logs=results.tb_logs,
                         )
 
-                    results.evaluations.output_results()
+                    print(results.evaluations.to_dataframe())  # noqa: T201
                 return results
 
         cli.__doc__ = fn.__doc__

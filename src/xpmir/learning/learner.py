@@ -45,8 +45,8 @@ class LearnerListener(Config):
 
     Performs some operations after a learning epoch"""
 
-    id: Param[str]
-    """Unique ID to identify the listener"""
+    id: Meta[str]
+    """Unique ID to identify the listener (ignored for signature)"""
 
     def initialize(self, learner: "Learner", context: TrainerContext):
         self.learner = learner

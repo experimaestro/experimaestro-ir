@@ -151,7 +151,7 @@ def run(
 
     # Evaluate the neural model on test collections
     for metric_name in validation.monitored():
-        model = outputs.listeners["bestval"][metric_name]  # type: CrossScorer
+        model = outputs.listeners[validation.id][metric_name]  # type: CrossScorer
         tests.evaluate_retriever(
             partial(
                 model_based_retrievers,
@@ -164,7 +164,7 @@ def run(
         )
 
     return PaperResults(
-        models={"monobert-RR@10": outputs.listeners["bestval"]["RR@10"]},
+        models={"monobert-RR@10": outputs.listeners[validation.id]["RR@10"]},
         evaluations=tests,
         tb_logs={"monobert-RR@10": learner.logpath},
     )
