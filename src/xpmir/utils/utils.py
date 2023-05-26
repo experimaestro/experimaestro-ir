@@ -5,7 +5,7 @@ from pathlib import Path
 import re
 from subprocess import run
 import tempfile
-from experimaestro import SubmitHook, Job, Launcher, submit_hook_decorator
+from experimaestro import SubmitHook, Job, Launcher
 from threading import Thread
 from typing import (
     BinaryIO,
@@ -204,25 +204,38 @@ def find_java_home(min_version: int = 6) -> str:
     raise FileNotFoundError(f"Java (version >= {min_version}) not found")
 
 
-class NeedsJava(SubmitHook):
+class needs_java(SubmitHook):
     """Experimaestro hook that ensures that JAVA_HOME is set"""
 
     def __init__(self, version: int):
         self.version = version
 
-    def __spec__(self):
+    def spec(self):
         return self.version
 
-    def __call__(self, job: Job, launcher: Launcher):
+    def process(self, job: Job, launcher: Launcher):
         job.environ["JAVA_HOME"] = find_java_home(self.version)
 
 
-@cache
-def needs_java(version: int):
-    """Decorator for tasks requiring java
+class Initializable:
+    """Base class for all initializable (but just once)"""
 
-    This decorator adds an experimaestro task hook that sets the java version
+    def initialize(self, *args, **kwargs):
+        """Main initialization
 
-    :param version: required major version
-    """
-    return submit_hook_decorator(NeedsJava(version))
+        Calls :py:meth:`__initialize__` once (using :py:meth:`__initialize__`)
+        """
+        if not self._initialized:
+            self._initialized = True
+            self.__initialize__(*args, **kwargs)
+        self._initialized = True
+
+    def __init__(self):
+        self._initialized = False
+
+    def __initialize__(self, *args, **kwargs):
+        """Initialize the object
+
+        Parameters depend on the actual class
+        """
+        pass

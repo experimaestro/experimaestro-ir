@@ -13,7 +13,7 @@ class TestModel(Module):
     def __post_init__(self):
         self.layer = torch.nn.Linear(3, 5)
 
-    def initialize(self, random):
+    def __initialize__(self, random):
         pass
 
 

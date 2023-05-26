@@ -11,7 +11,6 @@ from typing import (
     Optional,
     Protocol,
     Tuple,
-    Callable,
     TypeVar,
     Union,
     final,
@@ -26,6 +25,7 @@ from datamaestro_text.data.ir import (
     AdhocDocuments,
     AdhocDocumentStore,
 )
+from xpmir.utils.utils import Initializable
 from xpmir.letor import Device, Random
 from xpmir.learning.batchers import Batcher
 from xpmir.learning.context import TrainerContext
@@ -79,7 +79,7 @@ class LearnableModel(Config):
     pass
 
 
-class Scorer(Config, EasyLogger):
+class Scorer(Config, Initializable, EasyLogger):
     """Query-document scorer
 
     A model able to give a score to a list of documents given a query
@@ -88,7 +88,7 @@ class Scorer(Config, EasyLogger):
     outputType: ScorerOutputType = ScorerOutputType.REAL
     """Determines the type of output scalar (log probability, probability, logit) """
 
-    def initialize(self, random: Optional[np.random.RandomState]):
+    def __initialize__(self, random: Optional[np.random.RandomState]):
         """Initialize the scorer
 
         Arguments:
@@ -474,7 +474,11 @@ class DocumentsFunction(Protocol, Generic[KWARGS, ARGS, T]):
 
 
 def document_cache(fn: DocumentsFunction[KWARGS, ARGS, T]):
-    """Cache"""
+    """Decorator
+
+    Allows to cache the result of a function that should depend
+    on the document dataset ID
+    """
     retrievers = {}
 
     def _fn(*args: ARGS, **kwargs: KWARGS):
@@ -489,71 +493,6 @@ def document_cache(fn: DocumentsFunction[KWARGS, ARGS, T]):
         return cached
 
     return _fn
-
-
-class ParametricRetrieverFactory(Protocol, Generic[KWARGS]):
-    def __call__(**kwargs: KWARGS) -> Retriever:
-        ...
-
-
-class CollectionBasedRetrievers(Generic[KWARGS]):
-    """Handles various retrievers depending on the collection"""
-
-    def __init__(
-        self,
-        generator: Callable[
-            [AdhocDocuments], Union[ParametricRetrieverFactory, Retriever]
-        ],
-    ):
-        """Given a document collection, returns a factory"""
-        self.generator = generator
-
-    def factory(self, **kwargs) -> "RetrieverFactory":
-        """Returns a retriever factory
-
-        Caches the retrievers based on the document collection"""
-        retrievers = {}
-
-        def _factory(documents: AdhocDocuments):
-            dataset_id = documents.__identifier__().all
-
-            if dataset_id not in retrievers:
-                retrievers[dataset_id] = self.generator(documents)
-
-            if callable(retrievers[dataset_id]):
-                return retrievers[dataset_id](**kwargs)
-
-            assert not kwargs, f"{kwargs}"
-            return retrievers[dataset_id]
-
-        return _factory
-
-
-def collection_based_retrievers(
-    generator: Callable[[AdhocDocuments], Union[ParametricRetrieverFactory, Retriever]]
-) -> CollectionBasedRetrievers:
-    """Decorator for collection-dependent retriever factories
-
-    Example of use
-
-    .. highlight:: python
-    .. code-block:: python
-
-        @collection_based_retrievers
-        def retrievers(documents: AdhocDocuments):
-            index = IndexCollection(documents=documents).submit(launcher=launcher_index)
-            return lambda *, k: RetrieverHydrator(store=documents,
-                retriever=AnseriniRetriever(index=index, k=k, model=basemodel)
-            )
-
-        # Then this can be used to get
-        test_retrievers = retrievers.factory(k=100)
-
-    :param generator: A function that, given a document collection, should return
-        either a retriever or a callable that returns a retriever
-    :return: a collection based retriever
-    """
-    return CollectionBasedRetrievers(generator)
 
 
 class RetrieverHydrator(Retriever):

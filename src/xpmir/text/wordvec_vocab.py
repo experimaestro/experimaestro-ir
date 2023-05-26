@@ -139,7 +139,8 @@ class WordvecHashVocab(WordvecVocab):
     init_stddev: Param[float] = 0.5
     log_miss: Param[bool] = False
 
-    def initialize(self, random):
+    def __initialize__(self, random):
+        super().__initialize__()
         hash_weights = random.normal(
             scale=self.init_stddev, size=(self.hashspace, self._weights.shape[1])
         )

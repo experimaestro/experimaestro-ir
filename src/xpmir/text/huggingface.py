@@ -54,7 +54,7 @@ class BaseTransformer(Encoder):
     def pad_tokenid(self) -> int:
         return self.tokenizer.pad_token_id
 
-    def initialize(self, noinit=False, automodel=AutoModel):
+    def __initialize__(self, noinit=False, automodel=AutoModel):
         """Initialize the HuggingFace transformer
 
         Args:
@@ -64,7 +64,7 @@ class BaseTransformer(Encoder):
             automodel (type, optional): The class
             used to initialize the model. Defaults to AutoModel.
         """
-        super().initialize()
+        super().__initialize__()
 
         config = AutoConfig.from_pretrained(self.model_id)
         if noinit:
@@ -192,7 +192,8 @@ class SentenceTransformerTextEncoder(TextEncoder):
 
     model_id: Param[str] = "sentence-transformers/all-MiniLM-L6-v2"
 
-    def initialize(self):
+    def __initialize__(self):
+        super().__initialize__()
         from sentence_transformers import SentenceTransformer
 
         self.model = SentenceTransformer(self.model_id)
@@ -213,7 +214,8 @@ class OneHotHuggingFaceEncoder(TextEncoder):
 
     version: Constant[int] = 2
 
-    def initialize(self):
+    def __initialize__(self):
+        super().__initialize__()
         self._tokenizer = AutoTokenizer.from_pretrained(self.model_id, use_fast=True)
         self.CLS = self._tokenizer.cls_token_id
         self.SEP = self._tokenizer.sep_token_id
@@ -291,8 +293,8 @@ class TransformerTextEncoderAdapter(TextEncoder, DistributableModel):
     encoder: Param[TransformerEncoder]
     maxlen: Param[Optional[int]] = None
 
-    def initialize(self):
-        self.encoder.initialize()
+    def __initialize__(self):
+        self.encoder.__initialize__()
 
     @property
     def dimension(self):
@@ -356,8 +358,8 @@ class DualDuoBertTransformerEncoder(BaseTransformer, TripletTextEncoder):
     maxlen_doc: Param[int] = 224
     """Maximum length for the query, the first document and the second one"""
 
-    def initialize(self, noinit=False, automodel=AutoModel):
-        super().initialize(noinit, automodel)
+    def __initialize__(self, noinit=False, automodel=AutoModel):
+        super().__initialize__(noinit, automodel)
 
         # Add an extra token type
         data = self.model.embeddings.token_type_embeddings.weight.data

@@ -43,17 +43,10 @@ re-ranking the results.
 .. autoxpmconfig:: xpmir.rankers.DuoTwoStageRetriever
 
 
-Factories
----------
+Collection dependendant
+-----------------------
 
-For evaluation purposes, it might useful to generate retrievers
-that depend on a document collection. For instance, when
-using a two-stage retriever based on Anserini, this can be used
-to construct an index on a specific document collection before re-scoring
-the returned documents with a :py:class:`xpmir.rankers.Scorer`.
 
-.. autoclass:: xpmir.rankers.CollectionBasedRetrievers
-.. autofunction:: xpmir.rankers.collection_based_retrievers
 
 
 Anserini
