@@ -78,10 +78,19 @@ def v1_validation_dataset(cfg: ValidationSample):
 
 
 @cache
-def v1_tests():
-    """MS-Marco default test collections: DL TREC 2019 & 2020 + devsmall"""
+def v1_tests(dev_test_size: int = 0):
+    """MS-Marco default test collections: DL TREC 2019 & 2020 + devsmall
+
+    devsmall can be restricted to a smaller dataset for debugging using dev_test_size
+    """
+    v1_devsmall_ds = v1_devsmall()
+    if dev_test_size > 0:
+        (v1_devsmall_ds,) = RandomFold.folds(
+            seed=0, sizes=[dev_test_size], dataset=v1_devsmall_ds
+        )
+
     return EvaluationsCollection(
-        msmarco_dev=Evaluations(v1_devsmall(), v1_measures),
+        msmarco_dev=Evaluations(v1_devsmall_ds, v1_measures),
         trec2019=Evaluations(
             prepare_dataset("irds.msmarco-passage.trec-dl-2019"), v1_measures
         ),

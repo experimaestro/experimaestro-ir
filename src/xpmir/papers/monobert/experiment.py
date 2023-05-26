@@ -72,7 +72,7 @@ def run(
     documents = v1_passages()
     ds_val = v1_validation_dataset(cfg.validation)
 
-    tests = v1_tests()
+    tests = v1_tests(cfg.dev_test_size)
 
     # Setup indices and validation/test base retrievers
     retrievers, model_based_retrievers = get_retrievers(cfg)

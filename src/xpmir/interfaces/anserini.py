@@ -8,7 +8,7 @@ import re
 import subprocess
 import sys
 from typing import List, Optional
-from experimaestro import tqdm as xpmtqdm, Task, Meta
+from experimaestro import tqdm as xpmtqdm, Task, Meta, unwrap
 
 from datamaestro_text.data.ir import AdhocDocumentStore
 import datamaestro_text.data.ir.csv as ir_csv
@@ -318,13 +318,14 @@ def retriever(
         index=index, k=k or AnseriniRetriever.k, model=model
     )
 
-    # Use hydrator
+    # Use hydrator or index store
     if content:
-        if isinstance(documents, AdhocDocumentStore):
+        if isinstance(unwrap(documents), AdhocDocumentStore):
             return RetrieverHydrator(store=documents, retriever=index_retriever)
 
         assert (
             index.storeRaw or index.storeContents
-        ), "Index does not store content, and no store"
+        ), "Index does not store content, and the document"
+        f"dataset {unwrap(documents)} has no associated store"
 
     return index_retriever

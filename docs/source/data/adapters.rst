@@ -7,6 +7,8 @@ subsampling document and/or queries.
 .. currentmodule:: xpmir.datasets.adapters
 
 .. autoxpmconfig:: RandomFold
+    :members: folds
+
 .. autoxpmconfig:: RetrieverBasedCollection
 
 .. autoxpmconfig:: AdhocTopicFold
