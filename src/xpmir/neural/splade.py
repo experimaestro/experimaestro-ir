@@ -2,7 +2,6 @@ from typing import List, Optional
 from experimaestro import Config, Param
 import torch.nn as nn
 import torch
-from experimaestro import initializer
 from xpmir.distributed import DistributableModel
 from transformers import AutoModelForMaskedLM
 from xpmir.text.huggingface import TransformerTokensEncoder, OneHotHuggingFaceEncoder
@@ -72,9 +71,8 @@ class SpladeTextEncoder(TextEncoder, DistributableModel):
     maxlen: Param[Optional[int]] = None
     """Max length for texts"""
 
-    @initializer
-    def initialize(self):
-        self.encoder.initialize(automodel=AutoModelForMaskedLM)
+    def __initialize__(self, random=None):
+        self.encoder.initialize(noinit=random is None, automodel=AutoModelForMaskedLM)
         self.model = SpladeTextEncoderModel(self.encoder, self.aggregation)
 
     def forward(self, texts: List[str]) -> torch.Tensor:
