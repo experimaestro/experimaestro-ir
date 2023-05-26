@@ -107,7 +107,7 @@ class ValidationListener(LearnerListener):
         }
         if self.store_last_checkpoint:
             res["last_checkpoint"] = ModuleLoader(
-                config=learner.scorer,
+                config=learner.model,
                 path=str(self.last_checkpoint_path / TrainState.MODEL_PATH),
             )
 

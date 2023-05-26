@@ -17,7 +17,6 @@ from xpmir.papers.helpers.msmarco import (
     v1_train_judged,
 )
 from .configuration import ANCE
-from xpmir.neural.dual import DenseDocumentEncoder
 import xpmir.interfaces.anserini as anserini
 from xpmir.index.faiss import (
     DynamicFaissIndex,
@@ -145,9 +144,7 @@ def run(
     tensorboard_service.add(warmup_learner, warmup_learner.logpath)
 
     warmup_model = warmup_outputs.listeners["bestval"]["RR@10"]
-    # it tries to read the model from the current task, so still buggy.
-    # need to make the model initialize before using the encoder.
-    warmup_encoder = DenseDocumentEncoder(scorer=warmup_model)
+    warmup_encoder = warmup_model.encoder
 
     # A faiss index which could be updated during the training
     dynamic_faiss = DynamicFaissIndex(
@@ -158,10 +155,7 @@ def run(
         batchsize=2048,
         batcher=PowerAdaptativeBatcher(),
         device=device,
-        hooks=[
-            # DenseDocumentEncoder is not available for distributed
-            # setmeta(DistributedHook(models=[warmup_encoder]), True)
-        ],
+        hooks=[setmeta(DistributedHook(models=[warmup_encoder]), True)],
     )
 
     validation_listener = ValidationListener(
@@ -176,6 +170,7 @@ def run(
         early_stop=cfg.ance.early_stop,
         validation_interval=cfg.ance.validation_interval,
         metrics={"RR@10": True, "AP": False, "nDCG@10": False},
+        store_last_checkpoint=True,
     )
 
     faiss_listener = FaissBuildListener(
@@ -226,7 +221,7 @@ def run(
         listeners=[validation_listener, faiss_listener, sampler_listener],
         # the hooks
         hooks=[
-            # setmeta(DistributedHook(models=[warmup_encoder]), True),
+            setmeta(DistributedHook(models=[warmup_encoder]), True),
             InitFaissIndexBuildingHook(indexbackedfaiss=dynamic_faiss),
         ],
     )
@@ -235,23 +230,21 @@ def run(
     tensorboard_service.add(learner, learner.logpath)
 
     # get the trained model
-    trained_model = outputs.listeners["bestval"]["RR@10"]
+    trained_model = outputs.listeners["bestval"]["last_checkpoint"]
 
     ance_final_index = IndexBackedFaiss(
         normalize=False,
         documents=documents,
-        encoder=DenseDocumentEncoder(scorer=trained_model),
+        encoder=trained_model.encoder,
         indexspec=cfg.indexation.indexspec,
         batchsize=2048,
         batcher=PowerAdaptativeBatcher(),
         device=device,
-        hooks=[
-            # setmeta(DistributedHook(models=[trained_model.encoder]), True)
-        ],
+        hooks=[setmeta(DistributedHook(models=[trained_model.encoder]), True)],
     ).submit(launcher=launcher_training_index)
 
     ance_retriever = FaissRetriever(
-        encoder=DenseDocumentEncoder(trained_model),
+        encoder=trained_model.encoder,
         index=ance_final_index,
         topk=cfg.retrieval.topK,
     )
