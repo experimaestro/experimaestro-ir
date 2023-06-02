@@ -170,7 +170,6 @@ def run(
         early_stop=cfg.ance.early_stop,
         validation_interval=cfg.ance.validation_interval,
         metrics={"RR@10": True, "AP": False, "nDCG@10": False},
-        store_last_checkpoint=True,
     )
 
     faiss_listener = FaissBuildListener(
@@ -230,7 +229,7 @@ def run(
     tensorboard_service.add(learner, learner.logpath)
 
     # get the trained model
-    trained_model = outputs.listeners[validation_listener.id]["last_checkpoint"]
+    trained_model = outputs.learned_model
 
     ance_final_index = IndexBackedFaiss(
         normalize=False,
