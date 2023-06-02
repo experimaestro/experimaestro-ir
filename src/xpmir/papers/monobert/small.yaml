@@ -6,6 +6,8 @@ description: |
 
     This model has been trained on MsMarco v1 but only a few iterations (debug)
 
+dev_test_size: 50
+
 validation:
     size: 10
 
