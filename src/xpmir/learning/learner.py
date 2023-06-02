@@ -25,7 +25,7 @@ from xpmir.learning.context import (
 )
 from xpmir.learning.metrics import Metrics
 
-from .optim import Module, ParameterOptimizer, ScheduledOptimizer
+from .optim import Module, ModuleLoader, ParameterOptimizer, ScheduledOptimizer
 from .batchers import RecoverableOOMError
 
 logger = easylog()
@@ -71,6 +71,8 @@ class LearnerOutput(NamedTuple):
     that listener"""
 
     listeners: Dict[str, Any]
+
+    learned_model: Module
 
 
 class Learner(Task, EasyLogger):
@@ -141,8 +143,16 @@ class Learner(Task, EasyLogger):
         return LearnerOutput(
             listeners={
                 listener.id: listener.taskoutputs(self) for listener in self.listeners
-            }
+            },
+            learned_model=ModuleLoader(
+                config=self.model,
+                path=str(self.last_checkpoint_path / TrainState.MODEL_PATH),
+            ),
         )
+
+    @property
+    def last_checkpoint_path(self):
+        return self.checkpointspath / "last"
 
     def execute(self):
         self.device.execute(self.device_execute)
@@ -229,6 +239,7 @@ class Learner(Task, EasyLogger):
                 if not state.cached and state.epoch % self.checkpoint_interval == 0:
                     # Save checkpoint if needed
                     self.context.save_checkpoint()
+                    self.context.copy(self.last_checkpoint_path)
 
                 # Call listeners
                 decision = LearnerListenerStatus.NO_DECISION
