@@ -49,6 +49,7 @@ class ValidationListener(LearnerListener):
     bestpath: Annotated[Path, pathgenerator("best")]
     """Path to the best checkpoints"""
 
+    # FIXME: remove last checkpoint support (handled directly in Learner: learned_model)
     last_checkpoint_path: Annotated[Path, pathgenerator("last_checkpoint")]
     """Path to the last checkpoints"""
 
