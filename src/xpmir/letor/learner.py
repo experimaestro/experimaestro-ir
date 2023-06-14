@@ -3,11 +3,7 @@ import json
 from pathlib import Path
 from typing import Dict, Iterator
 from datamaestro_text.data.ir import Adhoc
-from experimaestro import (
-    Param,
-    pathgenerator,
-    Annotated,
-)
+from experimaestro import Param, pathgenerator, Annotated, copyconfig
 import numpy as np
 from xpmir.utils.utils import easylog
 from xpmir.evaluation import evaluate
@@ -49,14 +45,6 @@ class ValidationListener(LearnerListener):
     bestpath: Annotated[Path, pathgenerator("best")]
     """Path to the best checkpoints"""
 
-    # FIXME: remove last checkpoint support (handled directly in Learner: learned_model)
-    last_checkpoint_path: Annotated[Path, pathgenerator("last_checkpoint")]
-    """Path to the last checkpoints"""
-
-    store_last_checkpoint: Param[bool] = False
-    """Besides the model with the best performance, whether store the last
-    checkpoint of the model or not"""
-
     info: Annotated[Path, pathgenerator("info.json")]
     """Path to the JSON file that contains the metric values at each epoch"""
 
@@ -77,8 +65,6 @@ class ValidationListener(LearnerListener):
 
         self.retriever.initialize()
         self.bestpath.mkdir(exist_ok=True, parents=True)
-        if self.store_last_checkpoint:
-            self.last_checkpoint_path.mkdir(exist_ok=True, parents=True)
 
         # Checkpoint start
         try:
@@ -101,16 +87,12 @@ class ValidationListener(LearnerListener):
         metric"""
         res = {
             key: ModuleLoader(
-                config=learner.model, path=self.bestpath / key / TrainState.MODEL_PATH
+                value=copyconfig(self.model),
+                path=self.bestpath / key / TrainState.MODEL_PATH,
             )
             for key, store in self.metrics.items()
             if store
         }
-        if self.store_last_checkpoint:
-            res["last_checkpoint"] = ModuleLoader(
-                config=learner.scorer,
-                path=str(self.last_checkpoint_path / TrainState.MODEL_PATH),
-            )
 
         return res
 
@@ -163,10 +145,6 @@ class ValidationListener(LearnerListener):
                                 f" for metric {metric}"
                             )
                             self.context.copy(self.bestpath / metric)
-
-            if self.store_last_checkpoint:
-                logging.info(f"Saving the last checkpoint {state.epoch}")
-                self.context.copy(self.last_checkpoint_path)
 
             # Update information
             with self.info.open("wt") as fp:

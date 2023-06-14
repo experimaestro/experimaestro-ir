@@ -11,6 +11,7 @@ from experimaestro import (
     Annotated,
     tqdm,
     Meta,
+    copyconfig,
 )
 import numpy as np
 from xpmir.context import Hook, InitializationHook
@@ -145,7 +146,7 @@ class Learner(Task, EasyLogger):
                 listener.id: listener.taskoutputs(self) for listener in self.listeners
             },
             learned_model=ModuleLoader(
-                config=self.model,
+                value=copyconfig(self.model),
                 path=str(self.last_checkpoint_path / TrainState.MODEL_PATH),
             ),
         )
