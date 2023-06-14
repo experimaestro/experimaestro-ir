@@ -191,7 +191,7 @@ def run(
         early_stop=cfg.splade.early_stop,
         validation_interval=cfg.splade.validation_interval,
         metrics={"RR@10": True, "AP": False, "nDCG@10": False},
-        store_last_checkpoint=True if cfg.splade.model == "splade_doc" else False,
+        # store_last_checkpoint=True if cfg.splade.model == "splade_doc" else False,
     )
 
     # the learner: Put the components together
@@ -220,7 +220,7 @@ def run(
 
     # get the trained model
     trained_model = (
-        outputs.listeners["bestval"]["last_checkpoint"]
+        outputs.learned_model
         if cfg.splade.model == "splade_doc"
         else outputs.listeners["bestval"]["RR@10"]
     )
