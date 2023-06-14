@@ -11,7 +11,7 @@ from experimaestro import (
     tagspath,
     TaskOutput,
     Task,
-    PathBasedSerializedConfig,
+    PathSerializationLWTask,
 )
 from experimaestro.scheduler import Job, Listener
 from experimaestro.utils import cleanupdir
@@ -102,13 +102,13 @@ class Module(Config, Initializable, torch.nn.Module):
         return torch.nn.Module.__call__(self, *args, **kwargs)
 
 
-class ModuleLoader(PathBasedSerializedConfig):
-    def initialize(self):
+class ModuleLoader(PathSerializationLWTask):
+    def execute(self):
         """Loads the model from disk using the given serialization path"""
         logging.info("Loading model from disk: %s", self.path)
-        self.config.initialize(None)
+        self.value.initialize(None)
         data = torch.load(self.path)
-        self.config.load_state_dict(data)
+        self.value.load_state_dict(data)
 
 
 class ParameterFilter(Config):
