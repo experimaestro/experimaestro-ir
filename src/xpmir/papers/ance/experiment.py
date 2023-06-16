@@ -230,6 +230,7 @@ def run(
 
     # get the trained model
     trained_model = outputs.learned_model
+    trained_model.encoder.add_pretasks_from(trained_model)
 
     ance_final_index = IndexBackedFaiss(
         normalize=False,
