@@ -29,7 +29,7 @@ Listeners can be used to monitor the learning process
 .. autoxpmconfig:: xpmir.learning.learner.LearnerListener
    :members: __call__
 
-.. autoxpmconfig:: xpmir.letor.ValidationListener
+.. autoxpmconfig:: xpmir.letor.learner.ValidationListener
 
 Scorers
 =======
@@ -42,7 +42,7 @@ scorers, some are have learnable parameters.
 .. autoxpmconfig:: xpmir.rankers.RandomScorer
 .. autoxpmconfig:: xpmir.rankers.LearnableScorer
 
-.. autofunction:: scorer_retriever
+.. autofunction:: xpmir.rankers.scorer_retriever
 
 Retrievers
 ==========

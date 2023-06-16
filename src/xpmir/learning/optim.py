@@ -9,7 +9,6 @@ from experimaestro import (
     Config,
     Param,
     tagspath,
-    TaskOutput,
     Task,
     PathSerializationLWTask,
 )
@@ -338,11 +337,8 @@ class TensorboardService(WebService):
         logger.info("tensorboard --logdir=%s", self.path)
         self.url = None
 
-    def add(self, task: Union[TaskOutput, Task], path: Path):
+    def add(self, task: Task, path: Path):
         # Wait until config has started
-        if isinstance(task, TaskOutput):
-            task = task.__xpm__.task
-
         if job := task.__xpm__.job:
             if job.scheduler is not None:
                 job.scheduler.addlistener(

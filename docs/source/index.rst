@@ -1,19 +1,12 @@
 Welcome to Experimaestro IR documentation!
 ==========================================
 
-.. toctree::
-   :maxdepth: 2
-
-   data/index
-   retrieval
-   evaluation
-   letor/index
-   neural
-   hooks
-   text/index
-   papers/index
-   pretrained
-   misc
+experimaestro-IR (XPMIR) is a library for learning IR (neural) models.
+XPMIR defines a large set of components that can be composed arbitrarily,
+allowing to re-use easily components to build your own experiments.
+XPMIR is built upon `experimaestro <https://experimaestro-python.readthedocs.io/en/latest/>`_,
+a library which allows to build complex experimental plans while tracking parameters
+and to execute them locally or on a cluster.
 
 
 Install
@@ -45,6 +38,23 @@ You can then execute the following file:
 
 .. literalinclude:: ../../examples/bm25.py
 
+
+Table of Contents
+=================
+
+.. toctree::
+   :maxdepth: 2
+
+   data/index
+   retrieval
+   evaluation
+   letor/index
+   neural
+   hooks
+   text/index
+   papers/index
+   pretrained
+   misc
 
 
 Indices and tables
