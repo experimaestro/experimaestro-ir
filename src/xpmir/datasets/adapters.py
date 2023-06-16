@@ -337,7 +337,7 @@ class RetrieverBasedCollection(Task):
             topics=self.dataset.topics,
             assessments=self.dataset.assessments,
             documents=dep(
-                AdhocDocumentSubset(
+                AdhocDocumentSubsetStore(
                     id="", base=self.dataset.documents, docids_path=self.docids_path
                 )
             ),
