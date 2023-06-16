@@ -521,10 +521,13 @@ class ModelBasedHardNegativeSampler(Task, Sampler):
     hard_negative_samples: Annotated[Path, pathgenerator("hard_negatives.tsv")]
     """Path to store the generated hard negatives"""
 
-    def config(self) -> PairwiseSampleDataset:
+    def task_outputs(self, dep) -> PairwiseSampleDataset:
         """return a iterator of PairwiseSample"""
-        return PairwiseSampleDatasetFromTSV(
-            ids=self.dataset.id, hard_negative_samples_path=self.hard_negative_samples
+        return dep(
+            PairwiseSampleDatasetFromTSV(
+                ids=self.dataset.id,
+                hard_negative_samples_path=self.hard_negative_samples,
+            )
         )
 
     def execute(self):
@@ -627,8 +630,10 @@ class TeacherModelBasedHardNegativesTripletSampler(Task, Sampler):
     batch_size: int
     """How many pairs of documents are been calculate in a batch"""
 
-    def config(self) -> PairwiseSampler:
-        return PairwiseSamplerFromTSV(pairwise_samples_path=self.hard_negative_triplet)
+    def task_outputs(self, dep) -> PairwiseSampler:
+        return dep(
+            PairwiseSamplerFromTSV(pairwise_samples_path=self.hard_negative_triplet)
+        )
 
     def iter_pairs_with_text(self) -> Iterator[PairwiseRecord]:
         """Add the information of the text back to the records"""

@@ -36,12 +36,14 @@ class BaseEvaluation(Task):
     detailed: Annotated[Path, pathgenerator("detailed.dat")]
     """Path for detailed results"""
 
-    def config(self):
-        return TrecAdhocResults(
-            id="",
-            results=self.aggregated,
-            detailed=self.detailed,
-            metrics=self.measures,
+    def task_outputs(self, dep):
+        return dep(
+            TrecAdhocResults(
+                id="",
+                results=self.aggregated,
+                detailed=self.detailed,
+                metrics=self.measures,
+            )
         )
 
     def _execute(self, run, assessments):

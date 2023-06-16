@@ -8,7 +8,7 @@ import re
 import subprocess
 import sys
 from typing import List, Optional
-from experimaestro import tqdm as xpmtqdm, Task, Meta, unwrap
+from experimaestro import tqdm as xpmtqdm, Task, Meta
 
 from datamaestro_text.data.ir import AdhocDocumentStore
 import datamaestro_text.data.ir.csv as ir_csv
@@ -18,7 +18,7 @@ from datamaestro_text.data.ir.trec import (
     TipsterCollection,
     TrecAdhocTopics,
 )
-from experimaestro import Param, param, pathoption, progress, task
+from experimaestro import Param, param, pathoption, progress
 from tqdm import tqdm
 from xpmir.index.anserini import Index
 from xpmir.rankers import Retriever, ScoredDocument, RetrieverHydrator, document_cache
@@ -94,7 +94,7 @@ class IndexCollection(Index, Task):
                     total=size, unit="B", unit_scale=True
                 ) as pb:
                     for ix, line in enumerate(fp):
-                        # Update progress (TODO: cleanup/factorize the progress code)
+                        # Update progress
                         ll = len(line)
                         pb.update(ll)
                         counter += ll
@@ -209,8 +209,7 @@ class IndexCollection(Index, Task):
 @param("topics", AdhocTopics)
 @param("model", Model)
 @pathoption("path", "results.trec")
-@task()
-class SearchCollection:
+class SearchCollection(Task):
     def execute(self):
         command = javacommand()
         command.append("io.anserini.search.SearchCollection")
@@ -320,12 +319,12 @@ def retriever(
 
     # Use hydrator or index store
     if content:
-        if isinstance(unwrap(documents), AdhocDocumentStore):
+        if isinstance(documents, AdhocDocumentStore):
             return RetrieverHydrator(store=documents, retriever=index_retriever)
 
         assert (
             index.storeRaw or index.storeContents
         ), "Index does not store content, and the document"
-        f"dataset {unwrap(documents)} has no associated store"
+        f"dataset {documents} has no associated store"
 
     return index_retriever

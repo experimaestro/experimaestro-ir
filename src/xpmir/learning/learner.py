@@ -11,7 +11,6 @@ from experimaestro import (
     Annotated,
     tqdm,
     Meta,
-    copyconfig,
 )
 import numpy as np
 from xpmir.context import Hook, InitializationHook
@@ -61,7 +60,7 @@ class LearnerListener(Config):
         """Add metrics"""
         pass
 
-    def taskoutputs(self, learner: "Learner"):
+    def task_outputs(self, learner: "Learner", dep):
         """Outputs from this listeners"""
         return None
 
@@ -139,15 +138,15 @@ class Learner(Task, EasyLogger):
         ), "IDs of listeners should be unique"
         return super().__validate__()
 
-    def taskoutputs(self) -> LearnerOutput:
+    def task_outputs(self, dep) -> LearnerOutput:
         """Object returned when submitting the task"""
         return LearnerOutput(
             listeners={
-                listener.id: listener.taskoutputs(self) for listener in self.listeners
+                listener.id: listener.task_outputs(self, dep)
+                for listener in self.listeners
             },
-            learned_model=ModuleLoader(
-                value=copyconfig(self.model),
-                path=str(self.last_checkpoint_path / TrainState.MODEL_PATH),
+            learned_model=ModuleLoader.construct(
+                self.model, self.last_checkpoint_path / TrainState.MODEL_PATH, dep
             ),
         )
 

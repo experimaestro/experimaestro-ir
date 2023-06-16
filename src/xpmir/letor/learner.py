@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from typing import Dict, Iterator
 from datamaestro_text.data.ir import Adhoc
-from experimaestro import Param, pathgenerator, Annotated, copyconfig
+from experimaestro import Param, pathgenerator, Annotated
 import numpy as np
 from xpmir.utils.utils import easylog
 from xpmir.evaluation import evaluate
@@ -82,13 +82,12 @@ class ValidationListener(LearnerListener):
     def monitored(self) -> Iterator[str]:
         return [key for key, monitored in self.metrics.items() if monitored]
 
-    def taskoutputs(self, learner: "Learner"):
+    def task_outputs(self, learner: "Learner", dep):
         """Experimaestro outputs: returns the best checkpoints for each
         metric"""
         res = {
-            key: ModuleLoader(
-                value=copyconfig(self.model),
-                path=self.bestpath / key / TrainState.MODEL_PATH,
+            key: ModuleLoader.construct(
+                learner.model, self.bestpath / key / TrainState.MODEL_PATH, dep
             )
             for key, store in self.metrics.items()
             if store

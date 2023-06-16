@@ -156,12 +156,12 @@ class SparseRetrieverIndexBuilder(Task):
     version: Constant[int] = 3
     """Version 3 of the index"""
 
-    def taskoutputs(self):
+    def task_outputs(self, dep):
         """Returns a sparse retriever index that can be used by a
         SparseRetriever to search efficiently for documents"""
 
-        return SparseRetrieverIndex(
-            index_path=self.index_path, documents=self.documents
+        return dep(
+            SparseRetrieverIndex(index_path=self.index_path, documents=self.documents)
         )
 
     def execute(self):
