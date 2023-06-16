@@ -92,15 +92,15 @@ class ConcatFold(Task):
     topics: Annotated[Path, pathgenerator("topics.tsv")]
     """Generated topics file"""
 
-    def config(self) -> Adhoc:
+    def task_outputs(self, dep) -> Adhoc:
         dataset_document_id = set(dataset.document.id for dataset in self.datasets)
         assert (
             len(dataset_document_id) == 1
         ), "At the moment only one set of documents supported."
         return Adhoc(
             id="",  # No need to have a more specific id since it is generated
-            topics=CSVAdhocTopics(id="", path=self.topics),
-            assessments=TrecAdhocAssessments(id="", path=self.assessments),
+            topics=dep(CSVAdhocTopics(id="", path=self.topics)),
+            assessments=dep(TrecAdhocAssessments(id="", path=self.assessments)),
             documents=self.datasets[0].documents,
         )
 
@@ -321,13 +321,15 @@ class RetrieverBasedCollection(Task):
     def __validate__(self):
         assert len(self.retrievers) > 0, "At least one retriever should be given"
 
-    def config(self) -> Adhoc:
+    def task_outputs(self, dep) -> Adhoc:
         return Adhoc(
             id="",  # No need to have a more specific id since it is generated
             topics=self.dataset.topics,
             assessments=self.dataset.assessments,
-            documents=AdhocDocumentSubset(
-                id="", base=self.dataset.documents, docids_path=self.docids_path
+            documents=dep(
+                AdhocDocumentSubset(
+                    id="", base=self.dataset.documents, docids_path=self.docids_path
+                )
             ),
         )
 
