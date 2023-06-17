@@ -1,10 +1,5 @@
 from pathlib import Path
-from typing import (
-    Iterator,
-    List,
-    Optional,
-    Tuple,
-)
+from typing import Iterator, List, Optional, Tuple, Dict
 import numpy as np
 from datamaestro_text.data.ir import (
     Adhoc,
@@ -13,9 +8,10 @@ from datamaestro_text.data.ir import (
     PairwiseSample,
     AdhocDocumentStore,
 )
-from experimaestro import Config, Param, tqdm, Task, Annotated, pathgenerator
+from experimaestro import Param, tqdm, Task, Annotated, pathgenerator
 from experimaestro.annotations import cache
 import torch
+from xpmir.rankers import ScoredDocument
 from xpmir.datasets.adapters import TextStore
 from xpmir.letor.records import (
     BatchwiseRecords,
@@ -27,7 +23,8 @@ from xpmir.letor.records import (
     Query,
 )
 from xpmir.rankers import Retriever, Scorer
-from xpmir.utils.utils import EasyLogger, easylog
+from xpmir.learning import Sampler
+from xpmir.utils.utils import easylog
 from xpmir.utils.iter import (
     RandomSerializableIterator,
     SerializableIterator,
@@ -40,13 +37,6 @@ logger = easylog()
 
 
 # --- Base classes for samplers
-
-
-class Sampler(Config, EasyLogger):
-    """Abstract data sampler"""
-
-    def initialize(self, random: Optional[np.random.RandomState]):
-        self.random = random or np.random.RandomState(random.randint(0, 2**31))
 
 
 class PointwiseSampler(Sampler):
@@ -131,7 +121,7 @@ class ModelBasedSampler(Sampler):
 
                 # Read the assessments
                 self.logger.info("Reading assessments")
-                assessments = {}  # type: Dict[str, Dict[str, float]]
+                assessments: Dict[str, Dict[str, float]] = {}
                 for qrels in self.dataset.assessments.iter():
                     doc2rel = {}
                     assessments[qrels.qid] = doc2rel
@@ -172,9 +162,9 @@ class ModelBasedSampler(Sampler):
                         skipped += 1
                         continue
 
-                    scoreddocuments = self.retriever.retrieve(
+                    scoreddocuments: List[ScoredDocument] = self.retriever.retrieve(
                         query.text
-                    )  # type: List[ScoredDocument]
+                    )
 
                     negatives = []
                     for rank, sd in enumerate(scoreddocuments):
@@ -508,9 +498,9 @@ class ModelBasedHardNegativeSampler(Task, Sampler):
                 # Write all the positive documents
                 positives = []
                 negatives = []
-                scoreddocuments = self.retriever.retrieve(
+                scoreddocuments: List[ScoredDocument] = self.retriever.retrieve(
                     query.text
-                )  # type: List[ScoredDocument]
+                )
 
                 for rank, sd in enumerate(scoreddocuments):
                     if qassessments.get(sd.docid, 0) > 0:
