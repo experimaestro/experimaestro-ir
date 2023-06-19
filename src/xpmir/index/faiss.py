@@ -244,11 +244,13 @@ class IndexBackedFaiss(BaseIndexBackedFaiss, Task):
     def execute(self):
         self.device.execute(partial(self._execute, self.faiss_index))
 
-    def config(self):
-        return FaissIndex(
-            normalize=self.normalize,
-            documents=self.documents,
-            faiss_index=self.faiss_index,
+    def task_outputs(self, dep):
+        return dep(
+            FaissIndex(
+                normalize=self.normalize,
+                documents=self.documents,
+                faiss_index=self.faiss_index,
+            )
         )
 
 
