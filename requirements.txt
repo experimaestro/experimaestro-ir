@@ -1,6 +1,6 @@
 # Experimaestro
 
-experimaestro>=0.28.0
+experimaestro>=0.29.0
 datamaestro>=0.8.13
 datamaestro_text>=2023.6.16.1
 ir_datasets
