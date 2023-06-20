@@ -1,6 +1,6 @@
 import logging
 
-from experimaestro import experiment, setmeta
+from experimaestro import experiment, setmeta, copyconfig
 from experimaestro.launcherfinder import find_launcher
 from xpmir.learning.batchers import PowerAdaptativeBatcher
 from xpmir.learning.optim import TensorboardService
@@ -85,7 +85,7 @@ def run(
     # scoring all the documents in the validation stage
     base_retriever_full = FullRetriever(documents=ds_val.documents)
 
-    tests = v1_tests()
+    tests = v1_tests(cfg.dev_test_size)
 
     # evaluate the baseline
     bm25_retriever = anserini.AnseriniRetriever(
@@ -230,21 +230,21 @@ def run(
 
     # get the trained model
     trained_model = outputs.learned_model
-    trained_model.encoder.add_pretasks_from(trained_model)
+    trained_encoder = copyconfig(trained_model.encoder).add_pretasks_from(trained_model)
 
     ance_final_index = IndexBackedFaiss(
         normalize=False,
         documents=documents,
-        encoder=trained_model.encoder,
+        encoder=trained_encoder,
         indexspec=cfg.indexation.indexspec,
         batchsize=2048,
         batcher=PowerAdaptativeBatcher(),
         device=device,
-        hooks=[setmeta(DistributedHook(models=[trained_model.encoder]), True)],
+        hooks=[setmeta(DistributedHook(models=[trained_encoder]), True)],
     ).submit(launcher=launcher_training_index)
 
     ance_retriever = FaissRetriever(
-        encoder=trained_model.encoder,
+        encoder=trained_encoder,
         index=ance_final_index,
         topk=cfg.retrieval.topK,
     )
