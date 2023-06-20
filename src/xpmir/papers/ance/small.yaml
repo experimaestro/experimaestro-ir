@@ -5,7 +5,7 @@ description: |
 
 gpu: true
 indexation:
-    training_requirements: duration=4 days & cuda(mem=24G)
+    training_requirements: duration=4 days & cuda(mem=8G)
     indexspec: Flat
 
 ance:
@@ -20,10 +20,13 @@ ance:
     validation_interval: 8
     indexing_interval: 16
     sampling_interval: 16
-    requirements: duration=2 days & cuda(mem=24G)
+    requirements: duration=2 days & cuda(mem=8G)
+
+ance_warmup:
+    requirements: duration=2 days & cuda(mem=8G)
 
 retrieval:
-    requirements: duration=2 days & cuda(mem=24G)
+    requirements: duration=2 days & cuda(mem=8G)
     topK: 1000
     retTopK: 50
     batch_size_full_retriever: 200
