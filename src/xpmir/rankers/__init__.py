@@ -22,6 +22,7 @@ import torch.nn as nn
 import numpy as np
 from experimaestro import Param, Config, Meta
 from datamaestro_text.data.ir import (
+    AdhocDocument,
     AdhocDocuments,
     AdhocDocumentStore,
 )
@@ -50,10 +51,9 @@ class ScoredDocument:
     """A data structure which contains the id, the content(optional) and a
     calculated score for a document"""
 
-    def __init__(self, docid: Optional[str], score: float, content: str = None):
-        self.docid = docid
+    def __init__(self, document: AdhocDocument, score: float):
         self.score = score
-        self.content = content
+        self.document = document
 
     def __repr__(self):
         return f"document({self.docid}, {self.score}, {self.content})"

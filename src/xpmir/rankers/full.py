@@ -21,6 +21,7 @@ class FullRetriever(Retriever):
     def retrieve(self, query: str, content=False) -> List[ScoredDocument]:
         if content:
             return [
+                # FIXME: text should not rely on doc.text
                 ScoredDocument(doc.docid, 0.0, doc.text)
                 for doc in self.documents.iter()
             ]

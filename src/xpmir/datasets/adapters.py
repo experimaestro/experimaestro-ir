@@ -59,7 +59,7 @@ class AdhocAssessmentFold(AdhocAssessments):
                 for qrels in self.iter():
                     if qrels.qid in ids:
                         for qrel in qrels.assessments:
-                            fp.write(f"""{qrels.qid} 0 {qrel.docno} {qrel.rel}\n""")
+                            fp.write(f"""{qrels.qid} 0 {qrel.docid} {qrel.rel}\n""")
 
         return path
 
@@ -124,7 +124,7 @@ class ConcatFold(Task):
                 for qrels in dataset.assessments.iter():
                     if qrels.qid in ids:
                         for qrel in qrels.assessments:
-                            fp.write(f"""{qrels.qid} 0 {qrel.docno} {qrel.rel}\n""")
+                            fp.write(f"""{qrels.qid} 0 {qrel.docid} {qrel.rel}\n""")
 
 
 class RandomFold(Task):
@@ -225,7 +225,7 @@ class RandomFold(Task):
             for qrels in self.dataset.assessments.iter():
                 if qrels.qid in ids:
                     for qrel in qrels.assessments:
-                        fp.write(f"""{qrels.qid} 0 {qrel.docno} {qrel.rel}\n""")
+                        fp.write(f"""{qrels.qid} 0 {qrel.docid} {qrel.rel}\n""")
 
 
 class AdhocDocumentSubset(AdhocDocuments):
@@ -356,14 +356,14 @@ class RetrieverBasedCollection(Task):
             # Add (not) relevant documents
             if self.keepRelevant:
                 docids.update(
-                    a.docno
+                    a.docid
                     for a in qrels.assessments
                     if a.rel > self.relevance_threshold
                 )
 
             if self.keepNotRelevant:
                 docids.update(
-                    a.docno
+                    a.docid
                     for a in qrels.assessments
                     if a.rel <= self.relevance_threshold
                 )

@@ -18,7 +18,7 @@ from experimaestro.launchers import Launcher
 
 def get_evaluator(metrics: List[ir_measures.Metric], assessments: AdhocAssessments):
     qrels = {
-        assessedTopic.qid: {r.docno: r.rel for r in assessedTopic.assessments}
+        assessedTopic.qid: {r.docid: r.rel for r in assessedTopic.assessments}
         for assessedTopic in assessments.iter()
     }
     return evaluator(metrics, qrels)

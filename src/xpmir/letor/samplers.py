@@ -126,7 +126,7 @@ class ModelBasedSampler(Sampler):
                     doc2rel = {}
                     assessments[qrels.qid] = doc2rel
                     for qrel in qrels.assessments:
-                        doc2rel[qrel.docno] = qrel.rel
+                        doc2rel[qrel.docid] = qrel.rel
                 self.logger.info("Read assessments for %d topics", len(assessments))
 
                 self.logger.info("Retrieving documents for each topic")
@@ -150,6 +150,7 @@ class ModelBasedSampler(Sampler):
                     for docno, rel in qassessments.items():
                         if rel > 0:
                             fp.write(
+                                # FIXME: query.text
                                 f"{query.text if not positives else ''}"
                                 f"\t{docno}\t0.\t{rel}\n"
                             )
@@ -163,6 +164,7 @@ class ModelBasedSampler(Sampler):
                         continue
 
                     scoreddocuments: List[ScoredDocument] = self.retriever.retrieve(
+                        # FIXME: query.text
                         query.text
                     )
 
@@ -177,6 +179,7 @@ class ModelBasedSampler(Sampler):
                         fp.write(f"\t{sd.docid}\t{sd.score}\t{rel}\n")
 
                     assert len(positives) > 0 and len(negatives) > 0
+                    # FIXME: query.text
                     yield query.text, positives, negatives
 
                 # Finally, move the cache file in place...
@@ -473,7 +476,7 @@ class ModelBasedHardNegativeSampler(Task, Sampler):
             doc2rel = {}
             assessments[qrels.qid] = doc2rel
             for qrel in qrels.assessments:
-                doc2rel[qrel.docno] = qrel.rel
+                doc2rel[qrel.docid] = qrel.rel
         self.logger.info("Assessment loaded")
         self.logger.info("Read assessments for %d topics", len(assessments))
 
@@ -498,6 +501,7 @@ class ModelBasedHardNegativeSampler(Task, Sampler):
                 # Write all the positive documents
                 positives = []
                 negatives = []
+                # FIXME: query.text
                 scoreddocuments: List[ScoredDocument] = self.retriever.retrieve(
                     query.text
                 )
