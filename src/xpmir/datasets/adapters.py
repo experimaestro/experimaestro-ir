@@ -181,11 +181,13 @@ class RandomFold(Task):
         return folds
 
     def task_outputs(self, dep) -> Adhoc:
-        return Adhoc(
-            id="",  # No need to have a more specific id since it is generated
-            topics=dep(CSVAdhocTopics(id="", path=self.topics)),
-            assessments=dep(TrecAdhocAssessments(id="", path=self.assessments)),
-            documents=self.dataset.documents,
+        return dep(
+            Adhoc(
+                id="",  # No need to have a more specific id since it is generated
+                topics=dep(CSVAdhocTopics(id="", path=self.topics)),
+                assessments=dep(TrecAdhocAssessments(id="", path=self.assessments)),
+                documents=self.dataset.documents,
+            )
         )
 
     def execute(self):
