@@ -5,25 +5,31 @@ description: |
 
 gpu: true
 indexation:
-    training_requirements: duration=4 days & cuda(mem=24G)
+    training_requirements: duration=4 days & cuda(mem=8G)
     indexspec: Flat
 
+dev_test_size: 50
+
 ance:
-    optimization:
-        steps_per_epoch: 16
-        batch_size: 16
-        max_epochs: 32
+    optimization: &optimization
+        steps_per_epoch: 8
+        batch_size: 4
+        max_epochs: 4
         lr: 1.0e-5
         num_warmup_steps: 30
         LAMB: true
 
-    validation_interval: 8
-    indexing_interval: 16
-    sampling_interval: 16
-    requirements: duration=2 days & cuda(mem=24G)
+    validation_interval: 2
+    indexing_interval: 1
+    sampling_interval: 1
+    requirements: duration=2 days & cuda(mem=8G)
+
+ance_warmup:
+    requirements: duration=2 days & cuda(mem=8G)
+    optimization: *optimization
 
 retrieval:
-    requirements: duration=2 days & cuda(mem=24G)
+    requirements: duration=2 days & cuda(mem=8G)
     topK: 1000
     retTopK: 50
     batch_size_full_retriever: 200

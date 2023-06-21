@@ -64,6 +64,9 @@ class Retrieval:
 @configuration()
 class ANCE(DualMSMarcoV1Configuration):
 
+    dev_test_size: int = 0
+    """Development test size (0 to leave it like this)"""
+
     indexation: Indexation = Factory(Indexation)
     retrieval: Retrieval = Factory(Retrieval)
     ance_warmup: WarmupLearner = Factory(WarmupLearner)
