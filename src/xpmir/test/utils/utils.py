@@ -2,18 +2,18 @@ from collections import OrderedDict, defaultdict
 from typing import ClassVar, Dict, Iterator, List, Tuple
 import torch
 import numpy as np
-from datamaestro_text.data.ir import AdhocDocument, AdhocDocumentStore
+from datamaestro_text.data.ir import Document, DocumentStore
 from experimaestro import Param
 from xpmir.text.encoders import TextEncoder
 
 
-class SampleAdhocDocumentStore(AdhocDocumentStore):
+class SampleDocumentStore(DocumentStore):
     id: Param[str] = ""
     num_docs: Param[int] = 200
 
     def __post_init__(self):
         self.documents = OrderedDict(
-            (str(ix), AdhocDocument(str(ix), f"Document {ix}", internal_docid=ix))
+            (str(ix), Document(str(ix), f"Document {ix}", internal_docid=ix))
             for ix in range(self.num_docs)
         )
 
@@ -21,14 +21,14 @@ class SampleAdhocDocumentStore(AdhocDocumentStore):
     def documentcount(self):
         return len(self.documents)
 
-    def document(self, internal_docid: int) -> AdhocDocument:
+    def document(self, internal_docid: int) -> Document:
         return self.documents[str(internal_docid)]
 
     def document_text(self, docid: str) -> str:
         """Returns the text of the document given its id"""
         return self.documents[docid].text
 
-    def iter_documents(self) -> Iterator[AdhocDocument]:
+    def iter_documents(self) -> Iterator[Document]:
         return iter(self.documents.values())
 
     def docid_internal2external(self, docid: int):

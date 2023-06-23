@@ -14,7 +14,7 @@ from experimaestro import (
     tqdm,
     Constant,
 )
-from datamaestro_text.data.ir import AdhocDocument, AdhocDocumentStore
+from datamaestro_text.data.ir import Document, DocumentStore
 from xpmir.learning.batchers import Batcher
 from xpmir.utils.utils import batchiter, easylog
 from xpmir.letor import Device, DEFAULT_DEVICE
@@ -29,7 +29,7 @@ logger = easylog()
 
 class SparseRetrieverIndex(Config):
     index_path: Meta[Path]
-    documents: Param[AdhocDocumentStore]
+    documents: Param[DocumentStore]
 
     index: xpmir_rust.index.SparseBuilderIndex
     ordered = False
@@ -39,17 +39,13 @@ class SparseRetrieverIndex(Config):
             str(self.index_path.absolute()), in_memory
         )
 
-    def retrieve(
-        self, query: Dict[int, float], top_k: int, content=False
-    ) -> List[ScoredDocument]:
+    def retrieve(self, query: Dict[int, float], top_k: int) -> List[ScoredDocument]:
         results = []
         for sd in self.index.search_maxscore(query, top_k):
-            doc_id = self.documents.docid_internal2external(sd.docid)
             results.append(
                 ScoredDocument(
-                    doc_id,
+                    self.documents.document_proxy(sd.docid),
                     sd.score,
-                    self.documents.document_text(doc_id) if content else None,
                 )
             )
 
@@ -89,7 +85,7 @@ class SparseRetriever(Retriever):
             ):
                 (ix,) = vector.nonzero()
                 query = {ix: float(v) for ix, v in zip(ix, vector[ix])}
-                results[key] = self.index.retrieve(query, self.topk, content=False)
+                results[key] = self.index.retrieve(query, self.topk)
                 progress.update(1)
             return results
 
@@ -104,7 +100,7 @@ class SparseRetriever(Retriever):
 
         return results
 
-    def retrieve(self, query: str, content=False, top_k=None) -> List[ScoredDocument]:
+    def retrieve(self, query: str, top_k=None) -> List[ScoredDocument]:
         """Search with document-at-a-time (DAAT) strategy
 
         :param top_k: Overrides the default top-K value
@@ -116,7 +112,7 @@ class SparseRetriever(Retriever):
         query = {
             ix: float(v) for ix, v in zip(ix, vector[ix])
         }  # generate a dict: {position:value}
-        return self.index.retrieve(query, top_k or self.topk, content=content)
+        return self.index.retrieve(query, top_k or self.topk)
 
 
 class SparseRetrieverIndexBuilder(Task):
@@ -126,7 +122,7 @@ class SparseRetrieverIndexBuilder(Task):
     that the score is computed through an inner product
     """
 
-    documents: Param[AdhocDocumentStore]
+    documents: Param[DocumentStore]
     """Set of documents to index"""
 
     encoder: Param[TextEncoder]
@@ -201,7 +197,7 @@ class SparseRetrieverIndexBuilder(Task):
         # Build the index
         self.indexer.build(self.in_memory)
 
-    def encode_documents(self, batch: List[AdhocDocument]):
+    def encode_documents(self, batch: List[Document]):
         # Assumes for now dense vectors
         assert all(
             d.internal_docid is not None for d in batch

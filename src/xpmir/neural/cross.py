@@ -42,7 +42,10 @@ class CrossScorer(TorchLearnableScorer, DistributableModel):
     def forward(self, inputs: BaseRecords, info: TrainerContext = None):
         # Encode queries and documents
         pairs = self.encoder(
-            [(q.text, d.text) for q, d in zip(inputs.queries, inputs.documents)]
+            [
+                (tr.topic.get_text(), dr.document.get_text())
+                for tr, dr in zip(inputs.topics, inputs.documents)
+            ]
         )  # shape (batch_size * dimension)
         return self.classifier(pairs).squeeze(1)
 
