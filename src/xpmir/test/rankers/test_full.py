@@ -7,7 +7,7 @@ from xpmir.learning.context import TrainerContext
 from xpmir.rankers import ScoredDocument
 from xpmir.rankers.full import FullRetrieverRescorer
 from xpmir.neural.dual import DualRepresentationScorer
-from xpmir.test.utils.utils import SampleAdhocDocumentStore
+from xpmir.test.utils.utils import SampleDocumentStore
 
 
 class ListWrapper(list):
@@ -49,7 +49,7 @@ class CachedRandomScorer(DualRepresentationScorer):
 class _FullRetrieverRescorer(FullRetrieverRescorer):
     def retrieve(self, query: str):
         scored_documents = [
-            ScoredDocument(d.docid, self.scorer.cache[(query, d.text)])
+            ScoredDocument(d, self.scorer.cache[(query, d.get_text())])
             for d in self.documents
         ]
         scored_documents.sort(reverse=True)
@@ -60,7 +60,7 @@ def test_fullretrieverescorer():
     NUM_DOCS = 7
     NUM_QUERIES = 9
 
-    documents = SampleAdhocDocumentStore(num_docs=NUM_DOCS)
+    documents = SampleDocumentStore(num_docs=NUM_DOCS)
     scorer = CachedRandomScorer()
     retriever = _FullRetrieverRescorer(documents=documents, scorer=scorer, batchsize=20)
 

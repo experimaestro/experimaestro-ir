@@ -1,13 +1,14 @@
 from pathlib import Path
-from typing import Iterator, List, Optional, Tuple, Dict
+from typing import Iterator, List, Tuple, Dict
 import numpy as np
 from datamaestro_text.data.ir import (
     Adhoc,
     TrainingTriplets,
     PairwiseSampleDataset,
     PairwiseSample,
-    AdhocDocumentStore,
+    DocumentStore,
 )
+from datamaestro_text.data.ir.data import IDDocument, IDTopic, TextTopic
 from experimaestro import Param, tqdm, Task, Annotated, pathgenerator
 from experimaestro.annotations import cache
 import torch
@@ -17,10 +18,11 @@ from xpmir.letor.records import (
     BatchwiseRecords,
     PairwiseRecords,
     ProductRecords,
-    Document,
     PairwiseRecord,
     PointwiseRecord,
-    Query,
+    TopicRecord,
+    DocumentRecord,
+    ScoredDocumentRecord,
 )
 from xpmir.rankers import Retriever, Scorer
 from xpmir.learning import Sampler
@@ -84,7 +86,7 @@ class ModelBasedSampler(Sampler):
     dataset: Param[Adhoc]
     retriever: Param[Retriever]
 
-    _store: AdhocDocumentStore
+    _store: DocumentStore
 
     def __validate__(self) -> None:
         super().__validate__()
@@ -97,12 +99,9 @@ class ModelBasedSampler(Sampler):
         super().initialize(random)
         self._store = self.retriever.get_store()
 
-    def document_text(self, doc_id):
+    def document(self, doc_id):
         """Returns the document textual content"""
-        text = self._store.document_text(doc_id)
-        if text is None:
-            logger.warning(f"Document {doc_id} has no content")
-        return text
+        return self._store.document_ext(doc_id)
 
     @cache("run")
     def _itertopics(
@@ -150,8 +149,7 @@ class ModelBasedSampler(Sampler):
                     for docno, rel in qassessments.items():
                         if rel > 0:
                             fp.write(
-                                # FIXME: query.text
-                                f"{query.text if not positives else ''}"
+                                f"{query.get_text() if not positives else ''}"
                                 f"\t{docno}\t0.\t{rel}\n"
                             )
                             positives.append((docno, rel, 0))
@@ -164,8 +162,7 @@ class ModelBasedSampler(Sampler):
                         continue
 
                     scoreddocuments: List[ScoredDocument] = self.retriever.retrieve(
-                        # FIXME: query.text
-                        query.text
+                        query.get_text()
                     )
 
                     negatives = []
@@ -179,8 +176,7 @@ class ModelBasedSampler(Sampler):
                         fp.write(f"\t{sd.docid}\t{sd.score}\t{rel}\n")
 
                     assert len(positives) > 0 and len(negatives) > 0
-                    # FIXME: query.text
-                    yield query.text, positives, negatives
+                    yield query.get_text(), positives, negatives
 
                 # Finally, move the cache file in place...
                 self.logger.info(
@@ -272,7 +268,7 @@ class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
         while text is None:
             docid, rel, score = samples[self.random.randint(0, len(samples))]
             text = self.document_text(docid)
-        return Document(docid, text, score)
+        return DocumentRecord(docid, text, score)
 
     def pairwise_iter(self) -> SerializableIterator[PairwiseRecord]:
         def iter(random):
@@ -281,7 +277,9 @@ class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
                     random.randint(0, len(self.topics))
                 ]
                 yield PairwiseRecord(
-                    Query(None, title), self.sample(positives), self.sample(negatives)
+                    TopicRecord(TextTopic(title)),
+                    self.sample(positives),
+                    self.sample(negatives),
                 )
 
         return RandomSerializableIterator(self.random, iter)
@@ -309,49 +307,32 @@ class PairwiseInBatchNegativesSampler(BatchwiseSampler):
                 positives = []
                 negatives = []
                 for _, record in zip(range(batch_size), pair_iter):
-                    batch.addQueries(record.query)
+                    batch.add_topics(record.query)
                     positives.append(record.positive)
                     negatives.append(record.negative)
-                batch.addDocuments(*positives)
-                batch.addDocuments(*negatives)
-                batch.setRelevances(relevances)
+                batch.add_documents(*positives)
+                batch.add_documents(*negatives)
+                batch.set_relevances(relevances)
                 yield batch
 
         return SerializableIteratorAdapter(self.sampler.pairwise_iter(), iter)
 
 
+def always_none(*args, **kwargs):
+    """Just returns None to whatever"""
+    return None
+
+
 class TripletBasedSampler(PairwiseSampler):
-    """Sampler based on a triplet file
-
-    Attributes:
-
-    source: the source of the triplets
-    index: the index (if the source is only)
-    """
+    """Sampler based on a triplet source"""
 
     source: Param[TrainingTriplets]
-    index: Param[Optional[AdhocDocumentStore]] = None
-
-    def __validate__(self):
-        assert (
-            not self.source.ids or self.index is not None
-        ), "An index should be provided if source is IDs only"
-
-    def _fromid(self, docid: str):
-        assert self.index is not None
-        return Document(docid, self.index.document_text(docid), None)
-
-    @staticmethod
-    def _fromtext(text: str):
-        return Document(None, text, None)
+    """Triplets"""
 
     def pairwise_iter(self) -> SerializableIterator[PairwiseRecord]:
-        getdoc = self._fromid if self.source.ids else self._fromtext
-        source = self.source
-
         iterator = (
-            PairwiseRecord(Query(None, query), getdoc(pos), getdoc(neg))
-            for query, pos, neg in source.iter()
+            PairwiseRecord(TopicRecord(topic), DocumentRecord(pos), DocumentRecord(neg))
+            for topic, pos, neg in self.source.iter()
         )
 
         return SkippingIterator(iterator)
@@ -428,9 +409,9 @@ class PairwiseSamplerFromTSV(PairwiseSampler):
             for triplet in read_tsv(self.pairwise_samples_path):
                 q_id, pos_id, pos_score, neg_id, neg_score = triplet
                 yield PairwiseRecord(
-                    Query(q_id, None),
-                    Document(pos_id, None, pos_score),
-                    Document(neg_id, None, neg_score),
+                    TopicRecord(IDTopic(q_id)),
+                    ScoredDocumentRecord(IDDocument(pos_id), pos_score),
+                    ScoredDocumentRecord(IDDocument(neg_id), neg_score),
                 )
 
         return SkippingIterator(iter)
@@ -501,9 +482,8 @@ class ModelBasedHardNegativeSampler(Task, Sampler):
                 # Write all the positive documents
                 positives = []
                 negatives = []
-                # FIXME: query.text
                 scoreddocuments: List[ScoredDocument] = self.retriever.retrieve(
-                    query.text
+                    query.get_text()
                 )
 
                 for rank, sd in enumerate(scoreddocuments):
@@ -546,10 +526,10 @@ class TeacherModelBasedHardNegativesTripletSampler(Task, Sampler):
     sampler: Param[PairwiseSampler]
     """The list of exsting hard negatives which we can sample from"""
 
-    document_store: Param[AdhocDocumentStore]
+    document_store: Param[DocumentStore]
     """The document store"""
 
-    query_store: Param[TextStore]
+    topic_store: Param[TextStore]
     """The query_document store"""
 
     teacher_model: Param[Scorer]
@@ -569,7 +549,7 @@ class TeacherModelBasedHardNegativesTripletSampler(Task, Sampler):
     def iter_pairs_with_text(self) -> Iterator[PairwiseRecord]:
         """Add the information of the text back to the records"""
         for record in self.sampler.pairwise_iter():
-            record.query.text = self.query_store[record.query.id]
+            record.query.text = self.topic_store[record.query.id]
             record.positive.text = self.document_store.document_text(
                 record.positive.docid
             )

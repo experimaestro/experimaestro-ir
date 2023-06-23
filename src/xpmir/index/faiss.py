@@ -10,7 +10,7 @@ import torch
 import numpy as np
 from experimaestro import Annotated, Meta, Task, pathgenerator, Param, tqdm
 import logging
-from datamaestro_text.data.ir import AdhocDocumentStore
+from datamaestro_text.data.ir import DocumentStore
 from xpmir.rankers import Retriever, ScoredDocument
 from xpmir.learning.batchers import Batcher
 from xpmir.text.encoders import TextEncoder
@@ -41,7 +41,7 @@ class FaissIndex(Config):
     faiss_index: Annotated[Path, pathgenerator("faiss.dat")]
     """Path to the file containing the index"""
 
-    documents: Param[AdhocDocumentStore]
+    documents: Param[DocumentStore]
     """The set of documents"""
 
 
@@ -195,9 +195,6 @@ class IndexBackedFaiss(FaissIndex, Task):
             x /= x.norm(2, keepdim=True, dim=1)
         index.add(np.ascontiguousarray(x.cpu().numpy()))
 
-    def docid_internal2external(self, docid: int):
-        return self.documents.docid_internal2external(docid)
-
 
 class FaissRetriever(Retriever):
     """Retriever based on Faiss"""
@@ -230,7 +227,7 @@ class FaissRetriever(Retriever):
             values, indices = self._index.search(encoded_query.cpu().numpy(), self.topk)
             return [
                 ScoredDocument(
-                    self.index.docid_internal2external(int(ix)), float(value)
+                    self.index.documents.document_proxy(int(ix)), float(value)
                 )
                 for ix, value in zip(indices[0], values[0])
                 if ix >= 0

@@ -4,7 +4,7 @@ import pandas as pd
 from pathlib import Path
 from typing import DefaultDict, Dict, List, Protocol, Union, Tuple
 import ir_measures
-from datamaestro_text.data.ir import Adhoc, AdhocAssessments, AdhocDocuments
+from datamaestro_text.data.ir import Adhoc, AdhocAssessments, Documents
 from experimaestro import Task, Param, pathgenerator, Annotated, tags, TagDict
 from datamaestro_text.data.ir import AdhocResults
 from datamaestro_text.data.ir.trec import TrecAdhocRun, TrecAdhocResults
@@ -18,7 +18,7 @@ from experimaestro.launchers import Launcher
 
 def get_evaluator(metrics: List[ir_measures.Metric], assessments: AdhocAssessments):
     qrels = {
-        assessedTopic.qid: {r.docid: r.rel for r in assessedTopic.assessments}
+        assessedTopic.topic_id: {r.doc_id: r.rel for r in assessedTopic.assessments}
         for assessedTopic in assessments.iter()
     }
     return evaluator(metrics, qrels)
@@ -58,8 +58,9 @@ class BaseEvaluation(Task):
             for metric in evaluator.iter_calc(run):
                 print_line(fp, str(metric.measure), metric.query_id, metric.value)
 
-        # TODO: work-around bug in pytrec_eval
-        # https://github.com/terrierteam/ir_measures/issues/49
+        # # TODO: work-around bug in pytrec_eval
+        # # https://github.com/terrierteam/ir_measures/issues/49
+        # (the issue is closed, but no new release)
         evaluator = get_evaluator([m() for m in self.measures], assessments)
 
         with self.aggregated.open("w") as fp:
@@ -70,10 +71,10 @@ class BaseEvaluation(Task):
 def get_run(retriever: Retriever, dataset: Adhoc):
     """Evaluate a retriever on a dataset"""
     results = retriever.retrieve_all(
-        {topic.qid: topic.text for topic in dataset.topics.iter()}
+        {topic.get_id(): topic.get_text() for topic in dataset.topics.iter()}
     )
     return {
-        qid: {sd.docid: sd.score for sd in scoredocs}
+        qid: {sd.document.get_id(): sd.score for sd in scoredocs}
         for qid, scoredocs in results.items()
     }
 
@@ -127,7 +128,7 @@ class Evaluate(BaseEvaluation, Task):
 class RetrieverFactory(Protocol):
     """Generates a retriever for a given dataset"""
 
-    def __call__(self, dataset: AdhocDocuments) -> Retriever:
+    def __call__(self, dataset: Documents) -> Retriever:
         ...
 
 

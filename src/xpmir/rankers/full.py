@@ -2,7 +2,7 @@ from typing import List, Optional, Tuple, Dict, Any
 from experimaestro import Param, Meta
 import torch
 from . import Retriever, ScoredDocument
-from datamaestro_text.data.ir import AdhocDocument, AdhocDocuments
+from datamaestro_text.data.ir import Document, Documents
 from xpmir.neural.dual import DualRepresentationScorer
 from xpmir.learning.batchers import Batcher
 from xpmir.letor import Device
@@ -16,22 +16,16 @@ class FullRetriever(Retriever):
     TwoStageRetriever
     """
 
-    documents: Param[AdhocDocuments]
+    documents: Param[Documents]
 
-    def retrieve(self, query: str, content=False) -> List[ScoredDocument]:
-        if content:
-            return [
-                # FIXME: text should not rely on doc.text
-                ScoredDocument(doc.docid, 0.0, doc.text)
-                for doc in self.documents.iter()
-            ]
-        return [ScoredDocument(docid, 0.0, None) for docid in self.documents.iter_ids()]
+    def retrieve(self, query: str) -> List[ScoredDocument]:
+        return [ScoredDocument(doc, 0.0) for doc in self.documents]
 
 
 class FullRetrieverRescorer(Retriever):
     """Scores all the documents from a collection (for a dual representation scorer)"""
 
-    documents: Param[AdhocDocuments]
+    documents: Param[Documents]
     """The set of documents to consider"""
 
     scorer: Param[DualRepresentationScorer]
@@ -75,7 +69,7 @@ class FullRetrieverRescorer(Retriever):
 
     def score(
         self,
-        documents: List[AdhocDocument],
+        documents: List[Document],
         queries: List,
         scored_documents: List[List[ScoredDocument]],
     ):
@@ -89,7 +83,7 @@ class FullRetrieverRescorer(Retriever):
         --> list of m*n
 
         Args:
-            documents (List[AdhocDocument]): _description_ queries (List): Lis
+            documents (List[Document]): _description_ queries (List): Lis
             of queries scored_documents (List[List[ScoredDocument]]): list of
             scores for each document and for each query (in this order)
         """
@@ -108,6 +102,7 @@ class FullRetrieverRescorer(Retriever):
             # Adds up to the lists
             scores = scores.flatten().detach()
             for docix, score in enumerate(scores):
+                # FIXME:
                 new_scores[docix].append(ScoredDocument(docids[docix], float(score)))
 
         # Add each result to the full document list

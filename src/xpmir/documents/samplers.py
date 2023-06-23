@@ -2,7 +2,7 @@ from typing import Optional, Tuple, Iterator
 from experimaestro import Config, Param
 import torch
 import numpy as np
-from datamaestro_text.data.ir import AdhocDocumentStore
+from datamaestro_text.data.ir import DocumentStore
 from xpmir.letor import Random
 from xpmir.letor.records import Document, ProductRecords, Query
 from xpmir.letor.samplers import BatchwiseSampler
@@ -12,7 +12,7 @@ from xpmir.utils.iter import RandomSerializableIterator, SerializableIterator
 class DocumentSampler(Config):
     """How to sample from a document store"""
 
-    documents: Param[AdhocDocumentStore]
+    documents: Param[DocumentStore]
 
     def __call__(self) -> Tuple[int, Iterator[str]]:
         raise NotImplementedError()
@@ -128,9 +128,9 @@ class BatchwiseRandomSpanSampler(DocumentSampler, BatchwiseSampler):
                     if end2 <= start2 or end1 <= start1:
                         continue
 
-                    batch.addQueries(Query(None, text[start1:end1]))
-                    batch.addDocuments(Document(None, text[start2:end2], 0))
-                batch.setRelevances(relevances)
+                    batch.add_topics(Query(None, text[start1:end1]))
+                    batch.add_documents(Document(None, text[start2:end2], 0))
+                batch.set_relevances(relevances)
                 yield batch
 
         return RandomSerializableIterator(self.random, iterator)

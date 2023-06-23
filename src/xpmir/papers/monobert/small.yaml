@@ -28,6 +28,10 @@ monobert:
         warmup_min_factor: 0.1
         eps: 1.0e-6
 
+    # Only use 1% of the 100_000 triplets
+    sample_rate: .01
+    sample_max: 100_000
+
     validation_interval: 1
     validation_top_k: 20
     requirements: duration=2 days & cuda(mem=8G)

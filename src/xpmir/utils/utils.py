@@ -70,11 +70,11 @@ class Handler:
     handler = Handler()
 
     @handler()
-    def trectopics(topics: TrecAdhocTopics):
+    def trectopics(topics: TrecTopics):
         return ("-topicreader", "Trec", "-topics", topics.path)
 
     @handler()
-    def tsvtopics(topics: ir_csv.AdhocTopics):
+    def tsvtopics(topics: ir_csv.Topics):
         return ("-topicreader", "TsvInt", "-topics", topics.path)
 
     command.extend(handler[topics])
