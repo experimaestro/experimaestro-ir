@@ -49,8 +49,7 @@ class CachedRandomScorer(DualRepresentationScorer):
 class _FullRetrieverRescorer(FullRetrieverRescorer):
     def retrieve(self, query: str):
         scored_documents = [
-            ScoredDocument(d, self.scorer.cache[(query, d.get_text())])
-            for d in self.documents
+            ScoredDocument(d, self.scorer.cache[(query, d)]) for d in self.documents
         ]
         scored_documents.sort(reverse=True)
         return scored_documents
@@ -71,6 +70,7 @@ def test_fullretrieverescorer():
     scoredDocuments = {}
     queries = {i: f"Query {i}" for i in range(NUM_QUERIES)}
 
+    # Retrieve query per query
     for qid, query in queries.items():
         scoredDocuments[qid] = _retriever.retrieve(query)
 
@@ -82,8 +82,8 @@ def test_fullretrieverescorer():
         results.sort(reverse=True)
         expected.sort(reverse=True)
 
-        assert [d.docid for d in expected] == [
-            d.docid for d in results
+        assert [d.document.get_id() for d in expected] == [
+            d.document.get_id() for d in results
         ], "Document IDs do not match"
         assert [d.score for d in expected] == [
             d.score for d in results

@@ -10,7 +10,7 @@ description: |
 
 indexation:
     requirements: duration=2 days & cpu(mem=2G)
-    training_requirements: duration=2 days & cuda(mem=24G)
+    training_requirements: duration=2 days & cuda(mem=8G)
     # See FAISS guidelines
     # https://github.com/facebookresearch/faiss/wiki/Guidelines-to-choose-an-index
     # TREC COVID has 192509 documents
@@ -22,7 +22,6 @@ indexation:
 splade:
     optimization:
         steps_per_epoch: 128
-        splade_batch_size: 48
         max_epochs: 4
         num_warmup_steps: 20
         lr: 2.0e-5

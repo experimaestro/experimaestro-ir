@@ -34,8 +34,12 @@ class DualRepresentationScorer(TorchLearnableScorer):
 
     def forward(self, inputs: BaseRecords, info: Optional[TrainerContext] = None):
         # Forward to model
-        enc_queries = self.encode_queries([q.text for q in inputs.unique_queries])
-        enc_documents = self.encode_documents([d.text for d in inputs.unique_documents])
+        enc_queries = self.encode_queries(
+            [q.topic.get_text() for q in inputs.unique_queries]
+        )
+        enc_documents = self.encode_documents(
+            [d.document.get_text() for d in inputs.unique_documents]
+        )
 
         # Get the pairs
         pairs = inputs.pairs()

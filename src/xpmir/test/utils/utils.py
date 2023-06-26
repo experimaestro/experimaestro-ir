@@ -1,10 +1,18 @@
 from collections import OrderedDict, defaultdict
 from typing import ClassVar, Dict, Iterator, List, Tuple
 import torch
+from attrs import define
 import numpy as np
 from datamaestro_text.data.ir import Document, DocumentStore
+from datamaestro_text.data.ir.base import GenericDocument
+
 from experimaestro import Param
 from xpmir.text.encoders import TextEncoder
+
+
+@define(frozen=True)
+class GenericDocumentWithID(GenericDocument):
+    internal_docid: int
 
 
 class SampleDocumentStore(DocumentStore):
@@ -12,8 +20,12 @@ class SampleDocumentStore(DocumentStore):
     num_docs: Param[int] = 200
 
     def __post_init__(self):
+        # Generate all the documents
         self.documents = OrderedDict(
-            (str(ix), Document(str(ix), f"Document {ix}", internal_docid=ix))
+            (
+                str(ix),
+                GenericDocumentWithID(str(ix), f"Document {ix}", internal_docid=ix),
+            )
             for ix in range(self.num_docs)
         )
 
@@ -21,12 +33,12 @@ class SampleDocumentStore(DocumentStore):
     def documentcount(self):
         return len(self.documents)
 
-    def document(self, internal_docid: int) -> Document:
+    def document_int(self, internal_docid: int) -> Document:
         return self.documents[str(internal_docid)]
 
-    def document_text(self, docid: str) -> str:
+    def document_ext(self, docid: str) -> Document:
         """Returns the text of the document given its id"""
-        return self.documents[docid].text
+        return self.documents[docid]
 
     def iter_documents(self) -> Iterator[Document]:
         return iter(self.documents.values())

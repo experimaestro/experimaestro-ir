@@ -25,7 +25,7 @@ from datamaestro_text.data.ir import (
     Documents,
     DocumentStore,
 )
-from datamaestro_text.data.ir.data import TextDocument, TextTopic
+from datamaestro_text.data.ir.base import TextDocument, TextTopic
 from xpmir.utils.utils import Initializable
 from xpmir.letor import Device, Random
 from xpmir.learning.batchers import Batcher
