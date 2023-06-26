@@ -17,6 +17,11 @@ class Learner:
 
     optimization: TransformerOptimization = Factory(TransformerOptimization)
     requirements: str = "duration=4 days & cuda(mem=24G) * 2"
+    sample_rate: float = 1.0
+    """Sample rate for triplets"""
+
+    sample_max: int = 0
+    """Maximum number of samples considered (before shuffling). 0 for no limit."""
 
 
 @configuration()

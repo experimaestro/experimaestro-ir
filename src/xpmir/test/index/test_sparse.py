@@ -4,7 +4,7 @@ import pytest
 import torch
 import numpy as np
 from xpmir.index.sparse import SparseRetriever, SparseRetrieverIndexBuilder
-from xpmir.test.utils.utils import SampleAdhocDocumentStore, SparseRandomTextEncoder
+from xpmir.test.utils.utils import SampleDocumentStore, SparseRandomTextEncoder
 
 
 @pytest.fixture
@@ -19,7 +19,7 @@ def context(tmp_path: Path):
 class SparseIndex:
     def __init__(self, context, ordered_index: bool = False):
         # Build the index
-        documents = SampleAdhocDocumentStore(num_docs=500)
+        documents = SampleDocumentStore(num_docs=500)
         self.encoder = SparseRandomTextEncoder(dim=1000, sparsity=0.8)
         builder = SparseRetrieverIndexBuilder(
             encoder=self.encoder,

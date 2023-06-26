@@ -1,6 +1,8 @@
 import numpy as np
-from experimaestro import Config, Param
+from typing import Optional
 from functools import cached_property
+from experimaestro import Config, Param
+from xpmir.utils.utils import EasyLogger
 
 
 class Random(Config):
@@ -15,3 +17,10 @@ class Random(Config):
 
     def __getstate__(self):
         return {"seed": self.seed}
+
+
+class Sampler(Config, EasyLogger):
+    """Abstract data sampler"""
+
+    def initialize(self, random: Optional[np.random.RandomState]):
+        self.random = random or np.random.RandomState(random.randint(0, 2**31))

@@ -10,7 +10,7 @@ import torch
 import numpy as np
 from experimaestro import Annotated, Meta, Task, pathgenerator, Param, tqdm
 import logging
-from datamaestro_text.data.ir import AdhocDocumentStore
+from datamaestro_text.data.ir import DocumentStore
 from xpmir.rankers import Retriever, ScoredDocument
 from xpmir.learning.batchers import Batcher
 from xpmir.text.encoders import TextEncoder
@@ -36,7 +36,7 @@ class BaseFaissIndex(Config):
     normalize: Param[bool]
     """Whether vectors should be normalized (L2)"""
 
-    documents: Param[AdhocDocumentStore]
+    documents: Param[DocumentStore]
     """The set of documents"""
 
     def get_index(self):
@@ -65,7 +65,7 @@ class BaseIndexBackedFaiss(Config):
     normalize: Param[bool]
     """Whether vectors should be normalized (L2)"""
 
-    documents: Param[AdhocDocumentStore]
+    documents: Param[DocumentStore]
     """The set of documents"""
 
     encoder: Param[TextEncoder]
@@ -208,9 +208,6 @@ class BaseIndexBackedFaiss(Config):
             x /= x.norm(2, keepdim=True, dim=1)
         index.add(np.ascontiguousarray(x.cpu().numpy()))
 
-    def docid_internal2external(self, docid: int):
-        return self.documents.docid_internal2external(docid)
-
 
 class DynamicFaissIndex(BaseIndexBackedFaiss, BaseFaissIndex):
     """A faiss index which could be updated through the listener"""
@@ -284,7 +281,7 @@ class FaissRetriever(Retriever):
             )
             return [
                 ScoredDocument(
-                    self.index.documents.docid_internal2external(int(ix)), float(value)
+                    self.index.documents.document_proxy(int(ix)), float(value)
                 )
                 for ix, value in zip(indices[0], values[0])
                 if ix >= 0

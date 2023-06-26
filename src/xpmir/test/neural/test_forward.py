@@ -183,8 +183,8 @@ def pairwise():
 def product():
     # Implicit order (Q0, D0) (Q0, D1) (Q1, D0)
     inputs = ProductRecords()
-    inputs.addQueries(QUERIES[0], QUERIES[1])
-    inputs.addDocuments(DOCUMENTS[0], DOCUMENTS[1])
+    inputs.add_topics(QUERIES[0], QUERIES[1])
+    inputs.add_documents(DOCUMENTS[0], DOCUMENTS[1])
 
     return inputs
 

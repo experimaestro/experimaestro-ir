@@ -76,8 +76,12 @@ def run(
 
     # Setup indices and validation/test base retrievers
     retrievers, model_based_retrievers = get_retrievers(cfg)
-
-    test_retrievers = partial(retrievers, k=cfg.retrieval.k)  #: Test retrievers
+    val_retrievers = partial(
+        retrievers, store=documents, k=cfg.monobert.validation_top_k
+    )
+    test_retrievers = partial(
+        retrievers, store=documents, k=cfg.retrieval.k
+    )  #: Test retrievers
 
     # Search and evaluate with a random re-ranker
     random_scorer = RandomScorer(random=random).tag("scorer", "random")
@@ -94,12 +98,13 @@ def run(
     tests.evaluate_retriever(test_retrievers, cfg.indexation.launcher)
 
     # Define the different launchers
-    val_retrievers = partial(retrievers, k=cfg.monobert.validation_top_k)
 
     # define the trainer for monobert
     monobert_trainer = pairwise.PairwiseTrainer(
         lossfn=pairwise.PointwiseCrossEntropyLoss(),
-        sampler=v1_docpairs_sampler(),
+        sampler=v1_docpairs_sampler(
+            sample_rate=cfg.monobert.sample_rate, sample_max=cfg.monobert.sample_max
+        ),
         batcher=PowerAdaptativeBatcher(),
         batch_size=cfg.monobert.optimization.batch_size,
     )

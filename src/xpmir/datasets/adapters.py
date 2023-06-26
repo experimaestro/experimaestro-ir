@@ -14,27 +14,27 @@ from experimaestro.compat import cached_property
 from datamaestro_text.data.ir import (
     Adhoc,
     AdhocAssessments,
-    AdhocDocument,
-    AdhocDocumentStore,
-    AdhocDocuments,
-    AdhocTopics,
+    Document,
+    DocumentStore,
+    Documents,
+    Topics,
 )
 
 from datamaestro_text.data.ir.trec import TrecAdhocAssessments
-from datamaestro_text.data.ir.csv import AdhocTopics as CSVAdhocTopics
+from datamaestro_text.data.ir.csv import Topics as CSVTopics
 from xpmir.rankers import Retriever
 from xpmir.utils.utils import easylog
 
 logger = easylog()
 
 
-class AdhocTopicFold(AdhocTopics):
+class TopicFold(Topics):
     """ID-based topic selection"""
 
     ids: Param[List[str]]
     """A set of the ids for the topics where we select from"""
 
-    topics: Param[AdhocTopics]
+    topics: Param[Topics]
     """The collection of the topics"""
 
     def iter(self):
@@ -59,7 +59,7 @@ class AdhocAssessmentFold(AdhocAssessments):
                 for qrels in self.iter():
                     if qrels.qid in ids:
                         for qrel in qrels.assessments:
-                            fp.write(f"""{qrels.qid} 0 {qrel.docno} {qrel.rel}\n""")
+                            fp.write(f"""{qrels.qid} 0 {qrel.docid} {qrel.rel}\n""")
 
         return path
 
@@ -73,7 +73,7 @@ class AdhocAssessmentFold(AdhocAssessments):
 def fold(ids: Iterable[str], dataset: Adhoc):
     """Returns a fold of a dataset, given topic ids"""
     ids = sorted(list(ids))
-    topics = AdhocTopicFold(topics=dataset.topics, ids=ids)
+    topics = TopicFold(topics=dataset.topics, ids=ids)
     qrels = AdhocAssessmentFold(assessments=dataset.assessments, ids=ids)
     return Adhoc(topics=topics, assessments=qrels, documents=dataset.documents)
 
@@ -99,7 +99,7 @@ class ConcatFold(Task):
         ), "At the moment only one set of documents supported."
         return Adhoc(
             id="",  # No need to have a more specific id since it is generated
-            topics=dep(CSVAdhocTopics(id="", path=self.topics)),
+            topics=dep(CSVTopics(id="", path=self.topics)),
             assessments=dep(TrecAdhocAssessments(id="", path=self.assessments)),
             documents=self.datasets[0].documents,
         )
@@ -124,7 +124,7 @@ class ConcatFold(Task):
                 for qrels in dataset.assessments.iter():
                     if qrels.qid in ids:
                         for qrel in qrels.assessments:
-                            fp.write(f"""{qrels.qid} 0 {qrel.docno} {qrel.rel}\n""")
+                            fp.write(f"""{qrels.qid} 0 {qrel.docid} {qrel.rel}\n""")
 
 
 class RandomFold(Task):
@@ -142,7 +142,7 @@ class RandomFold(Task):
     fold: Param[int]
     """Which fold should be taken"""
 
-    exclude: Param[Optional[AdhocTopics]]
+    exclude: Param[Optional[Topics]]
     """Exclude some topics from the random fold"""
 
     assessments: Annotated[Path, pathgenerator("assessments.tsv")]
@@ -159,7 +159,7 @@ class RandomFold(Task):
         seed: int,
         sizes: List[float],
         dataset: Param[Adhoc],
-        exclude: Param[Optional[AdhocTopics]] = None,
+        exclude: Param[Optional[Topics]] = None,
         submit=True,
     ):
         """Creates folds
@@ -184,7 +184,7 @@ class RandomFold(Task):
         return dep(
             Adhoc(
                 id="",  # No need to have a more specific id since it is generated
-                topics=dep(CSVAdhocTopics(id="", path=self.topics)),
+                topics=dep(CSVTopics(id="", path=self.topics)),
                 assessments=dep(TrecAdhocAssessments(id="", path=self.assessments)),
                 documents=self.dataset.documents,
             )
@@ -195,10 +195,14 @@ class RandomFold(Task):
 
         # Get topics
         badids = (
-            set(topic.qid for topic in self.exclude.iter()) if self.exclude else set()
+            set(topic.get_id() for topic in self.exclude.iter())
+            if self.exclude
+            else set()
         )
         topics = [
-            topic for topic in self.dataset.topics.iter() if topic.qid not in badids
+            topic
+            for topic in self.dataset.topics.iter()
+            if topic.get_id() not in badids
         ]
         random = np.random.RandomState(self.seed)
         random.shuffle(topics)
@@ -220,20 +224,20 @@ class RandomFold(Task):
         self.topics.parent.mkdir(parents=True, exist_ok=True)
         with self.topics.open("wt") as fp:
             for topic in topics:
-                ids.add(topic.qid)
-                fp.write(f"""{topic.qid}\t{topic.text}\n""")
+                ids.add(topic.get_id())
+                fp.write(f"""{topic.get_id()}\t{topic.get_text()}\n""")
 
         with self.assessments.open("wt") as fp:
             for qrels in self.dataset.assessments.iter():
-                if qrels.qid in ids:
+                if qrels.topic_id in ids:
                     for qrel in qrels.assessments:
-                        fp.write(f"""{qrels.qid} 0 {qrel.docno} {qrel.rel}\n""")
+                        fp.write(f"""{qrels.topic_id} 0 {qrel.doc_id} {qrel.rel}\n""")
 
 
-class AdhocDocumentSubset(AdhocDocuments):
+class DocumentSubset(Documents):
     """ID-based topic selection"""
 
-    base: Param[AdhocDocumentStore]
+    base: Param[DocumentStore]
     """The full document store"""
 
     docids_path: Meta[Path]
@@ -249,10 +253,8 @@ class AdhocDocumentSubset(AdhocDocuments):
     def __getitem__(self, slice: Union[int, slice]):
         docids = self.docids[slice]
         if isinstance(docids, List):
-            return AdhocDocumentSubsetSlice(
-                self, docids, range(len(self.docids))[slice]
-            )
-        return AdhocDocument(docids, self.base.document_text(docids), slice)
+            return DocumentSubsetSlice(self, docids, range(len(self.docids))[slice])
+        return Document(docids, self.base.document_text(docids), slice)
 
     @cached_property
     def docids(self) -> List[str]:
@@ -263,25 +265,15 @@ class AdhocDocumentSubset(AdhocDocuments):
     def iter_ids(self):
         yield from self.docids
 
-    def iter(self) -> Iterator[AdhocDocument]:
+    def iter(self) -> Iterator[Document]:
         for docid in self.iter_ids():
             content = self.base.document_text(docid)
-            yield AdhocDocument(docid, content)
+            yield Document(docid, content)
 
 
-class AdhocDocumentSubsetStore(AdhocDocumentSubset, AdhocDocumentStore):
-    def document_text(self, docid: str) -> str:
-        """Returns the text of the document given its id"""
-        return self.base.document_text(docid)
-
-    def docid_internal2external(self, docid: int):
-        """Converts an internal collection ID (integer) to an external ID"""
-        return self.docids[docid]
-
-
-class AdhocDocumentSubsetSlice:
+class DocumentSubsetSlice:
     def __init__(
-        self, subset: AdhocDocumentSubset, docids: List[str], internal_ids: List[int]
+        self, subset: DocumentSubset, docids: List[str], internal_ids: List[int]
     ):
         self.subset = subset
         self.docids = docids
@@ -289,7 +281,7 @@ class AdhocDocumentSubsetSlice:
 
     def __iter__(self):
         for internal_docid, docid in zip(self.internal_ids, self.docids):
-            yield AdhocDocument(
+            yield Document(
                 docid,
                 self.subset.base.document_text(docid),
                 internal_docid=internal_docid,
@@ -301,7 +293,7 @@ class AdhocDocumentSubsetSlice:
     def __getitem__(self, ix):
         docid = self.docids[ix]
         internal_docid = self.internal_ids[ix]
-        return AdhocDocument(
+        return Document(
             docid, self.subset.base.document_text(docid), internal_docid=internal_docid
         )
 
@@ -339,7 +331,7 @@ class RetrieverBasedCollection(Task):
             topics=self.dataset.topics,
             assessments=self.dataset.assessments,
             documents=dep(
-                AdhocDocumentSubsetStore(
+                DocumentSubset(
                     id="", base=self.dataset.documents, docids_path=self.docids_path
                 )
             ),
@@ -368,14 +360,14 @@ class RetrieverBasedCollection(Task):
             # Add (not) relevant documents
             if self.keepRelevant:
                 docids.update(
-                    a.docno
+                    a.docid
                     for a in qrels.assessments
                     if a.rel > self.relevance_threshold
                 )
 
             if self.keepNotRelevant:
                 docids.update(
-                    a.docno
+                    a.docid
                     for a in qrels.assessments
                     if a.rel <= self.relevance_threshold
                 )
@@ -401,7 +393,7 @@ class TextStore(Config):
 class MemoryTopicStore(TextStore):
     """View a set of topics as a (in memory) text store"""
 
-    topics: Param[AdhocTopics]
+    topics: Param[Topics]
     """The collection of the topics to build the store"""
 
     @cached_property

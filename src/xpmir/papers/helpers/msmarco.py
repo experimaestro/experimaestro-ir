@@ -6,8 +6,12 @@ from functools import cache
 import logging
 
 from datamaestro import prepare_dataset
-from datamaestro_text.transforms.ir import ShuffledTrainingTripletsLines
-from datamaestro_text.data.ir import AdhocDocuments, Adhoc
+from datamaestro_text.transforms.ir import (
+    ShuffledTrainingTripletsLines,
+    StoreTrainingTripletTopicAdapter,
+    StoreTrainingTripletDocumentAdapter,
+)
+from datamaestro_text.data.ir import Documents, Adhoc
 from xpmir.datasets.adapters import RandomFold
 from xpmir.evaluation import Evaluations, EvaluationsCollection
 from xpmir.letor.samplers import TripletBasedSampler
@@ -41,7 +45,7 @@ class DualMSMarcoV1Configuration(NeuralIRExperiment):
 
 # MsMarco v1
 
-v1_passages: Callable[[], AdhocDocuments] = partial_cache(
+v1_passages: Callable[[], Documents] = partial_cache(
     prepare_dataset, "irds.msmarco-passage.documents"
 )
 v1_devsmall: Callable[[], Adhoc] = partial_cache(
@@ -58,17 +62,29 @@ v1_measures = [AP, P @ 20, nDCG, nDCG @ 10, nDCG @ 20, RR, RR @ 10]
 
 
 @cache
-def v1_docpairs_sampler() -> TripletBasedSampler:
+def v1_docpairs_sampler(
+    *, sample_rate: float = 1.0, sample_max: int = 0
+) -> TripletBasedSampler:
     """Train sampler
 
     By default, this uses shuffled pre-computed triplets from MS Marco
+
+    :param sample_rate: Sample rate for the triplets (default 1)
     """
+    topics = prepare_dataset("irds.msmarco-passage.train.queries")
     train_triples = prepare_dataset("irds.msmarco-passage.train.docpairs")
     triplets = ShuffledTrainingTripletsLines(
         seed=123,
-        data=train_triples,
+        data=StoreTrainingTripletTopicAdapter(data=train_triples, store=topics),
+        sample_rate=sample_rate,
+        sample_max=sample_max,
+        doc_ids=True,
+        topic_ids=False,
     ).submit()
-    return TripletBasedSampler(source=triplets, index=v1_passages())
+
+    # Adds the text to the documents
+    triplets = StoreTrainingTripletDocumentAdapter(data=triplets, store=v1_passages())
+    return TripletBasedSampler(source=triplets)
 
 
 @cache

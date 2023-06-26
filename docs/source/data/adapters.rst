@@ -11,7 +11,7 @@ subsampling document and/or queries.
 
 .. autoxpmconfig:: RetrieverBasedCollection
 
-.. autoxpmconfig:: AdhocTopicFold
+.. autoxpmconfig:: TopicFold
 .. autoxpmconfig:: AdhocAssessmentFold
-.. autoxpmconfig:: AdhocDocumentSubset
+.. autoxpmconfig:: DocumentSubset
 .. autoxpmconfig:: MemoryTopicStore

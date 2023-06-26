@@ -5,7 +5,7 @@ import pytest
 from experimaestro.xpmutils import DirectoryContext
 from xpmir.documents.samplers import HeadDocumentSampler
 from xpmir.index.faiss import FaissRetriever, IndexBackedFaiss
-from xpmir.test.utils.utils import SampleAdhocDocumentStore, SparseRandomTextEncoder
+from xpmir.test.utils.utils import SampleDocumentStore, SparseRandomTextEncoder
 
 indexspecs = ["Flat", "HNSW"]
 
@@ -20,7 +20,7 @@ def test_faiss_indexation(tmp_path: Path, indexspec):
     context = DirectoryContext(tmp_path)
 
     # Build the FAISS index
-    documents = SampleAdhocDocumentStore(num_docs=100)
+    documents = SampleDocumentStore(num_docs=100)
     sampler = HeadDocumentSampler(documents=documents, max_ratio=0.5)
     encoder = SparseRandomTextEncoder(dim=1000, sparsity=0.0)
     builder = IndexBackedFaiss(

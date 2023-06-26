@@ -1,11 +1,12 @@
 from typing import Iterable, Iterator, NamedTuple, Optional, Tuple
 from datamaestro.data import File
 from experimaestro import Config, Meta, Param
+from ir_datasets.formats import GenericDoc
 from xpmir.letor.records import Query
-from datamaestro_text.data.ir import AdhocDocumentStore
-from xpmir.letor.samplers import Sampler
+from datamaestro_text.data.ir import DocumentStore
 from xpmir.rankers import ScoredDocument
 from xpmir.datasets.adapters import TextStore
+from xpmir.learning import Sampler
 import numpy as np
 
 from xpmir.utils.iter import SerializableIterator, SkippingIterator
@@ -32,7 +33,7 @@ class PairwiseHydrator(PairwiseDistillationSamples):
     samples: Param[PairwiseDistillationSamples]
     """The distillation samples without texts for query and documents"""
 
-    documentstore: Param[Optional[AdhocDocumentStore]]
+    documentstore: Param[Optional[DocumentStore]]
     """The store for document texts if needed"""
 
     querystore: Param[Optional[TextStore]]
@@ -70,13 +71,13 @@ class PairwiseDistillationSamplesTSV(PairwiseDistillationSamples, File):
 
                 if self.with_docid:
                     documents = (
-                        ScoredDocument(row[3], float(row[0]), None),
-                        ScoredDocument(row[4], float(row[1]), None),
+                        ScoredDocument(GenericDoc(row[3], None), float(row[0])),
+                        ScoredDocument(GenericDoc(row[4], None), float(row[1])),
                     )
                 else:
                     documents = (
-                        ScoredDocument(None, float(row[0]), row[3]),
-                        ScoredDocument(None, float(row[1]), row[4]),
+                        ScoredDocument(GenericDoc(None, row[3]), float(row[0])),
+                        ScoredDocument(GenericDoc(None, row[4]), float(row[1])),
                     )
 
                 yield PairwiseDistillationSample(query, documents)
