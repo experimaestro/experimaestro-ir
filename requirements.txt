@@ -1,8 +1,8 @@
 # Experimaestro
 
-experimaestro>=0.29.1
-datamaestro>=0.8.13
-datamaestro_text>=2023.6.16.1
+experimaestro>=0.29.2
+datamaestro>=0.8.16
+datamaestro_text>=2023.6.23
 ir_datasets
 docstring_parser
 xpmir_rust == 0.20.*
