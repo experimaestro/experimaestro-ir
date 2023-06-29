@@ -305,9 +305,7 @@ class FaissRetriever(Retriever):
 
         return {
             qid: [
-                ScoredDocument(
-                    self.index.documents.docid_internal2external(int(ix)), float(value)
-                )
+                ScoredDocument(self.index.documents.document_int(int(ix)), float(value))
                 for ix, value in zip(indices[index], values[index])
                 if ix >= 0
             ]
