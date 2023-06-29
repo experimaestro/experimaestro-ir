@@ -66,8 +66,8 @@ class InteractionMatrix(nn.Module):
     ):
         """Returns a (batch x ... x #q x #d) tensor"""
         tokq, q, tokd, d = encoder.enc_query_doc(
-            [q.text for q in inputs.queries],
-            [d.text for d in inputs.documents],
+            [q.topic.get_text() for q in inputs.queries],
+            [d.document.get_text() for d in inputs.documents],
             d_maxlen=d_maxlen,
             q_maxlen=q_maxlen,
         )

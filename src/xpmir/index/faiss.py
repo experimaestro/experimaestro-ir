@@ -280,9 +280,7 @@ class FaissRetriever(Retriever):
                 encoded_query.cpu().numpy(), self.topk
             )
             return [
-                ScoredDocument(
-                    self.index.documents.document_proxy(int(ix)), float(value)
-                )
+                ScoredDocument(self.index.documents.document_int(int(ix)), float(value))
                 for ix, value in zip(indices[0], values[0])
                 if ix >= 0
             ]

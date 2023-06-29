@@ -88,12 +88,12 @@ class FullRetrieverRescorer(Retriever):
             scores for each document and for each query (in this order)
         """
         # Encode documents
-        docids = [d.docid for d in documents]
-        encoded = self.scorer.encode_documents(d.text for d in documents)
+        encoded = self.scorer.encode_documents(d.get_text() for d in documents)
 
         # Process query by query (TODO: improve the process)
-        new_scores = [[] for _ in range(len(docids))]
+        new_scores = [[] for _ in documents]
         for ix in range(len(queries)):
+            # Get a range of query records
             query = queries[ix : (ix + 1)]
 
             # Returns a query x document matrix
@@ -101,9 +101,8 @@ class FullRetrieverRescorer(Retriever):
 
             # Adds up to the lists
             scores = scores.flatten().detach()
-            for docix, score in enumerate(scores):
-                # FIXME:
-                new_scores[docix].append(ScoredDocument(docids[docix], float(score)))
+            for ix, (document, score) in enumerate(zip(documents, scores)):
+                new_scores[ix].append(ScoredDocument(document, float(score)))
 
         # Add each result to the full document list
         scored_documents.extend(new_scores)

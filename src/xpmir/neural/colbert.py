@@ -92,7 +92,9 @@ class Colbert(InteractionScorer):
         return F.normalize(output, p=2, dim=2)
 
     def _forward(self, inputs: BaseRecords, info: TrainerContext = None):
-        queries = self._encode([q.text for q in inputs.queries], False)
-        documents = self._encode([d.text for d in inputs.documents], True)
+        queries = self._encode([qr.topic.get_text() for qr in inputs.queries], False)
+        documents = self._encode(
+            [dr.document.get_text() for dr in inputs.documents], True
+        )
 
         return self.similarity(queries, documents)

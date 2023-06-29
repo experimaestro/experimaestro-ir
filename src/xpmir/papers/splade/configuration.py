@@ -1,10 +1,12 @@
-from attrs import define, Factory, field
+from attrs import Factory, field
+from xpmir.papers import configuration
+from xpmir.papers.helpers import LauncherSpecification
 from xpmir.papers.helpers.msmarco import DualMSMarcoV1Configuration
 from xpmir.papers.helpers.optim import TransformerOptimization
 
 
-@define(kw_only=True)
-class Indexation:
+@configuration()
+class Indexation(LauncherSpecification):
     requirements: str = "duration=2 days & cpu(mem=2G)"
 
     training_requirements: str = "duration=4 days & cuda(mem=24G)"
@@ -16,7 +18,7 @@ class Indexation:
     """number of docs for training the index"""
 
 
-@define(kw_only=True)
+@configuration()
 class Learner:
     model: str = "splade_max"
     """The model to use for training"""
@@ -54,7 +56,7 @@ class Learner:
     #     )
 
 
-@define(kw_only=True)
+@configuration()
 class Retrieval:
     requirements: str = "duration=2 days & cuda(mem=24G)"
 
@@ -70,7 +72,7 @@ class Retrieval:
     FullRetrieverScorer(batch_size)"""
 
 
-@define(kw_only=True)
+@configuration()
 class SPLADE(DualMSMarcoV1Configuration):
 
     indexation: Indexation = Factory(Indexation)

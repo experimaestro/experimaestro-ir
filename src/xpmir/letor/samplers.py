@@ -9,7 +9,7 @@ from datamaestro_text.data.ir import (
     PairwiseSample,
     DocumentStore,
 )
-from datamaestro_text.data.ir.data import IDDocument, IDTopic, TextTopic
+from datamaestro_text.data.ir.base import IDDocument, IDTopic, TextTopic
 from experimaestro import Param, tqdm, Task, Annotated, pathgenerator
 import torch
 from xpmir.rankers import ScoredDocument

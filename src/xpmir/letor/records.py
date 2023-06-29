@@ -1,7 +1,7 @@
 import torch
 import itertools
 from attrs import define
-from datamaestro_text.data.ir.data import (
+from datamaestro_text.data.ir.base import (
     Topic,
     Document as BaseDocument,
     TextTopic,
@@ -24,6 +24,10 @@ class TopicRecord:
 
     topic: Topic
 
+    @staticmethod
+    def from_text(text: str):
+        return TopicRecord(TextTopic(text))
+
 
 @define()
 class DocumentRecord:
@@ -31,6 +35,10 @@ class DocumentRecord:
 
     document: BaseDocument
     """The document"""
+
+    @staticmethod
+    def from_text(text: str):
+        return DocumentRecord(TextDocument(text))
 
 
 @define()
@@ -44,7 +52,7 @@ class ScoredDocumentRecord(DocumentRecord):
 
 # Aliases for deprecated types
 Document = DocumentRecord
-Query = Topic
+Query = TopicRecord
 
 
 class PointwiseRecord:
@@ -108,11 +116,9 @@ class BaseRecords(List[RT]):
         return self.documents
 
     @property
-    def topics(self):
+    def queries(self):
+        """Deprecated: use topics"""
         return self.topics
-
-    queries = topics
-    """Deprecated: use topics"""
 
     def pairs(self) -> Tuple[Iterable[int], Iterable[int]]:
         """Returns two iterators (over queries and documents)
@@ -167,12 +173,12 @@ class PointwiseRecords(BaseRecords[PointwiseRecord]):
 
     @staticmethod
     def from_texts(
-        queries: List[str],
+        topics: List[str],
         documents: List[str],
         relevances: Optional[List[float]] = None,
     ):
         records = PointwiseRecords()
-        records.queries = list(map(lambda t: TopicRecord(TextTopic(t)), queries))
+        records.topics = list(map(lambda t: TopicRecord(TextTopic(t)), topics))
         records.documents = list(
             map(lambda t: DocumentRecord(TextDocument(t)), documents)
         )

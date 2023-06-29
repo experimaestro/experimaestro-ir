@@ -3,6 +3,7 @@
 # Benjamin Piwowarski, Stéphane Clinchant), 2021
 # https://arxiv.org/abs/2109.10086
 
+from functools import partial
 import logging
 
 from experimaestro.launcherfinder import find_launcher
@@ -69,14 +70,15 @@ def run(
     tests = v1_tests()
 
     # -----The baseline------
-    # BM25
     base_model = BM25().tag("model", "bm25")
 
-    bm25_retriever = anserini.AnseriniRetriever(
-        k=cfg.retrieval.topK, index=anserini.index_builder, model=base_model
-    )
+    retrievers = partial(
+        anserini.retriever,
+        anserini.index_builder(launcher=cfg.indexation.launcher),
+        model=base_model,
+    )  #: Anserini based retrievers
 
-    tests.evaluate_retriever(bm25_retriever, cpu_launcher_index)
+    tests.evaluate_retriever(retrievers, cpu_launcher_index)
 
     # tas-balanced
     tasb: Dense = AutoModel.load_from_hf_hub("xpmir/tas-balanced").tag(
@@ -191,7 +193,6 @@ def run(
         early_stop=cfg.splade.early_stop,
         validation_interval=cfg.splade.validation_interval,
         metrics={"RR@10": True, "AP": False, "nDCG@10": False},
-        # store_last_checkpoint=True if cfg.splade.model == "splade_doc" else False,
     )
 
     # the learner: Put the components together
@@ -257,6 +258,6 @@ def run(
     )
 
 
-@paper_command(schema=SPLADE, package=__package__)
+@paper_command(schema=SPLADE, package=__package__, tensorboard_service=True)
 def cli(xp: experiment, cfg: SPLADE, tensorboard_service: TensorboardService):
     return run(xp, cfg, tensorboard_service)

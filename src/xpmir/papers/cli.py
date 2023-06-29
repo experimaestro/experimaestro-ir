@@ -144,7 +144,7 @@ def paper_command(package=None, schema=None, tensorboard_service=False):
     HuggingFace upload: the documentation comes from the docstring
 
     :param tensorboard_service: If true, register a tensorboard service and transmits it
-        as ``tensorboard_service`` to function
+        as ``tensorboard_service`` to function.
     """
 
     omegaconf_schema = None

@@ -12,7 +12,7 @@ from typing import List, Optional
 from experimaestro import tqdm as xpmtqdm, Task, Meta
 
 from datamaestro_text.data.ir import DocumentStore
-from datamaestro_text.data.ir.data import IDDocument
+from datamaestro_text.data.ir.base import IDDocument
 import datamaestro_text.data.ir.csv as ir_csv
 from datamaestro_text.data.ir.trec import (
     Documents,
