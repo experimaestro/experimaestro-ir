@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 
 import pytest
+from experimaestro import ObjectStore
 from experimaestro.xpmutils import DirectoryContext
 from xpmir.documents.samplers import HeadDocumentSampler
 from xpmir.index.faiss import FaissRetriever, IndexBackedFaiss
@@ -18,6 +19,7 @@ def test_faiss_indexation(tmp_path: Path, indexspec):
     Env.taskpath = tmp_path / "task"
     Env.taskpath.mkdir()
     context = DirectoryContext(tmp_path)
+    objects = ObjectStore()
 
     # Build the FAISS index
     documents = SampleDocumentStore(num_docs=100)
@@ -30,13 +32,13 @@ def test_faiss_indexation(tmp_path: Path, indexspec):
         sampler=sampler,
         documents=documents,
     )
-    builder_instance = builder.instance(context=context)
+    builder_instance = builder.instance(context=context, objects=objects)
     builder_instance.execute()
 
     # Retrieve with the index
     topk = 10
     retriever = FaissRetriever(encoder=encoder, topk=topk, index=builder).instance(
-        context=context
+        context=context, objects=objects
     )
     retriever.initialize()
 
@@ -50,6 +52,6 @@ def test_faiss_indexation(tmp_path: Path, indexspec):
 
         expected = list(scores[ix].sort(descending=True).indices[:topk].numpy())
         logging.warning("%s vs %s", scores[ix], scoredDocuments)
-        observed = [int(sd.docid) for sd in scoredDocuments]
+        observed = [int(sd.document.get_id()) for sd in scoredDocuments]
 
         assert expected == observed

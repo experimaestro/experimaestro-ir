@@ -93,6 +93,7 @@ class FullRetrieverRescorer(Retriever):
         # Process query by query (TODO: improve the process)
         new_scores = [[] for _ in documents]
         for ix in range(len(queries)):
+            # Get a range of query records
             query = queries[ix : (ix + 1)]
 
             # Returns a query x document matrix

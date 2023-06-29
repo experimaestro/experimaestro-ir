@@ -44,7 +44,7 @@ class SparseRetrieverIndex(Config):
         for sd in self.index.search_maxscore(query, top_k):
             results.append(
                 ScoredDocument(
-                    self.documents.document_proxy(sd.docid),
+                    self.documents.document_int(sd.docid),
                     sd.score,
                 )
             )

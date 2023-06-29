@@ -4,7 +4,7 @@ from xpmir.letor.samplers import TrainingTriplets, TripletBasedSampler
 # ---- Serialization
 
 
-class TestTrainingTriplets(TrainingTriplets):
+class MyTrainingTriplets(TrainingTriplets):
     def iter(self) -> Iterator[Tuple[str, str, str]]:
         count = 0
 
@@ -16,7 +16,7 @@ def test_serializing_tripletbasedsampler():
     """Serialized samplers should start back from the saved state"""
     # Collect samples and state after 10 samples
     sampler = TripletBasedSampler(
-        source=TestTrainingTriplets(id="test-triplets", ids=False)
+        source=MyTrainingTriplets(id="test-triplets", ids=False)
     ).instance()
     iter = sampler.pairwise_iter()
 
@@ -30,7 +30,7 @@ def test_serializing_tripletbasedsampler():
 
     # Test
     sampler = TripletBasedSampler(
-        source=TestTrainingTriplets(id="test-triplets", ids=False)
+        source=MyTrainingTriplets(id="test-triplets", ids=False)
     ).instance()
     iter = sampler.pairwise_iter()
     iter.load_state_dict(data)
