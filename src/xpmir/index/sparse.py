@@ -2,6 +2,7 @@
 
 import torch
 import numpy as np
+import sys
 from pathlib import Path
 from typing import Dict, List, Tuple
 from experimaestro import (
@@ -152,6 +153,9 @@ class SparseRetrieverIndexBuilder(Task):
     version: Constant[int] = 3
     """Version 3 of the index"""
 
+    max_docs: Param[int] = 0
+    """Maximum number of indexed documents"""
+
     def task_outputs(self, dep):
         """Returns a sparse retriever index that can be used by a
         SparseRetriever to search efficiently for documents"""
@@ -172,8 +176,13 @@ class SparseRetrieverIndexBuilder(Task):
         batcher = self.batcher.initialize(self.batch_size)
 
         doc_iter = tqdm(
-            self.documents.iter_documents(),
-            total=self.documents.documentcount,
+            zip(
+                range(sys.maxint if self.max_docs == 0 else self.max_docs),
+                self.documents.iter_documents(),
+            ),
+            total=self.documents.documentcount
+            if self.max_docs == 0
+            else min(self.max_docs, self.documents.documentcount),
             desc="Building the index",
         )
 
@@ -197,15 +206,11 @@ class SparseRetrieverIndexBuilder(Task):
         # Build the index
         self.indexer.build(self.in_memory)
 
-    def encode_documents(self, batch: List[Document]):
+    def encode_documents(self, batch: List[Tuple[int, Document]]):
         # Assumes for now dense vectors
-        assert all(
-            d.internal_docid is not None for d in batch
-        ), f"No internal document ID provided by document store {type(self.documents)}"
-
-        vectors = self.encoder([d.text for d in batch]).cpu().numpy()  # bs * vocab
-        for vector, d in zip(vectors, batch):
+        vectors = (
+            self.encoder([d.get_text() for _, d in batch]).cpu().numpy()
+        )  # bs * vocab
+        for vector, (docid, _) in zip(vectors, batch):
             (nonzero_ix,) = vector.nonzero()
-            self.indexer.add(
-                d.internal_docid, nonzero_ix.astype(np.uint64), vector[nonzero_ix]
-            )
+            self.indexer.add(docid, nonzero_ix.astype(np.uint64), vector[nonzero_ix])

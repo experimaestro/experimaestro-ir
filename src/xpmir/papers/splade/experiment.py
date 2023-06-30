@@ -6,12 +6,12 @@
 from functools import partial
 import logging
 
+from experimaestro import experiment, setmeta, copyconfig
 from experimaestro.launcherfinder import find_launcher
 
 from xpmir.learning.optim import (
     TensorboardService,
 )
-from experimaestro import experiment, setmeta
 from xpmir.distributed import DistributedHook
 from xpmir.learning.learner import Learner
 from xpmir.letor.learner import ValidationListener
@@ -27,7 +27,6 @@ from xpmir.letor.samplers import PairwiseInBatchNegativesSampler
 from xpmir.papers.cli import paper_command
 from xpmir.letor.trainers.batchwise import BatchwiseTrainer, SoftmaxCrossEntropy
 from xpmir.learning.batchers import PowerAdaptativeBatcher
-from xpmir.neural.dual import Dense
 from xpmir.rankers.standard import BM25
 from xpmir.neural.splade import spladeV2_max, spladeV2_doc
 from xpmir.papers.results import PaperResults
@@ -36,15 +35,12 @@ from xpmir.papers.helpers.msmarco import (
     v1_validation_dataset,
     v1_passages,
     v1_docpairs_sampler,
-    hofstaetter_ensemble_hard_negatives
+    hofstaetter_ensemble_hard_negatives,
 )
 from xpmir.datasets.adapters import RetrieverBasedCollection
 from xpmir.rankers.full import FullRetriever
-from xpmir.documents.samplers import RandomDocumentSampler
 from .configuration import SPLADE
 import xpmir.interfaces.anserini as anserini
-from xpmir.models import AutoModel
-from xpmir.index.faiss import IndexBackedFaiss, FaissRetriever
 
 
 logging.basicConfig(level=logging.INFO)
@@ -69,10 +65,10 @@ def run(
     documents = v1_passages()
     ds_val_all = v1_validation_dataset(cfg.validation)
 
-    tests = v1_tests()
+    tests = v1_tests(cfg.dev_test_size)
 
     # -----The baseline------
-    base_model = BM25().tag("model", "bm25")
+    base_model = BM25()
     index_builder = anserini.index_builder(launcher=cfg.indexation.launcher)
 
     retrievers = partial(
@@ -83,36 +79,6 @@ def run(
 
     tests.evaluate_retriever(retrievers, cpu_launcher_index)
 
-    # tas-balanced
-    tasb: Dense = AutoModel.load_from_hf_hub("xpmir/tas-balanced").tag(
-        "model", "tasb"
-    )  # create a scorer from huggingface
-
-    tasb_index = IndexBackedFaiss(
-        indexspec=cfg.indexation.indexspec,
-        device=device,
-        normalize=False,
-        documents=documents,
-        sampler=RandomDocumentSampler(
-            documents=documents,
-            max_count=cfg.indexation.faiss_max_traindocs,
-        ),  # Just use a fraction of the dataset for training
-        encoder=tasb.encoder,
-        batchsize=2048,
-        batcher=PowerAdaptativeBatcher(),
-        hooks=[
-            setmeta(DistributedHook(models=[tasb.encoder, tasb.query_encoder]), True)
-        ],
-    ).submit(launcher=gpu_launcher_index)
-
-    tasb_retriever = FaissRetriever(
-        index=tasb_index,
-        topk=cfg.retrieval.topK,
-        encoder=tasb.encoder,
-    )
-
-    tests.evaluate_retriever(tasb_retriever, gpu_launcher_index)
-
     # Building the validation set of the splade
     # We cannot use the full document dataset to build the validation set.
 
@@ -120,9 +86,7 @@ def run(
 
     ds_val = RetrieverBasedCollection(
         dataset=ds_val_all,
-        retrievers=[
-            retrievers(ds_val_all.documents, k=cfg.retrieval.retTopK)
-        ],
+        retrievers=[retrievers(ds_val_all.documents, k=cfg.retrieval.retTopK)],
     ).submit(launcher=gpu_launcher_index)
 
     # Base retrievers for validation
@@ -147,30 +111,25 @@ def run(
         )
     else:
         raise NotImplementedError
-    
+
     # Sampler
     if cfg.splade.dataset == "":
-        train_sampler = v1_docpairs_sampler()
         splade_sampler = PairwiseInBatchNegativesSampler(
-            sampler=train_sampler
-        )  
-    elif cfg.splade.dataset == "bert_hard_negative":
-        splade_sampler = hofstaetter_ensemble_hard_negatives()
+            sampler=v1_docpairs_sampler(
+                sample_rate=cfg.splade.sample_rate, sample_max=cfg.splade.sample_max
+            )
+        )
 
-
-
-    # define the trainer based on different dataset
-    if cfg.splade.dataset == "":
         batchwise_trainer_flops = BatchwiseTrainer(
             batch_size=cfg.splade.optimization.batch_size,
             sampler=splade_sampler,
             lossfn=SoftmaxCrossEntropy(),
             hooks=[flops],
         )
-    elif cfg.splade.dataset == "bert_hard_negative":
+    elif cfg.splade.dataset == "hofstaetter_kd_hard_negatives":
         batchwise_trainer_flops = DistillationPairwiseTrainer(
             batch_size=cfg.splade.optimization.batch_size,
-            sampler=splade_sampler,
+            sampler=hofstaetter_ensemble_hard_negatives(),
             lossfn=MSEDifferenceLoss(),
             hooks=[flops],
         )
@@ -216,7 +175,7 @@ def run(
         # How to train the model
         trainer=batchwise_trainer_flops,
         # the model to be trained
-        model=spladev2.tag("model", "splade-v2"),
+        model=spladev2,
         # Optimization settings
         optimizers=cfg.splade.optimization.optimizer,
         steps_per_epoch=cfg.splade.optimization.steps_per_epoch,
@@ -237,16 +196,18 @@ def run(
         outputs.learned_model
         if cfg.splade.model == "splade_doc"
         else outputs.listeners["bestval"]["RR@10"]
-    )
+    ).tag("model", "splade-v2")
 
     # build a retriever for the documents
+    encoder = copyconfig(trained_model.encoder).add_pretasks_from(trained_model)
     sparse_index = SparseRetrieverIndexBuilder(
         batch_size=512,
         batcher=PowerAdaptativeBatcher(),
-        encoder=trained_model.encoder,
+        encoder=encoder,
         device=device,
         documents=documents,
         ordered_index=False,
+        max_docs=cfg.indexation.max_docs,
     ).submit(launcher=gpu_launcher_index)
 
     # Build the sparse retriever based on the index

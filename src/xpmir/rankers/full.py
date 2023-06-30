@@ -1,5 +1,5 @@
 from typing import List, Optional, Tuple, Dict, Any
-from experimaestro import Param, Meta
+from experimaestro import Param, Meta, tqdm
 import torch
 from . import Retriever, ScoredDocument
 from datamaestro_text.data.ir import Document, Documents
@@ -52,11 +52,7 @@ class FullRetrieverRescorer(Retriever):
     ):
         scoredDocuments.extend(self.scorer.rsv(query, batch))
 
-    def encode_queries(
-        self,
-        queries: List[Tuple[str, str]],
-        encoded: List[Any],
-    ):
+    def encode_queries(self, queries: List[Tuple[str, str]], encoded: List[Any], pbar):
         """Encode queries and append the tensor of encoded queries to the encoded
 
         Args:
@@ -64,7 +60,9 @@ class FullRetrieverRescorer(Retriever):
             encoded (List[Tuple[List[str], torch.Tensor]]): Full list of topics ??
             it should be the List[torch.Tensor]
         """
+
         encoded.append(self.scorer.encode_queries([text for _, text in queries]))
+        pbar.update(len(queries))
         return encoded
 
     def score(
@@ -72,6 +70,7 @@ class FullRetrieverRescorer(Retriever):
         documents: List[Document],
         queries: List,
         scored_documents: List[List[ScoredDocument]],
+        pbar,
     ):
         """Score documents for a set of queries
 
@@ -82,10 +81,12 @@ class FullRetrieverRescorer(Retriever):
         [s(q_0, d_0), ..., s(q_n, d0)], ..., [s(q_0, d_m), ..., s(q_n, d_m)] ]
         --> list of m*n
 
-        Args:
-            documents (List[Document]): _description_ queries (List): Lis
-            of queries scored_documents (List[List[ScoredDocument]]): list of
-            scores for each document and for each query (in this order)
+        :param documents: the documents
+
+        :param queries: List of queries
+
+        :param scored_documents: (output) current lists of scored documents (one
+            per query)
         """
         # Encode documents
         encoded = self.scorer.encode_documents(d.get_text() for d in documents)
@@ -103,6 +104,7 @@ class FullRetrieverRescorer(Retriever):
             scores = scores.flatten().detach()
             for ix, (document, score) in enumerate(zip(documents, scores)):
                 new_scores[ix].append(ScoredDocument(document, float(score)))
+                pbar.update(1)
 
         # Add each result to the full document list
         scored_documents.extend(new_scores)
@@ -123,18 +125,22 @@ class FullRetrieverRescorer(Retriever):
             # Encode all queries
             # each time the batcher will just encode a batchsize of queries
             # and then concat them together
-            enc_queries = self.query_batcher.reduce(
-                all_queries, self.encode_queries, []
-            )
+            with tqdm(total=len(all_queries), desc="Encoding queries") as pbar:
+                enc_queries = self.query_batcher.reduce(
+                    all_queries, self.encode_queries, [], pbar
+                )
             enc_queries = self.scorer.merge_queries(
                 enc_queries
             )  # shape (len(queries), dimension)
 
             # Encode documents and score them
             scored_documents: List[List[ScoredDocument]] = []
-            self.document_batcher.process(
-                self.documents, self.score, enc_queries, scored_documents
-            )
+            with tqdm(
+                total=len(all_queries) * len(self.documents), desc="Scoring documents"
+            ) as pbar:
+                self.document_batcher.process(
+                    self.documents, self.score, enc_queries, scored_documents, pbar
+                )
 
         qids = [qid for qid, _ in all_queries]
         return {qid: [sd[ix] for sd in scored_documents] for ix, qid in enumerate(qids)}

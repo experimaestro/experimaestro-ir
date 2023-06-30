@@ -17,6 +17,9 @@ class Indexation(LauncherSpecification):
     faiss_max_traindocs: int = 800_000
     """number of docs for training the index"""
 
+    max_docs: int = 0
+    """Maximum number of indexed documents – should be 0 when not debugging"""
+
 
 @configuration()
 class Learner:
@@ -26,6 +29,12 @@ class Learner:
     dataset: str = ""
     """The composition of training pairs, default value represent the
     doc_pair from ir-dataset"""
+
+    sample_rate: float = 1.0
+    """Sample rate for triplets"""
+
+    sample_max: int = 0
+    """Maximum number of samples considered (before shuffling). 0 for no limit."""
 
     optimization: TransformerOptimization = Factory(TransformerOptimization)
 
@@ -78,3 +87,6 @@ class SPLADE(DualMSMarcoV1Configuration):
     indexation: Indexation = Factory(Indexation)
     splade: Learner = Factory(Learner)
     retrieval: Retrieval = Factory(Retrieval)
+
+    dev_test_size: int = 0
+    """Development test size (0 to leave it like this)"""

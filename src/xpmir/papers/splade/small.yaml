@@ -8,6 +8,11 @@ description: |
 
     This model will just be trained on msmarco for few iterations(debug)
 
+# Small test size when testing
+dev_test_size: 50
+validation:
+    size: 10
+
 indexation:
     requirements: duration=2 days & cpu(mem=2G)
     training_requirements: duration=2 days & cuda(mem=8G)
@@ -19,12 +24,20 @@ indexation:
     # 30*K and 256*K
     faiss_max_traindocs:  65_536
 
+    # Just for testing purposes, should be 0 otherwise
+    max_docs: 1000
+
 splade:
     optimization:
         steps_per_epoch: 128
         max_epochs: 4
         num_warmup_steps: 20
         lr: 2.0e-5
+        batch_size: 4
+
+    # Only use 1% of the 100_000 triplets
+    sample_rate: .01
+    sample_max: 100_000
 
     model: splade_max
     validation_interval: 1
@@ -37,4 +50,4 @@ retrieval:
     requirements: duration=2 days & cuda(mem=8G)
     topK: 20
     retTopK: 10
-    batch_size_full_retriever: 20
+    batch_size_full_retriever: 200

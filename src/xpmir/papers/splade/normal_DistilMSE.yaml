@@ -26,7 +26,7 @@ splade:
         lr: 2.0e-5
 
     model: splade_max
-    dataset: bert_hard_negative
+    dataset: hofstaetter_kd_hard_negatives
     # validation for each (steps_per_epoch * validation interval) steps
     validation_interval: 8
     lambda_q: 0.5

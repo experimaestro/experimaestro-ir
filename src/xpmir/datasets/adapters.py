@@ -253,8 +253,8 @@ class DocumentSubset(Documents):
     def __getitem__(self, slice: Union[int, slice]):
         docids = self.docids[slice]
         if isinstance(docids, List):
-            return DocumentSubsetSlice(self, docids, range(len(self.docids))[slice])
-        return Document(docids, self.base.document_text(docids), slice)
+            return DocumentSubsetSlice(self, self.docids[slice])
+        return self.base.document_ext(docids)
 
     @cached_property
     def docids(self) -> List[str]:
@@ -272,30 +272,21 @@ class DocumentSubset(Documents):
 
 
 class DocumentSubsetSlice:
-    def __init__(
-        self, subset: DocumentSubset, docids: List[str], internal_ids: List[int]
-    ):
+    """A slice of a `DocumentSubset`"""
+
+    def __init__(self, subset: DocumentSubset, doc_ids: List[int]):
         self.subset = subset
-        self.docids = docids
-        self.internal_ids = internal_ids
+        self.doc_ids = doc_ids
 
     def __iter__(self):
-        for internal_docid, docid in zip(self.internal_ids, self.docids):
-            yield Document(
-                docid,
-                self.subset.base.document_text(docid),
-                internal_docid=internal_docid,
-            )
+        for docid in self.docids:
+            yield self.subset.base.document_ext(docid)
 
     def __len__(self):
         return len(self.docids)
 
     def __getitem__(self, ix):
-        docid = self.docids[ix]
-        internal_docid = self.internal_ids[ix]
-        return Document(
-            docid, self.subset.base.document_text(docid), internal_docid=internal_docid
-        )
+        return self.subset.base.document_ext(self.doc_ids[ix])
 
 
 class RetrieverBasedCollection(Task):
@@ -344,30 +335,32 @@ class RetrieverBasedCollection(Task):
         # Selected document IDs
         docids: Set[str] = set()
 
-        topics = {t.qid: t for t in self.dataset.assessments.iter()}
+        topics = {t.topic_id: t for t in self.dataset.assessments.iter()}
 
         # Retrieve all documents
         for topic in tqdm(
             self.dataset.topics.iter(), total=self.dataset.topics.count()
         ):
-            qrels = topics.get(topic.qid)
+            qrels = topics.get(topic.get_id())
             if qrels is None:
                 logger.warning(
-                    "Skipping topic %s [%s], (no assessment)", topic.qid, topic.text
+                    "Skipping topic %s [%s], (no assessment)",
+                    topic.get_id(),
+                    topic.get_text(),
                 )
                 continue
 
             # Add (not) relevant documents
             if self.keepRelevant:
                 docids.update(
-                    a.docid
+                    a.doc_id
                     for a in qrels.assessments
                     if a.rel > self.relevance_threshold
                 )
 
             if self.keepNotRelevant:
                 docids.update(
-                    a.docid
+                    a.doc_id
                     for a in qrels.assessments
                     if a.rel <= self.relevance_threshold
                 )
@@ -376,7 +369,9 @@ class RetrieverBasedCollection(Task):
             # already defined the numbers to retrieve inside the retriever, so
             # don't need to worry about the threshold here
             for retriever in self.retrievers:
-                docids.update(sd.docid for sd in retriever.retrieve(topic.text))
+                docids.update(
+                    sd.document.get_id() for sd in retriever.retrieve(topic.text)
+                )
 
         # Write the document IDs
         with self.docids_path.open("wt") as fp:
@@ -398,7 +393,7 @@ class MemoryTopicStore(TextStore):
 
     @cached_property
     def store(self):
-        return {topic.qid: topic.text for topic in self.topics.iter()}
+        return {topic.get_id(): topic.text for topic in self.topics.iter()}
 
     def __getitem__(self, key: str) -> str:
         return self.store[key]
