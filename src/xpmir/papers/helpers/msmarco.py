@@ -12,9 +12,18 @@ from datamaestro_text.transforms.ir import (
     StoreTrainingTripletDocumentAdapter,
 )
 from datamaestro_text.data.ir import Documents, Adhoc
+
+from xpmir.letor.samplers import Sampler, PairwiseInBatchNegativesSampler
+
 from xpmir.datasets.adapters import RandomFold
 from xpmir.evaluation import Evaluations, EvaluationsCollection
 from xpmir.letor.samplers import TripletBasedSampler
+from xpmir.utils.functools import cache
+from xpmir.datasets.adapters import MemoryTopicStore
+from xpmir.letor.distillation.samplers import (
+    DistillationPairwiseSampler,
+    PairwiseHydrator,
+)
 
 from xpmir.measures import AP, RR, P, nDCG
 from xpmir.utils.functools import partial_cache
@@ -120,3 +129,30 @@ def v1_tests(dev_test_size: int = 0):
             prepare_dataset("irds.msmarco-passage.trec-dl-2020"), v1_measures
         ),
     )
+
+@cache
+def hofstaetter_ensemble_hard_negatives() -> DistillationPairwiseSampler:
+    """Hard negatives from Hofstätter et al. (2020)
+    
+    Hard negatives trained by distillation with cross-encoder Improving
+    Efficient Neural Ranking Models with Cross-Architecture Knowledge
+    Distillation, (Sebastian Hofstätter, Sophia Althammer, Michael Schröder,
+    Mete Sertkan, Allan Hanbury), 2020
+    """
+    train_triples_distil = prepare_dataset(
+        "com.github.sebastian-hofstaetter."
+        "neural-ranking-kd.msmarco.ensemble.teacher"
+    )
+
+    # Access to topic text
+    train_topics = prepare_dataset("irds.msmarco-passage.train.queries")
+
+    # Combine the training triplets with the document and queries texts
+    distillation_samples = PairwiseHydrator(
+        samples=train_triples_distil,
+        documentstore=v1_passages(),
+        querystore=MemoryTopicStore(topics=train_topics),
+    )
+
+    # Generate a sampler from the samples
+    return DistillationPairwiseSampler(samples=distillation_samples)
