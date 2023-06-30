@@ -23,6 +23,7 @@ from xpmir.letor.distillation.pairwise import (
     DistillationPairwiseTrainer,
     MSEDifferenceLoss,
 )
+from xpmir.letor.samplers import PairwiseInBatchNegativesSampler
 from xpmir.papers.cli import paper_command
 from xpmir.letor.trainers.batchwise import BatchwiseTrainer, SoftmaxCrossEntropy
 from xpmir.learning.batchers import PowerAdaptativeBatcher
@@ -34,9 +35,10 @@ from xpmir.papers.helpers.msmarco import (
     v1_tests,
     v1_validation_dataset,
     v1_passages,
+    v1_docpairs_sampler,
+    hofstaetter_ensemble_hard_negatives
 )
 from xpmir.datasets.adapters import RetrieverBasedCollection
-from xpmir.papers.helpers.splade import splade_sampler
 from xpmir.rankers.full import FullRetriever
 from xpmir.documents.samplers import RandomDocumentSampler
 from .configuration import SPLADE
@@ -71,10 +73,11 @@ def run(
 
     # -----The baseline------
     base_model = BM25().tag("model", "bm25")
+    index_builder = anserini.index_builder(launcher=cfg.indexation.launcher)
 
     retrievers = partial(
         anserini.retriever,
-        anserini.index_builder(launcher=cfg.indexation.launcher),
+        index_builder,
         model=base_model,
     )  #: Anserini based retrievers
 
@@ -114,12 +117,11 @@ def run(
     # We cannot use the full document dataset to build the validation set.
 
     # This one could be generic for both sparse and dense methods
+
     ds_val = RetrieverBasedCollection(
         dataset=ds_val_all,
         retrievers=[
-            anserini.AnseriniRetriever(
-                k=cfg.retrieval.retTopK, index=anserini.index_builder, model=base_model
-            ),
+            retrievers(ds_val_all.documents, k=cfg.retrieval.retTopK)
         ],
     ).submit(launcher=gpu_launcher_index)
 
@@ -145,19 +147,30 @@ def run(
         )
     else:
         raise NotImplementedError
+    
+    # Sampler
+    if cfg.splade.dataset == "":
+        train_sampler = v1_docpairs_sampler()
+        splade_sampler = PairwiseInBatchNegativesSampler(
+            sampler=train_sampler
+        )  
+    elif cfg.splade.dataset == "bert_hard_negative":
+        splade_sampler = hofstaetter_ensemble_hard_negatives()
+
+
 
     # define the trainer based on different dataset
     if cfg.splade.dataset == "":
         batchwise_trainer_flops = BatchwiseTrainer(
             batch_size=cfg.splade.optimization.batch_size,
-            sampler=splade_sampler(),
+            sampler=splade_sampler,
             lossfn=SoftmaxCrossEntropy(),
             hooks=[flops],
         )
     elif cfg.splade.dataset == "bert_hard_negative":
         batchwise_trainer_flops = DistillationPairwiseTrainer(
             batch_size=cfg.splade.optimization.batch_size,
-            sampler=splade_sampler(),
+            sampler=splade_sampler,
             lossfn=MSEDifferenceLoss(),
             hooks=[flops],
         )
