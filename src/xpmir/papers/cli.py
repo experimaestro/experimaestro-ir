@@ -6,7 +6,7 @@ import io
 import logging
 import json
 import sys
-from typing import Dict, List
+from typing import Dict, List, Tuple
 from pathlib import Path
 import pkgutil
 from typing import Optional
@@ -15,7 +15,7 @@ from importlib import import_module
 import docstring_parser
 from termcolor import cprint
 import omegaconf
-from experimaestro import experiment, RunMode
+from experimaestro import experiment, RunMode, LauncherRegistry
 from omegaconf import OmegaConf, SCMode
 from xpmir.configuration import omegaconf_argument
 from xpmir.evaluation import EvaluationsCollection
@@ -176,6 +176,13 @@ def paper_command(package=None, schema=None, tensorboard_service=False):
                 help="Sets the run mode",
             ),
             click.option(
+                "--xpm-config-dir",
+                type=Path,
+                default=None,
+                help="Path for the experimaestro config directory "
+                "(if not specified, use $HOME/.config/experimaestro)",
+            ),
+            click.option(
                 "--port",
                 type=int,
                 default=None,
@@ -202,12 +209,13 @@ def paper_command(package=None, schema=None, tensorboard_service=False):
             show,
             debug,
             configuration,
-            workdir,
-            host,
-            port,
+            workdir: Path,
+            host: Optional[str],
+            port: Optional[int],
+            xpm_config_dir: Optional[Path],
+            env: List[Tuple[str, str]],
             args,
-            env,
-            run_mode,
+            run_mode: RunMode,
             upload_to_hub: Optional[str],
             **kwargs,
         ):
@@ -216,6 +224,10 @@ def paper_command(package=None, schema=None, tensorboard_service=False):
 
             logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
             conf_args = OmegaConf.from_dotlist(args)
+
+            if xpm_config_dir is not None:
+                assert xpm_config_dir.is_dir()
+                LauncherRegistry.set_config_dir(xpm_config_dir)
 
             configuration: PaperExperiment = OmegaConf.merge(configuration, conf_args)
             if omegaconf_schema is not None:

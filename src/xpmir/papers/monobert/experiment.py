@@ -66,11 +66,12 @@ def run(
 
     launcher_learner = find_launcher(cfg.monobert.requirements)
     launcher_evaluate = find_launcher(cfg.retrieval.requirements)
+    launcher_preprocessing = find_launcher(cfg.preprocessing.requirements)
     device = cfg.device
     random = cfg.random
 
     documents = v1_passages()
-    ds_val = v1_validation_dataset(cfg.validation)
+    ds_val = v1_validation_dataset(cfg.validation, launcher=launcher_preprocessing)
 
     tests = v1_tests(cfg.dev_test_size)
 
@@ -91,7 +92,8 @@ def run(
             retrievers=test_retrievers,
             scorer=random_scorer,
             device=None,
-        )
+        ),
+        launcher=launcher_preprocessing,
     )
 
     # Search and evaluate with the base model
@@ -103,7 +105,9 @@ def run(
     monobert_trainer = pairwise.PairwiseTrainer(
         lossfn=pairwise.PointwiseCrossEntropyLoss(),
         sampler=v1_docpairs_sampler(
-            sample_rate=cfg.monobert.sample_rate, sample_max=cfg.monobert.sample_max
+            sample_rate=cfg.monobert.sample_rate,
+            sample_max=cfg.monobert.sample_max,
+            launcher=launcher_preprocessing,
         ),
         batcher=PowerAdaptativeBatcher(),
         batch_size=cfg.monobert.optimization.batch_size,

@@ -32,11 +32,17 @@ class Retrieval:
 
 
 @configuration()
+class Preprocessing:
+    requirements: str = "duration=12h & cpu(cores=4)"
+
+
+@configuration()
 class Monobert(RerankerMSMarcoV1Configuration):
     indexation: Indexation = Factory(Indexation)
     retrieval: Retrieval = Factory(Retrieval)
 
     monobert: Learner = Factory(Learner)
+    preprocessing: Preprocessing = Factory(Preprocessing)
 
     dev_test_size: int = 0
     """Development test size (0 to leave it like this)"""

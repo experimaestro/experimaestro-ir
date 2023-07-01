@@ -5,6 +5,8 @@ from attrs import Factory
 from functools import cache
 import logging
 
+from experimaestro import Launcher
+
 from datamaestro import prepare_dataset
 from datamaestro_text.transforms.ir import (
     ShuffledTrainingTripletsLines,
@@ -13,12 +15,9 @@ from datamaestro_text.transforms.ir import (
 )
 from datamaestro_text.data.ir import Documents, Adhoc
 
-from xpmir.letor.samplers import Sampler, PairwiseInBatchNegativesSampler
-
 from xpmir.datasets.adapters import RandomFold
 from xpmir.evaluation import Evaluations, EvaluationsCollection
 from xpmir.letor.samplers import TripletBasedSampler
-from xpmir.utils.functools import cache
 from xpmir.datasets.adapters import MemoryTopicStore
 from xpmir.letor.distillation.samplers import (
     DistillationPairwiseSampler,
@@ -66,7 +65,7 @@ v1_measures = [AP, P @ 20, nDCG, nDCG @ 10, nDCG @ 20, RR, RR @ 10]
 
 @cache
 def v1_docpairs_sampler(
-    *, sample_rate: float = 1.0, sample_max: int = 0
+    *, sample_rate: float = 1.0, sample_max: int = 0, launcher: "Launcher" = None
 ) -> TripletBasedSampler:
     """Train sampler
 
@@ -83,7 +82,7 @@ def v1_docpairs_sampler(
         sample_max=sample_max,
         doc_ids=True,
         topic_ids=False,
-    ).submit()
+    ).submit(launcher=launcher)
 
     # Adds the text to the documents
     triplets = StoreTrainingTripletDocumentAdapter(data=triplets, store=v1_passages())
@@ -91,7 +90,7 @@ def v1_docpairs_sampler(
 
 
 @cache
-def v1_validation_dataset(cfg: ValidationSample):
+def v1_validation_dataset(cfg: ValidationSample, launcher=None):
     """Sample dev topics to get a validation subset"""
     return RandomFold(
         dataset=v1_dev(),
@@ -99,7 +98,7 @@ def v1_validation_dataset(cfg: ValidationSample):
         fold=0,
         sizes=[cfg.size],
         exclude=v1_devsmall().topics,
-    ).submit()
+    ).submit(launcher=launcher)
 
 
 @cache
@@ -124,18 +123,18 @@ def v1_tests(dev_test_size: int = 0):
         ),
     )
 
+
 @cache
 def hofstaetter_ensemble_hard_negatives() -> DistillationPairwiseSampler:
     """Hard negatives from Hofstätter et al. (2020)
-    
+
     Hard negatives trained by distillation with cross-encoder Improving
     Efficient Neural Ranking Models with Cross-Architecture Knowledge
     Distillation, (Sebastian Hofstätter, Sophia Althammer, Michael Schröder,
     Mete Sertkan, Allan Hanbury), 2020
     """
     train_triples_distil = prepare_dataset(
-        "com.github.sebastian-hofstaetter."
-        "neural-ranking-kd.msmarco.ensemble.teacher"
+        "com.github.sebastian-hofstaetter." "neural-ranking-kd.msmarco.ensemble.teacher"
     )
 
     # Access to topic text
