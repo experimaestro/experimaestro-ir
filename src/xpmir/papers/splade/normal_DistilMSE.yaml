@@ -28,7 +28,7 @@ splade:
     model: splade_max
     dataset: hofstaetter_kd_hard_negatives
     # validation for each (steps_per_epoch * validation interval) steps
-    validation_interval: 8
+    validation_interval: 40
     lambda_q: 0.5
     lambda_d: 0.4
     lamdba_warmup_steps: 50000

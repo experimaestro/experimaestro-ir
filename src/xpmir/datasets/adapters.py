@@ -279,11 +279,11 @@ class DocumentSubsetSlice:
         self.doc_ids = doc_ids
 
     def __iter__(self):
-        for docid in self.docids:
+        for docid in self.doc_ids:
             yield self.subset.base.document_ext(docid)
 
     def __len__(self):
-        return len(self.docids)
+        return len(self.doc_ids)
 
     def __getitem__(self, ix):
         return self.subset.base.document_ext(self.doc_ids[ix])
