@@ -200,6 +200,9 @@ def run(
 
     # build a retriever for the documents
     encoder = copyconfig(trained_model.encoder).add_pretasks_from(trained_model)
+    query_encoder = copyconfig(trained_model._query_encoder).add_pretasks_from(
+        trained_model
+    )
     sparse_index = SparseRetrieverIndexBuilder(
         batch_size=512,
         batcher=PowerAdaptativeBatcher(),
@@ -215,7 +218,7 @@ def run(
         index=sparse_index,
         topk=cfg.retrieval.topK,
         batchsize=1,
-        encoder=trained_model._query_encoder,
+        encoder=query_encoder,
     )
 
     # evaluate the best model

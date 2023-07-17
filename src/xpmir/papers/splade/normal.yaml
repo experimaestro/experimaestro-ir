@@ -28,7 +28,7 @@ splade:
     lambda_q: 3.0e-4
     lambda_d: 1.0e-4
     lamdba_warmup_steps: 50000
-    requirements: duration=2 days & cuda(mem=24G)
+    requirements: duration=2 days & cuda(mem=40G) * 2
 
 retrieval:
     requirements: duration=2 days & cuda(mem=24G)
