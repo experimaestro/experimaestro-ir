@@ -24,11 +24,11 @@ splade:
 
     model: splade_max
     # validation for each (steps_per_epoch * validation interval) steps
-    validation_interval: 40
+    validation_interval: 8
     lambda_q: 3.0e-4
     lambda_d: 1.0e-4
     lamdba_warmup_steps: 50000
-    requirements: duration=2 days & cuda(mem=40G) * 2
+    requirements: duration=4 days & cuda(mem=40G)
 
 retrieval:
     requirements: duration=2 days & cuda(mem=24G)

@@ -177,7 +177,7 @@ def run(
         # the model to be trained
         model=spladev2,
         # Optimization settings
-        optimizers=cfg.splade.optimization.optimizer,
+        optimizers=cfg.splade.optimization.optimizer_splade,
         steps_per_epoch=cfg.splade.optimization.steps_per_epoch,
         use_fp16=True,
         max_epochs=cfg.splade.optimization.max_epochs,
