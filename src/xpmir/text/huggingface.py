@@ -260,7 +260,6 @@ class OneHotHuggingFaceEncoder(TextEncoder):
 @deprecate
 class HuggingfaceTokenizer(OneHotHuggingFaceEncoder):
     """The old encoder for one hot"""
-
     pass
 
 

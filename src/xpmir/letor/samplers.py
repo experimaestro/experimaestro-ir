@@ -61,7 +61,8 @@ class PairwiseSampler(Sampler):
 
 
 class BatchwiseSampler(Sampler):
-    """Batchwise samplers provide for each question a set of documents"""
+    """Base class for batchwise samplers, that provide for each question a list
+    of documents"""
 
     def batchwise_iter(self, batch_size: int) -> SerializableIterator[BatchwiseRecords]:
         """Iterate over batches of size (# of queries) batch_size

@@ -12,6 +12,13 @@ Encoders
 .. autoxpmconfig:: SentenceTransformerTextEncoder
 .. autoxpmconfig:: OneHotHuggingFaceEncoder
 
+
+Tokenizers
+==========
+
+.. autoxpmconfig:: OneHotHuggingFaceEncoder
+.. autoxpmconfig:: HuggingfaceTokenizer
+
 Hooks
 =====
 

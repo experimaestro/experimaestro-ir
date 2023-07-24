@@ -115,7 +115,7 @@ def run(
 
     monobert_scorer: CrossScorer = CrossScorer(
         encoder=DualTransformerEncoder(
-            model_id="bert-base-uncased", trainable=True, maxlen=512, dropout=0.1
+            model_id=cfg.base, trainable=True, maxlen=512, dropout=0.1
         )
     ).tag("scorer", "monobert")
 

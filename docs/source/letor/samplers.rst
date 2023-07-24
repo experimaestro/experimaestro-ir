@@ -1,35 +1,38 @@
 Samplers
 --------
 
+.. currentmodule:: xpmir.letor.samplers
+
 Samplers provide samples in the form of *records*. They all inherit from:
 
-.. autoxpmconfig:: xpmir.letor.samplers.Sampler
-.. autoclass:: xpmir.letor.samplers.SerializableIterator
+.. autoxpmconfig:: Sampler
+.. autoclass:: SerializableIterator
 
 
 Pointwise
 =========
 
-.. autoxpmconfig:: xpmir.letor.samplers.PointwiseSampler
+.. autoxpmconfig:: PointwiseSampler
     :members: pointwise_iter
 
-.. autoxpmconfig:: xpmir.letor.samplers.PointwiseModelBasedSampler
+.. autoxpmconfig:: PointwiseModelBasedSampler
 
 Pairwise
 =========
 
-.. autoxpmconfig:: xpmir.letor.samplers.PairwiseSampler
-.. autoxpmconfig:: xpmir.letor.samplers.PairwiseModelBasedSampler
+.. autoxpmconfig:: PairwiseSampler
+.. autoxpmconfig:: BatchwiseSampler
+.. autoxpmconfig:: PairwiseModelBasedSampler
 .. autoxpmconfig:: xpmir.documents.samplers.BatchwiseRandomSpanSampler
 
-.. autoxpmconfig:: xpmir.letor.samplers.TripletBasedSampler
-.. autoxpmconfig:: xpmir.letor.samplers.PairwiseDatasetTripletBasedSampler
+.. autoxpmconfig:: TripletBasedSampler
+.. autoxpmconfig:: PairwiseDatasetTripletBasedSampler
 
 Hard Negatives Sampling (Tasks)
-============
+===============================
 
-.. autoxpmconfig:: xpmir.letor.samplers.ModelBasedHardNegativeSampler
-.. autoxpmconfig:: xpmir.letor.samplers.TeacherModelBasedHardNegativesTripletSampler
+.. autoxpmconfig:: ModelBasedHardNegativeSampler
+.. autoxpmconfig:: TeacherModelBasedHardNegativesTripletSampler
 
 Distillation
 ============
@@ -45,3 +48,14 @@ Records for training
 
 .. automodule:: xpmir.letor.records
     :members: PointwiseRecord, PairwiseRecord
+
+
+Document samplers
+=================
+
+Useful for pre-training or when learning index parameters (e.g. for FAISS).
+
+.. currentmodule:: xpmir.documents.samplers
+.. autoxpmconfig:: DocumentSampler
+.. autoxpmconfig:: HeadDocumentSampler
+.. autoxpmconfig:: RandomDocumentSampler

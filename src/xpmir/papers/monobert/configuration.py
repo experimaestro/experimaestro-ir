@@ -46,3 +46,6 @@ class Monobert(RerankerMSMarcoV1Configuration):
 
     dev_test_size: int = 0
     """Development test size (0 to leave it like this)"""
+
+    base: str = "bert-base-uncased"
+    """Identifier for the base model"""
