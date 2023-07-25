@@ -271,7 +271,7 @@ class EvaluationsCollection:
         all_data = []
         for key, evaluations in self.collection.items():
             data = evaluations.to_dataframe()
-            data.dataset = key
+            data["dataset"] = key
             all_data.append(data)
         return pd.concat(all_data, ignore_index=True)
 
