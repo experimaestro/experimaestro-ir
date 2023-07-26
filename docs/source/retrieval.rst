@@ -54,6 +54,8 @@ Anserini
 
 .. autoxpmconfig:: xpmir.interfaces.anserini.Index
 .. autoxpmconfig:: xpmir.interfaces.anserini.AnseriniRetriever
+.. autoxpmconfig:: xpmir.interfaces.anserini.IndexCollection
+.. autoxpmconfig:: xpmir.interfaces.anserini.SearchCollection
 
 FAISS
 -----
@@ -61,3 +63,11 @@ FAISS
 .. autoxpmconfig:: xpmir.index.faiss.FaissIndex
 .. autoxpmconfig:: xpmir.index.faiss.IndexBackedFaiss
 .. autoxpmconfig:: xpmir.index.faiss.FaissRetriever
+
+
+Sparse
+------
+
+.. autoxpmconfig:: xpmir.index.sparse.SparseRetriever
+.. autoxpmconfig:: xpmir.index.sparse.SparseRetrieverIndex
+.. autoxpmconfig:: xpmir.index.sparse.SparseRetrieverIndexBuilder

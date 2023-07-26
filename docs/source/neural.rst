@@ -59,6 +59,10 @@ Interaction models
 .. autoxpmconfig:: xpmir.neural.interaction.InteractionScorer
 .. autoxpmconfig:: xpmir.neural.interaction.drmm.Drmm
 
+.. autoxpmconfig:: xpmir.neural.colbert.Similarity
+.. autoxpmconfig:: xpmir.neural.colbert.L2Distance
+.. autoxpmconfig:: xpmir.neural.colbert.CosineSimilarity
+    
 .. autoxpmconfig:: xpmir.neural.colbert.Colbert
 
 Sparse Models

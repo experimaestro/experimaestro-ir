@@ -25,7 +25,7 @@ Optimizers
 
 .. autoxpmconfig:: xpmir.learning.optim.ParameterOptimizer
 .. autoxpmconfig:: xpmir.learning.optim.ParameterFilter
-
+.. autoxpmconfig:: xpmir.learning.optim.RegexParameterFilter
 
 
 Batching
