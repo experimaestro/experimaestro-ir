@@ -1,22 +1,25 @@
 from typing import Iterator, Tuple
+from datamaestro_text.data.ir.base import GenericTopic, GenericDocument
 from xpmir.letor.samplers import TrainingTriplets, TripletBasedSampler
 
 # ---- Serialization
 
 
 class MyTrainingTriplets(TrainingTriplets):
-    def iter(self) -> Iterator[Tuple[str, str, str]]:
+    def iter(self) -> Iterator[Tuple[GenericTopic, GenericDocument, GenericDocument]]:
         count = 0
 
         while True:
-            yield f"q{count}", f"doc+{count}", f"doc-{count}"
+            yield GenericTopic(0, f"q{count}"), GenericDocument(
+                1, f"doc+{count}"
+            ), GenericDocument(2, f"doc-{count}")
 
 
 def test_serializing_tripletbasedsampler():
     """Serialized samplers should start back from the saved state"""
     # Collect samples and state after 10 samples
     sampler = TripletBasedSampler(
-        source=MyTrainingTriplets(id="test-triplets", ids=False)
+        source=MyTrainingTriplets(id="test-triplets")
     ).instance()
     iter = sampler.pairwise_iter()
 
@@ -30,11 +33,15 @@ def test_serializing_tripletbasedsampler():
 
     # Test
     sampler = TripletBasedSampler(
-        source=MyTrainingTriplets(id="test-triplets", ids=False)
+        source=MyTrainingTriplets(id="test-triplets")
     ).instance()
     iter = sampler.pairwise_iter()
     iter.load_state_dict(data)
     for _, record, expected in zip(range(10), iter, samples):
-        assert expected.query.text == record.query.text
-        assert expected.positive.text == record.positive.text
-        assert expected.negative.text == record.negative.text
+        assert expected.query.topic.get_text() == record.query.topic.get_text()
+        assert (
+            expected.positive.document.get_text() == record.positive.document.get_text()
+        )
+        assert (
+            expected.negative.document.get_text() == record.negative.document.get_text()
+        )

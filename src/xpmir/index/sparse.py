@@ -177,7 +177,7 @@ class SparseRetrieverIndexBuilder(Task):
 
         doc_iter = tqdm(
             zip(
-                range(sys.maxint if self.max_docs == 0 else self.max_docs),
+                range(sys.maxsize if self.max_docs == 0 else self.max_docs),
                 self.documents.iter_documents(),
             ),
             total=self.documents.documentcount

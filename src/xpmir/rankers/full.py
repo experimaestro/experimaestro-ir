@@ -136,7 +136,8 @@ class FullRetrieverRescorer(Retriever):
             # Encode documents and score them
             scored_documents: List[List[ScoredDocument]] = []
             with tqdm(
-                total=len(all_queries) * len(self.documents), desc="Scoring documents"
+                total=len(all_queries) * self.documents.documentcount,
+                desc="Scoring documents",
             ) as pbar:
                 self.document_batcher.process(
                     self.documents, self.score, enc_queries, scored_documents, pbar

@@ -1,13 +1,15 @@
 from collections import defaultdict
 import itertools
+from pathlib import Path
 from typing import List, Optional
 import random
+from datamaestro_text.data.ir.base import GenericTopic, GenericDocument
+from experimaestro.notifications import TaskEnv
 import torch
 from xpmir.learning.context import TrainerContext
 from xpmir.rankers import ScoredDocument
 from xpmir.rankers.full import FullRetrieverRescorer
 from xpmir.neural.dual import DualRepresentationScorer
-from xpmir.letor.records import TopicRecord, DocumentRecord
 from xpmir.test.utils.utils import SampleDocumentStore
 
 
@@ -25,8 +27,8 @@ class CachedRandomScorer(DualRepresentationScorer):
     def _initialize(self, _random):
         self._cache = defaultdict(lambda: random.uniform(0, 1))
 
-    def cache(self, query: TopicRecord, document: DocumentRecord):
-        return self._cache[(query.topic.get_text(), document.document.get_text())]
+    def cache(self, query: GenericTopic, document: GenericDocument):
+        return self._cache[(query.get_text(), document.get_text())]
 
     def encode(self, texts: List[str]):
         return ListWrapper(texts)
@@ -42,7 +44,12 @@ class CachedRandomScorer(DualRepresentationScorer):
     ) -> torch.Tensor:
         scores = []
         for q in queries:
-            scores.append([self.cache(q, d) for d in documents])
+            scores.append(
+                [
+                    self.cache(GenericTopic(0, q), GenericDocument(0, d))
+                    for d in documents
+                ]
+            )
 
         return torch.DoubleTensor(scores)
 
@@ -52,20 +59,20 @@ class CachedRandomScorer(DualRepresentationScorer):
 
 class _FullRetrieverRescorer(FullRetrieverRescorer):
     def retrieve(self, query: str):
+        topic = GenericTopic(0, query)
         scored_documents = [
             # Randomly get a score (and cache it)
-            ScoredDocument(
-                d, self.scorer.cache(TopicRecord.from_text(query), DocumentRecord(d))
-            )
+            ScoredDocument(d, self.scorer.cache(topic, d))
             for d in self.documents
         ]
         scored_documents.sort(reverse=True)
         return scored_documents
 
 
-def test_fullretrieverescorer():
+def test_fullretrieverescorer(tmp_path: Path):
     NUM_DOCS = 7
     NUM_QUERIES = 9
+    TaskEnv.instance().taskpath = tmp_path
 
     documents = SampleDocumentStore(num_docs=NUM_DOCS)
     scorer = CachedRandomScorer()
