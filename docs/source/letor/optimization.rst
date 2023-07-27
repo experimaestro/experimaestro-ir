@@ -48,5 +48,13 @@ the way to use it (i.e. multi-gpu settings).
 Schedulers
 ----------
 
-.. automodule:: xpmir.learning.schedulers
-    :members:
+.. autoxpmconfig:: xpmir.learning.schedulers.Scheduler
+.. autoxpmconfig:: xpmir.learning.schedulers.CosineWithWarmup
+.. autoxpmconfig:: xpmir.learning.schedulers.LinearWithWarmup
+
+Base classes
+------------
+
+.. autoxpmconfig:: xpmir.learning.base.Random
+.. autoxpmconfig:: xpmir.learning.base.Sampler
+.. autoxpmconfig:: xpmir.learning.trainers.Trainer

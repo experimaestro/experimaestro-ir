@@ -57,6 +57,13 @@ Other
 Distillation: Pairwise
 **********************
 
+
+Sampler
+-------
+
+.. autoxpmconfig:: xpmir.letor.distillation.samplers.DistillationPairwiseSampler
+.. autoxpmconfig:: xpmir.letor.distillation.samplers.PairwiseHydrator
+
 Trainer
 -------
 

@@ -52,6 +52,7 @@ Collection dependendant
 Anserini
 --------
 
+.. autoxpmconfig:: xpmir.index.anserini.Index
 .. autoxpmconfig:: xpmir.interfaces.anserini.Index
 .. autoxpmconfig:: xpmir.interfaces.anserini.AnseriniRetriever
 .. autoxpmconfig:: xpmir.interfaces.anserini.IndexCollection
