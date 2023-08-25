@@ -4,13 +4,14 @@
 # https://github.com/stanford-futuredata/ColBERT/blob/v0.2/colbert/modeling/colbert.py
 
 from typing import List
-from experimaestro import Config, Constant, Param, default, Annotated
+from experimaestro import Constant, Param, default, Annotated
 from torch import nn
 import torch.nn.functional as F
 from xpmir.learning.context import TrainerContext
 from xpmir.letor.records import BaseRecords
 from xpmir.neural.interaction import InteractionScorer
 from .common import Similarity, CosineSimilarity
+
 
 class Colbert(InteractionScorer):
     """ColBERT model

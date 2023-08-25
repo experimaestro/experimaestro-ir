@@ -1,8 +1,10 @@
 import torch
 from experimaestro import Config
 
+
 class Similarity(Config):
     """A similarity between vector representations"""
+
     def __call__(self, queries: torch.Tensor, documents: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError()
 

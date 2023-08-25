@@ -46,7 +46,7 @@ class TopicFold(Topics):
 
 class AdhocAssessmentFold(AdhocAssessments):
     """Filter assessments by topic ID"""
-    
+
     ids: Param[List[str]]
     """A set of the ids for the assessments where we select from"""
 
