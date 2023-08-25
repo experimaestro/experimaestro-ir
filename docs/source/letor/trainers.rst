@@ -43,11 +43,40 @@ Losses
 .. autoxpmconfig:: xpmir.letor.trainers.pairwise.PairwiseLoss
    :members: compute
 
-
 .. autoxpmconfig:: xpmir.letor.trainers.pairwise.CrossEntropyLoss
 .. autoxpmconfig:: xpmir.letor.trainers.pairwise.HingeLoss
 .. autoxpmconfig:: xpmir.letor.trainers.pairwise.PointwiseCrossEntropyLoss
 
+
+Pairwise (duo)
+**************
+
+Trainer
+-------
+
+.. autoxpmconfig:: xpmir.letor.trainers.pairwise.PairwiseLossWithTarget
+   :members: compute
+
+Losses
+------
+
+.. autoxpmconfig:: xpmir.letor.trainers.pairwise.DuoPairwiseTrainer
+
+
+Batchwise
+*********
+
+Trainer
+-------
+
+.. autoxpmconfig:: xpmir.letor.trainers.batchwise.BatchwiseTrainer
+
+Losses
+------
+
+.. autoxpmconfig:: xpmir.letor.trainers.batchwise.BatchwiseLoss
+.. autoxpmconfig:: xpmir.letor.trainers.batchwise.CrossEntropyLoss
+.. autoxpmconfig:: xpmir.letor.trainers.batchwise.SoftmaxCrossEntropy
 
 Other
 *****

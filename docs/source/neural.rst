@@ -8,6 +8,8 @@ Cross-Encoder
 Models that rely on a joint representation of the query and the document.
 
 .. autoxpmconfig:: xpmir.neural.cross.CrossScorer
+.. autoxpmconfig:: xpmir.neural.jointclassifier.JointClassifier
+
 .. autoxpmconfig:: xpmir.neural.cross.DuoCrossScorer
 
 
@@ -59,11 +61,25 @@ Interaction models
 .. autoxpmconfig:: xpmir.neural.interaction.InteractionScorer
 .. autoxpmconfig:: xpmir.neural.interaction.drmm.Drmm
 
-.. autoxpmconfig:: xpmir.neural.colbert.Similarity
-.. autoxpmconfig:: xpmir.neural.colbert.L2Distance
-.. autoxpmconfig:: xpmir.neural.colbert.CosineSimilarity
-    
 .. autoxpmconfig:: xpmir.neural.colbert.Colbert
+
+DRMM
+****
+
+.. autoxpmconfig:: xpmir.neural.interaction.drmm.Combination
+.. autoxpmconfig:: xpmir.neural.interaction.drmm.CountHistogram
+.. autoxpmconfig:: xpmir.neural.interaction.drmm.IdfCombination
+.. autoxpmconfig:: xpmir.neural.interaction.drmm.LogCountHistogram
+.. autoxpmconfig:: xpmir.neural.interaction.drmm.NormalizedHistogram
+.. autoxpmconfig:: xpmir.neural.interaction.drmm.SumCombination
+
+Similarity
+==========
+
+.. autoxpmconfig:: xpmir.neural.common.Similarity
+.. autoxpmconfig:: xpmir.neural.common.L2Distance
+.. autoxpmconfig:: xpmir.neural.common.CosineSimilarity
+
 
 Sparse Models
 =============

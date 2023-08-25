@@ -75,12 +75,6 @@ class ScorerOutputType(Enum):
     """A probability, in ]0,1["""
 
 
-class LearnableModel(Config):
-    """All learnable models"""
-
-    pass
-
-
 class Scorer(Config, Initializable, EasyLogger):
     """Query-document scorer
 

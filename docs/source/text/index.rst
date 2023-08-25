@@ -5,6 +5,7 @@ Text Representation
    :maxdepth: 2
 
    huggingface
+   wordvec
 
 
 The `text` module groups classes and configurations that compute
@@ -16,6 +17,10 @@ as contextual word embeddings and document embeddings.
 
 .. autoxpmconfig:: xpmir.text.encoders.TokensEncoder
    :members: forward
+
+.. autoxpmconfig:: xpmir.text.encoders.Encoder
+.. autoxpmconfig:: xpmir.text.encoders.MeanTextEncoder
+.. autoxpmconfig:: xpmir.text.encoders.TripletTextEncoder
 
 .. autoxpmconfig:: xpmir.text.encoders.TextEncoder
    :members: forward

@@ -39,9 +39,25 @@ In a re-ranking setting, one can use a two stage retriever to perform
 retrieval, by using a fully fledge retriever first, and then
 re-ranking the results.
 
+.. autoxpmconfig:: xpmir.rankers.AbstractTwoStageRetriever
 .. autoxpmconfig:: xpmir.rankers.TwoStageRetriever
-.. autoxpmconfig:: xpmir.rankers.DuoTwoStageRetriever
 
+Duo-retrievers
+--------------
+
+Duo-retrievers only predicts whether a document is "more relevant" than
+another
+
+.. autoxpmconfig:: xpmir.rankers.DuoTwoStageRetriever
+.. autoxpmconfig:: xpmir.rankers.DuoLearnableScorer
+
+Misc
+----
+
+.. autoxpmconfig:: xpmir.rankers.full.FullRetriever
+.. autoxpmconfig:: xpmir.rankers.full.FullRetrieverRescorer
+.. autoxpmconfig:: xpmir.rankers.RetrieverHydrator
+.. autoxpmconfig:: xpmir.rankers.mergers.SumRetriever
 
 Collection dependendant
 -----------------------
