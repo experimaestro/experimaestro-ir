@@ -6,6 +6,9 @@ Evaluation
 Evaluation
 ----------
 
+.. autoxpmconfig:: xpmir.evaluation.BaseEvaluation
+.. autoxpmconfig:: xpmir.evaluation.RunEvaluation
+
 .. autoxpmconfig:: xpmir.evaluation.Evaluate
 
 .. autoclass:: xpmir.evaluation.Evaluations

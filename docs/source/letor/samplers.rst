@@ -9,6 +9,9 @@ Samplers provide samples in the form of *records*. They all inherit from:
 .. autoclass:: SerializableIterator
 
 
+.. autoxpmconfig:: ModelBasedSampler
+
+
 Pointwise
 =========
 
@@ -27,6 +30,9 @@ Pairwise
 
 .. autoxpmconfig:: TripletBasedSampler
 .. autoxpmconfig:: PairwiseDatasetTripletBasedSampler
+.. autoxpmconfig:: PairwiseInBatchNegativesSampler
+.. autoxpmconfig:: PairwiseSampleDatasetFromTSV
+.. autoxpmconfig:: PairwiseSamplerFromTSV
 
 Hard Negatives Sampling (Tasks)
 ===============================

@@ -39,9 +39,25 @@ In a re-ranking setting, one can use a two stage retriever to perform
 retrieval, by using a fully fledge retriever first, and then
 re-ranking the results.
 
+.. autoxpmconfig:: xpmir.rankers.AbstractTwoStageRetriever
 .. autoxpmconfig:: xpmir.rankers.TwoStageRetriever
-.. autoxpmconfig:: xpmir.rankers.DuoTwoStageRetriever
 
+Duo-retrievers
+--------------
+
+Duo-retrievers only predicts whether a document is "more relevant" than
+another
+
+.. autoxpmconfig:: xpmir.rankers.DuoTwoStageRetriever
+.. autoxpmconfig:: xpmir.rankers.DuoLearnableScorer
+
+Misc
+----
+
+.. autoxpmconfig:: xpmir.rankers.full.FullRetriever
+.. autoxpmconfig:: xpmir.rankers.full.FullRetrieverRescorer
+.. autoxpmconfig:: xpmir.rankers.RetrieverHydrator
+.. autoxpmconfig:: xpmir.rankers.mergers.SumRetriever
 
 Collection dependendant
 -----------------------
@@ -52,8 +68,11 @@ Collection dependendant
 Anserini
 --------
 
+.. autoxpmconfig:: xpmir.index.anserini.Index
 .. autoxpmconfig:: xpmir.interfaces.anserini.Index
 .. autoxpmconfig:: xpmir.interfaces.anserini.AnseriniRetriever
+.. autoxpmconfig:: xpmir.interfaces.anserini.IndexCollection
+.. autoxpmconfig:: xpmir.interfaces.anserini.SearchCollection
 
 FAISS
 -----
@@ -61,3 +80,11 @@ FAISS
 .. autoxpmconfig:: xpmir.index.faiss.FaissIndex
 .. autoxpmconfig:: xpmir.index.faiss.IndexBackedFaiss
 .. autoxpmconfig:: xpmir.index.faiss.FaissRetriever
+
+
+Sparse
+------
+
+.. autoxpmconfig:: xpmir.index.sparse.SparseRetriever
+.. autoxpmconfig:: xpmir.index.sparse.SparseRetrieverIndex
+.. autoxpmconfig:: xpmir.index.sparse.SparseRetrieverIndexBuilder
