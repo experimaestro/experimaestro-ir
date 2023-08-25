@@ -52,7 +52,7 @@ class BaseEvaluation(Task):
         evaluator = get_evaluator([measure() for measure in self.measures], assessments)
 
         def print_line(fp, measure, scope, value):
-            fp.write("{:25s}{:8s}{:.4f}\n".format(measure, scope, value))
+            fp.write("{:25s} {:10s} {:.4f}\n".format(measure, scope, value))
 
         with self.detailed.open("w") as fp:
             for metric in evaluator.iter_calc(run):
