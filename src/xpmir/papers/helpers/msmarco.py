@@ -2,7 +2,6 @@
 
 from typing import Callable
 from attrs import Factory
-from functools import cache
 import logging
 
 from experimaestro import Launcher
@@ -25,7 +24,7 @@ from xpmir.letor.distillation.samplers import (
 )
 
 from xpmir.measures import AP, RR, P, nDCG
-from xpmir.utils.functools import partial_cache
+from xpmir.utils.functools import partial_cache, cache
 from . import NeuralIRExperiment, configuration
 
 logging.basicConfig(level=logging.INFO)
