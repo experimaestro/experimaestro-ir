@@ -25,9 +25,9 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install flake8 pytest pytest-timeout pytest-dependency sphinx sphobjinv
+          pip install flake8 pytest pytest-timeout pytest-dependency
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          pip install faiss-cpu numba tensorboard
+          pip install faiss-cpu numba tensorboard pandas sphinx sphobjinv transformers pandas
           pip install '.'
       - name: Lint with flake8
         if: false
