@@ -1,30 +1,31 @@
 # Starts experiments from command line
 
-from functools import reduce
 import inspect
 import io
-import logging
 import json
-import sys
-from typing import Dict, List, Tuple
-from pathlib import Path
+import logging
 import pkgutil
-from typing import Optional
-import click
+import sys
+from functools import reduce
 from importlib import import_module
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple, Union
+
+import click
 import docstring_parser
-from termcolor import cprint
 import omegaconf
-from experimaestro import experiment, RunMode, LauncherRegistry
+from experimaestro import LauncherRegistry, RunMode, experiment
 from omegaconf import OmegaConf, SCMode
+from termcolor import cprint
+
+import xpmir.papers as papers
 from xpmir.configuration import omegaconf_argument
 from xpmir.evaluation import EvaluationsCollection
-import xpmir.papers as papers
-from xpmir.models import XPMIRHFHub
-from xpmir.rankers import Scorer
-from xpmir.papers.results import PaperResults
-from xpmir.papers.helpers import PaperExperiment
 from xpmir.learning.optim import TensorboardService
+from xpmir.models import XPMIRHFHub
+from xpmir.papers.helpers import PaperExperiment
+from xpmir.papers.results import PaperResults
+from xpmir.rankers import Scorer
 
 
 class ExperimentsCli(click.MultiCommand):
@@ -136,7 +137,12 @@ model.rsv("walgreens store sales average", "The average Walgreens salary ranges.
         )
 
 
-def paper_command(package=None, schema=None, tensorboard_service=False):
+def paper_command(
+    package: Optional[str] = None,
+    folder: Optional[Union[str, Path]] = None,
+    schema=None,
+    tensorboard_service=False,
+):
     """General command line decorator for an XPM-IR experiment
 
     This annotation adds a set of arguments for the
@@ -145,6 +151,8 @@ def paper_command(package=None, schema=None, tensorboard_service=False):
 
     :param tensorboard_service: If true, register a tensorboard service and transmits it
         as ``tensorboard_service`` to function.
+
+    .. seealso:: :py:func:`omegaconf_argument` for `folder` and `package` documentation
     """
 
     omegaconf_schema = None
@@ -199,6 +207,7 @@ def paper_command(package=None, schema=None, tensorboard_service=False):
             omegaconf_argument(
                 "--configuration",
                 package=package,
+                folder=folder,
                 click_mode=click.option,
                 required=True,
             ),
