@@ -99,12 +99,10 @@ class HingeLoss(PairwiseLoss):
 class BCEWithLogLoss(nn.Module):
     """Custom cross-entropy loss when outputs are log probabilities"""
 
-    def __call__(self, log_probs: torch.Tensor, targets: torch.Tensor):
+    def __call__(self, log_probs: torch.Tensor, info: TrainerContext):
         # Assumes target is a two column matrix (rel. / not rel.)
-
-        loss = (
-            -log_probs[targets > 0].sum() + (1.0 - log_probs[targets == 0].exp()).sum()
-        )
+        assert torch.all(log_probs < 0.0)
+        loss = -log_probs[:, 0].sum() - (1.0 - log_probs[:, 1].exp()).log().sum()
 
         return loss / log_probs.numel()
 
