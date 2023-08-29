@@ -16,7 +16,6 @@ from xpmir.papers.cli import paper_command
 from xpmir.rankers.standard import BM25
 from xpmir.text.huggingface import DualTransformerEncoder
 from xpmir.papers.results import PaperResults
-from xpmir.utils.functools import cache
 from xpmir.papers.helpers.msmarco import (
     v1_docpairs_sampler,
     v1_tests,
@@ -30,7 +29,6 @@ from xpmir.rankers import scorer_retriever, RandomScorer
 logging.basicConfig(level=logging.INFO)
 
 
-@cache
 def get_retrievers(cfg: Monobert):
     """Returns retrievers
 
