@@ -129,7 +129,7 @@ def run(xp: experiment, cfg: DuoBERT, tensorboard_service: TensorboardService):
     )
 
     for metric_name in validation.monitored():
-        model = outputs.listeners["bestval"][metric_name]  # type: CrossScorer
+        model = outputs.listeners["bestval"][metric_name]  # type: DuoCrossScorer
         tests.evaluate_retriever(
             partial(
                 model_based_retrievers,
