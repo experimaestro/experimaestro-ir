@@ -156,10 +156,14 @@ class FlopsRegularizer(DualVectorListener):
     lambda_d: Param[float]
     """Lambda for documents"""
 
-    @staticmethod
     def compute(x: torch.Tensor):
-        # Computes the mean for each term
-        y = x.abs().mean(0)
+        """
+        :param x: term vectors (batch size x vocabulary dimension)
+        :returns: A couple (vocabulary dimension / FLOPS regularizations)
+        """
+        # Computes the mean for each term (weights are positive)
+        y = x.mean(0)
+
         # Returns the sum of squared means
         return y, (y * y).sum()
 
@@ -175,9 +179,9 @@ class FlopsRegularizer(DualVectorListener):
         flops = self.lambda_d * flops_d + self.lambda_q * flops_q
         info.add_loss(Loss("flops", flops, 1.0))
 
-        info.metrics.add(ScalarMetric("flops", flops.item(), len(q)))
-        info.metrics.add(ScalarMetric("flops_q", flops_q.item(), len(q)))
-        info.metrics.add(ScalarMetric("flops_d", flops_d.item(), len(d)))
+        info.metrics.add(ScalarMetric("flops", flops.item(), 1))
+        info.metrics.add(ScalarMetric("flops_q", flops_q.item(), 1))
+        info.metrics.add(ScalarMetric("flops_d", flops_d.item(), 1))
 
         with torch.no_grad():
             info.metrics.add(

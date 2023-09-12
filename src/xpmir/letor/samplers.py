@@ -77,15 +77,13 @@ class BatchwiseSampler(Sampler):
 
 
 class ModelBasedSampler(Sampler):
-    """Base class for retriever-based sampler
-
-    Attributes:
-        dataset: The topics and assessments
-        retriever: The document retriever
-    """
+    """Base class for retriever-based sampler"""
 
     dataset: Param[Adhoc]
+    """The IR adhoc dataset"""
+
     retriever: Param[Retriever]
+    """A retriever to sample negative documents"""
 
     _store: DocumentStore
 

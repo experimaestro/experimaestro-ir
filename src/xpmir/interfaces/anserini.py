@@ -305,6 +305,15 @@ class AnseriniRetriever(Retriever):
         hits = self.searcher.search(query, k=self.k)
         store = self.get_store()
 
+        # Batch retrieve documents
+        if store is not None:
+            return [
+                ScoredDocument(doc, hit.score)
+                for hit, doc in zip(
+                    hits, store.documents_ext([hit.docid for hit in hits])
+                )
+            ]
+
         return [
             ScoredDocument(
                 AnseriniDocument(hit.docid, hit.lucene_docid, hit.contents, hit.raw)

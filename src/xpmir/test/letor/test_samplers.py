@@ -1,6 +1,11 @@
 from typing import Iterator, Tuple
+import datamaestro_text.data.ir as ir
 from datamaestro_text.data.ir.base import GenericTopic, GenericDocument
-from xpmir.letor.samplers import TrainingTriplets, TripletBasedSampler
+from xpmir.letor.samplers import (
+    TrainingTriplets,
+    TripletBasedSampler,
+    ModelBasedSampler,
+)
 
 # ---- Serialization
 
@@ -45,3 +50,34 @@ def test_serializing_tripletbasedsampler():
         assert (
             expected.negative.document.get_text() == record.negative.document.get_text()
         )
+
+
+class GeneratedDocuments(ir.Documents):
+    pass
+
+
+class GeneratedTopics(ir.Topics):
+    pass
+
+
+class GeneratedAssessments(ir.AdhocAssessments):
+    pass
+
+
+def adhoc_synthetic_dataset():
+    """Creates a random dataset"""
+    return ir.Adhoc(
+        documents=GeneratedDocuments(),
+        topics=GeneratedTopics(),
+        assessments=GeneratedAssessments(),
+    )
+
+
+def test_modelbasedsampler():
+    dataset = adhoc_synthetic_dataset()
+    sampler = ModelBasedSampler(
+        dataset=dataset, retriever=RandomRetriever(dataset=dataset)
+    ).instance()
+
+    for a in sampler._itertopics():
+        print(a)

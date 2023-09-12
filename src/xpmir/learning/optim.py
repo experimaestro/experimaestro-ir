@@ -78,6 +78,9 @@ class Module(Config, Initializable, torch.nn.Module):
     def __call__(self, *args, **kwargs):
         return torch.nn.Module.__call__(self, *args, **kwargs)
 
+    def to(self, *args, **kwargs):
+        return torch.nn.Module.to(self, *args, **kwargs)
+
 
 class ModuleLoader(PathSerializationLWTask):
     def execute(self):

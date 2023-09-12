@@ -175,13 +175,19 @@ class RandomScorer(Scorer):
 class AbstractLearnableScorer(Scorer, Module):
     """Base class for all learnable scorer"""
 
+    # Ensures basic operations are redirected to torch.nn.Module methods
     __call__ = nn.Module.__call__
     to = nn.Module.to
+    train = nn.Module.train
 
     def __init__(self):
+        self.logger.info("Initializing %s", self)
         nn.Module.__init__(self)
         super().__init__()
         self._initialized = False
+
+    def __str__(self):
+        return f"scorer {self.__class__.__qualname__}"
 
     def _initialize(self, random):
         raise NotImplementedError(f"_initialize in {self.__class__}")
@@ -223,7 +229,7 @@ class LearnableScorer(AbstractLearnableScorer):
 
     A scorer with parameters that can be learnt"""
 
-    def __call__(self, inputs: "BaseRecords", info: Optional[TrainerContext]):
+    def forward(self, inputs: "BaseRecords", info: Optional[TrainerContext]):
         """Computes the score of all (query, document) pairs
 
         Different subclasses can process the input more or

@@ -1,19 +1,26 @@
 from typing import Iterable, Iterator, NamedTuple, Optional, Tuple
+
+import numpy as np
 from datamaestro.data import File
-from experimaestro import Config, Meta, Param
-from ir_datasets.formats import GenericDoc
-from xpmir.letor.records import Query
 from datamaestro_text.data.ir import DocumentStore
-from xpmir.rankers import ScoredDocument
+from datamaestro_text.data.ir.base import (
+    GenericTopic,
+    IDTopic,
+    TextTopic,
+    IDDocument,
+    TextDocument,
+)
+from experimaestro import Config, Meta, Param
+
 from xpmir.datasets.adapters import TextStore
 from xpmir.learning import Sampler
-import numpy as np
-
+from xpmir.letor.records import TopicRecord
+from xpmir.rankers import ScoredDocument
 from xpmir.utils.iter import SerializableIterator, SkippingIterator
 
 
 class PairwiseDistillationSample(NamedTuple):
-    query: Query
+    query: TopicRecord
     """The query"""
 
     documents: Tuple[ScoredDocument, ScoredDocument]
@@ -41,12 +48,21 @@ class PairwiseHydrator(PairwiseDistillationSamples):
 
     def __iter__(self) -> Iterator[PairwiseDistillationSample]:
         for sample in self.samples:
-            if self.querystore is not None:
-                sample.query.text = self.querystore[sample.query.id]
-            if self.documentstore is not None:
-                for d in sample.documents:
-                    d.content = self.documentstore.document_text(d.docid)
+            topic, documents = sample.query, sample.documents
 
+            if self.querystore is not None:
+                topic = GenericTopic(
+                    sample.query.get_id(), self.querystore[sample.query.get_id()]
+                )
+            if self.documentstore is not None:
+                documents = tuple(
+                    ScoredDocument(
+                        self.documentstore.document_ext(d.document.get_id()), d.score
+                    )
+                    for d in sample.documents
+                )
+
+            sample = PairwiseDistillationSample(topic, documents)
             yield sample
 
 
@@ -65,19 +81,19 @@ class PairwiseDistillationSamplesTSV(PairwiseDistillationSamples, File):
         with self.path.open("rt") as fp:
             for row in csv.reader(fp, delimiter="\t"):
                 if self.with_queryid:
-                    query = Query(row[2], None)
+                    query = IDTopic(row[2])
                 else:
-                    query = Query(None, row[2])
+                    query = TextTopic(row[2])
 
                 if self.with_docid:
                     documents = (
-                        ScoredDocument(GenericDoc(row[3], None), float(row[0])),
-                        ScoredDocument(GenericDoc(row[4], None), float(row[1])),
+                        ScoredDocument(IDDocument(row[3]), float(row[0])),
+                        ScoredDocument(IDDocument(row[4]), float(row[1])),
                     )
                 else:
                     documents = (
-                        ScoredDocument(GenericDoc(None, row[3]), float(row[0])),
-                        ScoredDocument(GenericDoc(None, row[4]), float(row[1])),
+                        ScoredDocument(TextDocument(row[3]), float(row[0])),
+                        ScoredDocument(TextDocument(row[4]), float(row[1])),
                     )
 
                 yield PairwiseDistillationSample(query, documents)

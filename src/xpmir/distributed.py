@@ -47,7 +47,9 @@ class DistributedHook(InitializationHook):
                 n_gpus = torch.cuda.device_count()
                 if n_gpus > 1:
                     logger.info(
-                        "Setting up DataParallel for text encoder (%d GPUs)", n_gpus
+                        "Setting up DataParallel on %d GPUs for model model %s",
+                        n_gpus,
+                        str(model.__class__.__qualname__),
                     )
                     return DataParallel(model)
                 else:

@@ -5,6 +5,7 @@ Trainers are responsible for defining the the way to train
 a learnable scorer.
 
 .. autoxpmconfig:: xpmir.letor.trainers.Trainer
+.. autoxpmconfig:: xpmir.learning.trainers.multiple.MultipleTrainer
 
 .. autoxpmconfig:: xpmir.letor.trainers.LossTrainer
    :members: process_microbatch
@@ -78,10 +79,6 @@ Losses
 .. autoxpmconfig:: xpmir.letor.trainers.batchwise.CrossEntropyLoss
 .. autoxpmconfig:: xpmir.letor.trainers.batchwise.SoftmaxCrossEntropy
 
-Other
-*****
-
-.. autoxpmconfig:: xpmir.letor.trainers.multiple.MultipleTrainer
 
 Distillation: Pairwise
 **********************

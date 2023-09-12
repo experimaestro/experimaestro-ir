@@ -126,7 +126,6 @@ class Learner(Task, EasyLogger):
     hooks: Param[List[Hook]] = []
     """Global learning hooks
 
-
     :class:`Initialization hooks <xpmir.context.InitializationHook>` are called
     before and after the initialization of the trainer and listeners.
     """

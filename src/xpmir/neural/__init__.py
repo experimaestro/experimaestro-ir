@@ -1,30 +1,14 @@
 import itertools
 from typing import Iterable, List, Optional
 import torch
-import torch.nn as nn
 from xpmir.learning.batchers import Sliceable
 
 from xpmir.learning.context import TrainerContext
 from xpmir.letor.records import BaseRecords
-from xpmir.learning.optim import Module
 from xpmir.rankers import LearnableScorer
 
 
-class TorchLearnableScorer(LearnableScorer, Module):
-    """Base class for torch-learnable scorers"""
-
-    def __init__(self):
-        nn.Module.__init__(self)
-        super().__init__()
-
-    __call__ = nn.Module.__call__
-    to = nn.Module.to
-
-    def train(self, mode=True):
-        return nn.Module.train(self, mode)
-
-
-class DualRepresentationScorer(TorchLearnableScorer):
+class DualRepresentationScorer(LearnableScorer):
     """Neural scorer based on (at least a partially) independent representation
     of the document and the question.
 

@@ -1,5 +1,6 @@
 from typing import List, Optional
 from experimaestro import Config, Param
+import torch.nn.functional as F
 import torch.nn as nn
 import torch
 from xpmir.distributed import DistributableModel
@@ -15,18 +16,33 @@ logger = easylog()
 class Aggregation(Config):
     """The aggregation function for Splade"""
 
-    pass
+    def with_linear(self, logits, mask, weight, bias=None):
+        """Project before aggregating using a linear transformation
+
+        Can be optimized by further operators
+
+        :param logits: The logits output by the sequence representation model (B
+            x L x D)
+        :param mask: The mask (B x L) where 0 when the element should be masked
+            out
+        :param weight: The linear transformation (D' x D)
+        """
+        projection = F.linear(logits, weight, bias)
+        return self(projection, mask)
 
 
 class MaxAggregation(Aggregation):
     """Aggregate using a max"""
 
     def __call__(self, logits, mask):
+        # Get the maximum (masking the values)
         values, _ = torch.max(
-            torch.log1p(torch.relu(logits) * mask.to(logits.device).unsqueeze(-1)),
+            torch.relu(logits) * mask.to(logits.device).unsqueeze(-1),
             dim=1,
         )
-        return values
+
+        # Computes log(1+x)
+        return torch.log1p(values.clamp(min=0))
 
 
 class SumAggregation(Aggregation):

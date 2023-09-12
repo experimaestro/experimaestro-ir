@@ -168,6 +168,9 @@ def find_java_home(min_version: int = 6) -> str:
     paths = []
 
     # (1) Use environment variable
+    if java_home := os.environ.get("FORCE_JAVA_HOME", None):
+        return java_home
+
     if java_home := os.environ.get("JAVA_HOME", None):
         paths.append(Path(java_home) / "bin" / "java")
 
