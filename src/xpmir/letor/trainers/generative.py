@@ -4,7 +4,7 @@ import torch
 
 from xpmir.letor.trainers.pairwise import PairwiseLoss
 from xpmir.letor.records import PairwiseRecords
-from xpmir.neural.generative import IteratorGenerator
+from xpmir.neural.generative import IdentifierGenerator
 from xpmir.letor.trainers import TrainerContext
 from xpmir.learning.context import Loss
 
@@ -13,7 +13,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseLoss):
 
     NAME = "PairwiseGenerativeLoss"
 
-    id_generator: Param[IteratorGenerator]
+    id_generator: Param[IdentifierGenerator]
 
     max_depth: Param[int] = 5
 

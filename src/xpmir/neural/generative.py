@@ -72,7 +72,7 @@ class T5StepwiseGenerator:
     pass
 
 
-class T5IteratorGenerator(IdentifierGenerator, DistributableModel):
+class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
     """generate the id of the token based on t5-based models"""
 
     decoder_outdim: Param[int] = 12
