@@ -10,7 +10,7 @@ import numpy as np
 from xpmir.learning.optim import Module
 from xpmir.letor.records import TokenizedTexts, BaseRecords
 from xpmir.distributed import DistributableModel
-from xpmir.rankers import AbstractLearnableScorer
+from xpmir.rankers import AbstractModuleScorer
 
 
 # The modified
@@ -54,22 +54,24 @@ class IdentifierGenerator(Module):
     """The HuggingFace identifier (to configure the model)"""
 
     def __initialize__(self):
-        # Easy and hacky way to get the device
-        self._dummy_params = nn.Parameter(torch.Tensor())
-        self.config = AutoConfig.from_pretrained(self.hf_id)
-        self.tokenizer = AutoTokenizer.from_pretrained(self.hf_id, use_fast=True)
+        pass
 
     @abstractmethod
     def stepwise_iterator(self) -> StepwiseGenerator:
         pass
 
-    @property
-    def device(self):
-        return self._dummy_params.device
-
 
 class T5StepwiseGenerator:
-    pass
+    def init(self, batch_size: int) -> torch.Tensor:
+        """Returns the distribution over the first generated tokens (BxV)"""
+        # todo
+        pass
+
+    def step(self, token_ids: torch.LongTensor) -> torch.Tensor:
+        """Returns the distribution over next tokens (BxV), given the last
+        generates ones (B)"""
+        # todo
+        pass
 
 
 class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
@@ -80,15 +82,28 @@ class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
     rebuild the lm_head and the decoder embedding
     """
 
+    def stepwise_iterator(self) -> StepwiseGenerator:
+        # Todo
+        pass
+
     def __initialize__(self, random: Optional[np.random.RandomState] = None):
         super().__initialize__()
-        self.t5_model = CustomOutputT5(self.config, self.decoder_outdim)
 
+        # Easy and hacky way to get the device
+        self._dummy_params = nn.Parameter(torch.Tensor())
+        self.config = AutoConfig.from_pretrained(self.hf_id)
+        self.tokenizer = AutoTokenizer.from_pretrained(self.hf_id, use_fast=True)
+
+        self.t5_model = CustomOutputT5(self.config, self.decoder_outdim)
         self.pad_token_id = self.t5_model.generation_config.pad_token_id
         self.decoder_start_token_id = (
             self.t5_model.generation_config.decoder_start_token_id
         )
         self.eos_token_id = self.t5_model.generation_config.eos_token_id
+
+    @property
+    def device(self):
+        return self._dummy_params.device
 
     def batch_tokenize(
         self,
@@ -156,7 +171,7 @@ class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
         # Do a forward pass to get the next token
         # returns three not None values:
         # past_key_values, last_hidden_state, encoder_last_hidden_state
-        decoder_output = self.model(
+        decoder_output = self.t5_model(
             decoder_input_ids=decoder_input_ids,
             encoder_outputs=encoder_outputs,
             attention_mask=encoder_attention_mask,
@@ -174,7 +189,7 @@ class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
         self.t5_model = update(self.t5_model)
 
 
-class GenerativeRetrievalScorer(AbstractLearnableScorer):
+class GenerativeRetrievalScorer(AbstractModuleScorer):
     """A scorer which will be used for the inference of the generative retrieval model,
     and this scorer is not learnable"""
 
