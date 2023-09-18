@@ -312,6 +312,7 @@ class DuoPairwiseTrainer(LossTrainer):
             return (positives == target).sum() / len(positives)
 
 
+# FIXME: move to generative
 class PairwiseTrainerForGenerativeRetrieval(LossTrainer):
 
     lossfn: Param[PairwiseGenerativeRetrievalLoss]
@@ -320,6 +321,7 @@ class PairwiseTrainerForGenerativeRetrieval(LossTrainer):
     sampler: Param[PairwiseSampler]
     """The pairwise sampler"""
 
+    # FIXME: nothing to do here
     sampling_target: Param[str]
     """The sampling target inside the loss, could be pos, neg, or query"""
 
@@ -344,4 +346,5 @@ class PairwiseTrainerForGenerativeRetrieval(LossTrainer):
 
     def train_iter(self, records: PairwiseRecords):
         # do the forward pass to get the gradient value
+        # FIXME: should register the loss (see compute of the loss for pairwise)
         self.lossfn.process(records, self.context, self.sampling_target)

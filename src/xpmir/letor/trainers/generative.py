@@ -1,4 +1,4 @@
-from experimaestro import Param
+from experimaestro import Param, Config
 import torch
 
 from xpmir.letor.trainers.pairwise import PairwiseLoss
@@ -8,7 +8,13 @@ from xpmir.letor.trainers import TrainerContext
 from xpmir.learning.context import Loss
 
 
-class PairwiseGenerativeRetrievalLoss(PairwiseLoss):
+class PairwiseGenerativeRetrievalLoss(Config, nn.Module):
+    """Generic loss for generative models"""
+
+    pass
+
+
+class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeRetrievalLoss):
 
     NAME = "PairwiseGenerativeLoss"
 
@@ -54,6 +60,9 @@ class PairwiseGenerativeRetrievalLoss(PairwiseLoss):
         unfinished_sequences = self.posdoc_stepwise_generator.get_token_state()[1]
 
         # sampling according to the proba distribution
+        # FIXME: Use python Enum rather than strings -- much clearer and less error-prone
+        # FIXME: also, much easier to select have an array with the three distributions
+        # and choose at random one of those
         if sampling_target == "pos":
             raw_next_tokens = torch.multinomial(posdoc_proba, num_samples=1).squeeze(
                 1
@@ -96,6 +105,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseLoss):
             # Question: does the mask need to detach()?
             return (middle_term + last_term) * unfinished_sequences.detach()
 
+        # FIXME: use an array (as said before so you don't have three branches)
         if sampling_target == "pos":
             sample_multiplier = (
                 negdoc_proba_next_tokens.detach() * query_proba_next_tokens.detach()
@@ -113,6 +123,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseLoss):
 
         return (
             # Question: does the mask need to detach()?
+            # FIXME: ???
             unfinished_sequences.detach()
             * (
                 self.recursive(cur_node_proba, sampling_target) * sample_multiplier
@@ -131,6 +142,8 @@ class PairwiseGenerativeRetrievalLoss(PairwiseLoss):
 
         bs = len(posdocs_text)
 
+        # FIXME: NO!!! don't use self – the stepwise generators are specific to
+        # the computation of one loss
         self.posdoc_stepwise_generator.init(posdocs_text)
         self.negdoc_stepwise_generator.init(negdocs_text)
         self.query_stepwise_generator.init(queries_text)
@@ -148,3 +161,9 @@ class PairwiseGenerativeRetrievalLoss(PairwiseLoss):
         """Calculate the loss and put it on the training context"""
         value = self.compute(records, context)
         context.add_loss(Loss(f"pair-{self.NAME}", value, self.weight))
+
+
+# FIXME: implement this one
+class GenerativeTrainer:
+    loss: Param[PairwiseGenerativeRetrievalLoss]
+    pass
