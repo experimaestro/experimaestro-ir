@@ -320,14 +320,17 @@ class PairwiseTrainerForGenerativeRetrieval(LossTrainer):
     sampler: Param[PairwiseSampler]
     """The pairwise sampler"""
 
+    sampling_target: Param[str]
+    """The sampling target inside the loss, could be pos, neg, or query"""
+
     sampler_iter: InitVar[SerializableIterator[PairwiseRecord]]
 
     def initialize(self, random: np.random.RandomState, context: TrainerContext):
         super().initialize(random, context)
-        self.lossfn.initialize()  # think about what to initialize?
+        self.lossfn.initialize()
         foreach(
             context.hooks(PairwiseLoss), lambda loss: loss.initialize()
-        )  # also here
+        )  # maybe later we need to change the sampling target, we can use this hook
 
         self.sampler.initialize(random)
         self.sampler_iter = self.sampler.pairwise_iter()
@@ -341,4 +344,4 @@ class PairwiseTrainerForGenerativeRetrieval(LossTrainer):
 
     def train_iter(self, records: PairwiseRecords):
         # do the forward pass to get the gradient value
-        self.lossfn.process(records, self.context)
+        self.lossfn.process(records, self.context, self.sampling_target)
