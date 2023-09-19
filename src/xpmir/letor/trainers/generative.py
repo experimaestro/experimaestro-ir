@@ -1,20 +1,38 @@
+from typing import Iterator
+from torch import nn
+import numpy as np
 from experimaestro import Param, Config
 import torch
 
-from xpmir.letor.trainers.pairwise import PairwiseLoss
-from xpmir.letor.records import PairwiseRecords
+from xpmir.letor.samplers import PairwiseSampler
+from xpmir.letor.records import BaseRecords, PairwiseRecords
 from xpmir.neural.generative import IdentifierGenerator
-from xpmir.letor.trainers import TrainerContext
+from xpmir.letor.trainers import TrainerContext, LossTrainer
 from xpmir.learning.context import Loss
+from xpmir.utils.utils import foreach
 
 
-class PairwiseGenerativeRetrievalLoss(Config, nn.Module):
+class PairwiseGenerativeLoss(Config, nn.Module):
     """Generic loss for generative models"""
 
-    pass
+    NAME = "?"
+
+    weight: Param[float] = 1.0
+    """The weight :math:`w` with which the loss is multiplied (useful when
+    combining with other ones)"""
+
+    def initialize(self):
+        pass
+
+    def compute(self, records, context):
+        pass
+
+    def process(self, records: BaseRecords, context: TrainerContext):
+        value = self.compute(records, context)
+        context.add_loss(Loss(f"pair-{self.NAME}", value, self.weight))
 
 
-class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeRetrievalLoss):
+class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
 
     NAME = "PairwiseGenerativeLoss"
 
@@ -25,8 +43,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeRetrievalLoss):
         self.negdoc_stepwise_generator = self.id_generator.stepwise_iterator()
         self.query_stepwise_generator = self.id_generator.stepwise_iterator()
 
-    def recursive(self, cur_node_proba, sampling_target):
-
+    def recursive(self, cur_node_proba):
         # pass get the probas
         posdoc_proba = self.posdoc_stepwise_generator.step()
         negdoc_proba = self.negdoc_stepwise_generator.step()
@@ -59,24 +76,18 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeRetrievalLoss):
         # 0 means no need to continue
         unfinished_sequences = self.posdoc_stepwise_generator.get_token_state()[1]
 
-        # sampling according to the proba distribution
-        # FIXME: Use python Enum rather than strings -- much clearer and less error-prone
-        # FIXME: also, much easier to select have an array with the three distributions
-        # and choose at random one of those
-        if sampling_target == "pos":
-            raw_next_tokens = torch.multinomial(posdoc_proba, num_samples=1).squeeze(
-                1
-            )  # shape bs
-        elif sampling_target == "neg":
-            raw_next_tokens = torch.multinomial(negdoc_proba, num_samples=1).squeeze(
-                1
-            )  # shape bs
-        elif sampling_target == "query":
-            raw_next_tokens = torch.multinomial(query_proba, num_samples=1).squeeze(
-                1
-            )  # shape bs
-        else:
-            raise ValueError(f"We cannot sampling over {sampling_target}")
+        # randomly choose the target of sampling
+        sampling_target = torch.randint(low=0, high=3, size=(1,))
+        raw_next_tokens = torch.cat(
+            (
+                torch.multinomial(posdoc_proba, num_samples=1),
+                torch.multinomial(negdoc_proba, num_samples=1),
+                torch.multinomial(query_proba, num_samples=1),
+            ),
+            dim=-1,
+        )[:, sampling_target].squeeze(
+            1
+        )  # shape [bs]
 
         # mask the generated tokens if some of the seqs
         # are already end before(0 in unfinished_sequences)
@@ -102,39 +113,23 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeRetrievalLoss):
 
         # whether need to be end now?
         if self.posdoc_stepwise_generator.stopping_criteria():
-            # Question: does the mask need to detach()?
             return (middle_term + last_term) * unfinished_sequences.detach()
 
-        # FIXME: use an array (as said before so you don't have three branches)
-        if sampling_target == "pos":
-            sample_multiplier = (
-                negdoc_proba_next_tokens.detach() * query_proba_next_tokens.detach()
+        sampling_multiplier = torch.vstack(
+            (
+                negdoc_proba_next_tokens.detach() * query_proba_next_tokens.detach(),
+                posdoc_proba_next_tokens.detach() * query_proba_next_tokens.detach(),
+                posdoc_proba_next_tokens.detach() * negdoc_proba_next_tokens.detach(),
             )
-        elif sampling_target == "neg":
-            sample_multiplier = (
-                posdoc_proba_next_tokens.detach() * query_proba_next_tokens.detach()
-            )
-        elif sampling_target == "query":
-            sample_multiplier = (
-                posdoc_proba_next_tokens.detach() * negdoc_proba_next_tokens.detach()
-            )
-        else:
-            raise ValueError(f"We cannot sampling over {sampling_target}")
+        )[sampling_target].squeeze(0)
 
-        return (
-            # Question: does the mask need to detach()?
-            # FIXME: ???
-            unfinished_sequences.detach()
-            * (
-                self.recursive(cur_node_proba, sampling_target) * sample_multiplier
-                + middle_term
-                + last_term
-            )
+        return unfinished_sequences.detach() * (
+            self.recursive(cur_node_proba) * sampling_multiplier
+            + middle_term
+            + last_term
         )
 
-    def compute(
-        self, records: PairwiseRecords, context: TrainerContext, sampling_target: str
-    ):
+    def compute(self, records: PairwiseRecords, context: TrainerContext):
 
         posdocs_text = [pdr.document.get_text() for pdr in records.positives]
         negdocs_text = [ndr.document.get_text() for ndr in records.negatives]
@@ -142,7 +137,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeRetrievalLoss):
 
         bs = len(posdocs_text)
 
-        # FIXME: NO!!! don't use self – the stepwise generators are specific to
+        # NO!!! don't use self – the stepwise generators are specific to
         # the computation of one loss
         self.posdoc_stepwise_generator.init(posdocs_text)
         self.negdoc_stepwise_generator.init(negdocs_text)
@@ -155,15 +150,34 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeRetrievalLoss):
 
         # in fact, we need to minus something to get the pure gradient, but at
         # the level of the root, the additional terms always equals to 0
-        return self.recursive(cur_node_proba, sampling_target)
-
-    def process(self, records: PairwiseRecords, context: TrainerContext):
-        """Calculate the loss and put it on the training context"""
-        value = self.compute(records, context)
-        context.add_loss(Loss(f"pair-{self.NAME}", value, self.weight))
+        return self.recursive(cur_node_proba)
 
 
-# FIXME: implement this one
-class GenerativeTrainer:
+class GenerativeTrainer(LossTrainer):
+
     loss: Param[PairwiseGenerativeRetrievalLoss]
-    pass
+
+    sampler: Param[PairwiseSampler]
+    """The pairwise sampler"""
+
+    def initialize(self, random: np.random.RandomState, context: TrainerContext):
+        super().initialize(random, context)
+        self.lossfn.initialize()
+        foreach(
+            context.hooks(PairwiseGenerativeLoss), lambda loss: loss.initialize()
+        )  # maybe later we need to change the sampling target, we can use this hook
+
+        self.sampler.initialize(random)
+        self.sampler_iter = self.sampler.pairwise_iter()
+
+    def iter_batches(self) -> Iterator[PairwiseRecords]:
+        while True:
+            batch = PairwiseRecords()
+            for _, record in zip(range(self.batch_size), self.sampler_iter):
+                batch.add(record)
+            yield batch
+
+    def train_iter(self, records: PairwiseRecords):
+        # do the forward pass to get the gradient value
+        # should register the loss (see compute of the loss for pairwise)
+        self.loss.process(records, self.context)

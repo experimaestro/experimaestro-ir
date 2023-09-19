@@ -20,7 +20,6 @@ from xpmir.letor.trainers import TrainerContext, LossTrainer
 import numpy as np
 from xpmir.rankers import LearnableScorer, ScorerOutputType
 from xpmir.utils.utils import foreach
-from xpmir.letor.trainers.generative import PairwiseGenerativeRetrievalLoss
 
 
 class PairwiseLoss(Config, nn.Module):
@@ -310,41 +309,3 @@ class DuoPairwiseTrainer(LossTrainer):
         with torch.no_grad():
             positives = scores_by_record > self.score_threshold
             return (positives == target).sum() / len(positives)
-
-
-# FIXME: move to generative
-class PairwiseTrainerForGenerativeRetrieval(LossTrainer):
-
-    lossfn: Param[PairwiseGenerativeRetrievalLoss]
-    """The loss function"""
-
-    sampler: Param[PairwiseSampler]
-    """The pairwise sampler"""
-
-    # FIXME: nothing to do here
-    sampling_target: Param[str]
-    """The sampling target inside the loss, could be pos, neg, or query"""
-
-    sampler_iter: InitVar[SerializableIterator[PairwiseRecord]]
-
-    def initialize(self, random: np.random.RandomState, context: TrainerContext):
-        super().initialize(random, context)
-        self.lossfn.initialize()
-        foreach(
-            context.hooks(PairwiseLoss), lambda loss: loss.initialize()
-        )  # maybe later we need to change the sampling target, we can use this hook
-
-        self.sampler.initialize(random)
-        self.sampler_iter = self.sampler.pairwise_iter()
-
-    def iter_batches(self) -> Iterator[PairwiseRecords]:
-        while True:
-            batch = PairwiseRecords()
-            for _, record in zip(range(self.batch_size), self.sampler_iter):
-                batch.add(record)
-            yield batch
-
-    def train_iter(self, records: PairwiseRecords):
-        # do the forward pass to get the gradient value
-        # FIXME: should register the loss (see compute of the loss for pairwise)
-        self.lossfn.process(records, self.context, self.sampling_target)
