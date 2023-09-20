@@ -172,7 +172,7 @@ class RandomScorer(Scorer):
         return result
 
 
-class AbstractLearnableScorer(Scorer, Module):
+class AbstractModuleScorer(Scorer, Module):
     """Base class for all learnable scorer"""
 
     # Ensures basic operations are redirected to torch.nn.Module methods
@@ -223,21 +223,6 @@ class AbstractLearnableScorer(Scorer, Module):
 
         return self
 
-
-class LearnableScorer(AbstractLearnableScorer):
-    """Learnable scorer
-
-    A scorer with parameters that can be learnt"""
-
-    def forward(self, inputs: "BaseRecords", info: Optional[TrainerContext]):
-        """Computes the score of all (query, document) pairs
-
-        Different subclasses can process the input more or
-        less efficiently based on the `BaseRecords` instance (pointwise,
-        pairwise, or structured)
-        """
-        raise NotImplementedError(f"forward in {self.__class__}")
-
     def rsv(
         self,
         query: str,
@@ -272,7 +257,23 @@ class LearnableScorer(AbstractLearnableScorer):
         return scoredDocuments
 
 
-class DuoLearnableScorer(AbstractLearnableScorer):
+class LearnableScorer(AbstractModuleScorer):
+    """Learnable scorer
+
+    A scorer with parameters that can be learnt"""
+
+    def forward(self, inputs: "BaseRecords", info: Optional[TrainerContext]):
+        """Computes the score of all (query, document) pairs
+
+        Different subclasses can process the input more or
+        less efficiently based on the `BaseRecords` instance (pointwise,
+        pairwise, or structured)
+        """
+        raise NotImplementedError(f"forward in {self.__class__}")
+
+
+# FIXME: should not be an AbstractLearnableScorer # noqa: T100
+class DuoLearnableScorer(AbstractLearnableScorer):  # noqa: F821
     """Base class for models that can score a triplet (query, document 1, document 2)"""
 
     def forward(self, inputs: "PairwiseRecords", info: Optional[TrainerContext]):
