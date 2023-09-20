@@ -38,16 +38,17 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
 
     id_generator: Param[IdentifierGenerator]
 
-    def initialize(self):  # Question: what name of initialize method to use?
-        self.posdoc_stepwise_generator = self.id_generator.stepwise_iterator()
-        self.negdoc_stepwise_generator = self.id_generator.stepwise_iterator()
-        self.query_stepwise_generator = self.id_generator.stepwise_iterator()
-
-    def recursive(self, cur_node_proba):
+    def recursive(
+        self,
+        cur_node_proba,
+        posdoc_stepwise_generator,
+        negdoc_stepwise_generator,
+        query_stepwise_generator,
+    ):
         # pass get the probas
-        posdoc_proba = self.posdoc_stepwise_generator.step()
-        negdoc_proba = self.negdoc_stepwise_generator.step()
-        query_proba = self.query_stepwise_generator.step()
+        posdoc_proba = posdoc_stepwise_generator.step()
+        negdoc_proba = negdoc_stepwise_generator.step()
+        query_proba = query_stepwise_generator.step()
 
         # middle_term in the formula
         middle_term = torch.sum(
@@ -74,7 +75,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
 
         # obtain the previous unfinished sequence as a mask
         # 0 means no need to continue
-        unfinished_sequences = self.posdoc_stepwise_generator.get_token_state()[1]
+        unfinished_sequences = posdoc_stepwise_generator.get_token_state()[1]
 
         # randomly choose the target of sampling
         sampling_target = torch.randint(low=0, high=3, size=(1,))
@@ -91,12 +92,12 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
 
         # mask the generated tokens if some of the seqs
         # are already end before(0 in unfinished_sequences)
-        self.posdoc_stepwise_generator.set_token_state(raw_next_tokens)
-        self.negdoc_stepwise_generator.set_token_state(raw_next_tokens)
-        self.query_stepwise_generator.set_token_state(raw_next_tokens)
+        posdoc_stepwise_generator.set_token_state(raw_next_tokens)
+        negdoc_stepwise_generator.set_token_state(raw_next_tokens)
+        query_stepwise_generator.set_token_state(raw_next_tokens)
 
         # get the processed tokens
-        next_tokens = self.posdoc_stepwise_generator.get_token_state()[0].squeeze(-1)
+        next_tokens = posdoc_stepwise_generator.get_token_state()[0].squeeze(-1)
 
         # cumulate the proba from root
         iterator_vector = torch.arange(len(next_tokens))
@@ -112,7 +113,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         ).transpose(0, 1)
 
         # whether need to be end now?
-        if self.posdoc_stepwise_generator.stopping_criteria():
+        if posdoc_stepwise_generator.stopping_criteria():
             return (middle_term + last_term) * unfinished_sequences.detach()
 
         sampling_multiplier = torch.vstack(
@@ -124,7 +125,13 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         )[sampling_target].squeeze(0)
 
         return unfinished_sequences.detach() * (
-            self.recursive(cur_node_proba) * sampling_multiplier
+            self.recursive(
+                cur_node_proba,
+                posdoc_stepwise_generator,
+                negdoc_stepwise_generator,
+                query_stepwise_generator,
+            )
+            * sampling_multiplier
             + middle_term
             + last_term
         )
@@ -137,11 +144,14 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
 
         bs = len(posdocs_text)
 
-        # NO!!! don't use self – the stepwise generators are specific to
-        # the computation of one loss
-        self.posdoc_stepwise_generator.init(posdocs_text)
-        self.negdoc_stepwise_generator.init(negdocs_text)
-        self.query_stepwise_generator.init(queries_text)
+        # create the generator for the given records
+        posdoc_stepwise_generator = self.id_generator.stepwise_iterator()
+        negdoc_stepwise_generator = self.id_generator.stepwise_iterator()
+        query_stepwise_generator = self.id_generator.stepwise_iterator()
+
+        posdoc_stepwise_generator.init(posdocs_text)
+        negdoc_stepwise_generator.init(negdocs_text)
+        query_stepwise_generator.init(queries_text)
 
         # initialize cumulate product of from the root to the current one
         cur_node_proba = torch.ones((bs, 3), dtype=torch.long).to(
@@ -150,7 +160,12 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
 
         # in fact, we need to minus something to get the pure gradient, but at
         # the level of the root, the additional terms always equals to 0
-        return self.recursive(cur_node_proba)
+        return self.recursive(
+            cur_node_proba,
+            posdoc_stepwise_generator,
+            negdoc_stepwise_generator,
+            query_stepwise_generator,
+        )
 
 
 class GenerativeTrainer(LossTrainer):
@@ -179,5 +194,4 @@ class GenerativeTrainer(LossTrainer):
 
     def train_iter(self, records: PairwiseRecords):
         # do the forward pass to get the gradient value
-        # should register the loss (see compute of the loss for pairwise)
         self.loss.process(records, self.context)
