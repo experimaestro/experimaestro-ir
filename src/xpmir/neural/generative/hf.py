@@ -1,21 +1,19 @@
 from transformers import AutoConfig, AutoTokenizer, T5ForConditionalGeneration, T5Config
 from experimaestro import Param
 from typing import Optional, List
-from abc import abstractmethod
 
 import torch
 from torch import nn
 import numpy as np
 
-from xpmir.learning.optim import Module
-from xpmir.letor.records import TokenizedTexts, BaseRecords
+from xpmir.letor.records import TokenizedTexts
 from xpmir.distributed import DistributableModel
-from xpmir.rankers import AbstractModuleScorer
 from . import IdentifierGenerator, StepwiseGenerator
+
 
 class CustomOutputT5(T5ForConditionalGeneration):
     """T5-based identifier generation
-    
+
     The class modifies T5 to use a custom vocabulary in the decoder
     """
 
@@ -34,7 +32,6 @@ class CustomOutputT5(T5ForConditionalGeneration):
 
     def forward(self):
         pass
-
 
 
 class T5StepwiseGenerator(StepwiseGenerator):
@@ -95,6 +92,7 @@ class T5StepwiseGenerator(StepwiseGenerator):
         )
 
     def get_token_state(self):
+        """Return the token state and the unfinished sequences(mask)"""
         return (self.decoder_input_ids, self.unfinished_sequences)
 
     def stopping_criteria(self) -> bool:
@@ -220,4 +218,3 @@ class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
 
     def distribute_models(self, update):
         self.t5_model = update(self.t5_model)
-

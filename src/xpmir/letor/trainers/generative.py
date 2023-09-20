@@ -6,7 +6,7 @@ import torch
 
 from xpmir.letor.samplers import PairwiseSampler
 from xpmir.letor.records import BaseRecords, PairwiseRecords
-from xpmir.neural.generative import IdentifierGenerator
+from xpmir.neural.generative import IdentifierGenerator, StepwiseGenerator
 from xpmir.letor.trainers import TrainerContext, LossTrainer
 from xpmir.learning.context import Loss
 from xpmir.utils.utils import foreach
@@ -41,9 +41,9 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
     def recursive(
         self,
         cur_node_proba,
-        posdoc_stepwise_generator,
-        negdoc_stepwise_generator,
-        query_stepwise_generator,
+        posdoc_stepwise_generator: StepwiseGenerator,
+        negdoc_stepwise_generator: StepwiseGenerator,
+        query_stepwise_generator: StepwiseGenerator,
     ):
         # pass get the probas
         posdoc_proba = posdoc_stepwise_generator.step()
