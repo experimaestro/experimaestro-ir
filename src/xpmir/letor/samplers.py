@@ -166,7 +166,7 @@ class ModelBasedSampler(Sampler):
                             positives.append((docno, rel, 0))
 
                     if not positives:
-                        self.logger.debug(
+                        self.logger.warning(
                             "Skipping topic %s (no relevant documents)", query.qid
                         )
                         skipped += 1
@@ -185,6 +185,13 @@ class ModelBasedSampler(Sampler):
 
                         negatives.append((sd.docid, rel, sd.score))
                         fp.write(f"\t{sd.docid}\t{sd.score}\t{rel}\n")
+
+                    if not negatives:
+                        self.logger.warning(
+                            "Skipping topic %s (no negatives documents)", query.qid
+                        )
+                        skipped += 1
+                        continue
 
                     assert len(positives) > 0 and len(negatives) > 0
                     yield query.text, positives, negatives
