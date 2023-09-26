@@ -1,5 +1,7 @@
+import logging
+
 from transformers import AutoConfig, AutoTokenizer, T5ForConditionalGeneration, T5Config
-from experimaestro import Param
+from experimaestro import Param, LightweightTask
 from typing import Optional, List
 
 import torch
@@ -22,8 +24,8 @@ class CustomOutputT5(T5ForConditionalGeneration):
         self.decoder_outdim = decoder_outdim
 
         # Modify LM head
-        self.lm_head = nn.Parameter(
-            nn.Linear(self.lm_head.in_features, self.decoder_outdim, bias=False)
+        self.lm_head = nn.Linear(
+            self.lm_head.in_features, self.decoder_outdim, bias=False
         )
 
         # Modify the decoder vocabulary
@@ -218,3 +220,26 @@ class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
 
     def distribute_models(self, update):
         self.t5_model = update(self.t5_model)
+
+
+class LoadFromT5(LightweightTask):
+    """Load parameters from a T5 model"""
+
+    model: Param[T5IdentifierGenerator]
+    """the target"""
+
+    def execute(self):
+        self.model.initialize(None)
+
+        # Load from checkpoint
+        logging.info("Loading hugginface T5 from checkpoint %s", self.model.hf_id)
+        # Load the pre-trained model
+        t5_model = T5ForConditionalGeneration.from_pretrained(self.model.hf_id)
+
+        # Change the state_dict for the lm_head the decoder embedding
+        state_dict = t5_model.state_dict()
+
+        del state_dict["lm_head.weight"]
+
+        logging.info("Loading state dict into CustomOutputT5")
+        self.model.load_state_dict(state_dict, strict=False)
