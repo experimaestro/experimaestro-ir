@@ -272,8 +272,8 @@ class LearnableScorer(AbstractModuleScorer):
         raise NotImplementedError(f"forward in {self.__class__}")
 
 
-# FIXME: should not be an AbstractLearnableScorer # noqa: T100
-class DuoLearnableScorer(AbstractLearnableScorer):  # noqa: F821
+# FIXME: should not be an AbstractLearnableScorer, need to re-consider the structure
+class DuoLearnableScorer(LearnableScorer):
     """Base class for models that can score a triplet (query, document 1, document 2)"""
 
     def forward(self, inputs: "PairwiseRecords", info: Optional[TrainerContext]):
