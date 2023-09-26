@@ -272,7 +272,6 @@ class LearnableScorer(AbstractModuleScorer):
         raise NotImplementedError(f"forward in {self.__class__}")
 
 
-# FIXME: should not be an AbstractLearnableScorer, need to re-consider the structure
 class DuoLearnableScorer(LearnableScorer):
     """Base class for models that can score a triplet (query, document 1, document 2)"""
 
