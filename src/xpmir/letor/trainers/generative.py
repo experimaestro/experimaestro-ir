@@ -177,7 +177,7 @@ class GenerativeTrainer(LossTrainer):
 
     def initialize(self, random: np.random.RandomState, context: TrainerContext):
         super().initialize(random, context)
-        self.lossfn.initialize()
+        self.loss.initialize()
         foreach(
             context.hooks(PairwiseGenerativeLoss), lambda loss: loss.initialize()
         )  # maybe later we need to change the sampling target, we can use this hook
@@ -192,7 +192,7 @@ class GenerativeTrainer(LossTrainer):
                 batch.add(record)
             yield batch
 
-    def train_iter(self, records: PairwiseRecords):
+    def train_batch(self, records: PairwiseRecords):
         # do the forward pass to get the gradient value
         self.loss.process(records, self.context)
 

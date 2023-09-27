@@ -242,3 +242,21 @@ class LoadFromT5(LightweightTask):
 
         logging.info("Loading state dict into CustomOutputT5")
         self.model.load_state_dict(state_dict, strict=False)
+
+
+# # test
+# from xpmir.neural.generative import GenerativeRetrievalScorer
+
+# if __name__ == "__main__":
+#     model = T5IdentifierGenerator(hf_id='t5-base')
+#     scorer = GenerativeRetrievalScorer(id_generator=model)
+
+#     scorer = scorer.instance()
+#     scorer.initialize(None)
+
+#     res = scorer.rsv(
+#         query = "what is your name",
+#         scored_documents = ["my name is tom", "hello kitty"]
+#     )
+
+#     print(res)

@@ -5,8 +5,10 @@ from abc import abstractmethod
 import torch
 
 from xpmir.learning.optim import Module
+from xpmir.learning.context import TrainerContext
 from xpmir.letor.records import BaseRecords
 from xpmir.rankers import AbstractModuleScorer
+from xpmir.utils.utils import Initializable
 
 
 class StepwiseGenerator:
@@ -40,7 +42,7 @@ class StepwiseGenerator:
         pass
 
 
-class IdentifierGenerator(Module):
+class IdentifierGenerator(Module, Initializable):
     """Models that generate an identifier given a document or a query"""
 
     hf_id: Param[str]
@@ -65,9 +67,8 @@ class GenerativeRetrievalScorer(AbstractModuleScorer):
     """A early finish punishment hyperparameter, trying to make model score less
     if the id list is too short. Default value to 1 means no punishment"""
 
-    def __initialize__(self):
-        # Load the state_dict?
-        pass
+    def _initialize(self, random):
+        self.id_generator.initialize()
 
     def recursive(
         self,
@@ -111,7 +112,7 @@ class GenerativeRetrievalScorer(AbstractModuleScorer):
         )
 
     def forward(
-        self, inputs: "BaseRecords"
+        self, inputs: "BaseRecords", info: TrainerContext = None
     ):  # try to return tensor [bs, ] which contains the scores
         # also implemented in a recursive way
         queries_text = [pdr.topic.get_text() for pdr in inputs.topics]
