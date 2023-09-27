@@ -7,7 +7,6 @@ from typing import Optional, List
 import torch
 from torch import nn
 import numpy as np
-
 from xpmir.letor.records import TokenizedTexts
 from xpmir.distributed import DistributableModel
 from . import IdentifierGenerator, StepwiseGenerator
@@ -32,17 +31,17 @@ class CustomOutputT5(T5ForConditionalGeneration):
         decoder_embeddings = nn.Embedding(self.decoder_outdim, self.config.d_model)
         self.get_decoder().set_input_embeddings(decoder_embeddings)
 
-    def forward(self):
-        pass
+    def forward(self, **kwargs):
+        return super().forward(**kwargs)
 
 
 class T5StepwiseGenerator(StepwiseGenerator):
-
-    id_generator: Param[IdentifierGenerator]
-    """The identifier to use to generate the next step's token"""
-
-    max_depth: Param[int] = 5
-    """The maximum step we can go"""
+    def __init__(self, id_generator: IdentifierGenerator, max_depth: int = 5):
+        super().__init__()
+        # The identifier to use to generate the next step's token
+        self.id_generator = id_generator
+        # The maximum step we can go
+        self.max_depth = max_depth
 
     def init(self, texts: List[str]):
         """Initialize some inner states for further iterations, and return
@@ -174,7 +173,7 @@ class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
         which could accelerate the autoregressive generation procedure"""
 
         encoder = self.t5_model.get_encoder()
-        tokenized = self.batch_tokenize(texts, mask=True)
+        tokenized = self.batch_tokenize(texts, maxlen=512, mask=True)
         encoder_output = encoder(
             tokenized.ids,
             attention_mask=tokenized.mask.to(self.device),

@@ -195,3 +195,33 @@ class GenerativeTrainer(LossTrainer):
     def train_iter(self, records: PairwiseRecords):
         # do the forward pass to get the gradient value
         self.loss.process(records, self.context)
+
+
+# # to test
+# from xpmir.neural.generative.hf import LoadFromT5, T5IdentifierGenerator
+# from datamaestro_text.data.ir.base import TextDocument, TextTopic
+# from xpmir.letor.records import PairwiseRecord, TopicRecord, DocumentRecord
+
+# if __name__ == '__main__':
+#     model = T5IdentifierGenerator(hf_id='t5-base')
+#     model.add_pretasks(LoadFromT5(model=model))
+
+#     loss = PairwiseGenerativeRetrievalLoss(id_generator=model)
+#     loss = loss.instance()
+
+#     input = PairwiseRecords()
+#     p1 = PairwiseRecord(
+#         TopicRecord(TextTopic("query")),
+#         DocumentRecord(TextDocument("positive document")),
+#         DocumentRecord(TextDocument("negative document"))
+#     )
+#     p2 = PairwiseRecord(
+#         TopicRecord(TextTopic("this is one another")),
+#         DocumentRecord(TextDocument("bug please go away")),
+#         DocumentRecord(TextDocument("I don't like bugs"))
+#     )
+
+#     input.add(p1)
+#     input.add(p2)
+
+#     print(loss.compute(input, None))
