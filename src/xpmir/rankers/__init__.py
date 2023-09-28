@@ -231,7 +231,10 @@ class AbstractModuleScorer(Scorer, Module):
         if isinstance(scored_documents, str):
             scored_documents = [ScoredDocument(TextDocument(scored_documents), None)]
         elif isinstance(scored_documents[0], str):
-            scored_documents = [ScoredDocument(TextDocument(scored_documents[0]), None)]
+            scored_documents = [
+                ScoredDocument(TextDocument(scored_document), None)
+                for scored_document in scored_documents
+            ]
 
         # Prepare the inputs and call the model
         inputs = ProductRecords()
@@ -272,7 +275,7 @@ class LearnableScorer(AbstractModuleScorer):
         raise NotImplementedError(f"forward in {self.__class__}")
 
 
-class DuoLearnableScorer(Module):  # noqa: F821
+class DuoLearnableScorer(LearnableScorer):
     """Base class for models that can score a triplet (query, document 1, document 2)"""
 
     def forward(self, inputs: "PairwiseRecords", info: Optional[TrainerContext]):
