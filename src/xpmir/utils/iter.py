@@ -242,7 +242,7 @@ class MultiprocessSerializableIterator(
 
     def load_state_dict(self, state):
         assert self.process is None, "The iterator has already been used"
-        self.iterator.load_state_dict(state)
+        self.iterator.iterator.load_state_dict(state)
         self.state = state
 
     def __next__(self):
