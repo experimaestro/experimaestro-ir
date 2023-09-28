@@ -58,11 +58,6 @@ class BaseEvaluation(Task):
             for metric in evaluator.iter_calc(run):
                 print_line(fp, str(metric.measure), metric.query_id, metric.value)
 
-        # # TODO: work-around bug in pytrec_eval
-        # # https://github.com/terrierteam/ir_measures/issues/49
-        # (the issue is closed, but no new release)
-        evaluator = get_evaluator([m() for m in self.measures], assessments)
-
         with self.aggregated.open("w") as fp:
             for key, value in evaluator.calc_aggregate(run).items():
                 print_line(fp, str(key), "all", value)
