@@ -3,6 +3,8 @@ import torch.multiprocessing as mp
 from typing import Callable, Dict, Tuple, Generic, Iterable, Iterator, Protocol, TypeVar
 from xpmir.utils.utils import easylog
 from abc import abstractmethod
+import logging
+import atexit
 
 logger = easylog()
 
@@ -143,6 +145,67 @@ class SkippingIterator(GenericSerializableIterator[T]):
         return next(self.iterator)
 
 
+class StopIterationClass:
+    pass
+
+
+STOP_ITERATION = StopIterationClass()
+
+
+def mp_iterate(iterator, queue):
+    try:
+        while True:
+            value = next(iterator)
+            queue.put(value)
+    except StopIteration:
+        queue.put(STOP_ITERATION)
+    except Exception as e:
+        queue.put(e)
+
+
+class MultiprocessIterator(Iterator[T]):
+    def __init__(self, iterator: Iterator[T], maxsize=100):
+        self.process = None
+        self.maxsize = maxsize
+        self.iterator = iterator
+
+    def __next__(self):
+        # (1) Start a process if needed
+        if self.process is None:
+            self.queue = mp.Queue(self.maxsize)
+            self.process = mp.Process(
+                target=mp_iterate,
+                args=(self.iterator, self.queue),
+                daemon=True,
+            )
+
+            # Start, and register a kill switch
+            self.process.start()
+            atexit.register(self.kill_subprocess)
+
+        # Get the next element
+        element = self.queue.get()
+
+        # Last element
+        if isinstance(element, StopIterationClass):
+            atexit.unregister(self.kill_subprocess)
+            raise StopIteration()
+
+        # An exception occurred
+        if isinstance(element, Exception):
+            atexit.unregister(self.kill_subprocess)
+            raise RuntimeError("Error in iterator process") from element
+
+        return element
+
+    def kill_subprocess(self):
+        # Kills the iterator process
+        if self.process and self.process.is_alive():
+            logging.debug("Killing iterator process")
+            self.process.kill()
+            atexit.unregister(self.kill_subprocess)
+
+
 class StatefullIterator(Iterator[Tuple[T, State]], Protocol[State]):
     """An iterator that iterate over tuples (value, state)"""
 
@@ -163,32 +226,16 @@ class StatefullIteratorAdapter(Iterator[T]):
         return value, state
 
 
-class StopIterationClass:
-    pass
-
-
-STOP_ITERATION = StopIterationClass()
-
-
-def mp_iterate(iterator, queue):
-    try:
-        while True:
-            value = next(iterator)
-            queue.put(value)
-    except StopIteration:
-        queue.put(STOP_ITERATION)
-
-
-class MultiprocessSerializableIterator(SerializableIterator[T]):
+class MultiprocessSerializableIterator(
+    MultiprocessIterator[T], SerializableIterator[T]
+):
     """A multi-process adapter for serializable iterators
 
     This can be used to obtain a multiprocess iterator from a serializable iterator
     """
 
     def __init__(self, iterator: SerializableIterator[T], maxsize=100):
-        self.iterator = iterator
-        self.process = None
-        self.maxsize = maxsize
+        super().__init__(StatefullIteratorAdapter(iterator), maxsize=maxsize)
 
     def state_dict(self) -> Dict:
         return self.state
@@ -199,19 +246,5 @@ class MultiprocessSerializableIterator(SerializableIterator[T]):
         self.state = state
 
     def __next__(self):
-        # (1) Start a process if needed
-        if self.process is None:
-            self.queue = mp.Queue(self.maxsize)
-            self.process = mp.Process(
-                target=mp_iterate,
-                args=(StatefullIteratorAdapter(self.iterator), self.queue),
-                daemon=True,
-            )
-            self.process.start()
-
-        element = self.queue.get()
-        if isinstance(element, StopIterationClass):
-            raise StopIteration()
-
-        value, self.state = element
+        value, self.state = super().__next__()
         return value
