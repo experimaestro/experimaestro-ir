@@ -13,7 +13,7 @@ class FullRetriever(Retriever):
 
     This can be used to build a small validation set on a subset of the
     collection - in that case, the scorer can be used through a
-    TwoStageRetriever
+    TwoStageRetriever, with this retriever as the base retriever.
     """
 
     documents: Param[Documents]
@@ -23,7 +23,7 @@ class FullRetriever(Retriever):
 
 
 class FullRetrieverRescorer(Retriever):
-    """Scores all the documents from a collection (for a dual representation scorer)"""
+    """Scores all the documents from a collection"""
 
     documents: Param[Documents]
     """The set of documents to consider"""
@@ -91,7 +91,7 @@ class FullRetrieverRescorer(Retriever):
         # Encode documents
         encoded = self.scorer.encode_documents(d.get_text() for d in documents)
 
-        # Process query by query (TODO: improve the process)
+        # Process query by query
         new_scores = [[] for _ in documents]
         for ix in range(len(queries)):
             # Get a range of query records

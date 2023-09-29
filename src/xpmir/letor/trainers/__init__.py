@@ -16,7 +16,12 @@ logger = easylog()
 
 
 class LossTrainer(Trainer):
-    """Trainer based on a loss function"""
+    """Trainer based on a loss function
+
+    This trainer supposes that:
+
+    - the `sampler_iter` is initialized – and is a serializable iterator over batches
+    """
 
     batcher: Param[Batcher] = Batcher()
     """How to batch samples together"""
@@ -25,10 +30,10 @@ class LossTrainer(Trainer):
     """The sampler to use"""
 
     batch_size: Param[int] = 16
-    """Number of samples per batch (the notion of sample depends on the sampler)"""
+    """Number of samples per batch"""
 
     sampler_iter: SerializableIterator
-    """The iterator over samples"""
+    """The iterator over batches"""
 
     def initialize(
         self,
@@ -40,6 +45,10 @@ class LossTrainer(Trainer):
         self.sampler.initialize(random)
 
         self.batcher_worker = self.batcher.initialize(self.batch_size)
+
+    def iter_batches(self) -> SerializableIterator:
+        """Returns the batchwise iterator"""
+        return self.sampler_iter
 
     def load_state_dict(self, state: Dict):
         self.sampler_iter.load_state_dict(state["sampler"])

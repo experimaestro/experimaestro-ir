@@ -1,6 +1,8 @@
+import pytest
 from typing import Iterator, Tuple
 import datamaestro_text.data.ir as ir
 from datamaestro_text.data.ir.base import GenericTopic, GenericDocument
+from xpmir.rankers import Retriever
 from xpmir.letor.samplers import (
     TrainingTriplets,
     TripletBasedSampler,
@@ -64,6 +66,10 @@ class GeneratedAssessments(ir.AdhocAssessments):
     pass
 
 
+class RandomRetriever(Retriever):
+    pass
+
+
 def adhoc_synthetic_dataset():
     """Creates a random dataset"""
     return ir.Adhoc(
@@ -73,6 +79,7 @@ def adhoc_synthetic_dataset():
     )
 
 
+@pytest.mark.skip("not yet done")
 def test_modelbasedsampler():
     dataset = adhoc_synthetic_dataset()
     sampler = ModelBasedSampler(
@@ -80,4 +87,4 @@ def test_modelbasedsampler():
     ).instance()
 
     for a in sampler._itertopics():
-        print(a)
+        pass

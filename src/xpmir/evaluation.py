@@ -58,18 +58,13 @@ class BaseEvaluation(Task):
             for metric in evaluator.iter_calc(run):
                 print_line(fp, str(metric.measure), metric.query_id, metric.value)
 
-        # # TODO: work-around bug in pytrec_eval
-        # # https://github.com/terrierteam/ir_measures/issues/49
-        # (the issue is closed, but no new release)
-        evaluator = get_evaluator([m() for m in self.measures], assessments)
-
         with self.aggregated.open("w") as fp:
             for key, value in evaluator.calc_aggregate(run).items():
                 print_line(fp, str(key), "all", value)
 
 
 def get_run(retriever: Retriever, dataset: Adhoc):
-    """Evaluate a retriever on a dataset"""
+    """Returns the scored documents for each topic in a dataset"""
     results = retriever.retrieve_all(
         {topic.get_id(): topic.get_text() for topic in dataset.topics.iter()}
     )
@@ -80,6 +75,14 @@ def get_run(retriever: Retriever, dataset: Adhoc):
 
 
 def evaluate(retriever: Retriever, dataset: Adhoc, measures: List[str], details=False):
+    """Evaluate a retriever on a given dataset
+
+    :param retriever: The retriever to evaluate
+    :param dataset: The dataset on which to evaluate
+    :param measures: The list of measures to compute (using ir_measures)
+    :param details: if query-level metrics should be reported, defaults to False
+    :return: The metrics (if details is False) or a tuple (metrics, detailed metrics)
+    """
     evaluator = get_evaluator(
         [ir_measures.parse_measure(m) for m in measures], dataset.assessments
     )
@@ -96,7 +99,7 @@ def evaluate(retriever: Retriever, dataset: Adhoc, measures: List[str], details=
     if details is not None:
         return metrics, details
 
-    return details
+    return metrics
 
 
 class RunEvaluation(BaseEvaluation, Task):
