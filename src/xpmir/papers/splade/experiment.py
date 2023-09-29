@@ -102,12 +102,14 @@ def run(
             cfg.splade.lambda_q,
             cfg.splade.lambda_d,
             cfg.splade.lamdba_warmup_steps,
+            hf_id=cfg.base_hf_id,
         )
     elif cfg.splade.model == "splade_doc":
         spladev2, flops = spladeV2_doc(
             cfg.splade.lambda_q,
             cfg.splade.lambda_d,
             cfg.splade.lamdba_warmup_steps,
+            hf_id=cfg.base_hf_id,
         )
     else:
         raise NotImplementedError

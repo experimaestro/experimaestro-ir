@@ -6,6 +6,8 @@ description: |
     2021. https://arxiv.org/abs/2109.10086
 
 gpu: true
+base_hf_id: normal_without_source_pretraining
+
 indexation:
     requirements: duration=2 days & cpu(mem=2G)
     training_requirements: duration=4 days & cuda(mem=24G)
