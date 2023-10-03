@@ -54,6 +54,10 @@ class T5StepwiseGenerator(StepwiseGenerator):
         self.unfinished_sequences = torch.ones(bs, dtype=torch.long).to(
             self.id_generator.device
         )
+        self.eos_token_id_tensor = torch.tensor([[self.id_generator.eos_token_id]]).to(
+            self.id_generator.device
+        )
+
         self.current_depth = 1
 
     def step(self) -> torch.Tensor:
@@ -87,9 +91,7 @@ class T5StepwiseGenerator(StepwiseGenerator):
         # it will make the eos position 0 and during the next loop
         # of recursive, it will be skipped
         self.unfinished_sequences = self.unfinished_sequences.mul(
-            new_tokens.tile(1, 1)
-            .ne(torch.tensor([[self.id_generator.eos_token_id]]))
-            .prod(dim=0)
+            new_tokens.tile(1, 1).ne(self.eos_token_id_tensor).prod(dim=0)
         )
 
     def get_token_state(self):
@@ -126,11 +128,9 @@ class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
         self.tokenizer = AutoTokenizer.from_pretrained(self.hf_id, use_fast=True)
 
         self.t5_model = CustomOutputT5(self.config, self.decoder_outdim)
-        self.pad_token_id = self.t5_model.generation_config.pad_token_id
-        self.decoder_start_token_id = (
-            self.t5_model.generation_config.decoder_start_token_id
-        )
-        self.eos_token_id = self.t5_model.generation_config.eos_token_id
+        self.pad_token_id = self.t5_model.config.pad_token_id
+        self.decoder_start_token_id = self.t5_model.config.decoder_start_token_id
+        self.eos_token_id = self.t5_model.config.eos_token_id
 
     @property
     def device(self):
@@ -163,8 +163,8 @@ class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
         return TokenizedTexts(
             None,
             r["input_ids"].to(self.device),
-            r["length"],
-            r.get("attention_mask", None),
+            r.get("length", None),
+            r["attention_mask"].to(self.device) if mask else None,
             r.get("token_type_ids", None),  # if r["token_type_ids"] else None
         )
 
@@ -176,7 +176,7 @@ class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
         tokenized = self.batch_tokenize(texts, maxlen=512, mask=True)
         encoder_output = encoder(
             tokenized.ids,
-            attention_mask=tokenized.mask.to(self.device),
+            attention_mask=tokenized.mask,
             return_dict=True,
         )
         return encoder_output, tokenized.mask

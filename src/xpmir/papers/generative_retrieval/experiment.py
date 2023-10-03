@@ -2,7 +2,7 @@ import logging
 from functools import partial
 
 import xpmir.letor.trainers.generative as generative
-from experimaestro import experiment, setmeta
+from experimaestro import experiment, setmeta, copyconfig
 from experimaestro.launcherfinder import find_launcher
 from xpmir.neural.generative import GenerativeRetrievalScorer
 from xpmir.neural.generative.hf import T5IdentifierGenerator, LoadFromT5
@@ -144,10 +144,8 @@ def run(
         ]  # returns the model from the learner
 
         # FIXME: Get the model from trained and transform it to a scorer
-        trained_scorer = GenerativeRetrievalScorer(
-            id_generator=t5_model.add_pretasks_from(trained)
-        )
-
+        trained_model = copyconfig(t5_model).add_pretasks_from(trained)
+        trained_scorer = GenerativeRetrievalScorer(id_generator=trained_model)
         tests.evaluate_retriever(
             partial(
                 model_based_retrievers,

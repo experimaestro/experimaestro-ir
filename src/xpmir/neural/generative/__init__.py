@@ -8,7 +8,6 @@ from xpmir.learning.optim import Module
 from xpmir.learning.context import TrainerContext
 from xpmir.letor.records import BaseRecords
 from xpmir.rankers import AbstractModuleScorer
-from xpmir.utils.utils import Initializable
 
 
 class StepwiseGenerator:
@@ -42,7 +41,7 @@ class StepwiseGenerator:
         pass
 
 
-class IdentifierGenerator(Module, Initializable):
+class IdentifierGenerator(Module):
     """Models that generate an identifier given a document or a query"""
 
     hf_id: Param[str]

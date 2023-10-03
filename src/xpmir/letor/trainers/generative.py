@@ -28,7 +28,7 @@ class PairwiseGenerativeLoss(Config, nn.Module):
         pass
 
     def process(self, records: BaseRecords, context: TrainerContext):
-        value = self.compute(records, context)
+        value = self.compute(records, context)  # tensor shape [bs]
         context.add_loss(Loss(f"pair-{self.NAME}", value, self.weight))
 
 
@@ -160,11 +160,13 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
 
         # in fact, we need to minus something to get the pure gradient, but at
         # the level of the root, the additional terms always equals to 0
-        return self.recursive(
-            cur_node_proba,
-            posdoc_stepwise_generator,
-            negdoc_stepwise_generator,
-            query_stepwise_generator,
+        return torch.mean(
+            self.recursive(
+                cur_node_proba,
+                posdoc_stepwise_generator,
+                negdoc_stepwise_generator,
+                query_stepwise_generator,
+            )
         )
 
 

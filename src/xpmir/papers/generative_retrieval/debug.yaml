@@ -22,10 +22,13 @@ monobert:
         scheduler: false
         steps_per_epoch: 32
         max_epochs: 4
-        batch_size: 16
+        batch_size: 8
         num_warmup_steps: 30
         warmup_min_factor: 0.1
         eps: 1.0e-6
+        re_no_l2_regularization:
+          - "\\.layer_norm\\."
+          - "\\.final_layer_norm\\."
 
 
     # Only use 1% of the 100_000 triplets
@@ -34,4 +37,4 @@ monobert:
 
     validation_interval: 1
     validation_top_k: 20
-    requirements: duration=2 days & cuda(mem=8G)
+    requirements: duration=2 days & cuda(mem=12G)
