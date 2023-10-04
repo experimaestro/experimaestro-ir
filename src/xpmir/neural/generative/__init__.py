@@ -37,6 +37,7 @@ class StepwiseGenerator:
         """Return the token state, including the token, mask, etc"""
         pass
 
+    @abstractmethod
     def stopping_criteria(self) -> bool:
         pass
 

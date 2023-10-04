@@ -60,7 +60,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
                 + torch.log(posdoc_proba * query_proba)
             ),
             dim=-1,
-        )  # shape: [bs, tree_width]
+        )  # shape: [bs, ]
 
         # last term in the formula
         sum_except_current = (
@@ -71,7 +71,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         )
         last_term = torch.sum(
             negdoc_proba.detach() * sum_except_current * torch.log(negdoc_proba), dim=-1
-        )  # shape: [bs, tree_width]
+        )  # shape: [bs, ]
 
         # obtain the previous unfinished sequence as a mask
         # 0 means no need to continue
