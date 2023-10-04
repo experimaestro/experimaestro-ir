@@ -9,6 +9,8 @@ description: |
     Stéphane Clinchant). 2022. https://arxiv.org/abs/2205.04733
 
 gpu: true
+base_hf_id: distilbert-base-uncased
+
 indexation:
     requirements: duration=2 days & cpu(mem=2G)
     training_requirements: duration=4 days & cuda(mem=24G)
