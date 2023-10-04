@@ -17,7 +17,7 @@ from xpmir.text.encoders import (
 from xpmir.utils.utils import easylog
 
 try:
-    from transformers import AutoModel, AutoTokenizer, AutoConfig
+    from transformers import AutoModel, AutoTokenizer, AutoConfig, AutoModelForMaskedLM
 except Exception:
     logging.error("Install huggingface transformers to use these configurations")
     raise
@@ -54,7 +54,11 @@ class BaseTransformer(Encoder):
     def pad_tokenid(self) -> int:
         return self.tokenizer.pad_token_id
 
-    def __initialize__(self, noinit=False, automodel=AutoModel):
+    @property
+    def automodel():
+        return AutoModel
+
+    def __initialize__(self, noinit=False):
         """Initialize the HuggingFace transformer
 
         Args:
@@ -68,14 +72,16 @@ class BaseTransformer(Encoder):
 
         config = AutoConfig.from_pretrained(self.model_id)
         if noinit:
-            self.model = automodel.from_config(config)
+            self.model = self.automodel.from_config(config)
         else:
             if self.dropout == 0:
-                self.model = automodel.from_pretrained(self.model_id)
+                self.model = self.automodel.from_pretrained(self.model_id)
             else:
                 config.hidden_dropout_prob = self.dropout
                 config.attention_probs_dropout_prob = self.dropout
-                self.model = automodel.from_pretrained(self.model_id, config=config)
+                self.model = self.automodel.from_pretrained(
+                    self.model_id, config=config
+                )
 
         # Loads the tokenizer
         self._tokenizer = AutoTokenizer.from_pretrained(self.model_id, use_fast=True)
@@ -260,6 +266,7 @@ class OneHotHuggingFaceEncoder(TextEncoder):
 @deprecate
 class HuggingfaceTokenizer(OneHotHuggingFaceEncoder):
     """The old encoder for one hot"""
+
     pass
 
 
@@ -357,8 +364,8 @@ class DualDuoBertTransformerEncoder(BaseTransformer, TripletTextEncoder):
     maxlen_doc: Param[int] = 224
     """Maximum length for the query, the first document and the second one"""
 
-    def __initialize__(self, noinit=False, automodel=AutoModel):
-        super().__initialize__(noinit, automodel)
+    def __initialize__(self, noinit=False):
+        super().__initialize__(noinit)
 
         # Add an extra token type
         data = self.model.embeddings.token_type_embeddings.weight.data
@@ -530,3 +537,9 @@ class LayerFreezer(InitializationTrainingHook):
                 if self.should_freeze(name):
                     logger.info("Freezing layer %s", name)
                     param.requires_grad = False
+
+
+class TransformerTokensEncoderWithMLMOutput(TransformerTokensEncoder):
+    @property
+    def automodel(self):
+        return AutoModelForMaskedLM

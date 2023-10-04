@@ -4,8 +4,10 @@ import torch.nn.functional as F
 import torch.nn as nn
 import torch
 from xpmir.distributed import DistributableModel
-from transformers import AutoModelForMaskedLM
-from xpmir.text.huggingface import TransformerTokensEncoder, OneHotHuggingFaceEncoder
+from xpmir.text.huggingface import (
+    OneHotHuggingFaceEncoder,
+    TransformerTokensEncoderWithMLMOutput,
+)
 from xpmir.text.encoders import TextEncoder
 from xpmir.neural.dual import DotDense, ScheduledFlopsRegularizer
 from xpmir.utils.utils import easylog
@@ -78,7 +80,7 @@ class SpladeTextEncoder(TextEncoder, DistributableModel):
     as the scorer class
     """
 
-    encoder: Param[TransformerTokensEncoder]
+    encoder: Param[TransformerTokensEncoderWithMLMOutput]
     """The encoder from Hugging Face"""
 
     aggregation: Param[Aggregation]
@@ -88,7 +90,7 @@ class SpladeTextEncoder(TextEncoder, DistributableModel):
     """Max length for texts"""
 
     def __initialize__(self, random=None):
-        self.encoder.initialize(automodel=AutoModelForMaskedLM)
+        self.encoder.initialize()
         self.model = SpladeTextEncoderModel(self.encoder, self.aggregation)
 
     def forward(self, texts: List[str]) -> torch.Tensor:
@@ -117,7 +119,7 @@ def _splade(
 ):
     # Unlike the cross-encoder, here the encoder returns the whole last layer
     # In the paper we use the DistilBERT-based as the checkpoint
-    encoder = TransformerTokensEncoder(model_id=hf_id, trainable=True)
+    encoder = TransformerTokensEncoderWithMLMOutput(model_id=hf_id, trainable=True)
 
     # make use the output of the BERT and do an aggregation
     doc_encoder = SpladeTextEncoder(
@@ -147,7 +149,7 @@ def _splade_doc(
     # The doc_encoder is the traditional one, and the query encoder return a vector
     # contains only 0 and 1
     # In the paper we use the DistilBERT-based as the checkpoint
-    encoder = TransformerTokensEncoder(model_id=hf_id, trainable=True)
+    encoder = TransformerTokensEncoderWithMLMOutput(model_id=hf_id, trainable=True)
 
     # make use the output of the BERT and do an aggregation
     doc_encoder = SpladeTextEncoder(
