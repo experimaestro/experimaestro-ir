@@ -36,9 +36,6 @@ class BaseTransformer(Encoder):
     trainable: Param[bool]
     """Whether BERT parameters should be trained"""
 
-    layer: Param[int] = 0
-    """Layer to use (0 is the last, -1 to use them all)"""
-
     # FIXME: move this into a hook
     dropout: Param[Optional[float]] = 0
     """Define a dropout for all the layers"""
@@ -86,9 +83,6 @@ class BaseTransformer(Encoder):
         # Loads the tokenizer
         self._tokenizer = AutoTokenizer.from_pretrained(self.model_id, use_fast=True)
 
-        layer = self.layer
-        if layer == -1:
-            layer = None
         self.CLS = self.tokenizer.cls_token_id
         self.SEP = self.tokenizer.sep_token_id
 
