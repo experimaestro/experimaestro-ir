@@ -150,6 +150,7 @@ def run(
         listeners=[validation],
         # The hook used for evaluation
         hooks=[setmeta(DistributedHook(models=[monobert_scorer]), True)],
+        use_pretasks=True,
     )
 
     # Submit job and link
@@ -158,16 +159,17 @@ def run(
 
     # Evaluate the neural model on test collections
     for metric_name in validation.monitored():
-        model = outputs.listeners[validation.id][metric_name]  # type: CrossScorer
+        load_model = outputs.listeners[validation.id][metric_name]
         tests.evaluate_retriever(
             partial(
                 model_based_retrievers,
-                scorer=model,
+                scorer=load_model,
                 retrievers=test_retrievers,
                 device=device,
             ),
             launcher_evaluate,
             model_id=f"monobert-{metric_name}",
+            init_tasks=[],
         )
 
     return PaperResults(

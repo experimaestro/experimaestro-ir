@@ -151,7 +151,10 @@ class Evaluations:
         self.per_tags = {}
 
     def evaluate_retriever(
-        self, retriever: Union[Retriever, RetrieverFactory], launcher: Launcher = None
+        self,
+        retriever: Union[Retriever, RetrieverFactory],
+        launcher: Launcher = None,
+        init_tasks=[],
     ) -> Tuple[Retriever, AdhocResults]:
         """Evaluates a retriever"""
         if not isinstance(retriever, Retriever):
@@ -159,7 +162,7 @@ class Evaluations:
 
         evaluation: AdhocResults = Evaluate(
             retriever=retriever, measures=self.measures, dataset=self.dataset
-        ).submit(launcher=launcher)
+        ).submit(launcher=launcher, init_tasks=init_tasks)
         self.add(evaluation)
 
         # Use retriever tags
@@ -236,6 +239,7 @@ class EvaluationsCollection:
         launcher: Launcher = None,
         model_id: str = None,
         overwrite: bool = False,
+        init_tasks=[],
     ):
         """Evaluate a retriever for all the evaluations in this collection (the
         tasks are submitted to the experimaestro scheduler)"""
@@ -246,7 +250,9 @@ class EvaluationsCollection:
 
         results = []
         for key, evaluations in self.collection.items():
-            _retriever, result = evaluations.evaluate_retriever(retriever, launcher)
+            _retriever, result = evaluations.evaluate_retriever(
+                retriever, launcher, init_tasks=init_tasks
+            )
             results.append((key, result))
 
         # Adds to per model results
