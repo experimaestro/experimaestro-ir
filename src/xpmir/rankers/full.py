@@ -81,7 +81,7 @@ class FullRetrieverRescorer(Retriever):
         [s(q_0, d_0), ..., s(q_n, d0)], ..., [s(q_0, d_m), ..., s(q_n, d_m)] ]
         --> list of m*n
 
-        :param documents: the documents
+        :param documents: the batch of documents
 
         :param queries: List of queries
 

@@ -6,7 +6,7 @@
 from functools import partial
 import logging
 
-from experimaestro import experiment, setmeta, copyconfig
+from experimaestro import experiment, setmeta
 from experimaestro.launcherfinder import find_launcher
 
 from xpmir.learning.optim import (
@@ -88,6 +88,7 @@ def run(
         dataset=ds_val_all,
         retrievers=[retrievers(ds_val_all.documents, k=cfg.retrieval.retTopK)],
     ).submit(launcher=gpu_launcher_index)
+    ds_val.documents.in_memory = True
 
     # Base retrievers for validation
     # It retrieve all the document of the collection with score 0
@@ -185,40 +186,36 @@ def run(
         listeners=[validation],
         # the hooks
         hooks=hooks,
-    )
+    ).tag("model", "splade-v2")
 
     # submit the learner and build the symbolique link
     outputs = learner.submit(launcher=gpu_launcher_learner)
     tensorboard_service.add(learner, learner.logpath)
 
     # get the trained model
-    trained_model = (
+    load_model = (
         outputs.learned_model
         if cfg.splade.model == "splade_doc"
         else outputs.listeners["bestval"]["RR@10"]
-    ).tag("model", "splade-v2")
+    )
 
     # build a retriever for the documents
-    encoder = copyconfig(trained_model.encoder).add_pretasks_from(trained_model)
-    query_encoder = copyconfig(trained_model._query_encoder).add_pretasks_from(
-        trained_model
-    )
     sparse_index = SparseRetrieverIndexBuilder(
         batch_size=512,
         batcher=PowerAdaptativeBatcher(),
-        encoder=encoder,
+        encoder=spladev2.encoder,
         device=device,
         documents=documents,
         ordered_index=False,
         max_docs=cfg.indexation.max_docs,
-    ).submit(launcher=gpu_launcher_index)
+    ).submit(launcher=gpu_launcher_index, init_tasks=[load_model])
 
     # Build the sparse retriever based on the index
     splade_retriever = SparseRetriever(
         index=sparse_index,
         topk=cfg.retrieval.topK,
         batchsize=1,
-        encoder=query_encoder,
+        encoder=spladev2._query_encoder,
     )
 
     # evaluate the best model
@@ -226,10 +223,11 @@ def run(
         splade_retriever,
         gpu_launcher_retrieval,
         model_id=f"{cfg.splade.model}-{cfg.splade.dataset}-RR@10",
+        init_tasks=[load_model],
     )
 
     return PaperResults(
-        models={f"{cfg.splade.model}-{cfg.splade.dataset}-RR@10": trained_model},
+        models={f"{cfg.splade.model}-{cfg.splade.dataset}-RR@10": load_model},
         evaluations=tests,
         tb_logs={f"{cfg.splade.model}-{cfg.splade.dataset}-RR@10": learner.logpath},
     )
