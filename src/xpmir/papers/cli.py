@@ -41,7 +41,15 @@ class ExperimentsCli(click.MultiCommand):
         return [experiment.id for experiment in self.experiments]
 
     def get_command(self, ctx: click.Context, cmd_name: str) -> Optional[click.Command]:
-        experiment = self.id2experiment[cmd_name]
+        try:
+            experiment = self.id2experiment[cmd_name]
+        except KeyError:
+            logging.error(
+                "Configuration %s not found among %s",
+                cmd_name,
+                " ".join(self.id2experiment.keys()),
+            )
+            raise
         sub_package, name = experiment.cli.split(":")
         module = import_module(f"{self.pkg_name}.{sub_package}")
         return getattr(module, name)
