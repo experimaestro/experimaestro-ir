@@ -40,93 +40,108 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
 
     def recursive(
         self,
-        cur_node_proba,
+        log_cur_node_proba,
         posdoc_stepwise_generator: StepwiseGenerator,
         negdoc_stepwise_generator: StepwiseGenerator,
         query_stepwise_generator: StepwiseGenerator,
     ):
         # pass get the probas
-        posdoc_proba = posdoc_stepwise_generator.step()
-        negdoc_proba = negdoc_stepwise_generator.step()
-        query_proba = query_stepwise_generator.step()
+        log_posdoc_proba = posdoc_stepwise_generator.step()
+        log_negdoc_proba = negdoc_stepwise_generator.step()
+        log_query_proba = query_stepwise_generator.step()
 
         # middle_term in the formula
         middle_term = torch.sum(
-            posdoc_proba.detach()
-            * query_proba.detach()
-            * (1 - negdoc_proba).detach()
+            torch.exp(log_posdoc_proba + log_query_proba).detach()
+            * (1 - torch.exp(log_negdoc_proba)).detach()
             * (
-                torch.prod(torch.log(cur_node_proba), dim=-1).unsqueeze(-1)
-                + torch.log(posdoc_proba * query_proba)
+                torch.sum(log_cur_node_proba, dim=-1).unsqueeze(-1)
+                + log_posdoc_proba
+                + log_query_proba
             ),
             dim=-1,
         )  # shape: [bs, ]
 
         # last term in the formula
         sum_except_current = (
-            torch.sum(posdoc_proba.detach() * query_proba.detach(), dim=-1).unsqueeze(
-                -1
-            )
-            - posdoc_proba.detach() * query_proba.detach()
+            torch.sum(
+                torch.exp(log_posdoc_proba + log_query_proba).detach(), dim=-1
+            ).unsqueeze(-1)
+            - torch.exp(log_posdoc_proba + log_query_proba).detach()
         )
         last_term = torch.sum(
-            negdoc_proba.detach() * sum_except_current * torch.log(negdoc_proba), dim=-1
+            torch.exp(log_negdoc_proba).detach()
+            * sum_except_current
+            * log_negdoc_proba,
+            dim=-1,
         )  # shape: [bs, ]
 
+        # TODO: get rid of this
         # obtain the previous unfinished sequence as a mask
         # 0 means no need to continue
         unfinished_sequences = posdoc_stepwise_generator.get_token_state()[1]
 
         # randomly choose the target of sampling
-        sampling_target = torch.randint(low=0, high=3, size=(1,))
-        raw_next_tokens = torch.cat(
-            (
-                torch.multinomial(posdoc_proba, num_samples=1),
-                torch.multinomial(negdoc_proba, num_samples=1),
-                torch.multinomial(query_proba, num_samples=1),
-            ),
-            dim=-1,
-        )[:, sampling_target].squeeze(
-            1
-        )  # shape [bs]
+        sampling_target = int(torch.randint(low=0, high=3, size=(1,)))
+        if sampling_target == 0:
+            raw_next_tokens = torch.multinomial(
+                torch.exp(log_posdoc_proba), num_samples=1
+            )
+        elif sampling_target == 1:
+            raw_next_tokens = torch.multinomial(
+                torch.exp(log_negdoc_proba), num_samples=1
+            )
+        elif sampling_target == 2:
+            raw_next_tokens = torch.multinomial(
+                torch.exp(log_query_proba), num_samples=1
+            )
 
+        # Here we need to use the raw token to calculate
+        # to avoid the index out of bound pb (it will be masked anyways)
+        # cumulate the proba from root
+        iterator_vector = torch.arange(len(raw_next_tokens))
+        log_posdoc_proba_next_tokens = log_posdoc_proba[
+            iterator_vector, raw_next_tokens
+        ]
+        log_negdoc_proba_next_tokens = log_negdoc_proba[
+            iterator_vector, raw_next_tokens
+        ]
+        log_query_proba_next_tokens = log_query_proba[iterator_vector, raw_next_tokens]
+        log_cur_node_proba = log_cur_node_proba + torch.vstack(
+            (
+                log_posdoc_proba_next_tokens,
+                log_negdoc_proba_next_tokens,
+                log_query_proba_next_tokens,
+            )
+        ).transpose(0, 1)
+
+        # TODO: get rid of this: update the tokens for the next recursion
         # mask the generated tokens if some of the seqs
         # are already end before(0 in unfinished_sequences)
         posdoc_stepwise_generator.set_token_state(raw_next_tokens)
         negdoc_stepwise_generator.set_token_state(raw_next_tokens)
         query_stepwise_generator.set_token_state(raw_next_tokens)
 
-        # get the processed tokens
-        next_tokens = posdoc_stepwise_generator.get_token_state()[0].squeeze(-1)
-
-        # cumulate the proba from root
-        iterator_vector = torch.arange(len(next_tokens))
-        posdoc_proba_next_tokens = posdoc_proba[iterator_vector, next_tokens]
-        negdoc_proba_next_tokens = negdoc_proba[iterator_vector, next_tokens]
-        query_proba_next_tokens = query_proba[iterator_vector, next_tokens]
-        cur_node_proba = cur_node_proba * torch.vstack(
-            (
-                posdoc_proba_next_tokens,
-                negdoc_proba_next_tokens,
-                query_proba_next_tokens,
-            )
-        ).transpose(0, 1)
-
         # whether need to be end now?
         if posdoc_stepwise_generator.stopping_criteria():
             return (middle_term + last_term) * unfinished_sequences.detach()
 
-        sampling_multiplier = torch.vstack(
-            (
-                negdoc_proba_next_tokens.detach() * query_proba_next_tokens.detach(),
-                posdoc_proba_next_tokens.detach() * query_proba_next_tokens.detach(),
-                posdoc_proba_next_tokens.detach() * negdoc_proba_next_tokens.detach(),
-            )
-        )[sampling_target].squeeze(0)
+        if sampling_target == 0:
+            sampling_multiplier = torch.exp(
+                log_negdoc_proba_next_tokens + log_query_proba_next_tokens
+            ).detach()
+        elif sampling_target == 1:
+            sampling_multiplier = torch.exp(
+                log_posdoc_proba_next_tokens + log_query_proba_next_tokens
+            ).detach()
+        elif sampling_target == 2:
+            sampling_multiplier = torch.exp(
+                log_posdoc_proba_next_tokens + log_negdoc_proba_next_tokens
+            ).detach()
 
         return unfinished_sequences.detach() * (
             self.recursive(
-                cur_node_proba,
+                log_cur_node_proba,
                 posdoc_stepwise_generator,
                 negdoc_stepwise_generator,
                 query_stepwise_generator,
@@ -154,7 +169,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         query_stepwise_generator.init(queries_text)
 
         # initialize cumulate product of from the root to the current one
-        cur_node_proba = torch.ones((bs, 3), dtype=torch.long).to(
+        log_cur_node_proba = torch.zeros((bs, 3), dtype=torch.long).to(
             self.id_generator.device
         )
 
@@ -162,7 +177,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         # the level of the root, the additional terms always equals to 0
         return torch.mean(
             self.recursive(
-                cur_node_proba,
+                log_cur_node_proba,
                 posdoc_stepwise_generator,
                 negdoc_stepwise_generator,
                 query_stepwise_generator,

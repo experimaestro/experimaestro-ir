@@ -20,15 +20,16 @@ class CustomOutputT5(T5ForConditionalGeneration):
 
     def __init__(self, config: T5Config, decoder_outdim):
         super().__init__(config)
+        # not including the eos and pad
         self.decoder_outdim = decoder_outdim
 
         # Modify LM head
         self.lm_head = nn.Linear(
-            self.lm_head.in_features, self.decoder_outdim, bias=False
+            self.lm_head.in_features, self.decoder_outdim + 1, bias=False
         )
 
         # Modify the decoder vocabulary
-        decoder_embeddings = nn.Embedding(self.decoder_outdim, self.config.d_model)
+        decoder_embeddings = nn.Embedding(self.decoder_outdim + 2, self.config.d_model)
         self.get_decoder().set_input_embeddings(decoder_embeddings)
 
     def forward(self, **kwargs):
@@ -63,14 +64,14 @@ class T5StepwiseGenerator(StepwiseGenerator):
     def step(self) -> torch.Tensor:
         """Returns the distribution over next tokens (BxV) by performing a
         stepwise iteration"""
-        proba, self.past_key_values = self.id_generator(
+        log_proba, self.past_key_values = self.id_generator(
             self.attention_mask,
             self.encoder_output,
             self.decoder_input_ids,
             past_key_values=self.past_key_values,
         )
         self.current_depth += 1
-        return proba
+        return log_proba
 
     def set_token_state(self, new_tokens: torch.LongTensor):
         """Modifying the state of the generator after getting the new generated
@@ -108,11 +109,11 @@ class T5StepwiseGenerator(StepwiseGenerator):
 class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
     """generate the id of the token based on t5-based models"""
 
-    decoder_outdim: Param[int] = 12
+    decoder_outdim: Param[int] = 10
     """The decoder output dimension for the t5 model, use it to
-    rebuild the lm_head and the decoder embedding
+    rebuild the lm_head and the decoder embedding, this number
+    doesn't include the pad token and the eos token
     """
-
     max_depth: Param[int] = 5
     """The maximum depth of the iterative generation"""
 
@@ -128,9 +129,9 @@ class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
         self.tokenizer = AutoTokenizer.from_pretrained(self.hf_id, use_fast=True)
 
         self.t5_model = CustomOutputT5(self.config, self.decoder_outdim)
-        self.pad_token_id = self.t5_model.config.pad_token_id
-        self.decoder_start_token_id = self.t5_model.config.decoder_start_token_id
-        self.eos_token_id = self.t5_model.config.eos_token_id
+        self.pad_token_id = self.decoder_outdim + 1
+        self.decoder_start_token_id = self.decoder_outdim + 1
+        self.eos_token_id = self.decoder_outdim
 
     @property
     def device(self):
@@ -211,11 +212,11 @@ class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
             use_cache=True,
             return_dict=True,
         )
-        proba = nn.functional.softmax(
+        log_proba = nn.functional.log_softmax(
             decoder_output.logits[:, -1, :], dim=-1
         )  # shape [bs, decoder_outdim]
 
-        return proba, decoder_output.past_key_values
+        return log_proba, decoder_output.past_key_values
 
     def distribute_models(self, update):
         self.t5_model = update(self.t5_model)

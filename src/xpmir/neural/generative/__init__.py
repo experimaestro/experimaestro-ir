@@ -27,16 +27,19 @@ class StepwiseGenerator:
         generates ones (B)"""
         pass
 
+    # TODO: get rid of this
     @abstractmethod
     def set_token_state(self, new_tokens: torch.LongTensor):
         """Update the token state for the next step's generation"""
         pass
 
+    # TODO: get rid of this
     @abstractmethod
     def get_token_state(self):
         """Return the token state, including the token, mask, etc"""
         pass
 
+    # TODO: get rid of this
     @abstractmethod
     def stopping_criteria(self) -> bool:
         pass
@@ -76,40 +79,44 @@ class GenerativeRetrievalScorer(AbstractModuleScorer):
         qry_stepwise_generator: StepwiseGenerator,
     ):
         # pass get the probas
-        doc_proba = doc_stepwise_generator.step()
-        qry_proba = qry_stepwise_generator.step()
+        log_doc_proba = doc_stepwise_generator.step()
+        log_qry_proba = qry_stepwise_generator.step()
 
+        # # TODO: get rid of this
         # obtain the previous unfinished sequence as a mask
         # 0 means no need to continue
         unfinished_sequences = doc_stepwise_generator.get_token_state()[1]
 
         # sampling according to the proba distribution --> shape bs
-        raw_next_tokens = torch.multinomial(qry_proba, num_samples=1).squeeze(1)
+        raw_next_tokens = torch.multinomial(
+            torch.exp(log_qry_proba), num_samples=1
+        ).squeeze(1)
 
+        iterator_vector = torch.arange(len(raw_next_tokens))
+        log_doc_proba_next_tokens = log_doc_proba[iterator_vector, raw_next_tokens]
+        log_qry_proba_next_tokens = log_qry_proba[iterator_vector, raw_next_tokens]
+
+        # mask them! For the sequence already finished, replaced by the
+        # multiplier 1(or some other multiplier to punish the early finish)
+        log_doc_proba_next_tokens[
+            unfinished_sequences == 0
+        ] = self.early_finish_punishment
+        log_qry_proba_next_tokens[
+            unfinished_sequences == 0
+        ] = self.early_finish_punishment
+
+        # TODO: get rid of this
         # mask the generated tokens if some of the seqs
         # are already end before(0 in unfinished_sequences)
         doc_stepwise_generator.set_token_state(raw_next_tokens)
         qry_stepwise_generator.set_token_state(raw_next_tokens)
 
-        # get the processed tokens
-        next_tokens = doc_stepwise_generator.get_token_state()[0].squeeze(-1)
-
-        iterator_vector = torch.arange(len(next_tokens))
-        doc_proba_next_tokens = doc_proba[iterator_vector, next_tokens]
-        qry_proba_next_tokens = qry_proba[iterator_vector, next_tokens]
-
-        # mask them! For the sequence already finished, replaced by the
-        # multiplier 1(or some other multiplier to punish the early finish)
-        doc_proba_next_tokens[unfinished_sequences == 0] = self.early_finish_punishment
-        qry_proba_next_tokens[unfinished_sequences == 0] = self.early_finish_punishment
-
         if doc_stepwise_generator.stopping_criteria():
-            return doc_proba_next_tokens
+            return torch.exp(log_doc_proba_next_tokens)
 
-        return (
-            self.recursive(doc_stepwise_generator, qry_stepwise_generator)
-            * doc_proba_next_tokens
-        )
+        return self.recursive(
+            doc_stepwise_generator, qry_stepwise_generator
+        ) * torch.exp(log_doc_proba_next_tokens)
 
     def forward(
         self, inputs: "BaseRecords", info: TrainerContext = None
