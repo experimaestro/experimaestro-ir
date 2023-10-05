@@ -19,6 +19,8 @@ Encoders
 
 .. autoxpmconfig:: TransformerVocab
 
+.. autoxpmconfig:: TransformerTokensEncoderWithMLMOutput
+
 Tokenizers
 ==========
 

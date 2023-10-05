@@ -534,6 +534,8 @@ class LayerFreezer(InitializationTrainingHook):
 
 
 class TransformerTokensEncoderWithMLMOutput(TransformerTokensEncoder):
+    """Transformer that output logits over the vocabulary"""
+
     @property
     def automodel(self):
         return AutoModelForMaskedLM
