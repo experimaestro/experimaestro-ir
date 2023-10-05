@@ -27,23 +27,6 @@ class StepwiseGenerator:
         generates ones (B)"""
         pass
 
-    # TODO: get rid of this
-    @abstractmethod
-    def set_token_state(self, new_tokens: torch.LongTensor):
-        """Update the token state for the next step's generation"""
-        pass
-
-    # TODO: get rid of this
-    @abstractmethod
-    def get_token_state(self):
-        """Return the token state, including the token, mask, etc"""
-        pass
-
-    # TODO: get rid of this
-    @abstractmethod
-    def stopping_criteria(self) -> bool:
-        pass
-
 
 class IdentifierGenerator(Module):
     """Models that generate an identifier given a document or a query"""
@@ -70,22 +53,23 @@ class GenerativeRetrievalScorer(AbstractModuleScorer):
     """A early finish punishment hyperparameter, trying to make model score less
     if the id list is too short. Default value to 1 means no punishment"""
 
+    max_depth: Param[int] = 5
+    """The max depth we need to consider"""
+
     def _initialize(self, random):
         self.id_generator.initialize()
 
     def recursive(
         self,
+        decoder_input_tokens,
+        unfinished_sequences,
+        depth,
         doc_stepwise_generator: StepwiseGenerator,
         qry_stepwise_generator: StepwiseGenerator,
     ):
         # pass get the probas
-        log_doc_proba = doc_stepwise_generator.step()
-        log_qry_proba = qry_stepwise_generator.step()
-
-        # # TODO: get rid of this
-        # obtain the previous unfinished sequence as a mask
-        # 0 means no need to continue
-        unfinished_sequences = doc_stepwise_generator.get_token_state()[1]
+        log_doc_proba = doc_stepwise_generator.step(decoder_input_tokens)
+        log_qry_proba = qry_stepwise_generator.step(decoder_input_tokens)
 
         # sampling according to the proba distribution --> shape bs
         raw_next_tokens = torch.multinomial(
@@ -105,17 +89,28 @@ class GenerativeRetrievalScorer(AbstractModuleScorer):
             unfinished_sequences == 0
         ] = self.early_finish_punishment
 
-        # TODO: get rid of this
         # mask the generated tokens if some of the seqs
         # are already end before(0 in unfinished_sequences)
-        doc_stepwise_generator.set_token_state(raw_next_tokens)
-        qry_stepwise_generator.set_token_state(raw_next_tokens)
+        raw_next_tokens = (
+            raw_next_tokens * unfinished_sequences
+            + self.id_generator.pad_token_id * (1 - unfinished_sequences)
+        )
+        decoder_input_tokens = raw_next_tokens.unsqueeze(-1)
+        new_unfinished_sequences = unfinished_sequences.mul(
+            raw_next_tokens.tile(1, 1)
+            .ne(self.id_generator.eos_token_id_tensor)
+            .prod(dim=0)
+        )
 
-        if doc_stepwise_generator.stopping_criteria():
+        if new_unfinished_sequences.max() == 0 or depth == self.max_depth:
             return torch.exp(log_doc_proba_next_tokens)
 
         return self.recursive(
-            doc_stepwise_generator, qry_stepwise_generator
+            decoder_input_tokens,
+            new_unfinished_sequences,
+            depth + 1,
+            doc_stepwise_generator,
+            qry_stepwise_generator,
         ) * torch.exp(log_doc_proba_next_tokens)
 
     def forward(
@@ -125,10 +120,24 @@ class GenerativeRetrievalScorer(AbstractModuleScorer):
         queries_text = [pdr.topic.get_text() for pdr in inputs.topics]
         documents_text = [ndr.document.get_text() for ndr in inputs.documents]
 
+        bs = len(queries_text)
+
         doc_stepwise_generator = self.id_generator.stepwise_iterator()
         qry_stepwise_generator = self.id_generator.stepwise_iterator()
 
         qry_stepwise_generator.init(queries_text)
         doc_stepwise_generator.init(documents_text)
 
-        return self.recursive(doc_stepwise_generator, qry_stepwise_generator)
+        # initialization
+        decoder_input_tokens = None
+        unfinished_sequences = torch.ones(bs, dtype=torch.long).to(
+            self.id_generator.device
+        )
+
+        return self.recursive(
+            decoder_input_tokens,
+            unfinished_sequences,
+            1,
+            doc_stepwise_generator,
+            qry_stepwise_generator,
+        )

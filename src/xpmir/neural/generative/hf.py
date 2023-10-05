@@ -37,73 +37,27 @@ class CustomOutputT5(T5ForConditionalGeneration):
 
 
 class T5StepwiseGenerator(StepwiseGenerator):
-    def __init__(self, id_generator: IdentifierGenerator, max_depth: int = 5):
+    def __init__(self, id_generator: IdentifierGenerator):
         super().__init__()
         # The identifier to use to generate the next step's token
         self.id_generator = id_generator
-        # The maximum step we can go
-        self.max_depth = max_depth
 
     def init(self, texts: List[str]):
         """Initialize some inner states for further iterations, and return
         the initial decoder input tokens"""
-        bs = len(texts)
-
         self.encoder_output, self.attention_mask = self.id_generator.encode(texts)
         self.past_key_values = None
-        self.decoder_input_ids = None
-        self.unfinished_sequences = torch.ones(bs, dtype=torch.long).to(
-            self.id_generator.device
-        )
-        self.eos_token_id_tensor = torch.tensor([[self.id_generator.eos_token_id]]).to(
-            self.id_generator.device
-        )
 
-        self.current_depth = 1
-
-    def step(self) -> torch.Tensor:
+    def step(self, decoder_input_tokens) -> torch.Tensor:
         """Returns the distribution over next tokens (BxV) by performing a
         stepwise iteration"""
         log_proba, self.past_key_values = self.id_generator(
             self.attention_mask,
             self.encoder_output,
-            self.decoder_input_ids,
+            decoder_input_tokens,
             past_key_values=self.past_key_values,
         )
-        self.current_depth += 1
         return log_proba
-
-    def set_token_state(self, new_tokens: torch.LongTensor):
-        """Modifying the state of the generator after getting the new generated
-        tokens, together with modifying the mask
-
-        input: shape [bs, ]
-
-        """
-        # mask some tokens if some of the seqs
-        # are already end before(0 in unfinished_sequences)
-        new_tokens = (
-            new_tokens * self.unfinished_sequences
-            + self.id_generator.pad_token_id * (1 - self.unfinished_sequences)
-        )
-        # update the tokens
-        self.decoder_input_ids = new_tokens.unsqueeze(-1)  # shape [bs, 1]
-        # update the mask if encounter eos in the loop
-        # it will make the eos position 0 and during the next loop
-        # of recursive, it will be skipped
-        self.unfinished_sequences = self.unfinished_sequences.mul(
-            new_tokens.tile(1, 1).ne(self.eos_token_id_tensor).prod(dim=0)
-        )
-
-    def get_token_state(self):
-        """Return the token state and the unfinished sequences(mask)"""
-        return (self.decoder_input_ids, self.unfinished_sequences)
-
-    def stopping_criteria(self) -> bool:
-        # end the recursive if all the generation is finish or reaches the max_length
-        return (
-            self.unfinished_sequences.max() == 0 or self.current_depth == self.max_depth
-        )
 
 
 class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
@@ -114,11 +68,9 @@ class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
     rebuild the lm_head and the decoder embedding, this number
     doesn't include the pad token and the eos token
     """
-    max_depth: Param[int] = 5
-    """The maximum depth of the iterative generation"""
 
     def stepwise_iterator(self) -> StepwiseGenerator:
-        return T5StepwiseGenerator(self, self.max_depth)
+        return T5StepwiseGenerator(self)
 
     def __initialize__(self, random: Optional[np.random.RandomState] = None):
         super().__initialize__()
@@ -132,6 +84,9 @@ class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
         self.pad_token_id = self.decoder_outdim + 1
         self.decoder_start_token_id = self.decoder_outdim + 1
         self.eos_token_id = self.decoder_outdim
+
+        # FIXME: put it into a better place
+        self.eos_token_id_tensor = torch.tensor([[self.eos_token_id]]).to(self.device)
 
     @property
     def device(self):
@@ -214,7 +169,7 @@ class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
         )
         log_proba = nn.functional.log_softmax(
             decoder_output.logits[:, -1, :], dim=-1
-        )  # shape [bs, decoder_outdim]
+        )  # shape [bs, decoder_outdim+1]
 
         return log_proba, decoder_output.past_key_values
 
@@ -250,7 +205,10 @@ class LoadFromT5(LightweightTask):
 
 # if __name__ == "__main__":
 #     model = T5IdentifierGenerator(hf_id='t5-base')
-#     scorer = GenerativeRetrievalScorer(id_generator=model)
+#     scorer = GenerativeRetrievalScorer(
+#         id_generator=model,
+#         max_depth=5
+#     )
 
 #     scorer = scorer.instance()
 #     scorer.initialize(None)

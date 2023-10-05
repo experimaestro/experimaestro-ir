@@ -79,12 +79,14 @@ def run(
     )  # not initialized from huggingface yet
 
     t5_scorer: GenerativeRetrievalScorer = GenerativeRetrievalScorer(
-        id_generator=t5_model
+        id_generator=t5_model, max_depth=5
     )
 
     # define the trainer for monobert
     t5_trainer = generative.GenerativeTrainer(
-        loss=generative.PairwiseGenerativeRetrievalLoss(id_generator=t5_model),
+        loss=generative.PairwiseGenerativeRetrievalLoss(
+            id_generator=t5_model, max_depth=5
+        ),
         sampler=v1_docpairs_sampler(
             sample_rate=cfg.monobert.sample_rate,
             sample_max=cfg.monobert.sample_max,
@@ -145,7 +147,9 @@ def run(
 
         # FIXME: Get the model from trained and transform it to a scorer
         trained_model = copyconfig(t5_model).add_pretasks_from(trained)
-        trained_scorer = GenerativeRetrievalScorer(id_generator=trained_model)
+        trained_scorer = GenerativeRetrievalScorer(
+            id_generator=trained_model, max_depth=5
+        )
         tests.evaluate_retriever(
             partial(
                 model_based_retrievers,

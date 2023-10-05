@@ -37,18 +37,25 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
     NAME = "PairwiseGenerativeLoss"
 
     id_generator: Param[IdentifierGenerator]
+    """The id generator"""
+
+    max_depth: Param[int] = 5
+    """The max number of the steps we need to consider"""
 
     def recursive(
         self,
-        log_cur_node_proba,
+        decoder_input_tokens,  # None or [bs, 1]
+        unfinished_sequences: torch.tensor,  # shape [bs]
+        log_cur_node_proba: torch.tensor,  # shape [bs,3]
+        depth: int,
         posdoc_stepwise_generator: StepwiseGenerator,
         negdoc_stepwise_generator: StepwiseGenerator,
         query_stepwise_generator: StepwiseGenerator,
     ):
         # pass get the probas
-        log_posdoc_proba = posdoc_stepwise_generator.step()
-        log_negdoc_proba = negdoc_stepwise_generator.step()
-        log_query_proba = query_stepwise_generator.step()
+        log_posdoc_proba = posdoc_stepwise_generator.step(decoder_input_tokens)
+        log_negdoc_proba = negdoc_stepwise_generator.step(decoder_input_tokens)
+        log_query_proba = query_stepwise_generator.step(decoder_input_tokens)
 
         # middle_term in the formula
         middle_term = torch.sum(
@@ -60,7 +67,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
                 + log_query_proba
             ),
             dim=-1,
-        )  # shape: [bs, ]
+        )  # shape: [bs]
 
         # last term in the formula
         sum_except_current = (
@@ -74,27 +81,22 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
             * sum_except_current
             * log_negdoc_proba,
             dim=-1,
-        )  # shape: [bs, ]
-
-        # TODO: get rid of this
-        # obtain the previous unfinished sequence as a mask
-        # 0 means no need to continue
-        unfinished_sequences = posdoc_stepwise_generator.get_token_state()[1]
+        )  # shape: [bs]
 
         # randomly choose the target of sampling
         sampling_target = int(torch.randint(low=0, high=3, size=(1,)))
         if sampling_target == 0:
             raw_next_tokens = torch.multinomial(
                 torch.exp(log_posdoc_proba), num_samples=1
-            )
+            ).squeeze(1)
         elif sampling_target == 1:
             raw_next_tokens = torch.multinomial(
                 torch.exp(log_negdoc_proba), num_samples=1
-            )
+            ).squeeze(1)
         elif sampling_target == 2:
             raw_next_tokens = torch.multinomial(
                 torch.exp(log_query_proba), num_samples=1
-            )
+            ).squeeze(1)
 
         # Here we need to use the raw token to calculate
         # to avoid the index out of bound pb (it will be masked anyways)
@@ -115,16 +117,22 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
             )
         ).transpose(0, 1)
 
-        # TODO: get rid of this: update the tokens for the next recursion
         # mask the generated tokens if some of the seqs
         # are already end before(0 in unfinished_sequences)
-        posdoc_stepwise_generator.set_token_state(raw_next_tokens)
-        negdoc_stepwise_generator.set_token_state(raw_next_tokens)
-        query_stepwise_generator.set_token_state(raw_next_tokens)
+        raw_next_tokens = (
+            raw_next_tokens * unfinished_sequences
+            + self.id_generator.pad_token_id * (1 - unfinished_sequences)
+        )
+        decoder_input_tokens = raw_next_tokens.unsqueeze(-1)
+        new_unfinished_sequences = unfinished_sequences.mul(
+            raw_next_tokens.tile(1, 1)
+            .ne(self.id_generator.eos_token_id_tensor)
+            .prod(dim=0)
+        )
 
         # whether need to be end now?
-        if posdoc_stepwise_generator.stopping_criteria():
-            return (middle_term + last_term) * unfinished_sequences.detach()
+        if new_unfinished_sequences.max() == 0 or depth == self.max_depth:
+            return (middle_term + last_term) * unfinished_sequences
 
         if sampling_target == 0:
             sampling_multiplier = torch.exp(
@@ -141,7 +149,10 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
 
         return unfinished_sequences.detach() * (
             self.recursive(
+                decoder_input_tokens,
+                new_unfinished_sequences,
                 log_cur_node_proba,
+                depth + 1,
                 posdoc_stepwise_generator,
                 negdoc_stepwise_generator,
                 query_stepwise_generator,
@@ -173,11 +184,20 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
             self.id_generator.device
         )
 
+        # initialize the input for the decoder and the mask
+        decoder_input_tokens = None
+        unfinished_sequences = torch.ones(bs, dtype=torch.long).to(
+            self.id_generator.device
+        )
+
         # in fact, we need to minus something to get the pure gradient, but at
         # the level of the root, the additional terms always equals to 0
         return torch.mean(
             self.recursive(
+                decoder_input_tokens,
+                unfinished_sequences,
                 log_cur_node_proba,
+                1,
                 posdoc_stepwise_generator,
                 negdoc_stepwise_generator,
                 query_stepwise_generator,
@@ -223,7 +243,10 @@ class GenerativeTrainer(LossTrainer):
 #     model = T5IdentifierGenerator(hf_id='t5-base')
 #     model.add_pretasks(LoadFromT5(model=model))
 
-#     loss = PairwiseGenerativeRetrievalLoss(id_generator=model)
+#     loss = PairwiseGenerativeRetrievalLoss(
+#         id_generator=model,
+#         max_depth=5
+#     )
 #     loss = loss.instance()
 
 #     input = PairwiseRecords()
