@@ -58,6 +58,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         log_query_proba = query_stepwise_generator.step(decoder_input_tokens)
 
         # middle_term in the formula
+        # FIXME: put the detach closer to their arguments
         middle_term = torch.sum(
             torch.exp(log_posdoc_proba + log_query_proba).detach()
             * (1 - torch.exp(log_negdoc_proba)).detach()
@@ -70,6 +71,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         )  # shape: [bs]
 
         # last term in the formula
+        # FIXME: use torch.logsumexp to avoid numerical instabilities
         sum_except_current = (
             torch.sum(
                 torch.exp(log_posdoc_proba + log_query_proba).detach(), dim=-1
