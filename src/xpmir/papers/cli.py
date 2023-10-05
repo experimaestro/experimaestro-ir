@@ -245,6 +245,7 @@ def paper_command(
             assert schema is None or omegaconf_schema is not None
 
             logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
+            logging.getLogger("xpm.hash").setLevel(logging.INFO)
             conf_args = OmegaConf.from_dotlist(args)
 
             if xpm_config_dir is not None:

@@ -87,7 +87,7 @@ def run(
     ds_val = RetrieverBasedCollection(
         dataset=ds_val_all,
         retrievers=[retrievers(ds_val_all.documents, k=cfg.retrieval.retTopK)],
-    ).submit(launcher=gpu_launcher_index)
+    ).submit(launcher=cpu_launcher_index)
     ds_val.documents.in_memory = True
 
     # Base retrievers for validation

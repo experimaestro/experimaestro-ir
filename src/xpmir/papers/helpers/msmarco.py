@@ -133,7 +133,7 @@ def hofstaetter_ensemble_hard_negatives() -> DistillationPairwiseSampler:
     Mete Sertkan, Allan Hanbury), 2020
     """
     train_triples_distil = prepare_dataset(
-        "com.github.sebastian-hofstaetter." "neural-ranking-kd.msmarco.ensemble.teacher"
+        "com.github.sebastian-hofstaetter.neural-ranking-kd.msmarco.ensemble.teacher"
     )
 
     # Access to topic text

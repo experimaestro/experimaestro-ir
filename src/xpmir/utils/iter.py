@@ -1,6 +1,14 @@
 import numpy as np
 import torch.multiprocessing as mp
-from typing import Callable, Dict, Tuple, Generic, Iterable, Iterator, Protocol, TypeVar
+from typing import (
+    Generic,
+    Callable,
+    Dict,
+    Tuple,
+    Iterator,
+    Protocol,
+    TypeVar,
+)
 from xpmir.utils.utils import easylog
 from abc import abstractmethod
 import logging
@@ -15,7 +23,7 @@ T = TypeVar("T")
 U = TypeVar("U")
 
 
-class SerializableIterator(Iterator[T], Protocol[State]):
+class SerializableIterator(Iterator[T], Generic[T, State]):
     """An iterator that can be serialized through state dictionaries.
 
     This is used when saving the sampler state
@@ -28,8 +36,9 @@ class SerializableIterator(Iterator[T], Protocol[State]):
         ...
 
 
-class SerializableIteratorAdapter(Iterable[U], Generic[T, U]):
-    """Adapts a serializable iterator with a transformation function"""
+class SerializableIteratorAdapter(SerializableIterator[T, State], Generic[T, U, State]):
+    """Adapts a serializable iterator with a transformation function based on
+    the iterator"""
 
     def __init__(
         self,
@@ -52,6 +61,32 @@ class SerializableIteratorAdapter(Iterable[U], Generic[T, U]):
 
     def __next__(self):
         return next(self.iter)
+
+
+class SerializableIteratorTransform(
+    SerializableIterator[T, State], Generic[T, U, State]
+):
+    """Adapts a serializable iterator with a transformation function"""
+
+    def __init__(
+        self,
+        iterator: SerializableIterator[T, State],
+        transform: Callable[[T], U],
+    ):
+        self.transform = transform
+        self.iterator = iterator
+
+    def load_state_dict(self, state):
+        self.iterator.load_state_dict(state)
+
+    def state_dict(self):
+        return self.iterator.state_dict()
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return self.transform(next(self.iterator))
 
 
 class GenericSerializableIterator(SerializableIterator[T]):
@@ -143,6 +178,14 @@ class SkippingIterator(GenericSerializableIterator[T]):
     def next(self):
         self.position += 1
         return next(self.iterator)
+
+    @staticmethod
+    def make_serializable(iterator):
+        if not isinstance(iterator, SerializableIterator):
+            logging.info("Wrapping iterator into a skipping iterator")
+            return SkippingIterator(iterator)
+
+        return iterator
 
 
 class StopIterationClass:
