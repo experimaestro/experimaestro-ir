@@ -85,9 +85,6 @@ class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
         self.decoder_start_token_id = self.decoder_outdim + 1
         self.eos_token_id = self.decoder_outdim
 
-        # FIXME: put it into a better place
-        self.eos_token_id_tensor = torch.tensor([[self.eos_token_id]]).to(self.device)
-
     @property
     def device(self):
         return self._dummy_params.device

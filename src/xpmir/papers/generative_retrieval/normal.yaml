@@ -30,7 +30,7 @@ monobert:
           - "\\.layer_norm\\."
           - "\\.final_layer_norm\\."
 
-    validation_interval: 20
+    validation_interval: 50
     requirements: duration=6 days & cuda(mem=40G)
 
 

@@ -131,6 +131,7 @@ def run(
         listeners=[validation],
         # The hook used for evaluation
         hooks=[setmeta(DistributedHook(models=[t5_model]), True)],
+        use_pretasks=True,
     ).add_pretasks(
         LoadFromT5(model=t5_model)
     )  # load from huggingface before learning

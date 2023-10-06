@@ -98,7 +98,11 @@ class GenerativeRetrievalScorer(AbstractModuleScorer):
         decoder_input_tokens = raw_next_tokens.unsqueeze(-1)
         new_unfinished_sequences = unfinished_sequences.mul(
             raw_next_tokens.tile(1, 1)
-            .ne(self.id_generator.eos_token_id_tensor)
+            .ne(
+                torch.tensor([self.id_generator.eos_token_id]).to(
+                    self.id_generator.device
+                )
+            )
             .prod(dim=0)
         )
 
