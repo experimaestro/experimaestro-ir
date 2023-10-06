@@ -70,10 +70,19 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         )  # shape: [bs]
 
         # last term in the formula
-        sum_except_current = torch.exp(
-            torch.logsumexp(
-                log_posdoc_proba.detach() + log_query_proba.detach(), dim=-1
+        max_values_tmp = torch.max(
+            log_posdoc_proba.detach() + log_query_proba.detach(), dim=-1
+        ).values
+        sum_except_current = (
+            torch.sum(
+                torch.exp(
+                    log_posdoc_proba.detach()
+                    + log_query_proba.detach()
+                    - max_values_tmp.unsqueeze(-1)
+                ),
+                dim=-1,
             )
+            * torch.exp(max_values_tmp)
         ).unsqueeze(-1) - torch.exp(
             log_posdoc_proba.detach() + log_query_proba.detach()
         )
