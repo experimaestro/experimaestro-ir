@@ -61,7 +61,19 @@ class LearnerListener(Config):
         pass
 
     def task_outputs(self, learner: "Learner", dep):
-        """Outputs from this listeners"""
+        """Outputs from this listeners
+
+        :param learner: The learner object
+        :param dep: The function that adds a dependency
+        """
+        return None
+
+    def init_task(self, learner: "Learner", dep):
+        """Returns the initialization task that loads the associated checkpoint
+
+        :param learner: The learner object
+        :param dep: The function that adds a dependency
+        """
         return None
 
 
@@ -130,6 +142,9 @@ class Learner(Task, EasyLogger):
     before and after the initialization of the trainer and listeners.
     """
 
+    use_pretasks: Meta[bool] = False
+    """Use deprected pre-tasks as the output"""
+
     def __validate__(self):
         assert self.optimizers, "At least one optimizer should be defined"
         assert len(set(listener.id for listener in self.listeners)) == len(
@@ -139,13 +154,28 @@ class Learner(Task, EasyLogger):
 
     def task_outputs(self, dep) -> LearnerOutput:
         """Object returned when submitting the task"""
+        if self.use_pretasks:
+            logging.warn("Using deprecated pre-tasks in Learner")
+            return LearnerOutput(
+                listeners={
+                    listener.id: listener.task_outputs(self, dep)
+                    for listener in self.listeners
+                },
+                learned_model=ModuleLoader.construct(
+                    self.model, self.last_checkpoint_path / TrainState.MODEL_PATH, dep
+                ),
+            )
+
         return LearnerOutput(
             listeners={
-                listener.id: listener.task_outputs(self, dep)
+                listener.id: listener.init_task(self, dep)
                 for listener in self.listeners
             },
-            learned_model=ModuleLoader.construct(
-                self.model, self.last_checkpoint_path / TrainState.MODEL_PATH, dep
+            learned_model=dep(
+                ModuleLoader(
+                    value=self.model,
+                    path=self.last_checkpoint_path / TrainState.MODEL_PATH,
+                )
             ),
         )
 

@@ -14,7 +14,8 @@ from typing import Dict, List, Optional, Tuple, Union
 import click
 import docstring_parser
 import omegaconf
-from experimaestro import LauncherRegistry, RunMode, experiment
+from experimaestro import LauncherRegistry, Config, RunMode, experiment
+from experimaestro.settings import get_workspace
 from omegaconf import OmegaConf, SCMode
 from termcolor import cprint
 
@@ -25,7 +26,6 @@ from xpmir.learning.optim import TensorboardService
 from xpmir.models import XPMIRHFHub
 from xpmir.papers.helpers import PaperExperiment
 from xpmir.papers.results import PaperResults
-from xpmir.rankers import Scorer
 
 
 class ExperimentsCli(click.MultiCommand):
@@ -41,7 +41,15 @@ class ExperimentsCli(click.MultiCommand):
         return [experiment.id for experiment in self.experiments]
 
     def get_command(self, ctx: click.Context, cmd_name: str) -> Optional[click.Command]:
-        experiment = self.id2experiment[cmd_name]
+        try:
+            experiment = self.id2experiment[cmd_name]
+        except KeyError:
+            logging.error(
+                "Configuration %s not found among %s",
+                cmd_name,
+                " ".join(self.id2experiment.keys()),
+            )
+            raise
         sub_package, name = experiment.cli.split(":")
         module = import_module(f"{self.pkg_name}.{sub_package}")
         return getattr(module, name)
@@ -75,7 +83,7 @@ class UploadToHub:
 
     def send_scorer(
         self,
-        models: Dict[str, Scorer],
+        models: Dict[str, Config],
         *,
         evaluations: Optional[EvaluationsCollection] = None,
         tb_logs: Dict[str, Path],
@@ -112,11 +120,10 @@ IR](https://experimaestro-ir.readthedocs.io/en/latest/)
 from xpmir.models import AutoModel
 
 # Model that can be re-used in experiments
-model = AutoModel.load_from_hf_hub("{self.model_id}")
+model, init_tasks = AutoModel.load_from_hf_hub("{self.model_id}")
 
 # Use this if you want to actually use the model
 model = AutoModel.load_from_hf_hub("{self.model_id}", as_instance=True)
-model.initialize()
 model.rsv("walgreens store sales average", "The average Walgreens salary ranges...")
 ```
 """
@@ -203,7 +210,13 @@ def paper_command(
                 default=None,
                 help="Upload the model to Hugging Face Hub with the given identifier",
             ),
-            click.argument("workdir", type=Path),
+            click.option(
+                "--workdir",
+                type=str,
+                default=None,
+                help="Working directory - if None, uses the default XPM "
+                "working directory",
+            ),
             omegaconf_argument(
                 "--configuration",
                 package=package,
@@ -232,6 +245,7 @@ def paper_command(
             assert schema is None or omegaconf_schema is not None
 
             logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
+            logging.getLogger("xpm.hash").setLevel(logging.INFO)
             conf_args = OmegaConf.from_dotlist(args)
 
             if xpm_config_dir is not None:
@@ -272,6 +286,10 @@ def paper_command(
             # Run the experiment
             if run_mode == RunMode.NORMAL:
                 logging.info("Starting experimaestro server (%s:%s)", host, port)
+
+            if workdir is None or not Path(workdir).is_dir():
+                workdir = get_workspace(workdir).path.expanduser().resolve()
+                logging.info("Using working directory %s", workdir)
 
             with experiment(
                 workdir, configuration.id, host=host, port=port, run_mode=run_mode

@@ -1,3 +1,4 @@
+from abc import abstractmethod
 from typing import Dict, Iterator, List, Optional
 from experimaestro import Config, Param
 import torch.nn as nn
@@ -49,14 +50,19 @@ class Trainer(Config, EasyLogger):
         """Change the computing device (if this is needed)"""
         foreach(self.context.hooks(nn.Module), lambda hook: hook.to(device))
 
+    @abstractmethod
     def iter_batches(self) -> Iterator:
-        raise NotImplementedError
+        """Returns a (serializable) iterator over batches"""
+        ...
 
+    @abstractmethod
     def process_batch(self, batch):
-        raise NotImplementedError()
+        ...
 
+    @abstractmethod
     def load_state_dict(self, state: Dict):
-        raise NotImplementedError()
+        ...
 
+    @abstractmethod
     def state_dict(self):
-        raise NotImplementedError()
+        ...

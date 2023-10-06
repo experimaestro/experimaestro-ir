@@ -6,6 +6,7 @@ from experimaestro import Config
 from xpmir.neural.dual import DotDense
 from xpmir.neural.huggingface import HFCrossScorer
 from xpmir.utils.utils import easylog
+from xpmir.learning.optim import ModuleLoader
 import importlib
 
 logger = easylog()
@@ -48,9 +49,20 @@ class AutoModel:
         hf_id_or_folder: str, variant: Optional[str] = None, as_instance: bool = False
     ):
         """Loads from hugging face hub or from a folder"""
-        return XPMIRHFHub.from_pretrained(
+        data = XPMIRHFHub.from_pretrained(
             hf_id_or_folder, variant=variant, as_instance=as_instance
         )
+
+        if isinstance(data, ModuleLoader):
+            model, init_tasks = data.value, [data]
+        else:
+            raise Exception(f"Cannot handle data of type {type(data)}")
+
+        if as_instance:
+            for init_task in init_tasks:
+                init_task.execute()
+            return model
+        return model, init_tasks
 
     @staticmethod
     def push_to_hf_hub(config: Config, *args, variant=None, readme=None, **kwargs):

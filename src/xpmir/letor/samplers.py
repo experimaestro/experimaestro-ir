@@ -59,6 +59,29 @@ class PairwiseSampler(Sampler):
         """
         raise NotImplementedError(f"{self.__class__} should implement __iter__")
 
+    def pairwise_batch_iter(self, size) -> SerializableIterator[PairwiseRecords]:
+        """Batchwise iterator
+
+        Can be subclassed by some classes to be more efficient"""
+
+        class BatchIterator:
+            def __init__(self, sampler: PairwiseSampler):
+                self.iter = sampler.pairwise_iter()
+
+            def state_dict(self):
+                return self.iter.state_dict()
+
+            def load_state_dict(self, state):
+                self.iter.load_state_dict(state)
+
+            def __next__(self):
+                batch = PairwiseRecords()
+                for _, record in zip(range(size), self.iter):
+                    batch.add(record)
+                return batch
+
+        return BatchIterator(self)
+
 
 class BatchwiseSampler(Sampler):
     """Base class for batchwise samplers, that provide for each question a list

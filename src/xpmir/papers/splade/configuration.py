@@ -84,6 +84,7 @@ class Retrieval:
 @configuration()
 class SPLADE(DualMSMarcoV1Configuration):
 
+    base_hf_id: str = "distilbert-base-uncased"
     indexation: Indexation = Factory(Indexation)
     splade: Learner = Factory(Learner)
     retrieval: Retrieval = Factory(Retrieval)

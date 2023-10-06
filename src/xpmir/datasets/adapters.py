@@ -245,18 +245,36 @@ class DocumentSubset(Documents):
     docids_path: Meta[Path]
     """Path to the file containing the document IDs"""
 
+    in_memory: Meta[bool] = False
+    """Whether to load the dataset in memory"""
+
     def __len__(self):
         return len(self.docids)
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.cache = {}
 
     @property
     def documentcount(self):
         return len(self.docids)
 
+    def document_ext(self, docid: str):
+        if self.in_memory:
+            if doc := self.cache.get(docid, None):
+                return doc
+
+            doc = self.base.document_ext(docid)
+            self.cache[docid] = doc
+            return doc
+
+        return self.base.document_ext(docid)
+
     def __getitem__(self, slice: Union[int, slice]):
         docids = self.docids[slice]
         if isinstance(docids, List):
             return DocumentSubsetSlice(self, self.docids[slice])
-        return self.base.document_ext(docids)
+        return self.document_ext(docids)
 
     @cached_property
     def docids(self) -> List[str]:
@@ -282,13 +300,13 @@ class DocumentSubsetSlice:
 
     def __iter__(self):
         for docid in self.doc_ids:
-            yield self.subset.base.document_ext(docid)
+            yield self.subset.document_ext(docid)
 
     def __len__(self):
         return len(self.doc_ids)
 
     def __getitem__(self, ix):
-        return self.subset.base.document_ext(self.doc_ids[ix])
+        return self.subset.document_ext(self.doc_ids[ix])
 
 
 class RetrieverBasedCollection(Task):

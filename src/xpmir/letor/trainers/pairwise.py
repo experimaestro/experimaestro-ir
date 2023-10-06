@@ -20,6 +20,7 @@ from xpmir.letor.trainers import TrainerContext, LossTrainer
 import numpy as np
 from xpmir.rankers import LearnableScorer, ScorerOutputType
 from xpmir.utils.utils import foreach
+from xpmir.utils.iter import MultiprocessSerializableIterator
 
 
 class PairwiseLoss(Config, nn.Module):
@@ -171,14 +172,9 @@ class PairwiseTrainer(LossTrainer):
         self.lossfn.initialize(self.ranker)
         foreach(context.hooks(PairwiseLoss), lambda loss: loss.initialize(self.ranker))
         self.sampler.initialize(random)
-        self.sampler_iter = self.sampler.pairwise_iter()
-
-    def iter_batches(self) -> Iterator[PairwiseRecords]:
-        while True:
-            batch = PairwiseRecords()
-            for _, record in zip(range(self.batch_size), self.sampler_iter):
-                batch.add(record)
-            yield batch
+        self.sampler_iter = MultiprocessSerializableIterator(
+            self.sampler.pairwise_batch_iter(self.batch_size)
+        )
 
     def train_batch(self, records: PairwiseRecords):
         # Get the next batch and compute the scores for each query/document

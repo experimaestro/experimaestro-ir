@@ -95,6 +95,18 @@ class ValidationListener(LearnerListener):
 
         return res
 
+    def init_task(self, learner: "Learner", dep):
+        return {
+            key: dep(
+                ModuleLoader(
+                    value=learner.model,
+                    path=self.bestpath / key / TrainState.MODEL_PATH,
+                )
+            )
+            for key, store in self.metrics.items()
+            if store
+        }
+
     def should_stop(self, epoch=0):
         if self.early_stop > 0 and self.top:
             epochs_since_imp = (epoch or self.context.epoch) - max(

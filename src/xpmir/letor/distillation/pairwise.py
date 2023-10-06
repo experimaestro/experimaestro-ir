@@ -1,5 +1,5 @@
 import sys
-from typing import Iterator, List
+from typing import List
 import torch
 from torch import nn
 from torch.functional import Tensor
@@ -12,8 +12,9 @@ from xpmir.letor.records import (
 )
 from xpmir.learning.context import Loss
 from xpmir.letor.trainers import TrainerContext, LossTrainer
-from xpmir.utils.utils import batchiter, foreach
+from xpmir.utils.utils import foreach
 from .samplers import DistillationPairwiseSampler, PairwiseDistillationSample
+from xpmir.utils.iter import MultiprocessSerializableIterator
 import numpy as np
 from xpmir.rankers import LearnableScorer
 
@@ -120,9 +121,9 @@ class DistillationPairwiseTrainer(LossTrainer):
         self.sampler.initialize(random)
         self.sampler_iter = self.sampler.pairwise_iter()
 
-    def iter_batches(self) -> Iterator[List[PairwiseDistillationSample]]:
-        """Build a iterator over the batches of samples"""
-        return batchiter(self.batch_size, self.sampler_iter)
+        self.sampler_iter = MultiprocessSerializableIterator(
+            self.sampler.pairwise_batch_iter(self.batch_size)
+        )
 
     def train_batch(self, samples: List[PairwiseDistillationSample]):
         # Builds records and teacher score matrix
