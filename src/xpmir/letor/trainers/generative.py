@@ -58,10 +58,9 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         log_query_proba = query_stepwise_generator.step(decoder_input_tokens)
 
         # middle_term in the formula
-        # FIXME: put the detach closer to their arguments
         middle_term = torch.sum(
-            torch.exp(log_posdoc_proba + log_query_proba).detach()
-            * (1 - torch.exp(log_negdoc_proba)).detach()
+            torch.exp(log_posdoc_proba.detach() + log_query_proba.detach())
+            * (1 - torch.exp(log_negdoc_proba.detach()))
             * (
                 torch.sum(log_cur_node_proba, dim=-1).unsqueeze(-1)
                 + log_posdoc_proba
@@ -71,15 +70,15 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         )  # shape: [bs]
 
         # last term in the formula
-        # FIXME: use torch.logsumexp to avoid numerical instabilities
-        sum_except_current = (
-            torch.sum(
-                torch.exp(log_posdoc_proba + log_query_proba).detach(), dim=-1
-            ).unsqueeze(-1)
-            - torch.exp(log_posdoc_proba + log_query_proba).detach()
+        sum_except_current = torch.exp(
+            torch.logsumexp(
+                log_posdoc_proba.detach() + log_query_proba.detach(), dim=-1
+            )
+        ).unsqueeze(-1) - torch.exp(
+            log_posdoc_proba.detach() + log_query_proba.detach()
         )
         last_term = torch.sum(
-            torch.exp(log_negdoc_proba).detach()
+            torch.exp(log_negdoc_proba.detach())
             * sum_except_current
             * log_negdoc_proba,
             dim=-1,
@@ -134,20 +133,23 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
 
         # whether need to be end now?
         if new_unfinished_sequences.max() == 0 or depth == self.max_depth:
-            return (middle_term + last_term) * unfinished_sequences
+            return (middle_term + last_term) * unfinished_sequences.detach()
 
         if sampling_target == 0:
             sampling_multiplier = torch.exp(
-                log_negdoc_proba_next_tokens + log_query_proba_next_tokens
-            ).detach()
+                log_negdoc_proba_next_tokens.detach()
+                + log_query_proba_next_tokens.detach()
+            )
         elif sampling_target == 1:
             sampling_multiplier = torch.exp(
-                log_posdoc_proba_next_tokens + log_query_proba_next_tokens
-            ).detach()
+                log_posdoc_proba_next_tokens.detach()
+                + log_query_proba_next_tokens.detach()
+            )
         elif sampling_target == 2:
             sampling_multiplier = torch.exp(
-                log_posdoc_proba_next_tokens + log_negdoc_proba_next_tokens
-            ).detach()
+                log_posdoc_proba_next_tokens.detach()
+                + log_negdoc_proba_next_tokens.detach()
+            )
 
         return unfinished_sequences.detach() * (
             self.recursive(
@@ -241,26 +243,23 @@ class GenerativeTrainer(LossTrainer):
 # from datamaestro_text.data.ir.base import TextDocument, TextTopic
 # from xpmir.letor.records import PairwiseRecord, TopicRecord, DocumentRecord
 
-# if __name__ == '__main__':
-#     model = T5IdentifierGenerator(hf_id='t5-base')
+# if __name__ == "__main__":
+#     model = T5IdentifierGenerator(hf_id="t5-base")
 #     model.add_pretasks(LoadFromT5(model=model))
 
-#     loss = PairwiseGenerativeRetrievalLoss(
-#         id_generator=model,
-#         max_depth=5
-#     )
+#     loss = PairwiseGenerativeRetrievalLoss(id_generator=model, max_depth=5)
 #     loss = loss.instance()
 
 #     input = PairwiseRecords()
 #     p1 = PairwiseRecord(
 #         TopicRecord(TextTopic("query")),
 #         DocumentRecord(TextDocument("positive document")),
-#         DocumentRecord(TextDocument("negative document"))
+#         DocumentRecord(TextDocument("negative document")),
 #     )
 #     p2 = PairwiseRecord(
 #         TopicRecord(TextTopic("this is one another")),
 #         DocumentRecord(TextDocument("bug please go away")),
-#         DocumentRecord(TextDocument("I don't like bugs"))
+#         DocumentRecord(TextDocument("I don't like bugs")),
 #     )
 
 #     input.add(p1)
