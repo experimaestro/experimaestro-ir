@@ -20,21 +20,19 @@ retrieval:
 monobert:
     optimization:
         scheduler: false
-        steps_per_epoch: 32
-        max_epochs: 4
-        batch_size: 8
+        steps_per_epoch: 100
+        max_epochs: 200
+        batch_size: 1
         num_warmup_steps: 30
         warmup_min_factor: 0.1
         eps: 1.0e-6
+        lr: 3.0e-6
         re_no_l2_regularization:
           - "\\.layer_norm\\."
           - "\\.final_layer_norm\\."
 
+    sample_max: 1
 
-    # Only use 1% of the 100_000 triplets
-    sample_rate: .01
-    sample_max: 100_000
-
-    validation_interval: 1
+    validation_interval: 500
     validation_top_k: 20
     requirements: duration=2 days & cuda(mem=12G)
