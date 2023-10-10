@@ -21,6 +21,7 @@ from xpmir.utils.utils import batchiter, easylog
 from xpmir.letor import Device, DEFAULT_DEVICE
 from xpmir.text.encoders import TextEncoder
 from xpmir.rankers import Retriever, ScoredDocument
+from xpmir.utils.iter import MultiprocessIterator
 import xpmir_rust
 
 logger = easylog()
@@ -178,7 +179,7 @@ class SparseRetrieverIndexBuilder(Task):
         doc_iter = tqdm(
             zip(
                 range(sys.maxsize if self.max_docs == 0 else self.max_docs),
-                self.documents.iter_documents(),
+                MultiprocessIterator(self.documents.iter_documents()),
             ),
             total=self.documents.documentcount
             if self.max_docs == 0

@@ -12,10 +12,8 @@ gpu: true
 base_hf_id: distilbert-base-uncased
 
 indexation:
-    requirements: duration=2 days & cpu(mem=6G)
-    training_requirements: duration=4 days & cuda(mem=24G)
-    indexspec: OPQ4_16,IVF65536_HNSW32,PQ4
-    faiss_max_traindocs: 800_000
+    requirements: duration=2 days & cpu(mem=16G)
+    training_requirements: duration=2 days & cuda(mem=24G) & cpu(mem=16G)
 
 splade:
     optimization:
