@@ -30,6 +30,21 @@ class Optimizer(Config):
         raise NotImplementedError()
 
 
+class SGD(Optimizer):
+    """Wrapper for SGD optimizer in Pytorch"""
+
+    lr: Param[float] = 1e-5
+    """Learning rate"""
+
+    weight_decay: Param[float] = 0.0
+    """Weight decay (L2)"""
+
+    def __call__(self, parameters):
+        from torch.optim import SGD
+
+        return SGD(parameters, lr=self.lr, weight_decay=self.weight_decay)
+
+
 class Adam(Optimizer):
     """Wrapper for Adam optimizer in PyTorch"""
 

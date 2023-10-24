@@ -5,6 +5,8 @@ description: |
 
 gpu: true
 base: 't5-base'
+decoder_outdim: 10
+max_depth: 5
 
 preprocessing:
     requirements: duration=6h & cpu(mem=4G, cores=8)

@@ -30,6 +30,8 @@ logging.basicConfig(level=logging.INFO)
 # FIXME: shouldn't use the Monobert base configuration / confusing parameters
 @configuration()
 class T5GenerativeConfiguration(Monobert):
+    decoder_outdim: int = 10
+    max_depth: int = 5
     base: str = "t5-base"
     """Identifier for the base model"""
 
@@ -74,18 +76,21 @@ def run(
     # Search and evaluate with the base model
     tests.evaluate_retriever(test_retrievers, cfg.indexation.launcher)
 
-    t5_model: T5IdentifierGenerator = T5IdentifierGenerator(hf_id="t5-base").tag(
+    t5_model: T5IdentifierGenerator = T5IdentifierGenerator(
+        hf_id="t5-base",
+        decoder_outdim=cfg.decoder_outdim,
+    ).tag(
         "scorer", "t5"
     )  # not initialized from huggingface yet
 
     t5_scorer: GenerativeRetrievalScorer = GenerativeRetrievalScorer(
-        id_generator=t5_model, max_depth=5
+        id_generator=t5_model, max_depth=cfg.max_depth
     )
 
     # define the trainer for monobert
     t5_trainer = generative.GenerativeTrainer(
         loss=generative.PairwiseGenerativeRetrievalLoss(
-            id_generator=t5_model, max_depth=5
+            id_generator=t5_model, max_depth=cfg.max_depth
         ),
         sampler=v1_docpairs_sampler(
             sample_rate=cfg.monobert.sample_rate,
@@ -149,7 +154,7 @@ def run(
         # FIXME: Get the model from trained and transform it to a scorer
         trained_model = copyconfig(t5_model).add_pretasks_from(trained)
         trained_scorer = GenerativeRetrievalScorer(
-            id_generator=trained_model, max_depth=5
+            id_generator=trained_model, max_depth=cfg.max_depth
         )
         tests.evaluate_retriever(
             partial(

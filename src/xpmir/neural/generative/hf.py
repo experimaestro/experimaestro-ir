@@ -19,9 +19,17 @@ class CustomOutputT5(T5ForConditionalGeneration):
     """
 
     def __init__(self, config: T5Config, decoder_outdim):
-        super().__init__(config)
         # not including the eos and pad
         self.decoder_outdim = decoder_outdim
+
+        # modification of the config according to our needs
+        config.pad_token_id = self.decoder_outdim + 1
+        config.decoder_start_token_id = self.decoder_outdim + 1
+        config.eos_token_id = self.decoder_outdim
+        # save
+        self.config = config
+
+        super().__init__(self.config)
 
         # Modify LM head
         self.lm_head = nn.Linear(
@@ -29,7 +37,9 @@ class CustomOutputT5(T5ForConditionalGeneration):
         )
 
         # Modify the decoder vocabulary
-        decoder_embeddings = nn.Embedding(self.decoder_outdim + 2, self.config.d_model)
+        decoder_embeddings = nn.Embedding(
+            self.decoder_outdim + 2, self.config.d_model, padding_idx=decoder_outdim + 1
+        )
         self.get_decoder().set_input_embeddings(decoder_embeddings)
 
     def forward(self, **kwargs):
@@ -81,9 +91,9 @@ class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
         self.tokenizer = AutoTokenizer.from_pretrained(self.hf_id, use_fast=True)
 
         self.t5_model = CustomOutputT5(self.config, self.decoder_outdim)
-        self.pad_token_id = self.decoder_outdim + 1
-        self.decoder_start_token_id = self.decoder_outdim + 1
-        self.eos_token_id = self.decoder_outdim
+        self.pad_token_id = self.t5_model.config.pad_token_id
+        self.decoder_start_token_id = self.t5_model.config.decoder_start_token_id
+        self.eos_token_id = self.t5_model.config.eos_token_id
 
     @property
     def device(self):
