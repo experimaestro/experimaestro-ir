@@ -23,6 +23,7 @@ splade:
         max_epochs: 1200
         lr: 2.0e-5
         num_warmup_steps: 6000
+        re_no_l2_regularization: [] # All parameters have L2 regularization in SPLADE
 
     model: splade_max
     # validation for each (steps_per_epoch * validation interval) steps

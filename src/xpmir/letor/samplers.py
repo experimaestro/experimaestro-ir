@@ -113,17 +113,21 @@ class ModelBasedSampler(Sampler):
     def __validate__(self) -> None:
         super().__validate__()
 
-        assert (
-            self.retriever.get_store() is not None
-        ), "The retriever has no associated document store"
+        assert self.retriever.get_store() is not None or isinstance(
+            self.dataset.documents, DocumentStore
+        ), "The retriever has no associated document store (to get document text)"
 
     def initialize(self, random):
         super().initialize(random)
-        self._store = self.retriever.get_store()
+        self._store = self.retriever.get_store() or self.dataset.documents
+        assert self._store is not None, "No document store found"
 
     def document(self, doc_id):
         """Returns the document textual content"""
         return self._store.document_ext(doc_id)
+
+    def document_text(self, doc_id):
+        return self.document(doc_id).get_text()
 
     @cache("run")
     def _itertopics(
@@ -145,9 +149,9 @@ class ModelBasedSampler(Sampler):
                 assessments: Dict[str, Dict[str, float]] = {}
                 for qrels in self.dataset.assessments.iter():
                     doc2rel = {}
-                    assessments[qrels.qid] = doc2rel
+                    assessments[qrels.topic_id] = doc2rel
                     for qrel in qrels.assessments:
-                        doc2rel[qrel.docid] = qrel.rel
+                        doc2rel[qrel.doc_id] = qrel.rel
                 self.logger.info("Read assessments for %d topics", len(assessments))
 
                 self.logger.info("Retrieving documents for each topic")
@@ -158,11 +162,11 @@ class ModelBasedSampler(Sampler):
                 # Retrieve documents
                 skipped = 0
                 for query in tqdm(queries):
-                    qassessments = assessments.get(query.qid, None)
+                    qassessments = assessments.get(query.get_id(), None)
                     if not qassessments:
                         skipped += 1
                         self.logger.warning(
-                            "Skipping topic %s (no assessments)", query.qid
+                            "Skipping topic %s (no assessments)", query.get_id()
                         )
                         continue
 
@@ -178,7 +182,7 @@ class ModelBasedSampler(Sampler):
 
                     if not positives:
                         self.logger.warning(
-                            "Skipping topic %s (no relevant documents)", query.qid
+                            "Skipping topic %s (no relevant documents)", query.get_id()
                         )
                         skipped += 1
                         continue
@@ -190,16 +194,16 @@ class ModelBasedSampler(Sampler):
                     negatives = []
                     for rank, sd in enumerate(scoreddocuments):
                         # Get the assessment (assumes not relevant)
-                        rel = qassessments.get(sd.docid, 0)
+                        rel = qassessments.get(sd.document.get_id(), 0)
                         if rel > 0:
                             continue
 
-                        negatives.append((sd.docid, rel, sd.score))
-                        fp.write(f"\t{sd.docid}\t{sd.score}\t{rel}\n")
+                        negatives.append((sd.document.get_id(), rel, sd.score))
+                        fp.write(f"\t{sd.document.get_id()}\t{sd.score}\t{rel}\n")
 
                     if not negatives:
                         self.logger.warning(
-                            "Skipping topic %s (no negatives documents)", query.qid
+                            "Skipping topic %s (no negatives documents)", query.get_id()
                         )
                         skipped += 1
                         continue
@@ -296,8 +300,9 @@ class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
         text = None
         while text is None:
             docid, rel, score = samples[self.random.randint(0, len(samples))]
-            text = self.document_text(docid)
-        return DocumentRecord(docid, text, score)
+            document = self.document(docid)
+            text = document.get_text()
+        return ScoredDocumentRecord(document, score)
 
     def pairwise_iter(self) -> SerializableIterator[PairwiseRecord]:
         def iter(random):
