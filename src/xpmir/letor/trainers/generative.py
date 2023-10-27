@@ -31,7 +31,7 @@ class PairwiseGenerativeLoss(Config, nn.Module):
 
     def process(self, records: BaseRecords, context: TrainerContext):
         value = self.compute(records, context)  # tensor shape [bs]
-        logger.info(f"Loss: {value}")
+        logger.debug(f"Loss: {value}")
         context.add_loss(Loss(f"pair-{self.NAME}", value, self.weight))
 
 
@@ -60,10 +60,10 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         log_negdoc_proba = negdoc_stepwise_generator.step(decoder_input_tokens)
         log_query_proba = query_stepwise_generator.step(decoder_input_tokens)
 
-        logger.info("\n")
-        logger.info(f"posdoc_proba: {torch.exp(log_posdoc_proba)}")
-        logger.info(f"negdoc_proba: {torch.exp(log_negdoc_proba)}")
-        logger.info(f"log_query_proba: {torch.exp(log_query_proba)}")
+        logger.debug("\n")
+        logger.debug(f"posdoc_proba: {torch.exp(log_posdoc_proba)}")
+        logger.debug(f"negdoc_proba: {torch.exp(log_negdoc_proba)}")
+        logger.debug(f"log_query_proba: {torch.exp(log_query_proba)}")
 
         # middle_term in the formula
         middle_term = torch.sum(
@@ -116,7 +116,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
                 torch.exp(log_query_proba), num_samples=1
             ).squeeze(1)
 
-        logger.info(f"sampled token is {raw_next_tokens} of depth {depth}")
+        logger.debug(f"sampled token is {raw_next_tokens} of depth {depth}")
 
         # Here we need to use the raw token to calculate
         # to avoid the index out of bound pb (it will be masked anyways)
@@ -153,7 +153,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
             )
             .prod(dim=0)
         )
-        logger.info(f"input token for the next step: {raw_next_tokens}")
+        logger.debug(f"input token for the next step: {raw_next_tokens}")
 
         # whether need to be end now?
         if new_unfinished_sequences.max() == 0 or depth == self.max_depth:
@@ -198,9 +198,9 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
 
         bs = len(posdocs_text)
 
-        logger.info(f"posdocs_text: {posdocs_text}")
-        logger.info(negdocs_text)
-        logger.info(queries_text)
+        logger.debug(f"posdocs_text: {posdocs_text}")
+        logger.debug(f"negdocs_text: {negdocs_text}")
+        logger.debug(f"queries_text: {queries_text}")
 
         # create the generator for the given records
         posdoc_stepwise_generator = self.id_generator.stepwise_iterator()
