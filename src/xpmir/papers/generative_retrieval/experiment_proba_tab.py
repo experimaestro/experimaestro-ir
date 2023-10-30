@@ -4,7 +4,7 @@ from functools import partial
 import xpmir.letor.trainers.generative as generative
 from experimaestro import experiment
 from experimaestro.launcherfinder import find_launcher
-from xpmir.neural.generative.probtab import ProbaTabIdentifierGenerator
+from xpmir.neural.generative.probtab import ProbaTabIdentifierGeneratorTwoLayers
 from xpmir.learning.batchers import PowerAdaptativeBatcher
 from xpmir.learning.learner import Learner
 from xpmir.learning.optim import TensorboardService
@@ -68,8 +68,10 @@ def run(
     # Search and evaluate with the base model
     tests.evaluate_retriever(test_retrievers, cfg.indexation.launcher)
 
-    proba_tab_model: ProbaTabIdentifierGenerator = ProbaTabIdentifierGenerator(
-        hf_id=cfg.base, decoder_outdim=cfg.decoder_outdim, nb_docs=32
+    proba_tab_model: ProbaTabIdentifierGeneratorTwoLayers = (
+        ProbaTabIdentifierGeneratorTwoLayers(
+            hf_id=cfg.base, decoder_outdim=cfg.decoder_outdim, nb_docs=32
+        )
     )
 
     # define the trainer for monobert

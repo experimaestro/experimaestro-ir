@@ -349,7 +349,7 @@ class TripletBasedInBatchNegativeSampler(PairwiseSampler):
 
                 # randomize, to make the same document not gather too close
                 mapping = list(zip(all_qry, all_pos, all_neg))
-                for _ in range(12000):
+                for _ in range(30000):
                     random.shuffle(mapping)
                     for (topic, positive, negative) in mapping:
                         yield PairwiseRecord(topic, positive, negative)

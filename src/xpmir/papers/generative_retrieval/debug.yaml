@@ -22,7 +22,7 @@ retrieval:
 monobert:
     optimization:
         scheduler: false
-        steps_per_epoch: 600
+        steps_per_epoch: 1000
         max_epochs: 100
         batch_size: 64
         eps: 1.0e-6
@@ -35,4 +35,4 @@ monobert:
 
     validation_interval: 500
     validation_top_k: 20
-    requirements: duration=2 days & cuda(mem=12G)
+    requirements: duration=2 days & cuda(mem=24G)
