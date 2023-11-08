@@ -245,8 +245,10 @@ def test_generative(tmp_path: Path):
 
     NB_TOKENS = 4
     MAX_DEPTH = 2
-    NB_DOCS = 32
-    MAX_EPOCHS = 8192
+    NB_DOCS = 16
+
+    STEPS_PER_EPOCH = 16
+    MAX_EPOCHS = (8192 * 16) // STEPS_PER_EPOCH
 
     context = DirectoryContext(tmp_path)
 
@@ -279,7 +281,7 @@ def test_generative(tmp_path: Path):
         # The model to train (splade contains all the parameters)
         model=proba_tab_model,
         # Optimization settings
-        steps_per_epoch=2,
+        steps_per_epoch=STEPS_PER_EPOCH,
         optimizers=get_optimizers(Adam()),
         max_epochs=MAX_EPOCHS,
         listeners=[],
