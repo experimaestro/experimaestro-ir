@@ -24,8 +24,8 @@ monobert:
         scheduler: false
         steps_per_epoch: 1000
         max_epochs: 100
-        batch_size: 64
-        eps: 1.0e-6
+        batch_size: 128
+        eps: 1.0e-8
         lr: 5.0e-5
         re_no_l2_regularization:
           - "\\.layer_norm\\."

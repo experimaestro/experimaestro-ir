@@ -65,7 +65,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
             logger.debug("\n")
             logger.debug(f"posdoc_proba: {torch.exp(log_posdoc_proba)}")
             logger.debug(f"negdoc_proba: {torch.exp(log_negdoc_proba)}")
-            logger.debug(f"log_query_proba: {torch.exp(log_query_proba)}")
+            logger.debug(f"query_proba: {torch.exp(log_query_proba)}")
 
         # middle_term in the formula
         middle_term = torch.sum(

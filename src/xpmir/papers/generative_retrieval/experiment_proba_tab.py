@@ -29,7 +29,6 @@ logging.basicConfig(level=logging.INFO)
 class T5GenerativeConfigurationProbaTab(Monobert):
     decoder_outdim: int = 4
     max_depth: int = 2
-    base: str = "t5-base"
     """Identifier for the base model"""
 
 
@@ -70,7 +69,7 @@ def run(
 
     proba_tab_model: ProbaTabIdentifierGeneratorTwoLayers = (
         ProbaTabIdentifierGeneratorTwoLayers(
-            hf_id=cfg.base, decoder_outdim=cfg.decoder_outdim, nb_docs=32
+            decoder_outdim=cfg.decoder_outdim, nb_docs=32
         )
     )
 
