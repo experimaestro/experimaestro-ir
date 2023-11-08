@@ -202,9 +202,9 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
 
         bs = len(posdocs_text)
 
-        logger.debug(f"posdocs_text: {posdocs_text}")
-        logger.debug(f"negdocs_text: {negdocs_text}")
-        logger.debug(f"queries_text: {queries_text}")
+        logger.debug("posdocs_text: %s", posdocs_text)
+        logger.debug("negdocs_text: %s", negdocs_text)
+        logger.debug("queries_text: %s", queries_text)
 
         # create the generator for the given records
         posdoc_stepwise_generator = self.id_generator.stepwise_iterator()
