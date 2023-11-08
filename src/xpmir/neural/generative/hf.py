@@ -58,7 +58,7 @@ class T5StepwiseGenerator(StepwiseGenerator):
         self.encoder_output, self.attention_mask = self.id_generator.encode(texts)
         self.past_key_values = None
 
-    def step(self, decoder_input_tokens) -> torch.Tensor:
+    def step(self, decoder_input_tokens) -> torch.Tensor:  # input shape [bs]
         """Returns the distribution over next tokens (BxV) by performing a
         stepwise iteration"""
         log_proba, self.past_key_values = self.id_generator(
@@ -151,7 +151,7 @@ class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
         self,
         encoder_attention_mask,  # shape [bs, seq] with 0 or 1
         encoder_outputs,
-        decoder_input_ids=None,  # if given, shape [bs, 1]
+        decoder_input_ids=None,  # if given, shape [bs]
         past_key_values=None,
     ):
         """Get the logits from the decoder"""
@@ -165,6 +165,8 @@ class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
         else:
             if decoder_input_ids is None:
                 raise ValueError("decoder_input_ids of the previous layer is not given")
+            else:
+                decoder_input_ids = decoder_input_ids.unsqueeze(-1)
 
         # Do a forward pass to get the next token
         # returns three not None values:

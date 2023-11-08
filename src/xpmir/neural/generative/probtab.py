@@ -71,7 +71,7 @@ class ProbaTabIdentifierGeneratorOneLayer(IdentifierGenerator):
     def device(self):
         return self._dummy_params.device
 
-    def forward(self, input_ids, text_ids):  # shape [bs, 1] or None  # shape [bs]
+    def forward(self, input_ids, text_ids):  # shape [bs] or None  # shape [bs]
         """Return the log_proba of the text give the previous generated tokens"""
         if input_ids is None:
             return nn.functional.log_softmax(self.proba_table_l1(text_ids), dim=-1).to(
@@ -119,14 +119,13 @@ class ProbaTabIdentifierGeneratorTwoLayers(IdentifierGenerator):
     def device(self):
         return self._dummy_params.device
 
-    def forward(self, input_ids, text_ids):  # shape [bs, 1] or None  # shape [bs]
+    def forward(self, input_ids, text_ids):  # shape [bs] or None
         """Return the log_proba of the text give the previous generated tokens"""
         if input_ids is None:
             return nn.functional.log_softmax(self.proba_table_l1(text_ids), dim=-1).to(
                 self.device
             )
         else:
-            input_ids = input_ids.squeeze(-1)
             selected = [self.proba_table_l2[i](j) for i, j in zip(input_ids, text_ids)]
             return nn.functional.log_softmax(torch.stack(selected), dim=-1).to(
                 self.device
