@@ -52,11 +52,16 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         unfinished_sequences: torch.tensor,  # shape [bs]
         log_cur_node_proba: torch.tensor,  # shape [bs,3]
         depth: int,
+        # TODO: Use a NamedTuple to simplify the code afterwards
+        # [above] PairwiseTriplet = namedtuple('PairwiseTriplet', ['pos', 'neg', 'query' ])
+        # generators: PairwiseTriplet
         posdoc_stepwise_generator: StepwiseGenerator,
         negdoc_stepwise_generator: StepwiseGenerator,
         query_stepwise_generator: StepwiseGenerator,
     ):
         # pass get the probas
+        # TODO: with NamedTuple
+        # log_p = PairwiseTriplet(*(g.step() for g in generators))
         log_posdoc_proba = posdoc_stepwise_generator.step(decoder_input_tokens)
         log_negdoc_proba = negdoc_stepwise_generator.step(decoder_input_tokens)
         log_query_proba = query_stepwise_generator.step(decoder_input_tokens)
@@ -69,6 +74,8 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
 
         # middle_term in the formula
         middle_term = torch.sum(
+            # TODO: with NamedTuple
+            # log_p.pos.detach() + log_p.neg.detach()
             torch.exp(log_posdoc_proba.detach() + log_query_proba.detach())
             * (1 - torch.exp(log_negdoc_proba.detach()))
             * (
@@ -104,6 +111,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         )  # shape: [bs]
 
         # randomly choose the target of sampling
+        # TODO: use uniform probability to choose from each at individual level
         sampling_target = int(torch.randint(low=0, high=3, size=(1,)))
         if sampling_target == 0:
             raw_next_tokens = torch.multinomial(
@@ -125,6 +133,8 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         # to avoid the index out of bound pb (it will be masked anyways)
         # cumulate the proba from root
         iterator_vector = torch.arange(len(raw_next_tokens))
+        # TODO: with NamedTUple
+        # log_p_next = PairwiseTriplet(*(x[iterator_vector, raw_next_tokens] for x in log_p))
         log_posdoc_proba_next_tokens = log_posdoc_proba[
             iterator_vector, raw_next_tokens
         ]
@@ -142,10 +152,15 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
 
         # mask the generated tokens if some of the seqs
         # are already end before(0 in unfinished_sequences)
+        # TODO: we don't really care about the next token if finished
         raw_next_tokens = (
             raw_next_tokens * unfinished_sequences
             + self.id_generator.pad_token_id * (1 - unfinished_sequences)
         )
+        # TODO: simplify?
+        # new_unfinished_sequences = (
+        #     raw_next_tokens != self.id_generator.eos_token_id
+        # ) & unfinished_sequences
         new_unfinished_sequences = unfinished_sequences.mul(
             raw_next_tokens.tile(1, 1)
             .ne(
