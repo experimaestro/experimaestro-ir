@@ -31,9 +31,6 @@ class StepwiseGenerator:
 class IdentifierGenerator(Module):
     """Models that generate an identifier given a document or a query"""
 
-    hf_id: Param[str]
-    """The HuggingFace identifier (to configure the model)"""
-
     def __initialize__(self):
         pass
 

@@ -73,6 +73,9 @@ class T5StepwiseGenerator(StepwiseGenerator):
 class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
     """generate the id of the token based on t5-based models"""
 
+    hf_id: Param[str]
+    """The HuggingFace identifier (to configure the model)"""
+
     decoder_outdim: Param[int] = 10
     """The decoder output dimension for the t5 model, use it to
     rebuild the lm_head and the decoder embedding, this number

@@ -3,6 +3,7 @@ from torch import nn
 import numpy as np
 from experimaestro import Param, Config
 import torch
+import logging
 
 from xpmir.letor.samplers import PairwiseSampler
 from xpmir.letor.records import BaseRecords, PairwiseRecords
@@ -47,7 +48,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
 
     def recursive(
         self,
-        decoder_input_tokens,  # None or [bs, 1]
+        decoder_input_tokens,  # None or [bs]
         unfinished_sequences: torch.tensor,  # shape [bs]
         log_cur_node_proba: torch.tensor,  # shape [bs,3]
         depth: int,
@@ -60,10 +61,11 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         log_negdoc_proba = negdoc_stepwise_generator.step(decoder_input_tokens)
         log_query_proba = query_stepwise_generator.step(decoder_input_tokens)
 
-        logger.debug("\n")
-        logger.debug(f"posdoc_proba: {torch.exp(log_posdoc_proba)}")
-        logger.debug(f"negdoc_proba: {torch.exp(log_negdoc_proba)}")
-        logger.debug(f"log_query_proba: {torch.exp(log_query_proba)}")
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("\n")
+            logger.debug(f"posdoc_proba: {torch.exp(log_posdoc_proba)}")
+            logger.debug(f"negdoc_proba: {torch.exp(log_negdoc_proba)}")
+            logger.debug(f"log_query_proba: {torch.exp(log_query_proba)}")
 
         # middle_term in the formula
         middle_term = torch.sum(
@@ -116,7 +118,8 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
                 torch.exp(log_query_proba), num_samples=1
             ).squeeze(1)
 
-        logger.debug(f"sampled token is {raw_next_tokens} of depth {depth}")
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"sampled token is {raw_next_tokens} of depth {depth}")
 
         # Here we need to use the raw token to calculate
         # to avoid the index out of bound pb (it will be masked anyways)
@@ -143,7 +146,6 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
             raw_next_tokens * unfinished_sequences
             + self.id_generator.pad_token_id * (1 - unfinished_sequences)
         )
-        decoder_input_tokens = raw_next_tokens.unsqueeze(-1)
         new_unfinished_sequences = unfinished_sequences.mul(
             raw_next_tokens.tile(1, 1)
             .ne(
@@ -153,7 +155,9 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
             )
             .prod(dim=0)
         )
-        logger.debug(f"input token for the next step: {raw_next_tokens}")
+
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"input token for the next step: {raw_next_tokens}")
 
         # whether need to be end now?
         if new_unfinished_sequences.max() == 0 or depth == self.max_depth:
@@ -177,7 +181,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
 
         return unfinished_sequences.detach() * (
             self.recursive(
-                decoder_input_tokens,
+                raw_next_tokens,
                 new_unfinished_sequences,
                 log_cur_node_proba,
                 depth + 1,
