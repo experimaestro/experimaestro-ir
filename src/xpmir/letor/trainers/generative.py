@@ -1,4 +1,5 @@
 from typing import Iterator
+from collections import namedtuple
 from torch import nn
 import numpy as np
 from experimaestro import Param, Config
@@ -7,12 +8,14 @@ import logging
 
 from xpmir.letor.samplers import PairwiseSampler
 from xpmir.letor.records import BaseRecords, PairwiseRecords
-from xpmir.neural.generative import IdentifierGenerator, StepwiseGenerator
+from xpmir.neural.generative import IdentifierGenerator
 from xpmir.letor.trainers import TrainerContext, LossTrainer
 from xpmir.learning.context import Loss
 from xpmir.utils.utils import foreach, easylog
 
 logger = easylog()
+
+PairwiseTriplet = namedtuple("PairwiseTriplet", ["pos_doc", "neg_doc", "query"])
 
 
 class PairwiseGenerativeLoss(Config, nn.Module):
@@ -49,56 +52,55 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
     def recursive(
         self,
         decoder_input_tokens,  # None or [bs]
+        unfinished_sequences: torch.tensor,  # shape [bs]
         log_cur_node_proba: torch.tensor,  # shape [bs,3]
         depth: int,
-        posdoc_stepwise_generator: StepwiseGenerator,
-        negdoc_stepwise_generator: StepwiseGenerator,
-        query_stepwise_generator: StepwiseGenerator,
+        stepwise_generators: PairwiseTriplet,
     ):
-        # pass get the probas
-        log_posdoc_proba = posdoc_stepwise_generator.step(decoder_input_tokens)
-        log_negdoc_proba = negdoc_stepwise_generator.step(decoder_input_tokens)
-        log_query_proba = query_stepwise_generator.step(decoder_input_tokens)
+        # pass get the probas, each one of shape: [bs, dec_dim+1]
+        log_proba = PairwiseTriplet(
+            *(g.step(decoder_input_tokens) for g in stepwise_generators)
+        )
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("\n")
-            logger.debug(f"posdoc_proba: {torch.exp(log_posdoc_proba)}")
-            logger.debug(f"negdoc_proba: {torch.exp(log_negdoc_proba)}")
-            logger.debug(f"query_proba: {torch.exp(log_query_proba)}")
+            logger.debug(f"posdoc_proba: {torch.exp(log_proba.pos_doc)}")
+            logger.debug(f"negdoc_proba: {torch.exp(log_proba.neg_doc)}")
+            logger.debug(f"query_proba: {torch.exp(log_proba.query)}")
 
         # middle_term in the formula
         middle_term = torch.sum(
-            torch.exp(log_posdoc_proba.detach() + log_query_proba.detach())
-            * (1 - torch.exp(log_negdoc_proba.detach()))
+            torch.exp(log_proba.pos_doc.detach() + log_proba.query.detach())
+            * (1 - torch.exp(log_proba.neg_doc.detach()))
             * (
                 torch.sum(log_cur_node_proba, dim=-1).unsqueeze(-1)
-                + log_posdoc_proba
-                + log_query_proba
+                + log_proba.pos_doc
+                + log_proba.query
             ),
             dim=-1,
         )  # shape: [bs]
 
         # last term in the formula
         max_values_tmp = torch.max(
-            log_posdoc_proba.detach() + log_query_proba.detach(), dim=-1
+            log_proba.pos_doc.detach() + log_proba.query.detach(), dim=-1
         ).values
         sum_except_current = (
             torch.sum(
                 torch.exp(
-                    log_posdoc_proba.detach()
-                    + log_query_proba.detach()
+                    log_proba.pos_doc.detach()
+                    + log_proba.query.detach()
                     - max_values_tmp.unsqueeze(-1)
                 ),
                 dim=-1,
             )
             * torch.exp(max_values_tmp)
         ).unsqueeze(-1) - torch.exp(
-            log_posdoc_proba.detach() + log_query_proba.detach()
+            log_proba.pos_doc.detach() + log_proba.query.detach()
         )
         last_term = torch.sum(
-            torch.exp(log_negdoc_proba.detach())
+            torch.exp(log_proba.neg_doc.detach())
             * sum_except_current
-            * log_negdoc_proba,
+            * log_proba.neg_doc,
             dim=-1,
         )  # shape: [bs]
 
@@ -114,9 +116,9 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         # shape [3*bs, dec_dim - 1]
         log_proba_stacks = torch.vstack(
             (
-                log_posdoc_proba[:, :-1],
-                log_negdoc_proba[:, :-1],
-                log_query_proba[:, :-1],
+                log_proba.pos_doc[:, :-1],
+                log_proba.neg_doc[:, :-1],
+                log_proba.query[:, :-1],
             )
         )
         indices = (
@@ -135,33 +137,37 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         # to avoid the index out of bound pb (it will be masked anyways)
         # cumulate the proba from root
         iterator_vector = torch.arange(bs)
-        log_posdoc_proba_next_tokens = log_posdoc_proba[iterator_vector, next_tokens]
-        log_negdoc_proba_next_tokens = log_negdoc_proba[iterator_vector, next_tokens]
-        log_query_proba_next_tokens = log_query_proba[iterator_vector, next_tokens]
+        # each of shape [bs]
+        log_proba_next = PairwiseTriplet(
+            *(x[iterator_vector, next_tokens] for x in log_proba)
+        )
         log_cur_node_proba = log_cur_node_proba + torch.vstack(
             (
-                log_posdoc_proba_next_tokens,
-                log_negdoc_proba_next_tokens,
-                log_query_proba_next_tokens,
+                log_proba_next.pos_doc,
+                log_proba_next.neg_doc,
+                log_proba_next.query,
             )
         ).transpose(0, 1)
+
+        # mask the generated tokens if some of the seqs
+        # are already end before(0 in unfinished_sequences)
+        new_unfinished_sequences = (
+            next_tokens != self.id_generator.eos_token_id
+        ) & unfinished_sequences
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"input token for the next step: {next_tokens}")
 
         # whether need to be end now?
-        if depth == self.max_depth:
-            return middle_term + last_term
+        if new_unfinished_sequences.max() == 0 or depth == self.max_depth:
+            return (middle_term + last_term) * unfinished_sequences.detach()
 
         # shape [3, bs]
         sampling_multiplier_stack = torch.vstack(
             (
-                log_negdoc_proba_next_tokens.detach()
-                + log_query_proba_next_tokens.detach(),
-                log_posdoc_proba_next_tokens.detach()
-                + log_query_proba_next_tokens.detach(),
-                log_posdoc_proba_next_tokens.detach()
-                + log_negdoc_proba_next_tokens.detach(),
+                log_proba_next.neg_doc.detach() + log_proba_next.query.detach(),
+                log_proba_next.pos_doc.detach() + log_proba_next.query.detach(),
+                log_proba_next.pos_doc.detach() + log_proba_next.neg_doc.detach(),
             )
         )
 
@@ -169,14 +175,13 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
             sampling_multiplier_stack[sampling_target, iterator_vector]
         )
 
-        return (
+        return unfinished_sequences.detach() * (
             self.recursive(
                 next_tokens,
+                new_unfinished_sequences,
                 log_cur_node_proba,
                 depth + 1,
-                posdoc_stepwise_generator,
-                negdoc_stepwise_generator,
-                query_stepwise_generator,
+                stepwise_generators,
             )
             * sampling_multiplier
             + middle_term
@@ -195,14 +200,15 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         logger.debug("negdocs_text: %s", negdocs_text)
         logger.debug("queries_text: %s", queries_text)
 
-        # create the generator for the given records
-        posdoc_stepwise_generator = self.id_generator.stepwise_iterator()
-        negdoc_stepwise_generator = self.id_generator.stepwise_iterator()
-        query_stepwise_generator = self.id_generator.stepwise_iterator()
+        # create the generator for the given records,
+        # represent the posdoc, negdoc, query, respectively
+        stepwise_generators = PairwiseTriplet(
+            *[self.id_generator.stepwise_iterator() for _ in range(3)]
+        )
 
-        posdoc_stepwise_generator.init(posdocs_text)
-        negdoc_stepwise_generator.init(negdocs_text)
-        query_stepwise_generator.init(queries_text)
+        stepwise_generators.pos_doc.init(posdocs_text)
+        stepwise_generators.neg_doc.init(negdocs_text)
+        stepwise_generators.query.init(queries_text)
 
         # initialize cumulate product of from the root to the current one
         log_cur_node_proba = torch.zeros((bs, 3), dtype=torch.long).to(
@@ -211,17 +217,19 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
 
         # initialize the input for the decoder and the mask
         decoder_input_tokens = None
+        unfinished_sequences = torch.ones(bs, dtype=torch.long).to(
+            self.id_generator.device
+        )
 
         # in fact, we need to minus something to get the pure gradient, but at
         # the level of the root, the additional terms always equals to 0
         return -torch.mean(
             self.recursive(
                 decoder_input_tokens,
+                unfinished_sequences,
                 log_cur_node_proba,
                 1,
-                posdoc_stepwise_generator,
-                negdoc_stepwise_generator,
-                query_stepwise_generator,
+                stepwise_generators,
             )
         )
 

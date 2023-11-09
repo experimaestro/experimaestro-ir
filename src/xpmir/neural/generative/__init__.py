@@ -1,5 +1,6 @@
 from experimaestro import Param
 from typing import List
+from collections import namedtuple
 from abc import abstractmethod
 
 import torch
@@ -8,6 +9,8 @@ from xpmir.learning.optim import Module
 from xpmir.learning.context import TrainerContext
 from xpmir.letor.records import BaseRecords
 from xpmir.rankers import AbstractModuleScorer
+
+PairwiseTuple = namedtuple("PairwiseTuple", ["doc", "qry"])
 
 
 class StepwiseGenerator:
@@ -58,61 +61,44 @@ class GenerativeRetrievalScorer(AbstractModuleScorer):
 
     def recursive(
         self,
-        decoder_input_tokens,
+        decoder_input_tokens,  # shape [bs]
         unfinished_sequences,
         depth,
-        doc_stepwise_generator: StepwiseGenerator,
-        qry_stepwise_generator: StepwiseGenerator,
+        stepwise_generators: PairwiseTuple,
     ):
         # pass get the probas
-        log_doc_proba = doc_stepwise_generator.step(decoder_input_tokens)
-        log_qry_proba = qry_stepwise_generator.step(decoder_input_tokens)
+        log_proba = PairwiseTuple(
+            *[g.step(decoder_input_tokens) for g in stepwise_generators]
+        )
 
         # sampling according to the proba distribution --> shape bs
-        raw_next_tokens = torch.multinomial(
-            torch.exp(log_qry_proba), num_samples=1
+        next_tokens = torch.multinomial(
+            torch.exp(log_proba.qry), num_samples=1
         ).squeeze(1)
 
-        iterator_vector = torch.arange(len(raw_next_tokens))
-        log_doc_proba_next_tokens = log_doc_proba[iterator_vector, raw_next_tokens]
-        log_qry_proba_next_tokens = log_qry_proba[iterator_vector, raw_next_tokens]
+        iterator_vector = torch.arange(len(next_tokens))
+        log_proba_next = PairwiseTuple(
+            *(x[iterator_vector, next_tokens] for x in log_proba)
+        )
 
         # mask them! For the sequence already finished, replaced by the
         # multiplier 1(or some other multiplier to punish the early finish)
-        log_doc_proba_next_tokens[
-            unfinished_sequences == 0
-        ] = self.early_finish_punishment
-        log_qry_proba_next_tokens[
-            unfinished_sequences == 0
-        ] = self.early_finish_punishment
+        log_proba_next.doc[unfinished_sequences == 0] = self.early_finish_punishment
+        log_proba_next.qry[unfinished_sequences == 0] = self.early_finish_punishment
 
-        # mask the generated tokens if some of the seqs
-        # are already end before(0 in unfinished_sequences)
-        raw_next_tokens = (
-            raw_next_tokens * unfinished_sequences
-            + self.id_generator.pad_token_id * (1 - unfinished_sequences)
-        )
-        decoder_input_tokens = raw_next_tokens.unsqueeze(-1)
-        new_unfinished_sequences = unfinished_sequences.mul(
-            raw_next_tokens.tile(1, 1)
-            .ne(
-                torch.tensor([self.id_generator.eos_token_id]).to(
-                    self.id_generator.device
-                )
-            )
-            .prod(dim=0)
-        )
+        new_unfinished_sequences = (
+            next_tokens != self.id_generator.eos_token_id
+        ) & unfinished_sequences
 
         if new_unfinished_sequences.max() == 0 or depth == self.max_depth:
-            return torch.exp(log_doc_proba_next_tokens)
+            return torch.exp(log_proba_next.qry)
 
         return self.recursive(
-            decoder_input_tokens,
+            next_tokens,
             new_unfinished_sequences,
             depth + 1,
-            doc_stepwise_generator,
-            qry_stepwise_generator,
-        ) * torch.exp(log_doc_proba_next_tokens)
+            stepwise_generators,
+        ) * torch.exp(log_proba_next.doc)
 
     def forward(
         self, inputs: "BaseRecords", info: TrainerContext = None
@@ -123,11 +109,12 @@ class GenerativeRetrievalScorer(AbstractModuleScorer):
 
         bs = len(queries_text)
 
-        doc_stepwise_generator = self.id_generator.stepwise_iterator()
-        qry_stepwise_generator = self.id_generator.stepwise_iterator()
+        stepwise_generator = PairwiseTuple(
+            *[self.id_generator.stepwise_iterator() for _ in range(2)]
+        )
 
-        qry_stepwise_generator.init(queries_text)
-        doc_stepwise_generator.init(documents_text)
+        stepwise_generator.qry.init(queries_text)
+        stepwise_generator.doc.init(documents_text)
 
         # initialization
         decoder_input_tokens = None
@@ -136,9 +123,5 @@ class GenerativeRetrievalScorer(AbstractModuleScorer):
         )
 
         return self.recursive(
-            decoder_input_tokens,
-            unfinished_sequences,
-            1,
-            doc_stepwise_generator,
-            qry_stepwise_generator,
+            decoder_input_tokens, unfinished_sequences, 1, stepwise_generator
         )
