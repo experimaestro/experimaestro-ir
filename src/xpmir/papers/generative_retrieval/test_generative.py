@@ -60,6 +60,9 @@ class ProbaTabIdentifierGenerator(IdentifierGenerator):
         self.eos_token_id = self.nb_tokens
         self.pad_token_id = self.nb_tokens + 1
 
+        self.log_tokens_p1 = np.log(self.nb_tokens + 1)
+        self.log_tokens = np.log(self.nb_tokens)
+
     @property
     def device(self):
         return self._dummy_params.device
@@ -70,22 +73,83 @@ class ProbaTabIdentifierGenerator(IdentifierGenerator):
         last_ix = (range(self.nb_texts),) + tuple(
             repeat(self.pad_token_id, logits.ndim - 2)
         )
-        return self._log_probabilities(logits, last_ix)
+        return self._log_probabilities(logits, last_ix, 0)
 
-    def _log_probabilities(self, logits: torch.Tensor, last_ix: Tuple[int]):
+    def bias(self, depth):
+        max_depth = self.depth - 1
+
+        if depth == max_depth:
+            return torch.zeros(self.nb_tokens + 1)
+        assert depth < max_depth
+
+        eos_bias = (depth - max_depth) * self.log_tokens_p1
+
+        N = self.nb_tokens + 1
+        bias = torch.Tensor([eos_bias if i == N - 1 else 0.0 for i in range(N)])
+        return bias
+
+    def _log_probabilities(self, logits: torch.Tensor, last_ix: Tuple[int], depth: int):
 
         if len(last_ix) == 0:
             # End of the recursion: EOS has probability 1
             return {"_": torch.zeros(self.nb_texts)}
 
         # Get the log-probabilities conditionned
-        log_probs = logits[last_ix][:, :-1].log_softmax(dim=1)
+        log_probs = (logits[last_ix][:, :-1] + self.bias(depth)).log_softmax(dim=1)
+
         seq_log_probs = {"_": log_probs[:, self.eos_token_id]}
         for ix, log_prob in enumerate(log_probs[:, :-1].transpose(0, 1)):
-            subseq_log_probs = self._log_probabilities(logits[:, ix], last_ix[:-1])
+            subseq_log_probs = self._log_probabilities(
+                logits[:, ix], last_ix[:-1], depth + 1
+            )
             for s, log_prob_s in subseq_log_probs.items():
                 seq_log_probs[f"{ix}{s}"] = log_prob + log_prob_s
         return seq_log_probs
+
+
+class ProbaTabStepwiseGenerator(StepwiseGenerator):
+    tensors: List[torch.tensor]
+
+    def __init__(self, generator: ProbaTabIdentifierGenerator):
+        super().__init__()
+
+        # The identifier to use to generate the next step's token
+        self.generator = generator
+
+    def init(self, texts: List[str]) -> torch.Tensor:
+        "Transform the texts to id of the embeddings"
+        self.tensors = []
+        for text in texts:
+            text_id = self.generator.text2id.setdefault(
+                text, len(self.generator.text2id)
+            )
+            assert text_id < self.generator.nb_texts
+            self.tensors.append(self.generator.logits[text_id])
+
+        self.last_ix = tuple(
+            repeat(self.generator.pad_token_id, len(self.tensors[0].shape) - 1)
+        )
+
+        # Current depth
+        self.depth = 0
+
+    def step(self, token_ids: torch.LongTensor) -> torch.Tensor:
+        """Return the log_proba"""
+
+        if token_ids is not None:
+            assert token_ids.ndim == 1, "Token IDs should be a vector"
+            self.tensors = [tensor[ix] for tensor, ix in zip(self.tensors, token_ids)]
+
+        # Avoids the padding token
+        logits = torch.stack([tensor[self.last_ix][:-1] for tensor in self.tensors])
+
+        # Add bias term
+        bias = self.generator.bias(self.depth).unsqueeze(0)
+        log_probs = (logits + bias).log_softmax(1)
+
+        self.last_ix = self.last_ix[1:]
+        self.depth += 1
+        return log_probs
 
 
 def random_derangement(random: np.random.RandomState, n: int):
@@ -200,52 +264,12 @@ class LoggingHook(StepTrainingHook):
             state.writer.add_figure("documents", figure, state.steps)
 
 
-class ProbaTabStepwiseGenerator(StepwiseGenerator):
-    tensors: List[torch.tensor]
-
-    def __init__(self, id_generator: ProbaTabIdentifierGenerator):
-        super().__init__()
-
-        # The identifier to use to generate the next step's token
-        self.id_generator = id_generator
-
-    def init(self, texts: List[str]) -> torch.Tensor:
-        "Transform the texts to id of the embeddings"
-        self.tensors = []
-        for text in texts:
-            text_id = self.id_generator.text2id.setdefault(
-                text, len(self.id_generator.text2id)
-            )
-            assert text_id < self.id_generator.nb_texts
-            self.tensors.append(self.id_generator.logits[text_id])
-
-        self.last_ix = tuple(
-            repeat(self.id_generator.pad_token_id, len(self.tensors[0].shape) - 1)
-        )
-
-    def step(self, token_ids: torch.LongTensor) -> torch.Tensor:
-        """Return the log_proba"""
-
-        if token_ids is not None:
-            assert token_ids.ndim == 1, "Token IDs should be a vector"
-            self.tensors = [tensor[ix] for tensor, ix in zip(self.tensors, token_ids)]
-
-        log_probs = [
-            tensor[self.last_ix][:-1].log_softmax(0) for tensor in self.tensors
-        ]
-
-        log_probs = torch.stack(log_probs)
-
-        self.last_ix = self.last_ix[1:]
-        return log_probs
-
-
 def test_generative(tmp_path: Path):
     """Test a generative loss"""
 
-    NB_TOKENS = 4
-    MAX_DEPTH = 2
-    NB_DOCS = 16
+    NB_TOKENS = 3
+    MAX_DEPTH = 3
+    NB_DOCS = NB_TOKENS**MAX_DEPTH
 
     STEPS_PER_EPOCH = 16
     MAX_EPOCHS = (8192 * 16) // STEPS_PER_EPOCH
@@ -265,7 +289,7 @@ def test_generative(tmp_path: Path):
         sampler=sampler,
         batcher=PowerAdaptativeBatcher(),
         batch_size=NB_DOCS,
-        hooks=[LoggingHook(generator=proba_tab_model, sampler=sampler, steps=512)],
+        hooks=[LoggingHook(generator=proba_tab_model, sampler=sampler, steps=128)],
     )
 
     # --- Learning
@@ -282,7 +306,7 @@ def test_generative(tmp_path: Path):
         model=proba_tab_model,
         # Optimization settings
         steps_per_epoch=STEPS_PER_EPOCH,
-        optimizers=get_optimizers(Adam()),
+        optimizers=get_optimizers(Adam(eps=1e-5)),
         max_epochs=MAX_EPOCHS,
         listeners=[],
     ).instance(context)
