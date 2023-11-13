@@ -49,6 +49,23 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
     max_depth: Param[int] = 5
     """The max number of the steps we need to consider"""
 
+    alpha: Param[float] = 0.1
+    """The hyperparameter for the KL divergence"""
+
+    def initialize(self):
+        decoder_outdim = self.id_generator.decoder_outdim
+        alphas = torch.tensor(
+            [
+                sum(decoder_outdim**i for i in range(j + 1))
+                for j in range(self.max_depth, 0, -1)
+            ]
+        ).to(self.id_generator.device)
+        alphas = (1 / alphas).unsqueeze(-1)
+        self.kl_target = torch.cat(
+            (((1 - alphas) / decoder_outdim).expand(-1, decoder_outdim), alphas), -1
+        )
+        self.kl_lossfn = nn.KLDivLoss(reduction="batchmean")
+
     def recursive(
         self,
         decoder_input_tokens,  # None or [bs]
@@ -106,7 +123,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
 
         # randomly choose the target of sampling
         # currently only support the eos_token_id is the last one the decoding dimension
-        assert self.id_generator.eos_token_id == self.id_generator.decoder_outdim
+        assert self.id_generator.eos_token_id == log_proba.pos_doc.shape[1] - 1
 
         # get the bs
         bs = log_cur_node_proba.shape[0]
@@ -158,9 +175,20 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"input token for the next step: {next_tokens}")
 
+        # the kl loss to force all the sequence to have the similar proba
+        kl_loss = PairwiseTriplet(
+            *(
+                self.kl_lossfn(x, self.kl_target[depth].expand(bs, -1))
+                for x in log_proba
+            )
+        )
+        kl_loss = kl_loss.pos_doc + kl_loss.neg_doc + kl_loss.query
+
         # whether need to be end now?
-        if new_unfinished_sequences.max() == 0 or depth == self.max_depth:
-            return (middle_term + last_term) * unfinished_sequences.detach()
+        if new_unfinished_sequences.max() == 0 or depth == self.max_depth - 1:
+            return (
+                middle_term + last_term - self.alpha * kl_loss
+            ) * unfinished_sequences.detach()
 
         # shape [3, bs]
         sampling_multiplier_stack = torch.vstack(
@@ -186,6 +214,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
             * sampling_multiplier
             + middle_term
             + last_term
+            - self.alpha * kl_loss
         )
 
     def compute(self, records: PairwiseRecords, context: TrainerContext):
@@ -228,7 +257,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
                 decoder_input_tokens,
                 unfinished_sequences,
                 log_cur_node_proba,
-                1,
+                0,
                 stepwise_generators,
             )
         )

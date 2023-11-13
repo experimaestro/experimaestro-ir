@@ -37,7 +37,7 @@ class ProbaTabIdentifierGenerator(IdentifierGenerator):
     depth: Param[int]
     """Maximum generation length"""
 
-    nb_tokens: Param[int]
+    decoder_outdim: Param[int]
     """Number of tokens (excludes eos/pad tokens)"""
 
     nb_texts: Param[int]
@@ -54,14 +54,14 @@ class ProbaTabIdentifierGenerator(IdentifierGenerator):
         self.text2id = {}
 
         # Uses the pad_token_id to cater for different lengths
-        shape = [self.nb_texts] + [self.nb_tokens + 2 for _ in range(self.depth)]
+        shape = [self.nb_texts] + [self.decoder_outdim + 2 for _ in range(self.depth)]
         self.logits = nn.Parameter(torch.randn(*shape))
 
-        self.eos_token_id = self.nb_tokens
-        self.pad_token_id = self.nb_tokens + 1
+        self.eos_token_id = self.decoder_outdim
+        self.pad_token_id = self.decoder_outdim + 1
 
-        self.log_tokens_p1 = np.log(self.nb_tokens + 1)
-        self.log_tokens = np.log(self.nb_tokens)
+        self.log_tokens_p1 = np.log(self.decoder_outdim + 1)
+        self.log_tokens = np.log(self.decoder_outdim)
 
     @property
     def device(self):
@@ -79,12 +79,12 @@ class ProbaTabIdentifierGenerator(IdentifierGenerator):
         max_depth = self.depth - 1
 
         if depth == max_depth:
-            return torch.zeros(self.nb_tokens + 1)
+            return torch.zeros(self.decoder_outdim + 1)
         assert depth < max_depth
 
         eos_bias = (depth - max_depth) * self.log_tokens_p1
 
-        N = self.nb_tokens + 1
+        N = self.decoder_outdim + 1
         bias = torch.Tensor([eos_bias if i == N - 1 else 0.0 for i in range(N)])
         return bias
 
@@ -144,8 +144,11 @@ class ProbaTabStepwiseGenerator(StepwiseGenerator):
         logits = torch.stack([tensor[self.last_ix][:-1] for tensor in self.tensors])
 
         # Add bias term
-        bias = self.generator.bias(self.depth).unsqueeze(0)
-        log_probs = (logits + bias).log_softmax(1)
+        # bias = self.generator.bias(self.depth).unsqueeze(0)
+        # log_probs = (logits + bias).log_softmax(1)
+
+        # no bias version
+        log_probs = logits.log_softmax(1)
 
         self.last_ix = self.last_ix[1:]
         self.depth += 1
@@ -274,17 +277,19 @@ def test_generative(tmp_path: Path):
     STEPS_PER_EPOCH = 16
     MAX_EPOCHS = (8192 * 16) // STEPS_PER_EPOCH
 
+    ALPHA = 0.1
+
     context = DirectoryContext(tmp_path)
 
     proba_tab_model = ProbaTabIdentifierGenerator(
-        nb_tokens=NB_TOKENS, nb_texts=2 * NB_DOCS, depth=MAX_DEPTH
+        decoder_outdim=NB_TOKENS, nb_texts=2 * NB_DOCS, depth=MAX_DEPTH
     )
 
     sampler = FakePairwiseSampler(nb_doc=NB_DOCS)
 
     proba_tab_trainer = generative.GenerativeTrainer(
         loss=generative.PairwiseGenerativeRetrievalLoss(
-            id_generator=proba_tab_model, max_depth=MAX_DEPTH
+            id_generator=proba_tab_model, max_depth=MAX_DEPTH, alpha=ALPHA
         ),
         sampler=sampler,
         batcher=PowerAdaptativeBatcher(),

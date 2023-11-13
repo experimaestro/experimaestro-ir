@@ -62,7 +62,7 @@ class ProbaTabIdentifierGeneratorOneLayer(IdentifierGenerator):
         self.seen_text = {}
 
         self.proba_table_l1 = nn.Embedding(self.nb_docs, self.decoder_outdim + 1)
-        self.proba_table_l1.weight.data.normal_(0, 2)
+        self.proba_table_l1.weight.data.normal_(0, 1)
 
         self.pad_token_id = self.decoder_outdim + 1
         self.eos_token_id = self.decoder_outdim
