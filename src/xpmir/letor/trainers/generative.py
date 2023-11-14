@@ -3,6 +3,7 @@ from collections import namedtuple
 from torch import nn
 import numpy as np
 from experimaestro import Param, Config
+from experimaestro.compat import cached_property
 import torch
 import logging
 
@@ -52,7 +53,8 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
     alpha: Param[float] = 0.1
     """The hyperparameter for the KL divergence"""
 
-    def initialize(self):
+    @cached_property
+    def kl_target(self):
         decoder_outdim = self.id_generator.decoder_outdim
         alphas = torch.tensor(
             [
@@ -61,9 +63,11 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
             ]
         ).to(self.id_generator.device)
         alphas = (1 / alphas).unsqueeze(-1)
-        self.kl_target = torch.cat(
+        return torch.cat(
             (((1 - alphas) / decoder_outdim).expand(-1, decoder_outdim), alphas), -1
         )
+
+    def initialize(self):
         self.kl_lossfn = nn.KLDivLoss(reduction="batchmean")
 
     def recursive(

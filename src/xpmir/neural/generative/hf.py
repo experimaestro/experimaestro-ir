@@ -208,8 +208,12 @@ class LoadFromT5(LightweightTask):
 
         del state_dict["lm_head.weight"]
 
+        decoder_key_names = [name for name in state_dict.keys() if "decoder" in name]
+        for name in decoder_key_names:
+            del state_dict[name]
+
         logging.info("Loading state dict into CustomOutputT5")
-        self.model.load_state_dict(state_dict, strict=False)
+        self.model.t5_model.load_state_dict(state_dict, strict=False)
 
 
 # # test
