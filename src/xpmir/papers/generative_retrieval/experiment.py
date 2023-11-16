@@ -4,7 +4,7 @@ from functools import partial
 import xpmir.letor.trainers.generative as generative
 from experimaestro import experiment, setmeta, copyconfig
 from experimaestro.launcherfinder import find_launcher
-from xpmir.neural.generative import GenerativeRetrievalScorer
+from xpmir.neural.generative import GenerativeRetrievalScorer, GeneratorBiasAdapter
 from xpmir.neural.generative.hf import T5IdentifierGenerator, LoadFromT5
 from xpmir.distributed import DistributedHook
 from xpmir.learning.batchers import PowerAdaptativeBatcher
@@ -79,12 +79,20 @@ def run(
     # Search and evaluate with the base model
     tests.evaluate_retriever(test_retrievers, cfg.indexation.launcher)
 
-    t5_model: T5IdentifierGenerator = T5IdentifierGenerator(
-        hf_id=cfg.base,
-        decoder_outdim=cfg.decoder_outdim,
-    ).tag(
-        "scorer", "t5"
-    )  # not initialized from huggingface yet
+    # t5_model: T5IdentifierGenerator = T5IdentifierGenerator(
+    #     hf_id=cfg.base,
+    #     decoder_outdim=cfg.decoder_outdim,
+    # ).tag(
+    #     "scorer", "t5"
+    # )  # not initialized from huggingface yet
+
+    t5_model = GeneratorBiasAdapter(
+        vanilla_generator=T5IdentifierGenerator(
+            hf_id=cfg.base,
+            decoder_outdim=cfg.decoder_outdim,
+        ),
+        max_depth=cfg.max_depth,
+    ).tag("scorer", "t5")
 
     t5_scorer: GenerativeRetrievalScorer = GenerativeRetrievalScorer(
         id_generator=t5_model, max_depth=cfg.max_depth
@@ -142,10 +150,10 @@ def run(
         # The listeners (here, for validation)
         listeners=[validation],
         # The hook used for evaluation
-        hooks=[setmeta(DistributedHook(models=[t5_model]), True)],
+        hooks=[setmeta(DistributedHook(models=[t5_model.vanilla_generator]), True)],
         use_pretasks=True,
     ).add_pretasks(
-        LoadFromT5(model=t5_model)
+        LoadFromT5(model=t5_model.vanilla_generator)
     )  # load from huggingface before learning
 
     # Submit job and link
@@ -154,7 +162,7 @@ def run(
 
     # Evaluate the neural model on test collections
     for metric_name in validation.monitored():
-        trained: T5IdentifierGenerator = outputs.listeners[validation.id][
+        trained = outputs.listeners[validation.id][
             metric_name
         ]  # returns the model from the learner
 
