@@ -9,7 +9,7 @@ from torch import nn
 import numpy as np
 from xpmir.letor.records import TokenizedTexts
 from xpmir.distributed import DistributableModel
-from . import IdentifierGenerator, StepwiseGenerator
+from . import IdentifierGenerator, StepwiseGenerator, GeneratorForwardOutput
 
 
 class CustomOutputT5(T5ForConditionalGeneration):
@@ -61,13 +61,14 @@ class T5StepwiseGenerator(StepwiseGenerator):
     def step(self, decoder_input_tokens) -> torch.Tensor:  # input shape [bs]
         """Returns the distribution over next tokens (BxV) by performing a
         stepwise iteration"""
-        log_proba, self.past_key_values = self.id_generator(
+        forward_output: GeneratorForwardOutput = self.id_generator(
             self.attention_mask,
             self.encoder_output,
             decoder_input_tokens,
             past_key_values=self.past_key_values,
         )
-        return log_proba
+        self.past_key_values = forward_output.past_key_values
+        return forward_output.logits
 
 
 class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
@@ -179,11 +180,11 @@ class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
             use_cache=True,
             return_dict=True,
         )
-        log_proba = nn.functional.log_softmax(
-            decoder_output.logits[:, -1, :], dim=-1
-        )  # shape [bs, decoder_outdim+1]
+        logits = decoder_output.logits[:, -1, :]  # shape [bs, decoder_outdim+1]
 
-        return log_proba, decoder_output.past_key_values
+        return GeneratorForwardOutput(
+            logits=logits, past_key_values=decoder_output.past_key_values
+        )
 
     def distribute_models(self, update):
         self.t5_model = update(self.t5_model)

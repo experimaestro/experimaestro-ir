@@ -12,6 +12,7 @@ from xpmir.learning.learner import Learner
 from xpmir.learning.optim import TensorboardService
 from xpmir.letor.learner import ValidationListener
 from xpmir.letor.samplers import TripletBasedInBatchNegativeSampler
+from xpmir.papers.generative_retrieval.test_generative import FakePairwiseSampler
 from xpmir.papers import configuration
 from xpmir.papers.cli import paper_command
 from xpmir.papers.helpers.msmarco import (
@@ -34,6 +35,7 @@ class T5GenerativeConfiguration(Monobert):
     decoder_outdim: int = 10
     max_depth: int = 5
     base: str = "t5-base"
+    alpha: float = 0.1
     """Identifier for the base model"""
 
 
@@ -91,16 +93,17 @@ def run(
     # define the trainer for monobert
     t5_trainer = generative.GenerativeTrainer(
         loss=generative.PairwiseGenerativeRetrievalLoss(
-            id_generator=t5_model, max_depth=cfg.max_depth
+            id_generator=t5_model, max_depth=cfg.max_depth, alpha=cfg.alpha
         ),
-        sampler=TripletBasedInBatchNegativeSampler(
-            sampler=v1_docpairs_sampler(
-                sample_rate=cfg.monobert.sample_rate,
-                sample_max=cfg.monobert.sample_max,
-                launcher=launcher_preprocessing,
-            ),
-            batch_size=16,
-        ),
+        # sampler=TripletBasedInBatchNegativeSampler(
+        #     sampler=v1_docpairs_sampler(
+        #         sample_rate=cfg.monobert.sample_rate,
+        #         sample_max=cfg.monobert.sample_max,
+        #         launcher=launcher_preprocessing,
+        #     ),
+        #     batch_size=16,
+        # ),
+        sampler=FakePairwiseSampler(nb_doc=16),  # fake texts
         batcher=PowerAdaptativeBatcher(),
         batch_size=cfg.monobert.optimization.batch_size,
     )

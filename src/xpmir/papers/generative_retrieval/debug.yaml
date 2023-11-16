@@ -8,6 +8,7 @@ base: "t5-small"
 decoder_outdim: 4
 max_depth: 2
 dev_test_size: 50
+alpha: 0.1
 
 validation:
     size: 10
@@ -22,17 +23,17 @@ retrieval:
 monobert:
     optimization:
         scheduler: false
-        steps_per_epoch: 1000
+        steps_per_epoch: 100
         max_epochs: 100
         batch_size: 128
         eps: 1.0e-8
-        lr: 5.0e-5
+        lr: 5.0e-4
         re_no_l2_regularization:
           - "\\.layer_norm\\."
           - "\\.final_layer_norm\\."
 
     sample_max: 16
 
-    validation_interval: 500
+    validation_interval: 1500
     validation_top_k: 20
     requirements: duration=2 days & cuda(mem=24G)

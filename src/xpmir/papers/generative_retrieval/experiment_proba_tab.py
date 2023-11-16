@@ -4,21 +4,21 @@ from functools import partial
 import xpmir.letor.trainers.generative as generative
 from experimaestro import experiment
 from experimaestro.launcherfinder import find_launcher
+from xpmir.neural.generative import GeneratorBiasAdapter
 from xpmir.neural.generative.probtab import ProbaTabIdentifierGeneratorTwoLayers
 from xpmir.learning.batchers import PowerAdaptativeBatcher
 from xpmir.learning.learner import Learner
 from xpmir.learning.optim import TensorboardService
-from xpmir.letor.samplers import TripletBasedInBatchNegativeSampler
 from xpmir.papers import configuration
 from xpmir.papers.cli import paper_command
 from xpmir.papers.helpers.msmarco import (
-    v1_docpairs_sampler,
     v1_passages,
     v1_tests,
 )
 from xpmir.papers.monobert.configuration import Monobert
 from xpmir.papers.monobert.experiment import get_retrievers
 from xpmir.papers.results import PaperResults
+from xpmir.papers.generative_retrieval.test_generative import FakePairwiseSampler
 from xpmir.rankers import RandomScorer
 
 logging.basicConfig(level=logging.INFO)
@@ -29,6 +29,7 @@ logging.basicConfig(level=logging.INFO)
 class T5GenerativeConfigurationProbaTab(Monobert):
     decoder_outdim: int = 4
     max_depth: int = 2
+    alpha: float = 0.1
     """Identifier for the base model"""
 
 
@@ -67,25 +68,23 @@ def run(
     # Search and evaluate with the base model
     tests.evaluate_retriever(test_retrievers, cfg.indexation.launcher)
 
-    proba_tab_model: ProbaTabIdentifierGeneratorTwoLayers = (
-        ProbaTabIdentifierGeneratorTwoLayers(
+    proba_tab_model = GeneratorBiasAdapter(
+        vanilla_generator=ProbaTabIdentifierGeneratorTwoLayers(
             decoder_outdim=cfg.decoder_outdim, nb_docs=32
-        )
+        ),
+        max_depth=cfg.max_depth,
     )
+
+    # proba_tab_model = ProbaTabIdentifierGeneratorTwoLayers(
+    #     decoder_outdim=cfg.decoder_outdim, nb_docs=32
+    # )
 
     # define the trainer for monobert
     proba_tab_trainer = generative.GenerativeTrainer(
         loss=generative.PairwiseGenerativeRetrievalLoss(
-            id_generator=proba_tab_model, max_depth=cfg.max_depth
+            id_generator=proba_tab_model, max_depth=cfg.max_depth, alpha=cfg.alpha
         ),
-        sampler=TripletBasedInBatchNegativeSampler(
-            sampler=v1_docpairs_sampler(
-                sample_rate=cfg.monobert.sample_rate,
-                sample_max=cfg.monobert.sample_max,
-                launcher=launcher_preprocessing,
-            ),
-            batch_size=16,
-        ),
+        sampler=FakePairwiseSampler(nb_doc=16),  # fake texts
         batcher=PowerAdaptativeBatcher(),
         batch_size=cfg.monobert.optimization.batch_size,
     )

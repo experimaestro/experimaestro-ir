@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 from experimaestro import Param
-from . import IdentifierGenerator, StepwiseGenerator
+from . import IdentifierGenerator, StepwiseGenerator, GeneratorForwardOutput
 from xpmir.utils.utils import easylog
 
 logger = easylog()
@@ -34,8 +34,8 @@ class ProbaTabStepwiseGenerator(StepwiseGenerator):
         self.text_ids = torch.tensor(text_ids).to(self.id_generator.device)
 
     def step(self, token_ids: torch.LongTensor) -> torch.Tensor:
-        """Return the log_proba"""
-        return self.id_generator(token_ids, self.text_ids)
+        """Return the logits"""
+        return self.id_generator(token_ids, self.text_ids).logits
 
 
 class ProbaTabIdentifierGeneratorOneLayer(IdentifierGenerator):
@@ -74,8 +74,9 @@ class ProbaTabIdentifierGeneratorOneLayer(IdentifierGenerator):
     def forward(self, input_ids, text_ids):  # shape [bs] or None  # shape [bs]
         """Return the log_proba of the text give the previous generated tokens"""
         if input_ids is None:
-            return nn.functional.log_softmax(self.proba_table_l1(text_ids), dim=-1).to(
-                self.device
+            return GeneratorForwardOutput(
+                logits=self.proba_table_l1(text_ids).to(self.device),
+                past_key_values=None,
             )
 
 
@@ -122,11 +123,12 @@ class ProbaTabIdentifierGeneratorTwoLayers(IdentifierGenerator):
     def forward(self, input_ids, text_ids):  # shape [bs] or None
         """Return the log_proba of the text give the previous generated tokens"""
         if input_ids is None:
-            return nn.functional.log_softmax(self.proba_table_l1(text_ids), dim=-1).to(
-                self.device
+            return GeneratorForwardOutput(
+                logits=self.proba_table_l1(text_ids).to(self.device),
+                past_key_values=None,
             )
         else:
             selected = [self.proba_table_l2[i](j) for i, j in zip(input_ids, text_ids)]
-            return nn.functional.log_softmax(torch.stack(selected), dim=-1).to(
-                self.device
+            return GeneratorForwardOutput(
+                logits=torch.stack(selected).to(self.device), past_key_values=None
             )

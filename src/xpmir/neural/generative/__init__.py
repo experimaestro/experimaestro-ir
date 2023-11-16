@@ -1,16 +1,24 @@
 from experimaestro import Param
-from typing import List
+from experimaestro.compat import cached_property
+from typing import List, NamedTuple, Optional
 from collections import namedtuple
 from abc import abstractmethod
 
 import torch
-
+import numpy as np
 from xpmir.learning.optim import Module
 from xpmir.learning.context import TrainerContext
 from xpmir.letor.records import BaseRecords
 from xpmir.rankers import AbstractModuleScorer
 
 PairwiseTuple = namedtuple("PairwiseTuple", ["doc", "qry"])
+
+
+class GeneratorForwardOutput(NamedTuple):
+    """The forward output of the generative retrieval"""
+
+    logits: torch.tensor
+    past_key_values: Optional[torch.tensor] = None
 
 
 class StepwiseGenerator:
@@ -40,6 +48,70 @@ class IdentifierGenerator(Module):
     @abstractmethod
     def stepwise_iterator(self) -> StepwiseGenerator:
         pass
+
+
+class GeneratorBiasStepwiseGenerator(StepwiseGenerator):
+    def __init__(
+        self,
+        id_generator: IdentifierGenerator,
+        stepwise_iterator: StepwiseGenerator,
+    ):
+        super().__init__()
+        # The identifier to use to generate the next step's token
+        self.id_generator = id_generator
+        self.stepwise_iterator = stepwise_iterator
+
+    def init(self, texts: List[str]):
+        self.stepwise_iterator.init(texts)
+        self.current_depth = 0
+
+    def step(self, token_ids: torch.LongTensor) -> torch.Tensor:
+        logits = self.stepwise_iterator.step(token_ids)
+        bs = logits.shape[0]
+        logits = logits + self.id_generator.bias_terms[self.current_depth].expand(
+            bs, -1
+        )
+        self.current_depth += 1
+        return logits
+
+
+class GeneratorBiasAdapter(IdentifierGenerator):
+
+    max_depth: Param[int] = 5
+    """The max_depth of the generator"""
+
+    vanilla_generator: Param[IdentifierGenerator]
+    """The original generator"""
+
+    def __initialize__(self, random: Optional[np.random.RandomState] = None):
+        super().__initialize__()
+        self.vanilla_generator.initialize(random)
+        self.decoder_outdim = self.vanilla_generator.decoder_outdim
+        self.eos_token_id = self.vanilla_generator.eos_token_id
+        self.pad_token_id = self.vanilla_generator.pad_token_id
+
+    def stepwise_iterator(self) -> StepwiseGenerator:
+        return GeneratorBiasStepwiseGenerator(
+            self, self.vanilla_generator.stepwise_iterator()
+        )
+
+    @property
+    def device(self):
+        return self.vanilla_generator.device
+
+    @cached_property
+    def bias_terms(self):
+        decoder_dim = self.vanilla_generator.decoder_outdim
+        alphas = torch.tensor(
+            [
+                sum(decoder_dim**i for i in range(j + 1))
+                for j in range(self.max_depth, 0, -1)
+            ]
+        ).to(self.device)
+        alphas = torch.log((1 / alphas)).unsqueeze(-1)
+        return torch.cat(
+            (torch.zeros(alphas.shape[0], decoder_dim).to(self.device), alphas), -1
+        )
 
 
 class GenerativeRetrievalScorer(AbstractModuleScorer):

@@ -63,12 +63,14 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
             ]
         ).to(self.id_generator.device)
         alphas = (1 / alphas).unsqueeze(-1)
-        return torch.cat(
-            (((1 - alphas) / decoder_outdim).expand(-1, decoder_outdim), alphas), -1
+        return torch.log(
+            torch.cat(
+                (((1 - alphas) / decoder_outdim).expand(-1, decoder_outdim), alphas), -1
+            )
         )
 
     def initialize(self):
-        self.kl_lossfn = nn.KLDivLoss(reduction="batchmean")
+        self.kl_lossfn = nn.KLDivLoss(log_target=True)
 
     def recursive(
         self,
@@ -79,8 +81,12 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         stepwise_generators: PairwiseTriplet,
     ):
         # pass get the probas, each one of shape: [bs, dec_dim+1]
-        log_proba = PairwiseTriplet(
+        logits = PairwiseTriplet(
             *(g.step(decoder_input_tokens) for g in stepwise_generators)
+        )
+
+        log_proba = PairwiseTriplet(
+            *(nn.functional.log_softmax(logit, dim=-1) for logit in logits)
         )
 
         if logger.isEnabledFor(logging.DEBUG):
@@ -182,7 +188,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         # the kl loss to force all the sequence to have the similar proba
         kl_loss = PairwiseTriplet(
             *(
-                self.kl_lossfn(x, self.kl_target[depth].expand(bs, -1))
+                self.kl_lossfn(torch.mean(x, 0), self.kl_target[depth])
                 for x in log_proba
             )
         )

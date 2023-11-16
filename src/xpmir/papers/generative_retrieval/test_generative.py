@@ -13,7 +13,7 @@ from experimaestro import Param
 from experimaestro.taskglobals import Env as TaskEnv
 from experimaestro.xpmutils import DirectoryContext
 from xpmir.learning.context import StepTrainingHook
-
+from xpmir.learning.devices import CudaDevice
 import xpmir.letor.trainers.generative as generative
 from xpmir.learning.context import TrainerContext
 from xpmir.learning.base import Random
@@ -144,11 +144,8 @@ class ProbaTabStepwiseGenerator(StepwiseGenerator):
         logits = torch.stack([tensor[self.last_ix][:-1] for tensor in self.tensors])
 
         # Add bias term
-        # bias = self.generator.bias(self.depth).unsqueeze(0)
-        # log_probs = (logits + bias).log_softmax(1)
-
-        # no bias version
-        log_probs = logits.log_softmax(1)
+        bias = self.generator.bias(self.depth).unsqueeze(0)
+        log_probs = (logits + bias).log_softmax(1)
 
         self.last_ix = self.last_ix[1:]
         self.depth += 1
@@ -305,6 +302,7 @@ def test_generative(tmp_path: Path):
     learner = Learner(
         # Misc settings
         random=random,
+        device=CudaDevice(),
         # How to train the model
         trainer=proba_tab_trainer,
         # The model to train (splade contains all the parameters)
