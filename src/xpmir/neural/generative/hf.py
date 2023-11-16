@@ -3,12 +3,15 @@ import logging
 from transformers import AutoConfig, AutoTokenizer, T5ForConditionalGeneration, T5Config
 from experimaestro import Param, LightweightTask
 from typing import Optional, List
+import matplotlib.pyplot as plt
 
 import torch
 from torch import nn
 import numpy as np
 from xpmir.letor.records import TokenizedTexts
 from xpmir.distributed import DistributableModel
+from xpmir.learning.context import StepTrainingHook, TrainerContext
+from xpmir.papers.generative_retrieval.test_generative import FakePairwiseSampler
 from . import IdentifierGenerator, StepwiseGenerator, GeneratorForwardOutput
 
 
@@ -215,6 +218,97 @@ class LoadFromT5(LightweightTask):
 
         logging.info("Loading state dict into CustomOutputT5")
         self.model.t5_model.load_state_dict(state_dict, strict=False)
+
+
+# WIP
+class T5LoggingHook(StepTrainingHook):
+    """Only support for the two layer version for the moment"""
+
+    generator: Param[T5IdentifierGenerator]
+    sampler: Param[FakePairwiseSampler]
+    steps: Param[int]
+
+    def logits_based_on_given_sequence(self, text, choice):
+        # sequence just consist of one number, shows which one to select at level 1
+        """Calculate the conditioned probability of the sequence based on the
+        given sequence"""
+        stepwise_generator = self.generator.stepwise_iterator()
+        stepwise_generator.init(text)
+        first_layer_proba = nn.functional.log_softmax(
+            stepwise_generator.step(None), -1
+        )  # shape [bs, dec_dim+1]
+        decoder_input = (
+            torch.tensor([choice], dtype=torch.long)
+            .expand(len(text))
+            .to(self.generator.device)
+        )
+        second_layer_proba = nn.functional.log_softmax(
+            stepwise_generator.step(decoder_input), -1
+        )
+        return (
+            first_layer_proba[:, choice].unsqueeze(-1) + second_layer_proba
+        )  # shape [bs, dec_dim+1]
+
+    def logits_finish_at_beginning(self, text):
+        """Calculate the proba of the first generate the _"""
+        stepwise_generator = self.generator.stepwise_iterator()
+        stepwise_generator.init(text)
+        first_layer_proba = nn.functional.log_softmax(stepwise_generator.step(None), -1)
+        return first_layer_proba[:, self.generator.eos_token_id].unsqueeze(-1)
+
+    def get_log_proba(self, text):
+        res = torch.cat(
+            (
+                self.logits_based_on_given_sequence(text, i)
+                for i in range(self.generator.decoder_outdim)
+            ),
+            -1,
+        )
+        return torch.cat((res, self.logits_finish_at_beginning(text)))
+
+    def get_matrix(self, log_proba, sequences, texts):
+        fig, ax = plt.subplots()
+        ax.imshow(log_proba.exp().numpy(), cmap="Blues", interpolation="none")
+        ax.set_xticks(np.arange(len(sequences)), labels=sequences)
+        ax.set_yticks(np.arange(len(texts)), labels=texts)
+        plt.setp(ax.get_xticklabels(), rotation=90, ha="right", rotation_mode="anchor")
+        fig.tight_layout()
+
+        return texts, log_proba, fig
+
+    def __post_init__(self):
+        self.first = True
+
+    def after(self, state: TrainerContext):
+        if state.steps % self.steps == 0 or self.first:
+            self.first = False
+
+            query_text = [record.topic.get_text() for record in self.sampler.topics]
+            document_text = [
+                record.document.get_text() for record in self.sampler.documents
+            ]
+            with torch.no_grad():
+                log_qry = self.get_log_proba(query_text)
+                log_doc = self.get_log_proba(document_text)
+            sequences = [
+                f"{i}{j}"
+                for i in range(self.generator.decoder_outdim)
+                for j in (list(range(self.generator.decoder_outdim)) + ["_"])
+            ] + ["_"]
+
+            _, _, figure = self.get_matrix(
+                log_qry,
+                sequences,
+                query_text,
+            )
+            state.writer.add_figure("topics", figure, state.steps)
+
+            _, _, figure = self.get_matrix(
+                log_doc,
+                sequences,
+                query_text,
+            )
+            state.writer.add_figure("documents", figure, state.steps)
 
 
 # # test

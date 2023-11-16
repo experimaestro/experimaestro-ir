@@ -70,7 +70,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         )
 
     def initialize(self):
-        self.kl_lossfn = nn.KLDivLoss(log_target=True)
+        self.kl_lossfn = nn.KLDivLoss(reduction="sum", log_target=True)
 
     def recursive(
         self,
@@ -188,7 +188,9 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         # the kl loss to force all the sequence to have the similar proba
         kl_loss = PairwiseTriplet(
             *(
-                self.kl_lossfn(torch.mean(x, 0), self.kl_target[depth])
+                self.kl_lossfn(
+                    torch.log(torch.mean(torch.exp(x), 0)), self.kl_target[depth]
+                )
                 for x in log_proba
             )
         )
