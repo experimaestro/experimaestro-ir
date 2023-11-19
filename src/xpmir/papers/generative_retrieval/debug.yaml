@@ -24,10 +24,10 @@ monobert:
     optimization:
         scheduler: false
         steps_per_epoch: 100
-        max_epochs: 100
+        max_epochs: 1000
         batch_size: 128
         eps: 1.0e-8
-        lr: 5.0e-4
+        lr: 2.0e-5
         re_no_l2_regularization:
           - "\\.layer_norm\\."
           - "\\.final_layer_norm\\."

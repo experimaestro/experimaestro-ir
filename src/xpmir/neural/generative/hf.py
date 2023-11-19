@@ -224,7 +224,7 @@ class LoadFromT5(LightweightTask):
 class T5LoggingHook(StepTrainingHook):
     """Only support for the two layer version for the moment"""
 
-    generator: Param[T5IdentifierGenerator]
+    generator: Param[IdentifierGenerator]
     sampler: Param[FakePairwiseSampler]
     steps: Param[int]
 
@@ -259,16 +259,18 @@ class T5LoggingHook(StepTrainingHook):
     def get_log_proba(self, text):
         res = torch.cat(
             (
-                self.logits_based_on_given_sequence(text, i)
-                for i in range(self.generator.decoder_outdim)
+                [
+                    self.logits_based_on_given_sequence(text, i)
+                    for i in range(self.generator.decoder_outdim)
+                ]
             ),
             -1,
         )
-        return torch.cat((res, self.logits_finish_at_beginning(text)))
+        return torch.cat((res, self.logits_finish_at_beginning(text)), -1)
 
     def get_matrix(self, log_proba, sequences, texts):
         fig, ax = plt.subplots()
-        ax.imshow(log_proba.exp().numpy(), cmap="Blues", interpolation="none")
+        ax.imshow(log_proba.exp().cpu().numpy(), cmap="Blues", interpolation="none")
         ax.set_xticks(np.arange(len(sequences)), labels=sequences)
         ax.set_yticks(np.arange(len(texts)), labels=texts)
         plt.setp(ax.get_xticklabels(), rotation=90, ha="right", rotation_mode="anchor")

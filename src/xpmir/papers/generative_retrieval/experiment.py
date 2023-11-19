@@ -11,8 +11,6 @@ from xpmir.learning.batchers import PowerAdaptativeBatcher
 from xpmir.learning.learner import Learner
 from xpmir.learning.optim import TensorboardService
 from xpmir.letor.learner import ValidationListener
-from xpmir.letor.samplers import TripletBasedInBatchNegativeSampler
-from xpmir.papers.generative_retrieval.test_generative import FakePairwiseSampler
 from xpmir.papers import configuration
 from xpmir.papers.cli import paper_command
 from xpmir.papers.helpers.msmarco import (
@@ -103,15 +101,11 @@ def run(
         loss=generative.PairwiseGenerativeRetrievalLoss(
             id_generator=t5_model, max_depth=cfg.max_depth, alpha=cfg.alpha
         ),
-        # sampler=TripletBasedInBatchNegativeSampler(
-        #     sampler=v1_docpairs_sampler(
-        #         sample_rate=cfg.monobert.sample_rate,
-        #         sample_max=cfg.monobert.sample_max,
-        #         launcher=launcher_preprocessing,
-        #     ),
-        #     batch_size=16,
-        # ),
-        sampler=FakePairwiseSampler(nb_doc=16),  # fake texts
+        sampler=v1_docpairs_sampler(
+            sample_rate=cfg.monobert.sample_rate,
+            sample_max=cfg.monobert.sample_max,
+            launcher=launcher_preprocessing,
+        ),
         batcher=PowerAdaptativeBatcher(),
         batch_size=cfg.monobert.optimization.batch_size,
     )
@@ -179,13 +173,13 @@ def run(
                 device=device,
             ),
             launcher_evaluate,
-            model_id=f"monobert-{metric_name}",
+            model_id=f"t5-generative-{metric_name}",
         )
 
     return PaperResults(
-        models={"t5d-RR@10": outputs.listeners[validation.id]["RR@10"]},
+        models={"t5-generative-RR@10": outputs.listeners[validation.id]["RR@10"]},
         evaluations=tests,
-        tb_logs={"t5d-RR@10": learner.logpath},
+        tb_logs={"t5-generative-RR@10": learner.logpath},
     )
 
 

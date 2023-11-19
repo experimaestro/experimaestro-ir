@@ -13,7 +13,6 @@ from experimaestro import Param
 from experimaestro.taskglobals import Env as TaskEnv
 from experimaestro.xpmutils import DirectoryContext
 from xpmir.learning.context import StepTrainingHook
-from xpmir.learning.devices import CudaDevice
 import xpmir.letor.trainers.generative as generative
 from xpmir.learning.context import TrainerContext
 from xpmir.learning.base import Random
@@ -274,7 +273,7 @@ def test_generative(tmp_path: Path):
     STEPS_PER_EPOCH = 16
     MAX_EPOCHS = (8192 * 16) // STEPS_PER_EPOCH
 
-    ALPHA = 0.1
+    ALPHA = 0.2
 
     context = DirectoryContext(tmp_path)
 
@@ -302,7 +301,6 @@ def test_generative(tmp_path: Path):
     learner = Learner(
         # Misc settings
         random=random,
-        device=CudaDevice(),
         # How to train the model
         trainer=proba_tab_trainer,
         # The model to train (splade contains all the parameters)

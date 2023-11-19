@@ -162,7 +162,7 @@ class GenerativeRetrievalScorer(AbstractModuleScorer):
             next_tokens != self.id_generator.eos_token_id
         ) & unfinished_sequences
 
-        if new_unfinished_sequences.max() == 0 or depth == self.max_depth:
+        if new_unfinished_sequences.max() == 0 or depth == self.max_depth - 1:
             return torch.exp(log_proba_next.qry)
 
         return self.recursive(
@@ -195,5 +195,5 @@ class GenerativeRetrievalScorer(AbstractModuleScorer):
         )
 
         return self.recursive(
-            decoder_input_tokens, unfinished_sequences, 1, stepwise_generator
+            decoder_input_tokens, unfinished_sequences, 0, stepwise_generator
         )

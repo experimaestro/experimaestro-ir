@@ -1,4 +1,4 @@
-from typing import Iterator
+from typing import Iterator, NamedTuple
 from collections import namedtuple
 from torch import nn
 import numpy as np
@@ -19,6 +19,11 @@ logger = easylog()
 PairwiseTriplet = namedtuple("PairwiseTriplet", ["pos_doc", "neg_doc", "query"])
 
 
+class GenerativeLossOutput(NamedTuple):
+    recursive_loss: torch.tensor
+    kl_div_loss: torch.tensor
+
+
 class PairwiseGenerativeLoss(Config, nn.Module):
     """Generic loss for generative models"""
 
@@ -36,7 +41,8 @@ class PairwiseGenerativeLoss(Config, nn.Module):
 
     def process(self, records: BaseRecords, context: TrainerContext):
         value = self.compute(records, context)  # tensor shape [bs]
-        logger.debug(f"Loss: {value}")
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"Loss: {value}")
         context.add_loss(Loss(f"pair-{self.NAME}", value, self.weight))
 
 
@@ -79,7 +85,8 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         log_cur_node_proba: torch.tensor,  # shape [bs,3]
         depth: int,
         stepwise_generators: PairwiseTriplet,
-    ):
+    ) -> GenerativeLossOutput:
+        """Return two terms, the recursive G and the kl_div loss at depth"""
         # pass get the probas, each one of shape: [bs, dec_dim+1]
         logits = PairwiseTriplet(
             *(g.step(decoder_input_tokens) for g in stepwise_generators)
@@ -198,9 +205,11 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
 
         # whether need to be end now?
         if new_unfinished_sequences.max() == 0 or depth == self.max_depth - 1:
-            return (
-                middle_term + last_term - self.alpha * kl_loss
-            ) * unfinished_sequences.detach()
+            return GenerativeLossOutput(
+                recursive_loss=(middle_term + last_term)
+                * unfinished_sequences.detach(),
+                kl_div_loss=kl_loss,
+            )
 
         # shape [3, bs]
         sampling_multiplier_stack = torch.vstack(
@@ -215,21 +224,27 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
             sampling_multiplier_stack[sampling_target, iterator_vector]
         )
 
-        return unfinished_sequences.detach() * (
-            self.recursive(
-                next_tokens,
-                new_unfinished_sequences,
-                log_cur_node_proba,
-                depth + 1,
-                stepwise_generators,
-            )
-            * sampling_multiplier
-            + middle_term
-            + last_term
-            - self.alpha * kl_loss
+        next_layer_recursive = self.recursive(
+            next_tokens,
+            new_unfinished_sequences,
+            log_cur_node_proba,
+            depth + 1,
+            stepwise_generators,
         )
 
-    def compute(self, records: PairwiseRecords, context: TrainerContext):
+        return GenerativeLossOutput(
+            recursive_loss=unfinished_sequences.detach()
+            * (
+                next_layer_recursive.recursive_loss * sampling_multiplier
+                + middle_term
+                + last_term
+            ),
+            kl_div_loss=next_layer_recursive.kl_div_loss + kl_loss,
+        )
+
+    def compute(
+        self, records: PairwiseRecords, context: TrainerContext
+    ) -> GenerativeLossOutput:
 
         posdocs_text = [pdr.document.get_text() for pdr in records.positives]
         negdocs_text = [ndr.document.get_text() for ndr in records.negatives]
@@ -264,20 +279,33 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
 
         # in fact, we need to minus something to get the pure gradient, but at
         # the level of the root, the additional terms always equals to 0
-        return -torch.mean(
-            self.recursive(
-                decoder_input_tokens,
-                unfinished_sequences,
-                log_cur_node_proba,
-                0,
-                stepwise_generators,
-            )
+        loss = self.recursive(
+            decoder_input_tokens,
+            unfinished_sequences,
+            log_cur_node_proba,
+            0,
+            stepwise_generators,
         )
+
+        return GenerativeLossOutput(
+            recursive_loss=-torch.mean(loss.recursive_loss),
+            kl_div_loss=loss.kl_div_loss,
+        )
+
+    def process(self, records: BaseRecords, context: TrainerContext):
+        loss_output = self.compute(records, context)
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"Recursive Loss: {loss_output.recursive_loss}")
+            logger.debug(f"KL_div regularization: {loss_output.kl_div_loss}")
+        context.add_loss(
+            Loss("recursive-loss", loss_output.recursive_loss, self.weight)
+        )
+        context.add_loss(Loss("kl-div-loss", loss_output.kl_div_loss, self.alpha))
 
 
 class GenerativeTrainer(LossTrainer):
 
-    loss: Param[PairwiseGenerativeRetrievalLoss]
+    loss: Param[PairwiseGenerativeLoss]
 
     sampler: Param[PairwiseSampler]
     """The pairwise sampler"""

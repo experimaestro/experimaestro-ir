@@ -4,9 +4,10 @@ description: |
     This model has been trained on MsMarco v1
 
 gpu: true
-base: 't5-base'
+base: 't5-small'
 decoder_outdim: 10
-max_depth: 5
+max_depth: 7
+alpha: 0.1
 
 preprocessing:
     requirements: duration=6h & cpu(mem=4G, cores=8)
@@ -21,19 +22,19 @@ validation:
 monobert:
     optimization:
         steps_per_epoch: 100
-        batch_size: 64
-        max_epochs: 1000
-        num_warmup_steps: 10000
+        batch_size: 128
+        max_epochs: 3000
+        num_warmup_steps: 30000
         warmup_min_factor: 0
         weight_decay: 0.01
-        lr: 3.0e-6
-        eps: 1.0e-6
+        lr: 2.0e-5
+        eps: 1.0e-8
         re_no_l2_regularization:
           - "\\.layer_norm\\."
           - "\\.final_layer_norm\\."
 
-    validation_interval: 50
-    requirements: duration=6 days & cuda(mem=40G)
+    validation_interval: 100
+    requirements: duration=8 days & cuda(mem=40G)
 
 
 retrieval:
