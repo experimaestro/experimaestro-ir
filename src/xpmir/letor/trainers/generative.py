@@ -56,7 +56,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
     max_depth: Param[int] = 5
     """The max number of the steps we need to consider"""
 
-    alpha: Param[float] = 0.1
+    alpha: Param[float] = 0.0
     """The hyperparameter for the KL divergence"""
 
     @cached_property
@@ -102,7 +102,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
             logger.debug(f"negdoc_proba: {torch.exp(log_proba.neg_doc)}")
             logger.debug(f"query_proba: {torch.exp(log_proba.query)}")
 
-        # middle_term in the formula
+        # --- middle_term in the formula
         middle_term = torch.sum(
             torch.exp(log_proba.pos_doc.detach() + log_proba.query.detach())
             * (1 - torch.exp(log_proba.neg_doc.detach()))
@@ -114,7 +114,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
             dim=-1,
         )  # shape: [bs]
 
-        # last term in the formula
+        # --- last term in the formula
         max_values_tmp = torch.max(
             log_proba.pos_doc.detach() + log_proba.query.detach(), dim=-1
         ).values
@@ -138,42 +138,42 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
             dim=-1,
         )  # shape: [bs]
 
-        # randomly choose the target of sampling
+        # --- Sample the next token
+
         # currently only support the eos_token_id is the last one the decoding dimension
         assert self.id_generator.eos_token_id == log_proba.pos_doc.shape[1] - 1
 
         # get the bs
         bs = log_cur_node_proba.shape[0]
-        sampling_target = torch.randint(low=0, high=3, size=(bs,)).to(
-            self.id_generator.device
-        )
-        # shape [3*bs, dec_dim - 1]
-        log_proba_stacks = torch.vstack(
-            (
-                log_proba.pos_doc[:, :-1],
-                log_proba.neg_doc[:, :-1],
-                log_proba.query[:, :-1],
-            )
-        )
-        indices = (
-            (sampling_target * bs + torch.arange(bs).to(self.id_generator.device))
-            .unsqueeze(1)
-            .expand(-1, log_proba_stacks.shape[1])
-        )
-        next_tokens = torch.multinomial(
-            torch.exp(torch.gather(log_proba_stacks, 0, indices)), num_samples=1
-        ).squeeze(1)
 
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"sampled token is {next_tokens} of depth {depth}")
+        # log-probability of the next token using a mixture
+        with torch.no_grad():
+            log_p_next_token = torch.stack(  # shape [3, bs, dec_dim-1]
+                (
+                    log_proba.pos_doc[:, :-1],
+                    # Avoids for now sampling from the negative distribution
+                    # log_proba.neg_doc[:, :-1],
+                    log_proba.query[:, :-1],
+                )
+            ).logsumexp(dim=0)
 
+            next_tokens = torch.multinomial(
+                torch.exp(log_p_next_token), num_samples=1
+            ).squeeze(1)
+
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"sampled token is {next_tokens} of depth {depth}")
+
+        # --- Computes the log probability of sampled tokens
+
+        # FIXME: why this comment below?
         # Here we need to use the raw token to calculate
         # to avoid the index out of bound pb (it will be masked anyways)
         # cumulate the proba from root
-        iterator_vector = torch.arange(bs)
+        batch_range = torch.arange(bs)
         # each of shape [bs]
         log_proba_next = PairwiseTriplet(
-            *(x[iterator_vector, next_tokens] for x in log_proba)
+            *(x[batch_range, next_tokens] for x in log_proba)
         )
         log_cur_node_proba = log_cur_node_proba + torch.vstack(
             (
@@ -211,18 +211,15 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
                 kl_div_loss=kl_loss,
             )
 
-        # shape [3, bs]
-        sampling_multiplier_stack = torch.vstack(
-            (
-                log_proba_next.neg_doc.detach() + log_proba_next.query.detach(),
-                log_proba_next.pos_doc.detach() + log_proba_next.query.detach(),
-                log_proba_next.pos_doc.detach() + log_proba_next.neg_doc.detach(),
+        # Computing the importance sampling coefficient
+        with torch.no_grad():
+            log_p = log_p_next_token[batch_range, next_tokens]
+            sampling_multiplier = torch.exp(
+                log_proba_next.pos_doc
+                + log_proba_next.neg_doc
+                + log_proba_next.query
+                - log_p
             )
-        )
-
-        sampling_multiplier = torch.exp(
-            sampling_multiplier_stack[sampling_target, iterator_vector]
-        )
 
         next_layer_recursive = self.recursive(
             next_tokens,
