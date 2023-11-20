@@ -1,5 +1,5 @@
-from typing import Iterator, NamedTuple
-from collections import namedtuple
+from dataclasses import dataclass
+from typing import Generic, Iterator, NamedTuple, TypeVar
 from torch import nn
 import numpy as np
 from experimaestro import Param, Config
@@ -9,14 +9,26 @@ import logging
 
 from xpmir.letor.samplers import PairwiseSampler
 from xpmir.letor.records import BaseRecords, PairwiseRecords
-from xpmir.neural.generative import IdentifierGenerator
+from xpmir.neural.generative import IdentifierGenerator, StepwiseGenerator
 from xpmir.letor.trainers import TrainerContext, LossTrainer
 from xpmir.learning.context import Loss
 from xpmir.utils.utils import foreach, easylog
 
 logger = easylog()
 
-PairwiseTriplet = namedtuple("PairwiseTriplet", ["pos_doc", "neg_doc", "query"])
+T = TypeVar("T")
+
+
+@dataclass
+class Triplet(Generic[T]):
+    pos_doc: T
+    neg_doc: T
+    query: T
+
+    def __iter__(self):
+        yield self.pos_doc
+        yield self.neg_doc
+        yield self.query
 
 
 class GenerativeLossOutput(NamedTuple):
@@ -82,17 +94,15 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         self,
         decoder_input_tokens,  # None or [bs]
         unfinished_sequences: torch.tensor,  # shape [bs]
-        log_cur_node_proba: torch.tensor,  # shape [bs,3]
+        log_cur_node_proba: Triplet[torch.Tensor],  # shape [bs,3]
         depth: int,
-        stepwise_generators: PairwiseTriplet,
+        stepwise_generators: Triplet[StepwiseGenerator],
     ) -> GenerativeLossOutput:
         """Return two terms, the recursive G and the kl_div loss at depth"""
         # pass get the probas, each one of shape: [bs, dec_dim+1]
-        logits = PairwiseTriplet(
-            *(g.step(decoder_input_tokens) for g in stepwise_generators)
-        )
+        logits = Triplet(*(g.step(decoder_input_tokens) for g in stepwise_generators))
 
-        log_proba = PairwiseTriplet(
+        log_proba = Triplet(
             *(nn.functional.log_softmax(logit, dim=-1) for logit in logits)
         )
 
@@ -107,7 +117,9 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
             torch.exp(log_proba.pos_doc.detach() + log_proba.query.detach())
             * (1 - torch.exp(log_proba.neg_doc.detach()))
             * (
-                torch.sum(log_cur_node_proba, dim=-1).unsqueeze(-1)
+                log_cur_node_proba.pos_doc.unsqueeze(-1)
+                + log_cur_node_proba.neg_doc.unsqueeze(-1)
+                + log_cur_node_proba.query.unsqueeze(-1)
                 + log_proba.pos_doc
                 + log_proba.query
             ),
@@ -144,7 +156,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         assert self.id_generator.eos_token_id == log_proba.pos_doc.shape[1] - 1
 
         # get the bs
-        bs = log_cur_node_proba.shape[0]
+        bs = log_cur_node_proba.query.shape[0]
 
         # log-probability of the next token using a mixture
         with torch.no_grad():
@@ -172,16 +184,10 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         # cumulate the proba from root
         batch_range = torch.arange(bs)
         # each of shape [bs]
-        log_proba_next = PairwiseTriplet(
-            *(x[batch_range, next_tokens] for x in log_proba)
+        log_proba_next = Triplet(*(x[batch_range, next_tokens] for x in log_proba))
+        log_cur_node_proba = Triplet(
+            *(a + b for a, b in zip(log_cur_node_proba, log_proba_next))
         )
-        log_cur_node_proba = log_cur_node_proba + torch.vstack(
-            (
-                log_proba_next.pos_doc,
-                log_proba_next.neg_doc,
-                log_proba_next.query,
-            )
-        ).transpose(0, 1)
 
         # mask the generated tokens if some of the seqs
         # are already end before(0 in unfinished_sequences)
@@ -193,7 +199,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
             logger.debug(f"input token for the next step: {next_tokens}")
 
         # the kl loss to force all the sequence to have the similar proba
-        kl_loss = PairwiseTriplet(
+        kl_loss = Triplet(
             *(
                 self.kl_lossfn(
                     torch.log(torch.mean(torch.exp(x), 0)), self.kl_target[depth]
@@ -255,8 +261,8 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
 
         # create the generator for the given records,
         # represent the posdoc, negdoc, query, respectively
-        stepwise_generators = PairwiseTriplet(
-            *[self.id_generator.stepwise_iterator() for _ in range(3)]
+        stepwise_generators = Triplet(
+            *(self.id_generator.stepwise_iterator() for _ in range(3))
         )
 
         stepwise_generators.pos_doc.init(posdocs_text)
@@ -264,8 +270,8 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         stepwise_generators.query.init(queries_text)
 
         # initialize cumulate product of from the root to the current one
-        log_cur_node_proba = torch.zeros((bs, 3), dtype=torch.long).to(
-            self.id_generator.device
+        log_cur_node_proba = Triplet(
+            *(torch.zeros(bs).to(self.id_generator.device) for _ in range(3))
         )
 
         # initialize the input for the decoder and the mask
