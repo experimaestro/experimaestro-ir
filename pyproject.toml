@@ -18,6 +18,19 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
+[project.optional-dependencies]
+anserini = [
+    "pyserini >= 0.20.0"
+]
+
+
+neural = [
+    "torch>=1.12",
+    "tensorboard",
+    "transformers",
+    "sentence_transformers"
+]
+
 [project.urls]
 homepage = "https://github.com/bpiwowar/experimaestro-ir"
 documentation = "https://experimaestro-ir.readthedocs.io/en/latest/"
