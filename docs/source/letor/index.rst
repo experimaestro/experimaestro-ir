@@ -40,6 +40,7 @@ scorers, some are have learnable parameters.
 .. autoxpmconfig:: xpmir.rankers.Scorer
    :members: initialize, rsv, to, eval, getRetriever
 .. autoxpmconfig:: xpmir.rankers.RandomScorer
+.. autoxpmconfig:: xpmir.rankers.AbstractModuleScorer
 .. autoxpmconfig:: xpmir.rankers.LearnableScorer
 
 .. autofunction:: xpmir.rankers.scorer_retriever

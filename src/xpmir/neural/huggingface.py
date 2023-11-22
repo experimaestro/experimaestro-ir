@@ -1,6 +1,6 @@
 from xpmir.learning.context import TrainerContext
 from xpmir.letor.records import BaseRecords
-from xpmir.neural import TorchLearnableScorer
+from xpmir.rankers import LearnableScorer
 from experimaestro import Param
 from transformers import AutoModelForSequenceClassification, AutoTokenizer, AutoConfig
 from xpmir.letor.records import TokenizedTexts
@@ -9,7 +9,7 @@ from xpmir.distributed import DistributableModel
 import torch
 
 
-class HFCrossScorer(TorchLearnableScorer, DistributableModel):
+class HFCrossScorer(LearnableScorer, DistributableModel):
     """Load a cross scorer model from the huggingface"""
 
     hf_id: Param[str]

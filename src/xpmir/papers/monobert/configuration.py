@@ -7,7 +7,7 @@ from xpmir.papers.helpers.msmarco import RerankerMSMarcoV1Configuration
 
 @configuration()
 class Indexation(LauncherSpecification):
-    requirements: str = "duration=6 days & cpu(mem=4G, cores=8)"
+    requirements: str = "duration=6 days & cpu(cores=8)"
 
 
 @configuration()
@@ -17,6 +17,11 @@ class Learner:
 
     optimization: TransformerOptimization = Factory(TransformerOptimization)
     requirements: str = "duration=4 days & cuda(mem=24G) * 2"
+    sample_rate: float = 1.0
+    """Sample rate for triplets"""
+
+    sample_max: int = 0
+    """Maximum number of samples considered (before shuffling). 0 for no limit."""
 
 
 @configuration()
@@ -27,11 +32,20 @@ class Retrieval:
 
 
 @configuration()
+class Preprocessing:
+    requirements: str = "duration=12h & cpu(cores=4)"
+
+
+@configuration()
 class Monobert(RerankerMSMarcoV1Configuration):
     indexation: Indexation = Factory(Indexation)
     retrieval: Retrieval = Factory(Retrieval)
 
     monobert: Learner = Factory(Learner)
+    preprocessing: Preprocessing = Factory(Preprocessing)
 
     dev_test_size: int = 0
     """Development test size (0 to leave it like this)"""
+
+    base: str = "bert-base-uncased"
+    """Identifier for the base model"""

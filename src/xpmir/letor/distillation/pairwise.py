@@ -1,14 +1,20 @@
 import sys
-from typing import Iterator, List
+from typing import List
 import torch
 from torch import nn
 from torch.functional import Tensor
 from experimaestro import Config, Param
-from xpmir.letor.records import Document, PairwiseRecord, PairwiseRecords
+from xpmir.letor.records import (
+    DocumentRecord,
+    TopicRecord,
+    PairwiseRecord,
+    PairwiseRecords,
+)
 from xpmir.learning.context import Loss
 from xpmir.letor.trainers import TrainerContext, LossTrainer
-from xpmir.utils.utils import batchiter, foreach
+from xpmir.utils.utils import foreach
 from .samplers import DistillationPairwiseSampler, PairwiseDistillationSample
+from xpmir.utils.iter import MultiprocessSerializableIterator
 import numpy as np
 from xpmir.rankers import LearnableScorer
 
@@ -115,9 +121,9 @@ class DistillationPairwiseTrainer(LossTrainer):
         self.sampler.initialize(random)
         self.sampler_iter = self.sampler.pairwise_iter()
 
-    def iter_batches(self) -> Iterator[List[PairwiseDistillationSample]]:
-        """Build a iterator over the batches of samples"""
-        return batchiter(self.batch_size, self.sampler_iter)
+        self.sampler_iter = MultiprocessSerializableIterator(
+            self.sampler.pairwise_batch_iter(self.batch_size)
+        )
 
     def train_batch(self, samples: List[PairwiseDistillationSample]):
         # Builds records and teacher score matrix
@@ -126,9 +132,9 @@ class DistillationPairwiseTrainer(LossTrainer):
         for ix, sample in enumerate(samples):
             records.add(
                 PairwiseRecord(
-                    sample.query,
-                    Document(None, sample.documents[0].content, None),
-                    Document(None, sample.documents[1].content, None),
+                    TopicRecord(sample.query),
+                    DocumentRecord(sample.documents[0].document),
+                    DocumentRecord(sample.documents[1].document),
                 )
             )
             teacher_scores[ix, 0] = sample.documents[0].score
@@ -138,7 +144,9 @@ class DistillationPairwiseTrainer(LossTrainer):
         scores = self.ranker(records, self.context).reshape(2, len(records)).T
 
         if torch.isnan(scores).any() or torch.isinf(scores).any():
-            self.logger.error("nan or inf relevance score detected. Aborting.")
+            self.logger.error(
+                "nan or inf relevance score detected. Aborting (pairwise distillation)."
+            )
             sys.exit(1)
 
         # Call the losses (distillation, pairwise and pointwise)

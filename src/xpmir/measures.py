@@ -43,3 +43,7 @@ nDCG = Measure(identifier="nDCG")
 
 R = Measure(identifier="R")
 """Recall at rank"""
+
+Success = Measure(identifier="Success")
+"""1 if a document with at least rel relevance is found in the first cutoff
+documents, else 0."""

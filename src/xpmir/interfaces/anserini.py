@@ -1,5 +1,6 @@
 import asyncio
 from pathlib import Path
+import attrs
 import contextlib
 import json
 import logging
@@ -10,18 +11,19 @@ import sys
 from typing import List, Optional
 from experimaestro import tqdm as xpmtqdm, Task, Meta
 
-from datamaestro_text.data.ir import AdhocDocumentStore
+from datamaestro_text.data.ir import DocumentStore
+from datamaestro_text.data.ir.base import IDDocument
 import datamaestro_text.data.ir.csv as ir_csv
 from datamaestro_text.data.ir.trec import (
-    AdhocDocuments,
-    AdhocTopics,
+    Documents,
+    Topics,
     TipsterCollection,
-    TrecAdhocTopics,
+    TrecTopics,
 )
 from experimaestro import Param, param, pathoption, progress
 from tqdm import tqdm
 from xpmir.index.anserini import Index
-from xpmir.rankers import Retriever, ScoredDocument, RetrieverHydrator, document_cache
+from xpmir.rankers import Retriever, ScoredDocument, document_cache
 from xpmir.rankers.standard import BM25, QLDirichlet, Model
 from xpmir.utils.utils import Handler, StreamGenerator, needs_java
 
@@ -52,7 +54,7 @@ def javacommand():
 
 
 @pyserini_java
-@param("documents", type=AdhocDocuments)
+@param("documents", type=Documents)
 @param("threads", default=8, ignored=True)
 @pathoption("path", "index")
 class IndexCollection(Index, Task):
@@ -60,7 +62,7 @@ class IndexCollection(Index, Task):
 
     CLASSPATH = "io.anserini.index.IndexCollection"
 
-    documents: Param[AdhocDocuments]
+    documents: Param[Documents]
     """The documents to index"""
 
     thread: Meta[int] = 8
@@ -86,7 +88,7 @@ class IndexCollection(Index, Task):
             ]
 
         @chandler()
-        def csv_collection(documents: ir_csv.AdhocDocuments):
+        def csv_collection(documents: ir_csv.Documents):
             def _generator(out):
                 counter = 0
                 size = os.path.getsize(documents.path)
@@ -115,7 +117,7 @@ class IndexCollection(Index, Task):
             ]
 
         @chandler.default()
-        def generic_collection(documents: AdhocDocuments):
+        def generic_collection(documents: Documents):
             """Generic collection handler, supposes that we can iterate documents"""
 
             def _generator(out):
@@ -127,7 +129,9 @@ class IndexCollection(Index, Task):
                     documents.iter(), unit="documents", total=documents.documentcount
                 ):
                     # Generate document
-                    json.dump({"id": document.docid, "contents": document.text}, out)
+                    json.dump(
+                        {"id": document.get_id(), "contents": document.get_text()}, out
+                    )
                     out.write("\n")
 
             generator = StreamGenerator(_generator, mode="wt")
@@ -206,7 +210,7 @@ class IndexCollection(Index, Task):
 
 @pyserini_java
 @param("index", Index)
-@param("topics", AdhocTopics)
+@param("topics", Topics)
 @param("model", Model)
 @pathoption("path", "results.trec")
 class SearchCollection(Task):
@@ -220,11 +224,11 @@ class SearchCollection(Task):
         topicshandler = Handler()
 
         @topicshandler()
-        def trectopics(topics: TrecAdhocTopics):
+        def trectopics(topics: TrecTopics):
             return ("-topicreader", "Trec", "-topics", topics.path)
 
         @topicshandler()
-        def tsvtopics(topics: ir_csv.AdhocTopics):
+        def tsvtopics(topics: ir_csv.Topics):
             return ("-topicreader", "TsvInt", "-topics", topics.path)
 
         command.extend(topicshandler[self.topics])
@@ -243,6 +247,20 @@ class SearchCollection(Task):
         logging.info("Starting command %s", command)
         p = subprocess.run(command)
         sys.exit(p.returncode)
+
+
+@attrs.define()
+class AnseriniDocument(IDDocument):
+    """The hit returned by Anserini"""
+
+    lucene_docid: int
+    """Internal document ID"""
+
+    contents: Optional[str] = None
+    """Processed content"""
+
+    raw: Optional[str] = None
+    """Raw document"""
 
 
 @pyserini_java
@@ -281,14 +299,27 @@ class AnseriniRetriever(Retriever):
         if self.index.storeContents:
             return self.index
 
-    def retrieve(self, query: str, content=False) -> List[ScoredDocument]:
+    def retrieve(self, query: str) -> List[ScoredDocument]:
+        # see
+        # https://github.com/castorini/anserini/blob/master/src/main/java/io/anserini/search/SimpleSearcher.java
         hits = self.searcher.search(query, k=self.k)
         store = self.get_store()
+
+        # Batch retrieve documents
+        if store is not None:
+            return [
+                ScoredDocument(doc, hit.score)
+                for hit, doc in zip(
+                    hits, store.documents_ext([hit.docid for hit in hits])
+                )
+            ]
+
         return [
             ScoredDocument(
-                hit.docid,
+                AnseriniDocument(hit.docid, hit.lucene_docid, hit.contents, hit.raw)
+                if store is None
+                else store.document_ext(hit.docid),
                 hit.score,
-                hit.contents or store.document_text(hit.docid) if content else None,
             )
             for hit in hits
         ]
@@ -296,7 +327,7 @@ class AnseriniRetriever(Retriever):
 
 @document_cache
 def index_builder(
-    documents: AdhocDocuments, *, launcher=None, **index_params
+    documents: Documents, *, launcher=None, **index_params
 ) -> IndexCollection:
     return IndexCollection(documents=documents, **index_params).submit(
         launcher=launcher
@@ -305,26 +336,15 @@ def index_builder(
 
 def retriever(
     index_builder: IndexCollection,
-    documents: AdhocDocuments,
+    documents: Documents,
     *,
-    content=True,
     k: int = None,
     model: Model = None,
+    store: DocumentStore = None,
 ):
+    """Function to construct an Anserini retriever"""
     index = index_builder(documents)
 
-    index_retriever = AnseriniRetriever(
-        index=index, k=k or AnseriniRetriever.k, model=model
+    return AnseriniRetriever(
+        index=index, k=k or AnseriniRetriever.k, model=model, store=store
     )
-
-    # Use hydrator or index store
-    if content:
-        if isinstance(documents, AdhocDocumentStore):
-            return RetrieverHydrator(store=documents, retriever=index_retriever)
-
-        assert (
-            index.storeRaw or index.storeContents
-        ), "Index does not store content, and the document"
-        f"dataset {documents} has no associated store"
-
-    return index_retriever

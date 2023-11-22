@@ -70,11 +70,11 @@ class Handler:
     handler = Handler()
 
     @handler()
-    def trectopics(topics: TrecAdhocTopics):
+    def trectopics(topics: TrecTopics):
         return ("-topicreader", "Trec", "-topics", topics.path)
 
     @handler()
-    def tsvtopics(topics: ir_csv.AdhocTopics):
+    def tsvtopics(topics: ir_csv.Topics):
         return ("-topicreader", "TsvInt", "-topics", topics.path)
 
     command.extend(handler[topics])
@@ -168,6 +168,9 @@ def find_java_home(min_version: int = 6) -> str:
     paths = []
 
     # (1) Use environment variable
+    if java_home := os.environ.get("FORCE_JAVA_HOME", None):
+        return java_home
+
     if java_home := os.environ.get("JAVA_HOME", None):
         paths.append(Path(java_home) / "bin" / "java")
 
@@ -184,7 +187,9 @@ def find_java_home(min_version: int = 6) -> str:
             )
 
             if m := re.search(
-                rb".*\n\s+java.version = (\d+)\.[\d\.]+\n.*", p.stderr, re.MULTILINE
+                rb".*\n\s+java.version = (\d+)\.[\d\.]+(-\w+)?\n.*",
+                p.stderr,
+                re.MULTILINE,
             ):
                 version = int(m[1].decode())
                 if min_version <= version:

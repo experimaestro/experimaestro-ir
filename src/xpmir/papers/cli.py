@@ -1,30 +1,31 @@
 # Starts experiments from command line
 
-from functools import reduce
 import inspect
 import io
-import logging
 import json
-import sys
-from typing import Dict, List
-from pathlib import Path
+import logging
 import pkgutil
-from typing import Optional
-import click
+import sys
+from functools import reduce
 from importlib import import_module
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple, Union
+
+import click
 import docstring_parser
-from termcolor import cprint
 import omegaconf
-from experimaestro import experiment, RunMode
+from experimaestro import LauncherRegistry, Config, RunMode, experiment
+from experimaestro.settings import get_workspace
 from omegaconf import OmegaConf, SCMode
+from termcolor import cprint
+
+import xpmir.papers as papers
 from xpmir.configuration import omegaconf_argument
 from xpmir.evaluation import EvaluationsCollection
-import xpmir.papers as papers
-from xpmir.models import XPMIRHFHub
-from xpmir.rankers import Scorer
-from xpmir.papers.results import PaperResults
-from xpmir.papers.helpers import PaperExperiment
 from xpmir.learning.optim import TensorboardService
+from xpmir.models import XPMIRHFHub
+from xpmir.papers.helpers import PaperExperiment
+from xpmir.papers.results import PaperResults
 
 
 class ExperimentsCli(click.MultiCommand):
@@ -40,7 +41,15 @@ class ExperimentsCli(click.MultiCommand):
         return [experiment.id for experiment in self.experiments]
 
     def get_command(self, ctx: click.Context, cmd_name: str) -> Optional[click.Command]:
-        experiment = self.id2experiment[cmd_name]
+        try:
+            experiment = self.id2experiment[cmd_name]
+        except KeyError:
+            logging.error(
+                "Configuration %s not found among %s",
+                cmd_name,
+                " ".join(self.id2experiment.keys()),
+            )
+            raise
         sub_package, name = experiment.cli.split(":")
         module = import_module(f"{self.pkg_name}.{sub_package}")
         return getattr(module, name)
@@ -74,7 +83,7 @@ class UploadToHub:
 
     def send_scorer(
         self,
-        models: Dict[str, Scorer],
+        models: Dict[str, Config],
         *,
         evaluations: Optional[EvaluationsCollection] = None,
         tb_logs: Dict[str, Path],
@@ -111,11 +120,10 @@ IR](https://experimaestro-ir.readthedocs.io/en/latest/)
 from xpmir.models import AutoModel
 
 # Model that can be re-used in experiments
-model = AutoModel.load_from_hf_hub("{self.model_id}")
+model, init_tasks = AutoModel.load_from_hf_hub("{self.model_id}")
 
 # Use this if you want to actually use the model
 model = AutoModel.load_from_hf_hub("{self.model_id}", as_instance=True)
-model.initialize()
 model.rsv("walgreens store sales average", "The average Walgreens salary ranges...")
 ```
 """
@@ -136,7 +144,12 @@ model.rsv("walgreens store sales average", "The average Walgreens salary ranges.
         )
 
 
-def paper_command(package=None, schema=None, tensorboard_service=False):
+def paper_command(
+    package: Optional[str] = None,
+    folder: Optional[Union[str, Path]] = None,
+    schema=None,
+    tensorboard_service=False,
+):
     """General command line decorator for an XPM-IR experiment
 
     This annotation adds a set of arguments for the
@@ -144,7 +157,9 @@ def paper_command(package=None, schema=None, tensorboard_service=False):
     HuggingFace upload: the documentation comes from the docstring
 
     :param tensorboard_service: If true, register a tensorboard service and transmits it
-        as ``tensorboard_service`` to function
+        as ``tensorboard_service`` to function.
+
+    .. seealso:: :py:func:`omegaconf_argument` for `folder` and `package` documentation
     """
 
     omegaconf_schema = None
@@ -176,6 +191,13 @@ def paper_command(package=None, schema=None, tensorboard_service=False):
                 help="Sets the run mode",
             ),
             click.option(
+                "--xpm-config-dir",
+                type=Path,
+                default=None,
+                help="Path for the experimaestro config directory "
+                "(if not specified, use $HOME/.config/experimaestro)",
+            ),
+            click.option(
                 "--port",
                 type=int,
                 default=None,
@@ -188,10 +210,17 @@ def paper_command(package=None, schema=None, tensorboard_service=False):
                 default=None,
                 help="Upload the model to Hugging Face Hub with the given identifier",
             ),
-            click.argument("workdir", type=Path),
+            click.option(
+                "--workdir",
+                type=str,
+                default=None,
+                help="Working directory - if None, uses the default XPM "
+                "working directory",
+            ),
             omegaconf_argument(
                 "--configuration",
                 package=package,
+                folder=folder,
                 click_mode=click.option,
                 required=True,
             ),
@@ -202,12 +231,13 @@ def paper_command(package=None, schema=None, tensorboard_service=False):
             show,
             debug,
             configuration,
-            workdir,
-            host,
-            port,
+            workdir: Path,
+            host: Optional[str],
+            port: Optional[int],
+            xpm_config_dir: Optional[Path],
+            env: List[Tuple[str, str]],
             args,
-            env,
-            run_mode,
+            run_mode: RunMode,
             upload_to_hub: Optional[str],
             **kwargs,
         ):
@@ -215,7 +245,12 @@ def paper_command(package=None, schema=None, tensorboard_service=False):
             assert schema is None or omegaconf_schema is not None
 
             logging.getLogger().setLevel(logging.DEBUG if debug else logging.INFO)
+            logging.getLogger("xpm.hash").setLevel(logging.INFO)
             conf_args = OmegaConf.from_dotlist(args)
+
+            if xpm_config_dir is not None:
+                assert xpm_config_dir.is_dir()
+                LauncherRegistry.set_config_dir(xpm_config_dir)
 
             configuration: PaperExperiment = OmegaConf.merge(configuration, conf_args)
             if omegaconf_schema is not None:
@@ -251,6 +286,10 @@ def paper_command(package=None, schema=None, tensorboard_service=False):
             # Run the experiment
             if run_mode == RunMode.NORMAL:
                 logging.info("Starting experimaestro server (%s:%s)", host, port)
+
+            if workdir is None or not Path(workdir).is_dir():
+                workdir = get_workspace(workdir).path.expanduser().resolve()
+                logging.info("Using working directory %s", workdir)
 
             with experiment(
                 workdir, configuration.id, host=host, port=port, run_mode=run_mode

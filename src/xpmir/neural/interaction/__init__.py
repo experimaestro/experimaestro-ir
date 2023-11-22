@@ -1,12 +1,12 @@
 import torch
 from experimaestro import Param
-from xpmir.neural import TorchLearnableScorer
+from xpmir.rankers import LearnableScorer
 from xpmir.text import TokensEncoder
 from xpmir.letor.records import BaseRecords
 from xpmir.learning.context import TrainerContext
 
 
-class InteractionScorer(TorchLearnableScorer):
+class InteractionScorer(LearnableScorer):
     """Interaction-based neural scorer
 
     This is the base class for all scorers that depend on a map

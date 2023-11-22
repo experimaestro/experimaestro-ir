@@ -1,3 +1,4 @@
+from typing import List
 from functools import cached_property
 from xpmir.learning.optim import (
     AdamW,
@@ -26,6 +27,9 @@ class TransformerOptimization:
     weight_decay: float = 1e-2
     eps: float = 1e-8
 
+    re_no_l2_regularization: List[str] = [r"\.bias$", r"\.LayerNorm\."]
+    """Regular expression for layers """
+
     @cached_property
     def optimizer(self):
         scheduler = (
@@ -37,14 +41,24 @@ class TransformerOptimization:
             else None
         )
 
+        if not self.re_no_l2_regularization:
+            return get_optimizers(
+                [
+                    ParameterOptimizer(
+                        scheduler=scheduler,
+                        optimizer=AdamW(
+                            lr=self.lr, weight_decay=self.weight_decay, eps=self.eps
+                        ),
+                    ),
+                ]
+            )
+
         return get_optimizers(
             [
                 ParameterOptimizer(
                     scheduler=scheduler,
                     optimizer=AdamW(lr=self.lr, weight_decay=0, eps=self.eps),
-                    filter=RegexParameterFilter(
-                        includes=[r"\.bias$", r"\.LayerNorm\."]
-                    ),
+                    filter=RegexParameterFilter(includes=self.re_no_l2_regularization),
                 ),
                 ParameterOptimizer(
                     scheduler=scheduler,

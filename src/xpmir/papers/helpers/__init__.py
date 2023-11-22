@@ -59,4 +59,4 @@ class LauncherSpecification:
 
     @attrs_cached_property
     def launcher(self):
-        find_launcher(self.requirements)
+        return find_launcher(self.requirements)

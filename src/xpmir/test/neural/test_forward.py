@@ -8,15 +8,16 @@ from experimaestro import Constant
 from xpmir.index import Index
 from xpmir.letor import Random
 from xpmir.neural.dual import CosineDense, DotDense
+from datamaestro_text.data.ir.base import GenericDocument
 from xpmir.letor.records import (
-    Document,
+    DocumentRecord,
     PairwiseRecord,
     PairwiseRecords,
     PointwiseRecord,
     PointwiseRecords,
     ProductRecords,
-    Query,
     TokenizedTexts,
+    TopicRecord,
 )
 from xpmir.text.encoders import TokensEncoder, DualTextEncoder, MeanTextEncoder
 
@@ -25,8 +26,8 @@ class RandomTokensEncoder(TokensEncoder):
     DIMENSION = 7
     MAX_WORDS = 100
 
-    def __init__(self):
-        super().__init__()
+    def __initialize__(self):
+        super().__initialize__()
         self.map = {}
         self.embed = torch.nn.Embedding.from_pretrained(
             torch.randn(RandomTokensEncoder.MAX_WORDS, RandomTokensEncoder.DIMENSION)
@@ -84,7 +85,8 @@ def drmm():
     """Drmm factory"""
     from xpmir.neural.interaction.drmm import Drmm
 
-    return Drmm(vocab=RandomTokensEncoder(), index=CustomIndex()).instance()
+    drmm = Drmm(vocab=RandomTokensEncoder(), index=CustomIndex())
+    return drmm.instance()
 
 
 @registermodel
@@ -143,12 +145,12 @@ def joint():
 # --- Input factory
 # ---
 
-QUERIES = [Query(None, "purple cat"), Query(None, "yellow house")]
+QUERIES = [TopicRecord.from_text("purple cat"), TopicRecord.from_text("yellow house")]
 DOCUMENTS = [
-    Document("1", "the cat sat on the mat", 1),
-    Document("2", "the purple car", 1),
-    Document("3", "my little dog", 1),
-    Document("4", "the truck was on track", 1),
+    DocumentRecord(GenericDocument("1", "the cat sat on the mat")),
+    DocumentRecord(GenericDocument("2", "the purple car")),
+    DocumentRecord(GenericDocument("3", "my little dog")),
+    DocumentRecord(GenericDocument("4", "the truck was on track")),
 ]
 
 
@@ -157,18 +159,10 @@ def pointwise():
     inputs = PointwiseRecords()
 
     # Implicit order (Q0, D0) (Q1, D0) (Q0, D1) (Q1, D1)
-    inputs.add(
-        PointwiseRecord(QUERIES[0], DOCUMENTS[0].docid, DOCUMENTS[1].text, 0.0, 0.0)
-    )
-    inputs.add(
-        PointwiseRecord(QUERIES[0], DOCUMENTS[0].docid, DOCUMENTS[0].text, 0.0, 0.0)
-    )
-    inputs.add(
-        PointwiseRecord(QUERIES[1], DOCUMENTS[2].docid, DOCUMENTS[2].text, 0.0, 0.0)
-    )
-    inputs.add(
-        PointwiseRecord(QUERIES[1], DOCUMENTS[1].docid, DOCUMENTS[2].text, 0.0, 0.0)
-    )
+    inputs.add(PointwiseRecord(QUERIES[0], DOCUMENTS[0], 0.0))
+    inputs.add(PointwiseRecord(QUERIES[0], DOCUMENTS[0], 0.0))
+    inputs.add(PointwiseRecord(QUERIES[1], DOCUMENTS[2], 0.0))
+    inputs.add(PointwiseRecord(QUERIES[1], DOCUMENTS[1], 0.0))
     return inputs
 
 
@@ -183,8 +177,8 @@ def pairwise():
 def product():
     # Implicit order (Q0, D0) (Q0, D1) (Q1, D0)
     inputs = ProductRecords()
-    inputs.addQueries(QUERIES[0], QUERIES[1])
-    inputs.addDocuments(DOCUMENTS[0], DOCUMENTS[1])
+    inputs.add_topics(QUERIES[0], QUERIES[1])
+    inputs.add_documents(DOCUMENTS[0], DOCUMENTS[1])
 
     return inputs
 
@@ -228,8 +222,8 @@ def test_forward_consistency(modelfactory, inputfactoriescouple):
             outputs.append(model(input, None))
             maps.append(
                 {
-                    (q.text, d.text): ix
-                    for ix, (q, d) in enumerate(zip(input.queries, input.documents))
+                    (qr.topic.get_text(), dr.document.get_text()): ix
+                    for ix, (qr, dr) in enumerate(zip(input.queries, input.documents))
                 }
             )
 

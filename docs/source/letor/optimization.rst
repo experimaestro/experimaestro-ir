@@ -25,7 +25,36 @@ Optimizers
 
 .. autoxpmconfig:: xpmir.learning.optim.ParameterOptimizer
 .. autoxpmconfig:: xpmir.learning.optim.ParameterFilter
+.. autoxpmconfig:: xpmir.learning.optim.RegexParameterFilter
 
+
+Parameters
+----------
+
+During learning, some parameter-specific treatments can be applied (e.g. freezing).
+
+
+Selecting
+*********
+
+The classes below allow to select a subset of parameters.
+
+.. autoxpmconfig:: xpmir.learning.parameters.InverseParametersIterator
+.. autoxpmconfig:: xpmir.learning.parameters.ParametersIterator
+.. autoxpmconfig:: xpmir.learning.parameters.SubParametersIterator
+
+Freezing
+********
+
+.. autoxpmconfig:: xpmir.learning.hooks.LayerFreezer
+
+Loading
+*******
+
+.. autoxpmconfig:: xpmir.learning.parameters.NameMapper
+.. autoxpmconfig:: xpmir.learning.parameters.PrefixRenamer
+.. autoxpmconfig:: xpmir.learning.parameters.PartialModuleLoader
+.. autoxpmconfig:: xpmir.learning.parameters.SubModuleLoader
 
 
 Batching
@@ -48,5 +77,13 @@ the way to use it (i.e. multi-gpu settings).
 Schedulers
 ----------
 
-.. automodule:: xpmir.learning.schedulers
-    :members:
+.. autoxpmconfig:: xpmir.learning.schedulers.Scheduler
+.. autoxpmconfig:: xpmir.learning.schedulers.CosineWithWarmup
+.. autoxpmconfig:: xpmir.learning.schedulers.LinearWithWarmup
+
+Base classes
+------------
+
+.. autoxpmconfig:: xpmir.learning.base.Random
+.. autoxpmconfig:: xpmir.learning.base.Sampler
+.. autoxpmconfig:: xpmir.learning.trainers.Trainer

@@ -1,10 +1,13 @@
 from typing import List, Optional
 from experimaestro import Config, Param
+import torch.nn.functional as F
 import torch.nn as nn
 import torch
 from xpmir.distributed import DistributableModel
-from transformers import AutoModelForMaskedLM
-from xpmir.text.huggingface import TransformerTokensEncoder, OneHotHuggingFaceEncoder
+from xpmir.text.huggingface import (
+    OneHotHuggingFaceEncoder,
+    TransformerTokensEncoderWithMLMOutput,
+)
 from xpmir.text.encoders import TextEncoder
 from xpmir.neural.dual import DotDense, ScheduledFlopsRegularizer
 from xpmir.utils.utils import easylog
@@ -15,18 +18,33 @@ logger = easylog()
 class Aggregation(Config):
     """The aggregation function for Splade"""
 
-    pass
+    def with_linear(self, logits, mask, weight, bias=None):
+        """Project before aggregating using a linear transformation
+
+        Can be optimized by further operators
+
+        :param logits: The logits output by the sequence representation model (B
+            x L x D)
+        :param mask: The mask (B x L) where 0 when the element should be masked
+            out
+        :param weight: The linear transformation (D' x D)
+        """
+        projection = F.linear(logits, weight, bias)
+        return self(projection, mask)
 
 
 class MaxAggregation(Aggregation):
     """Aggregate using a max"""
 
     def __call__(self, logits, mask):
+        # Get the maximum (masking the values)
         values, _ = torch.max(
-            torch.log1p(torch.relu(logits) * mask.to(logits.device).unsqueeze(-1)),
+            torch.relu(logits) * mask.to(logits.device).unsqueeze(-1),
             dim=1,
         )
-        return values
+
+        # Computes log(1+x)
+        return torch.log1p(values.clamp(min=0))
 
 
 class SumAggregation(Aggregation):
@@ -62,7 +80,7 @@ class SpladeTextEncoder(TextEncoder, DistributableModel):
     as the scorer class
     """
 
-    encoder: Param[TransformerTokensEncoder]
+    encoder: Param[TransformerTokensEncoderWithMLMOutput]
     """The encoder from Hugging Face"""
 
     aggregation: Param[Aggregation]
@@ -72,7 +90,7 @@ class SpladeTextEncoder(TextEncoder, DistributableModel):
     """Max length for texts"""
 
     def __initialize__(self, random=None):
-        self.encoder.initialize(noinit=random is None, automodel=AutoModelForMaskedLM)
+        self.encoder.initialize()
         self.model = SpladeTextEncoderModel(self.encoder, self.aggregation)
 
     def forward(self, texts: List[str]) -> torch.Tensor:
@@ -97,12 +115,11 @@ def _splade(
     lambda_d: float,
     aggregation: Aggregation,
     lamdba_warmup_steps: int = 0,
+    hf_id: str = "distilbert-base-uncased",
 ):
     # Unlike the cross-encoder, here the encoder returns the whole last layer
     # In the paper we use the DistilBERT-based as the checkpoint
-    encoder = TransformerTokensEncoder(
-        model_id="distilbert-base-uncased", trainable=True
-    )
+    encoder = TransformerTokensEncoderWithMLMOutput(model_id=hf_id, trainable=True)
 
     # make use the output of the BERT and do an aggregation
     doc_encoder = SpladeTextEncoder(
@@ -126,23 +143,20 @@ def _splade_doc(
     lambda_d: float,
     aggregation: Aggregation,
     lamdba_warmup_steps: int = 0,
+    hf_id: str = "distilbert-base-uncased",
 ):
     # Unlike the cross-encoder, here the encoder returns the whole last layer
     # The doc_encoder is the traditional one, and the query encoder return a vector
     # contains only 0 and 1
     # In the paper we use the DistilBERT-based as the checkpoint
-    encoder = TransformerTokensEncoder(
-        model_id="distilbert-base-uncased", trainable=True
-    )
+    encoder = TransformerTokensEncoderWithMLMOutput(model_id=hf_id, trainable=True)
 
     # make use the output of the BERT and do an aggregation
     doc_encoder = SpladeTextEncoder(
         aggregation=aggregation, encoder=encoder, maxlen=256
     )
 
-    query_encoder = OneHotHuggingFaceEncoder(
-        model_id="distilbert-base-uncased", maxlen=30
-    )
+    query_encoder = OneHotHuggingFaceEncoder(model_id=hf_id, maxlen=30)
 
     return DotDense(
         encoder=doc_encoder, query_encoder=query_encoder
@@ -153,42 +167,39 @@ def _splade_doc(
     )
 
 
-def spladeV1(lambda_q: float, lambda_d: float, lamdba_warmup_steps: int = 0):
+def spladeV1(
+    lambda_q: float,
+    lambda_d: float,
+    lamdba_warmup_steps: int = 0,
+    hf_id: str = "distilbert-base-uncased",
+):
     """Returns the Splade architecture"""
-    return _splade(lambda_q, lambda_d, SumAggregation(), lamdba_warmup_steps)
+    return _splade(lambda_q, lambda_d, SumAggregation(), lamdba_warmup_steps, hf_id)
 
 
 def spladeV2_max(
     lambda_q: float,
     lambda_d: float,
     lamdba_warmup_steps: int = 0,
+    hf_id: str = "distilbert-base-uncased",
 ):
     """Returns the Splade-max architecture
 
     SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval
     (arXiv:2109.10086)
     """
-    return _splade(
-        lambda_q,
-        lambda_d,
-        MaxAggregation(),
-        lamdba_warmup_steps,
-    )
+    return _splade(lambda_q, lambda_d, MaxAggregation(), lamdba_warmup_steps, hf_id)
 
 
 def spladeV2_doc(
     lambda_q: float,
     lambda_d: float,
     lamdba_warmup_steps: int = 0,
+    hf_id: str = "distilbert-base-uncased",
 ):
     """Returns the Splade-doc architecture
 
     SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval
     (arXiv:2109.10086)
     """
-    return _splade_doc(
-        lambda_q,
-        lambda_d,
-        MaxAggregation(),
-        lamdba_warmup_steps,
-    )
+    return _splade_doc(lambda_q, lambda_d, MaxAggregation(), lamdba_warmup_steps, hf_id)

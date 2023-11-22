@@ -1,10 +1,12 @@
 from functools import lru_cache, partial
 
+try:
+    from functools import cache
+except ImportError:
 
-def cache(user_function, /):
-    # PY_VERSION: 3.8
-    'Simple lightweight unbounded cache.  Sometimes called "memoize".'
-    return lru_cache(maxsize=None)(user_function)
+    def cache(user_function, /):
+        """Cache function for python 3.8"""
+        return lru_cache(maxsize=None)(user_function)
 
 
 def partial_cache(func, *args, **kwargs):

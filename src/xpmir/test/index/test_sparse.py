@@ -1,10 +1,11 @@
+from experimaestro import ObjectStore
 from experimaestro.xpmutils import DirectoryContext
 from pathlib import Path
 import pytest
 import torch
 import numpy as np
 from xpmir.index.sparse import SparseRetriever, SparseRetrieverIndexBuilder
-from xpmir.test.utils.utils import SampleAdhocDocumentStore, SparseRandomTextEncoder
+from xpmir.test.utils.utils import SampleDocumentStore, SparseRandomTextEncoder
 
 
 @pytest.fixture
@@ -19,7 +20,8 @@ def context(tmp_path: Path):
 class SparseIndex:
     def __init__(self, context, ordered_index: bool = False):
         # Build the index
-        documents = SampleAdhocDocumentStore(num_docs=500)
+        objects = ObjectStore()
+        documents = SampleDocumentStore(num_docs=500)
         self.encoder = SparseRandomTextEncoder(dim=1000, sparsity=0.8)
         builder = SparseRetrieverIndexBuilder(
             encoder=self.encoder,
@@ -30,7 +32,7 @@ class SparseIndex:
         )
 
         # Build the index
-        builder_instance = builder.instance(context=context)
+        builder_instance = builder.instance(context=context, objects=objects)
         builder_instance.execute()
 
         self.document_store = builder_instance.documents
@@ -39,8 +41,8 @@ class SparseIndex:
         )
 
         # Check index
-        self.index = builder.task_outputs()
-        self.index_instance = self.index.instance()
+        self.index = builder.task_outputs(lambda x: x)
+        self.index_instance = self.index.instance(objects=objects)
         self.topk = 10
 
 
@@ -94,10 +96,10 @@ def test_sparse_retrieve(sparse_index: SparseIndex, retriever):
     # Choose a few documents
     chosen_ix = np.random.choice(np.arange(len(sparse_index.x_docs)), 10)
     for ix in chosen_ix:
-        document = sparse_index.document_store.document(ix)
+        document = sparse_index.document_store.document_int(ix)
 
         # Use the retriever
-        scoredDocuments = retriever.retrieve(document.text)
+        scoredDocuments = retriever.retrieve(document.get_text())
         # scoredDocuments.sort(reverse=True)
         # scoredDocuments = scoredDocuments[:retriever.topk]
 
@@ -107,7 +109,7 @@ def test_sparse_retrieve(sparse_index: SparseIndex, retriever):
         indices = sorted.indices[: retriever.topk]
         expected = list(indices.numpy())
 
-        observed = [int(sd.docid) for sd in scoredDocuments]
+        observed = [int(sd.document.get_id()) for sd in scoredDocuments]
         expected_scores = sorted.values[: retriever.topk].numpy()
         observed_scores = np.array([float(sd.score) for sd in scoredDocuments])
 
@@ -135,8 +137,8 @@ def test_sparse_retrieve_all(retriever):
     for key, query in queries.items():
         query_results = retriever.retrieve(query)
 
-        observed = [d.docid for d in all_results[key]]
-        expected = [d.docid for d in query_results]
+        observed = [d.document.get_id() for d in all_results[key]]
+        expected = [d.document.get_id() for d in query_results]
         assert observed == expected
 
         observed_scores = [d.score for d in all_results[key]]

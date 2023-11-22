@@ -1,8 +1,8 @@
 from typing import List, Optional, Tuple, Dict, Any
-from experimaestro import Param, Meta
+from experimaestro import Param, Meta, tqdm
 import torch
 from . import Retriever, ScoredDocument
-from datamaestro_text.data.ir import AdhocDocument, AdhocDocuments
+from datamaestro_text.data.ir import Document, Documents
 from xpmir.neural.dual import DualRepresentationScorer
 from xpmir.learning.batchers import Batcher
 from xpmir.letor import Device
@@ -13,24 +13,19 @@ class FullRetriever(Retriever):
 
     This can be used to build a small validation set on a subset of the
     collection - in that case, the scorer can be used through a
-    TwoStageRetriever
+    TwoStageRetriever, with this retriever as the base retriever.
     """
 
-    documents: Param[AdhocDocuments]
+    documents: Param[Documents]
 
-    def retrieve(self, query: str, content=False) -> List[ScoredDocument]:
-        if content:
-            return [
-                ScoredDocument(doc.docid, 0.0, doc.text)
-                for doc in self.documents.iter()
-            ]
-        return [ScoredDocument(docid, 0.0, None) for docid in self.documents.iter_ids()]
+    def retrieve(self, query: str) -> List[ScoredDocument]:
+        return [ScoredDocument(doc, 0.0) for doc in self.documents]
 
 
 class FullRetrieverRescorer(Retriever):
-    """Scores all the documents from a collection (for a dual representation scorer)"""
+    """Scores all the documents from a collection"""
 
-    documents: Param[AdhocDocuments]
+    documents: Param[Documents]
     """The set of documents to consider"""
 
     scorer: Param[DualRepresentationScorer]
@@ -57,11 +52,7 @@ class FullRetrieverRescorer(Retriever):
     ):
         scoredDocuments.extend(self.scorer.rsv(query, batch))
 
-    def encode_queries(
-        self,
-        queries: List[Tuple[str, str]],
-        encoded: List[Any],
-    ):
+    def encode_queries(self, queries: List[Tuple[str, str]], encoded: List[Any], pbar):
         """Encode queries and append the tensor of encoded queries to the encoded
 
         Args:
@@ -69,14 +60,17 @@ class FullRetrieverRescorer(Retriever):
             encoded (List[Tuple[List[str], torch.Tensor]]): Full list of topics ??
             it should be the List[torch.Tensor]
         """
+
         encoded.append(self.scorer.encode_queries([text for _, text in queries]))
+        pbar.update(len(queries))
         return encoded
 
     def score(
         self,
-        documents: List[AdhocDocument],
+        documents: List[Document],
         queries: List,
         scored_documents: List[List[ScoredDocument]],
+        pbar,
     ):
         """Score documents for a set of queries
 
@@ -87,18 +81,20 @@ class FullRetrieverRescorer(Retriever):
         [s(q_0, d_0), ..., s(q_n, d0)], ..., [s(q_0, d_m), ..., s(q_n, d_m)] ]
         --> list of m*n
 
-        Args:
-            documents (List[AdhocDocument]): _description_ queries (List): Lis
-            of queries scored_documents (List[List[ScoredDocument]]): list of
-            scores for each document and for each query (in this order)
+        :param documents: the batch of documents
+
+        :param queries: List of queries
+
+        :param scored_documents: (output) current lists of scored documents (one
+            per query)
         """
         # Encode documents
-        docids = [d.docid for d in documents]
-        encoded = self.scorer.encode_documents(d.text for d in documents)
+        encoded = self.scorer.encode_documents(d.get_text() for d in documents)
 
-        # Process query by query (TODO: improve the process)
-        new_scores = [[] for _ in range(len(docids))]
+        # Process query by query
+        new_scores = [[] for _ in documents]
         for ix in range(len(queries)):
+            # Get a range of query records
             query = queries[ix : (ix + 1)]
 
             # Returns a query x document matrix
@@ -106,8 +102,9 @@ class FullRetrieverRescorer(Retriever):
 
             # Adds up to the lists
             scores = scores.flatten().detach()
-            for docix, score in enumerate(scores):
-                new_scores[docix].append(ScoredDocument(docids[docix], float(score)))
+            for ix, (document, score) in enumerate(zip(documents, scores)):
+                new_scores[ix].append(ScoredDocument(document, float(score)))
+                pbar.update(1)
 
         # Add each result to the full document list
         scored_documents.extend(new_scores)
@@ -128,18 +125,23 @@ class FullRetrieverRescorer(Retriever):
             # Encode all queries
             # each time the batcher will just encode a batchsize of queries
             # and then concat them together
-            enc_queries = self.query_batcher.reduce(
-                all_queries, self.encode_queries, []
-            )
+            with tqdm(total=len(all_queries), desc="Encoding queries") as pbar:
+                enc_queries = self.query_batcher.reduce(
+                    all_queries, self.encode_queries, [], pbar
+                )
             enc_queries = self.scorer.merge_queries(
                 enc_queries
             )  # shape (len(queries), dimension)
 
             # Encode documents and score them
             scored_documents: List[List[ScoredDocument]] = []
-            self.document_batcher.process(
-                self.documents, self.score, enc_queries, scored_documents
-            )
+            with tqdm(
+                total=len(all_queries) * self.documents.documentcount,
+                desc="Scoring documents",
+            ) as pbar:
+                self.document_batcher.process(
+                    self.documents, self.score, enc_queries, scored_documents, pbar
+                )
 
         qids = [qid for qid, _ in all_queries]
         return {qid: [sd[ix] for sd in scored_documents] for ix, qid in enumerate(qids)}

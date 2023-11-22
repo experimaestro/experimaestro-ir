@@ -6,6 +6,8 @@ description: |
     2021. https://arxiv.org/abs/2109.10086
 
 gpu: true
+base_hf_id: distilbert-base-uncased
+
 indexation:
     requirements: duration=2 days & cpu(mem=2G)
     training_requirements: duration=4 days & cuda(mem=24G)
@@ -21,14 +23,15 @@ splade:
         max_epochs: 1200
         lr: 2.0e-5
         num_warmup_steps: 6000
+        re_no_l2_regularization: [] # All parameters have L2 regularization in SPLADE
 
     model: splade_max
     # validation for each (steps_per_epoch * validation interval) steps
     validation_interval: 8
     lambda_q: 3.0e-4
     lambda_d: 1.0e-4
-    lamdba_warmup_steps: 50000
-    requirements: duration=2 days & cuda(mem=24G)
+    lambda_warmup_steps: 50000
+    requirements: duration=4 days & cuda(mem=40G)
 
 retrieval:
     requirements: duration=2 days & cuda(mem=24G)

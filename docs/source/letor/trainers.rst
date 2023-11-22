@@ -5,6 +5,7 @@ Trainers are responsible for defining the the way to train
 a learnable scorer.
 
 .. autoxpmconfig:: xpmir.letor.trainers.Trainer
+.. autoxpmconfig:: xpmir.learning.trainers.multiple.MultipleTrainer
 
 .. autoxpmconfig:: xpmir.letor.trainers.LossTrainer
    :members: process_microbatch
@@ -43,19 +44,51 @@ Losses
 .. autoxpmconfig:: xpmir.letor.trainers.pairwise.PairwiseLoss
    :members: compute
 
-
 .. autoxpmconfig:: xpmir.letor.trainers.pairwise.CrossEntropyLoss
 .. autoxpmconfig:: xpmir.letor.trainers.pairwise.HingeLoss
 .. autoxpmconfig:: xpmir.letor.trainers.pairwise.PointwiseCrossEntropyLoss
 
 
-Other
-*****
+Pairwise (duo)
+**************
 
-.. autoxpmconfig:: xpmir.letor.trainers.multiple.MultipleTrainer
+Trainer
+-------
+
+.. autoxpmconfig:: xpmir.letor.trainers.pairwise.PairwiseLossWithTarget
+   :members: compute
+
+Losses
+------
+
+.. autoxpmconfig:: xpmir.letor.trainers.pairwise.DuoPairwiseTrainer
+
+
+Batchwise
+*********
+
+Trainer
+-------
+
+.. autoxpmconfig:: xpmir.letor.trainers.batchwise.BatchwiseTrainer
+
+Losses
+------
+
+.. autoxpmconfig:: xpmir.letor.trainers.batchwise.BatchwiseLoss
+.. autoxpmconfig:: xpmir.letor.trainers.batchwise.CrossEntropyLoss
+.. autoxpmconfig:: xpmir.letor.trainers.batchwise.SoftmaxCrossEntropy
+
 
 Distillation: Pairwise
 **********************
+
+
+Sampler
+-------
+
+.. autoxpmconfig:: xpmir.letor.distillation.samplers.DistillationPairwiseSampler
+.. autoxpmconfig:: xpmir.letor.distillation.samplers.PairwiseHydrator
 
 Trainer
 -------
@@ -70,3 +103,24 @@ Losses
 
 .. autoxpmconfig:: xpmir.letor.distillation.pairwise.MSEDifferenceLoss
 .. autoxpmconfig:: xpmir.letor.distillation.pairwise.DistillationKLLoss
+
+
+
+Masked Language Model
+*********************
+
+Sampler
+-------
+
+.. autoxpmconfig:: xpmir.mlm.samplers.MLMSampler
+
+Trainer
+-------
+
+.. autoxpmconfig:: xpmir.mlm.trainer.MLMTrainer
+
+Losses
+------
+
+.. autoxpmconfig:: xpmir.mlm.trainer.MLMLoss
+.. autoxpmconfig:: xpmir.mlm.trainer.CrossEntropyLoss

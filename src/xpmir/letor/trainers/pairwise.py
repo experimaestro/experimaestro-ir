@@ -20,6 +20,7 @@ from xpmir.letor.trainers import TrainerContext, LossTrainer
 import numpy as np
 from xpmir.rankers import LearnableScorer, ScorerOutputType
 from xpmir.utils.utils import foreach
+from xpmir.utils.iter import MultiprocessSerializableIterator
 
 
 class PairwiseLoss(Config, nn.Module):
@@ -99,12 +100,10 @@ class HingeLoss(PairwiseLoss):
 class BCEWithLogLoss(nn.Module):
     """Custom cross-entropy loss when outputs are log probabilities"""
 
-    def __call__(self, log_probs: torch.Tensor, targets: torch.Tensor):
+    def __call__(self, log_probs: torch.Tensor, info: TrainerContext):
         # Assumes target is a two column matrix (rel. / not rel.)
-
-        loss = (
-            -log_probs[targets > 0].sum() + (1.0 - log_probs[targets == 0].exp()).sum()
-        )
+        assert torch.all(log_probs < 0.0)
+        loss = -log_probs[:, 0].sum() - (1.0 - log_probs[:, 1].exp()).log().sum()
 
         return loss / log_probs.numel()
 
@@ -173,14 +172,9 @@ class PairwiseTrainer(LossTrainer):
         self.lossfn.initialize(self.ranker)
         foreach(context.hooks(PairwiseLoss), lambda loss: loss.initialize(self.ranker))
         self.sampler.initialize(random)
-        self.sampler_iter = self.sampler.pairwise_iter()
-
-    def iter_batches(self) -> Iterator[PairwiseRecords]:
-        while True:
-            batch = PairwiseRecords()
-            for _, record in zip(range(self.batch_size), self.sampler_iter):
-                batch.add(record)
-            yield batch
+        self.sampler_iter = MultiprocessSerializableIterator(
+            self.sampler.pairwise_batch_iter(self.batch_size)
+        )
 
     def train_batch(self, records: PairwiseRecords):
         # Get the next batch and compute the scores for each query/document

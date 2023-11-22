@@ -106,7 +106,6 @@ autodoc_mock_imports = [
     "pandas",
     "bs4",
     "pytorch_transformers",
-    "transformers",
     "pytrec_eval",
     "apex",
     "pytorch_lightning",
@@ -116,6 +115,17 @@ autodoc_mock_imports = [
 
 def side_effect(*args, **kwargs):
     logging.error("Side effect %s / %s", args, kwargs)
+
+
+class DocMock(mock.Mock):
+    def __repr__(self):
+        names = []
+        mock = self
+        while mock is not None:
+            names.append(mock._mock_name)
+            mock = mock._mock_parent
+
+        return ".".join(names[::-1])
 
 
 for name in [
@@ -132,13 +142,14 @@ for name in [
     "torch.optim.lr_scheduler",
     "transformers",
 ]:
-    sys.modules[name] = mock.Mock(side_effect=side_effect)
+    sys.modules[name] = DocMock(side_effect=side_effect, name=name)
 
 import torch.nn as nn  # noqa: E402
 
 
 class TorchModule:
     to = None
+    train = None
 
 
 nn.Module = TorchModule

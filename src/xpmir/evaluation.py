@@ -2,12 +2,13 @@ import sys
 from itertools import chain
 import pandas as pd
 from pathlib import Path
-from typing import DefaultDict, Dict, List, Protocol, Union, Tuple
+from typing import DefaultDict, Dict, List, Protocol, Union, Tuple, Optional
 import ir_measures
-from datamaestro_text.data.ir import Adhoc, AdhocAssessments, AdhocDocuments
 from experimaestro import Task, Param, pathgenerator, Annotated, tags, TagDict
+from datamaestro_text.data.ir import Adhoc, AdhocAssessments, Documents
 from datamaestro_text.data.ir import AdhocResults
 from datamaestro_text.data.ir.trec import TrecAdhocRun, TrecAdhocResults
+from datamaestro_text.transforms.ir import TopicWrapper
 from xpmir.measures import Measure
 import xpmir.measures as m
 from xpmir.metrics import evaluator
@@ -18,7 +19,7 @@ from experimaestro.launchers import Launcher
 
 def get_evaluator(metrics: List[ir_measures.Metric], assessments: AdhocAssessments):
     qrels = {
-        assessedTopic.qid: {r.docno: r.rel for r in assessedTopic.assessments}
+        assessedTopic.topic_id: {r.doc_id: r.rel for r in assessedTopic.assessments}
         for assessedTopic in assessments.iter()
     }
     return evaluator(metrics, qrels)
@@ -52,15 +53,11 @@ class BaseEvaluation(Task):
         evaluator = get_evaluator([measure() for measure in self.measures], assessments)
 
         def print_line(fp, measure, scope, value):
-            fp.write("{:25s}{:8s}{:.4f}\n".format(measure, scope, value))
+            fp.write("{:25s} {:10s} {:.4f}\n".format(measure, scope, value))
 
         with self.detailed.open("w") as fp:
             for metric in evaluator.iter_calc(run):
                 print_line(fp, str(metric.measure), metric.query_id, metric.value)
-
-        # TODO: work-around bug in pytrec_eval
-        # https://github.com/terrierteam/ir_measures/issues/49
-        evaluator = get_evaluator([m() for m in self.measures], assessments)
 
         with self.aggregated.open("w") as fp:
             for key, value in evaluator.calc_aggregate(run).items():
@@ -68,17 +65,25 @@ class BaseEvaluation(Task):
 
 
 def get_run(retriever: Retriever, dataset: Adhoc):
-    """Evaluate a retriever on a dataset"""
+    """Returns the scored documents for each topic in a dataset"""
     results = retriever.retrieve_all(
-        {topic.qid: topic.text for topic in dataset.topics.iter()}
+        {topic.get_id(): topic.get_text() for topic in dataset.topics.iter()}
     )
     return {
-        qid: {sd.docid: sd.score for sd in scoredocs}
+        qid: {sd.document.get_id(): sd.score for sd in scoredocs}
         for qid, scoredocs in results.items()
     }
 
 
 def evaluate(retriever: Retriever, dataset: Adhoc, measures: List[str], details=False):
+    """Evaluate a retriever on a given dataset
+
+    :param retriever: The retriever to evaluate
+    :param dataset: The dataset on which to evaluate
+    :param measures: The list of measures to compute (using ir_measures)
+    :param details: if query-level metrics should be reported, defaults to False
+    :return: The metrics (if details is False) or a tuple (metrics, detailed metrics)
+    """
     evaluator = get_evaluator(
         [ir_measures.parse_measure(m) for m in measures], dataset.assessments
     )
@@ -95,7 +100,7 @@ def evaluate(retriever: Retriever, dataset: Adhoc, measures: List[str], details=
     if details is not None:
         return metrics, details
 
-    return details
+    return metrics
 
 
 class RunEvaluation(BaseEvaluation, Task):
@@ -118,6 +123,9 @@ class Evaluate(BaseEvaluation, Task):
     retriever: Param[Retriever]
     """The retriever to evaluate"""
 
+    topic_wrapper: Param[Optional[TopicWrapper]] = None
+    """Topic extractor"""
+
     def execute(self):
         self.retriever.initialize()
         run = get_run(self.retriever, self.dataset)
@@ -127,7 +135,7 @@ class Evaluate(BaseEvaluation, Task):
 class RetrieverFactory(Protocol):
     """Generates a retriever for a given dataset"""
 
-    def __call__(self, dataset: AdhocDocuments) -> Retriever:
+    def __call__(self, dataset: Documents) -> Retriever:
         ...
 
 
@@ -140,22 +148,38 @@ class Evaluations:
     results: List[BaseEvaluation]
     per_tag: Dict[TagDict, AdhocResults]
 
-    def __init__(self, dataset: Adhoc, measures: List[Measure]):
+    topic_wrapper: Optional[TopicWrapper]
+
+    def __init__(
+        self,
+        dataset: Adhoc,
+        measures: List[Measure],
+        *,
+        topic_wrapper: Optional[TopicWrapper] = None,
+    ):
         self.dataset = dataset
         self.measures = measures
         self.results = []
         self.per_tags = {}
+        self.topic_wrapper = topic_wrapper
 
     def evaluate_retriever(
-        self, retriever: Union[Retriever, RetrieverFactory], launcher: Launcher = None
+        self,
+        retriever: Union[Retriever, RetrieverFactory],
+        launcher: Launcher = None,
+        init_tasks=[],
     ) -> Tuple[Retriever, AdhocResults]:
         """Evaluates a retriever"""
         if not isinstance(retriever, Retriever):
             retriever = retriever(self.dataset.documents)
 
         evaluation: AdhocResults = Evaluate(
-            retriever=retriever, measures=self.measures, dataset=self.dataset
-        ).submit(launcher=launcher)
+            retriever=retriever,
+            measures=self.measures,
+            dataset=self.dataset,
+            topic_wrapper=self.topic_wrapper,
+        ).submit(launcher=launcher, init_tasks=init_tasks)
+
         self.add(evaluation)
 
         # Use retriever tags
@@ -232,6 +256,7 @@ class EvaluationsCollection:
         launcher: Launcher = None,
         model_id: str = None,
         overwrite: bool = False,
+        init_tasks=[],
     ):
         """Evaluate a retriever for all the evaluations in this collection (the
         tasks are submitted to the experimaestro scheduler)"""
@@ -242,7 +267,9 @@ class EvaluationsCollection:
 
         results = []
         for key, evaluations in self.collection.items():
-            _retriever, result = evaluations.evaluate_retriever(retriever, launcher)
+            _retriever, result = evaluations.evaluate_retriever(
+                retriever, launcher, init_tasks=init_tasks
+            )
             results.append((key, result))
 
         # Adds to per model results
@@ -270,7 +297,7 @@ class EvaluationsCollection:
         all_data = []
         for key, evaluations in self.collection.items():
             data = evaluations.to_dataframe()
-            data.dataset = key
+            data["dataset"] = key
             all_data.append(data)
         return pd.concat(all_data, ignore_index=True)
 

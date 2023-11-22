@@ -1,30 +1,14 @@
 import itertools
 from typing import Iterable, List, Optional
 import torch
-import torch.nn as nn
 from xpmir.learning.batchers import Sliceable
 
 from xpmir.learning.context import TrainerContext
 from xpmir.letor.records import BaseRecords
-from xpmir.learning.optim import Module
 from xpmir.rankers import LearnableScorer
 
 
-class TorchLearnableScorer(LearnableScorer, Module):
-    """Base class for torch-learnable scorers"""
-
-    def __init__(self):
-        nn.Module.__init__(self)
-        super().__init__()
-
-    __call__ = nn.Module.__call__
-    to = nn.Module.to
-
-    def train(self, mode=True):
-        return nn.Module.train(self, mode)
-
-
-class DualRepresentationScorer(TorchLearnableScorer):
+class DualRepresentationScorer(LearnableScorer):
     """Neural scorer based on (at least a partially) independent representation
     of the document and the question.
 
@@ -34,8 +18,12 @@ class DualRepresentationScorer(TorchLearnableScorer):
 
     def forward(self, inputs: BaseRecords, info: Optional[TrainerContext] = None):
         # Forward to model
-        enc_queries = self.encode_queries([q.text for q in inputs.unique_queries])
-        enc_documents = self.encode_documents([d.text for d in inputs.unique_documents])
+        enc_queries = self.encode_queries(
+            [q.topic.get_text() for q in inputs.unique_queries]
+        )
+        enc_documents = self.encode_documents(
+            [d.document.get_text() for d in inputs.unique_documents]
+        )
 
         # Get the pairs
         pairs = inputs.pairs()

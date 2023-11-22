@@ -7,7 +7,7 @@ from xpmir.letor.records import (
     BaseRecords,
     PairwiseRecords,
 )
-from xpmir.neural import TorchLearnableScorer
+from xpmir.rankers import LearnableScorer
 from xpmir.text.encoders import DualTextEncoder, TripletTextEncoder
 from xpmir.rankers import (
     DuoLearnableScorer,
@@ -16,7 +16,7 @@ from xpmir.rankers import (
 )
 
 
-class CrossScorer(TorchLearnableScorer, DistributableModel):
+class CrossScorer(LearnableScorer, DistributableModel):
     """Query-Document Representation Classifier
 
     Based on a query-document representation representation (e.g. BERT [CLS] token).
@@ -42,7 +42,10 @@ class CrossScorer(TorchLearnableScorer, DistributableModel):
     def forward(self, inputs: BaseRecords, info: TrainerContext = None):
         # Encode queries and documents
         pairs = self.encoder(
-            [(q.text, d.text) for q, d in zip(inputs.queries, inputs.documents)]
+            [
+                (tr.topic.get_text(), dr.document.get_text())
+                for tr, dr in zip(inputs.topics, inputs.documents)
+            ]
         )  # shape (batch_size * dimension)
         return self.classifier(pairs).squeeze(1)
 

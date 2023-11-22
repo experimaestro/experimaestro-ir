@@ -7,8 +7,12 @@ description: |
     This model has been trained on MsMarco v1
 
 gpu: true
+
+preprocessing:
+    requirements: duration=6h & cpu(mem=4G, cores=8)
+
 indexation:
-    requirements: duration=6 days & cpu(mem=4G, cores=8)
+    requirements: duration=6h & cpu(mem=4G, cores=8)
 
 validation:
     # Use 500 topics for validation
@@ -20,14 +24,14 @@ monobert:
         batch_size: 64
         max_epochs: 3200
         num_warmup_steps: 10000
-        warmup_min_facor: 0
+        warmup_min_factor: 0
         weight_decay: 0.01
         lr: 3.0e-6
         eps: 1.0e-6
 
-    validation_interval: 32
+    validation_interval: 400
     requirements: duration=4 days & cuda(mem=24G) * 2
 
 retrieval:
-    requirements: duration=2 days & cuda(mem=24G)
-    k: 1000
+    requirements: duration=12h & cuda(mem=24G) * 2
+    k: 100

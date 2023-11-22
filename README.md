@@ -7,9 +7,7 @@ Information Retrieval module for [experimaestro](https://experimaestro-python.re
 
 The full documentation can be read at [IR@experimaestro](https://experimaestro-ir.readthedocs.io/).
 
-## ⚠ Version 1.0 roadmap
-
-Version 1.0 will be released before SIGIR 2023. This version aims to clean-up some design issues that are summarized in the [roadmap](https://github.com/experimaestro/experimaestro-ir/issues/9), so expect some changes in the API before the release.
+Finally, you can find the [roadmap](https://github.com/experimaestro/experimaestro-ir/issues/9).
 
 ## Install
 

@@ -2,6 +2,7 @@
 
 import torch
 import numpy as np
+import sys
 from pathlib import Path
 from typing import Dict, List, Tuple
 from experimaestro import (
@@ -14,12 +15,13 @@ from experimaestro import (
     tqdm,
     Constant,
 )
-from datamaestro_text.data.ir import AdhocDocument, AdhocDocumentStore
+from datamaestro_text.data.ir import Document, DocumentStore
 from xpmir.learning.batchers import Batcher
 from xpmir.utils.utils import batchiter, easylog
 from xpmir.letor import Device, DEFAULT_DEVICE
 from xpmir.text.encoders import TextEncoder
 from xpmir.rankers import Retriever, ScoredDocument
+from xpmir.utils.iter import MultiprocessIterator
 import xpmir_rust
 
 logger = easylog()
@@ -29,7 +31,7 @@ logger = easylog()
 
 class SparseRetrieverIndex(Config):
     index_path: Meta[Path]
-    documents: Param[AdhocDocumentStore]
+    documents: Param[DocumentStore]
 
     index: xpmir_rust.index.SparseBuilderIndex
     ordered = False
@@ -39,17 +41,13 @@ class SparseRetrieverIndex(Config):
             str(self.index_path.absolute()), in_memory
         )
 
-    def retrieve(
-        self, query: Dict[int, float], top_k: int, content=False
-    ) -> List[ScoredDocument]:
+    def retrieve(self, query: Dict[int, float], top_k: int) -> List[ScoredDocument]:
         results = []
         for sd in self.index.search_maxscore(query, top_k):
-            doc_id = self.documents.docid_internal2external(sd.docid)
             results.append(
                 ScoredDocument(
-                    doc_id,
+                    self.documents.document_int(sd.docid),
                     sd.score,
-                    self.documents.document_text(doc_id) if content else None,
                 )
             )
 
@@ -106,7 +104,7 @@ class SparseRetriever(Retriever):
 
         return results
 
-    def retrieve(self, query: str, content=False, top_k=None) -> List[ScoredDocument]:
+    def retrieve(self, query: str, top_k=None) -> List[ScoredDocument]:
         """Search with document-at-a-time (DAAT) strategy
 
         :param top_k: Overrides the default top-K value
@@ -118,7 +116,7 @@ class SparseRetriever(Retriever):
         query = {
             ix: float(v) for ix, v in zip(ix, vector[ix])
         }  # generate a dict: {position:value}
-        return self.index.retrieve(query, top_k or self.topk, content=content)
+        return self.index.retrieve(query, top_k or self.topk)
 
 
 class SparseRetrieverIndexBuilder(Task):
@@ -128,7 +126,7 @@ class SparseRetrieverIndexBuilder(Task):
     that the score is computed through an inner product
     """
 
-    documents: Param[AdhocDocumentStore]
+    documents: Param[DocumentStore]
     """Set of documents to index"""
 
     encoder: Param[TextEncoder]
@@ -158,6 +156,9 @@ class SparseRetrieverIndexBuilder(Task):
     version: Constant[int] = 3
     """Version 3 of the index"""
 
+    max_docs: Param[int] = 0
+    """Maximum number of indexed documents"""
+
     def task_outputs(self, dep):
         """Returns a sparse retriever index that can be used by a
         SparseRetriever to search efficiently for documents"""
@@ -178,8 +179,13 @@ class SparseRetrieverIndexBuilder(Task):
         batcher = self.batcher.initialize(self.batch_size)
 
         doc_iter = tqdm(
-            self.documents.iter_documents(),
-            total=self.documents.documentcount,
+            zip(
+                range(sys.maxsize if self.max_docs == 0 else self.max_docs),
+                MultiprocessIterator(self.documents.iter_documents()),
+            ),
+            total=self.documents.documentcount
+            if self.max_docs == 0
+            else min(self.max_docs, self.documents.documentcount),
             desc="Building the index",
         )
 
@@ -203,15 +209,11 @@ class SparseRetrieverIndexBuilder(Task):
         # Build the index
         self.indexer.build(self.in_memory)
 
-    def encode_documents(self, batch: List[AdhocDocument]):
+    def encode_documents(self, batch: List[Tuple[int, Document]]):
         # Assumes for now dense vectors
-        assert all(
-            d.internal_docid is not None for d in batch
-        ), f"No internal document ID provided by document store {type(self.documents)}"
-
-        vectors = self.encoder([d.text for d in batch]).cpu().numpy()  # bs * vocab
-        for vector, d in zip(vectors, batch):
+        vectors = (
+            self.encoder([d.get_text() for _, d in batch]).cpu().numpy()
+        )  # bs * vocab
+        for vector, (docid, _) in zip(vectors, batch):
             (nonzero_ix,) = vector.nonzero()
-            self.indexer.add(
-                d.internal_docid, nonzero_ix.astype(np.uint64), vector[nonzero_ix]
-            )
+            self.indexer.add(docid, nonzero_ix.astype(np.uint64), vector[nonzero_ix])

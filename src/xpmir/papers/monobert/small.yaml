@@ -6,13 +6,15 @@ description: |
 
     This model has been trained on MsMarco v1 but only a few iterations (debug)
 
+gpu: true
+base: "microsoft/MiniLM-L12-H384-uncased"
 dev_test_size: 50
 
 validation:
     size: 10
 
 indexation:
-    requirements: duration=2 days & cpu(mem=4G)
+    requirements: duration=1 days & cpu(cores=4)
 
 retrieval:
     requirements: duration=2 days & cuda(mem=8G)
@@ -28,6 +30,10 @@ monobert:
         warmup_min_factor: 0.1
         eps: 1.0e-6
 
+    # Only use 1% of the 100_000 triplets
+    sample_rate: .01
+    sample_max: 100_000
+
     validation_interval: 1
     validation_top_k: 20
-    requirements: duration=2 days & cuda(mem=8G)
+    requirements: duration=1 days & cuda(mem=8G)

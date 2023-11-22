@@ -1,6 +1,6 @@
 import math
 from typing import Optional
-from experimaestro import param, Config, Choices, Param, default
+from experimaestro import Config, Param, default
 import torch
 from torch import nn
 from typing_extensions import Annotated
@@ -29,11 +29,15 @@ class CountHistogram(Config, nn.Module):
             (dtoks != -1).reshape(BATCH, 1, DLEN).expand(BATCH, QLEN, DLEN)
             * (qtoks != -1).reshape(BATCH, QLEN, 1).expand(BATCH, QLEN, DLEN)
         ).float()
-        # apparently no way to batch this... https://discuss.pytorch.org/t/histogram-function-in-pytorch/5350
+        # apparently no way to batch this...
+        # https://discuss.pytorch.org/t/histogram-function-in-pytorch/5350
+
+        # WARNING: this line (and the similar line below) improve performance
+        # tenfold when on GPU
         bins, weights = (
             bins.cpu(),
             weights.cpu(),
-        )  # WARNING: this line (and the similar line below) improve performance tenfold when on GPU
+        )
         histogram = []
         for superbins, w in zip(bins, weights):
             result = []
@@ -46,9 +50,9 @@ class CountHistogram(Config, nn.Module):
             result = torch.stack(result, dim=0)
             histogram.append(result)
         histogram = torch.stack(histogram, dim=0)
-        histogram = histogram.to(
-            simmat.device
-        )  # WARNING: this line (and the similar line above) improve performance tenfold when on GPU
+        # WARNING: this line (and the similar line above) improve performance
+        # tenfold when on GPU
+        histogram = histogram.to(simmat.device)
         return histogram
 
 
@@ -85,8 +89,8 @@ class Drmm(InteractionScorer):
 
     Implementation of the DRMM model from:
 
-      Jiafeng Guo, Yixing Fan, Qingyao Ai, and William Bruce Croft. 2016. A Deep Relevance
-      Matching Model for Ad-hoc Retrieval. In CIKM.
+      Jiafeng Guo, Yixing Fan, Qingyao Ai, and William Bruce Croft. 2016. A Deep
+      Relevance Matching Model for Ad-hoc Retrieval. In CIKM.
     """
 
     hist: Annotated[CountHistogram, default(LogCountHistogram())]
@@ -109,7 +113,7 @@ class Drmm(InteractionScorer):
 
     def _initialize(self, random):
         if not self.vocab.static():
-            self.logger.warn(
+            self.logger.warning(
                 "In most cases, using vocab.train=True will not have an effect on DRMM "
                 "because the histogram is not differentiable. An exception might be if "
                 "the gradient is proped back by another means, e.g. BERT [CLS] token."

@@ -16,12 +16,11 @@ from xpmir.papers.cli import paper_command
 from xpmir.rankers.standard import BM25
 from xpmir.text.huggingface import DualTransformerEncoder
 from xpmir.papers.results import PaperResults
-from xpmir.utils.functools import cache
-from xpmir.papers.helpers.msmarco import (
-    v1_docpairs_sampler,
-    v1_tests,
-    v1_validation_dataset,
-    v1_passages,
+from xpmir.papers.helpers.samplers import (
+    msmarco_v1_docpairs_sampler,
+    msmarco_v1_tests,
+    msmarco_v1_validation_dataset,
+    prepare_collection,
 )
 from .configuration import Monobert
 import xpmir.interfaces.anserini as anserini
@@ -30,7 +29,6 @@ from xpmir.rankers import scorer_retriever, RandomScorer
 logging.basicConfig(level=logging.INFO)
 
 
-@cache
 def get_retrievers(cfg: Monobert):
     """Returns retrievers
 
@@ -66,18 +64,25 @@ def run(
 
     launcher_learner = find_launcher(cfg.monobert.requirements)
     launcher_evaluate = find_launcher(cfg.retrieval.requirements)
+    launcher_preprocessing = find_launcher(cfg.preprocessing.requirements)
     device = cfg.device
     random = cfg.random
 
-    documents = v1_passages()
-    ds_val = v1_validation_dataset(cfg.validation)
+    documents = prepare_collection("irds.msmarco-passage.documents")
+    ds_val = msmarco_v1_validation_dataset(
+        cfg.validation, launcher=launcher_preprocessing
+    )
 
-    tests = v1_tests(cfg.dev_test_size)
+    tests = msmarco_v1_tests(cfg.dev_test_size)
 
     # Setup indices and validation/test base retrievers
     retrievers, model_based_retrievers = get_retrievers(cfg)
-
-    test_retrievers = partial(retrievers, k=cfg.retrieval.k)  #: Test retrievers
+    val_retrievers = partial(
+        retrievers, store=documents, k=cfg.monobert.validation_top_k
+    )
+    test_retrievers = partial(
+        retrievers, store=documents, k=cfg.retrieval.k
+    )  #: Test retrievers
 
     # Search and evaluate with a random re-ranker
     random_scorer = RandomScorer(random=random).tag("scorer", "random")
@@ -87,26 +92,30 @@ def run(
             retrievers=test_retrievers,
             scorer=random_scorer,
             device=None,
-        )
+        ),
+        launcher=launcher_preprocessing,
     )
 
     # Search and evaluate with the base model
     tests.evaluate_retriever(test_retrievers, cfg.indexation.launcher)
 
     # Define the different launchers
-    val_retrievers = partial(retrievers, k=cfg.monobert.validation_top_k)
 
     # define the trainer for monobert
     monobert_trainer = pairwise.PairwiseTrainer(
         lossfn=pairwise.PointwiseCrossEntropyLoss(),
-        sampler=v1_docpairs_sampler(),
+        sampler=msmarco_v1_docpairs_sampler(
+            sample_rate=cfg.monobert.sample_rate,
+            sample_max=cfg.monobert.sample_max,
+            launcher=launcher_preprocessing,
+        ),
         batcher=PowerAdaptativeBatcher(),
         batch_size=cfg.monobert.optimization.batch_size,
     )
 
     monobert_scorer: CrossScorer = CrossScorer(
         encoder=DualTransformerEncoder(
-            model_id="bert-base-uncased", trainable=True, maxlen=512, dropout=0.1
+            model_id=cfg.base, trainable=True, maxlen=512, dropout=0.1
         )
     ).tag("scorer", "monobert")
 
@@ -143,6 +152,7 @@ def run(
         listeners=[validation],
         # The hook used for evaluation
         hooks=[setmeta(DistributedHook(models=[monobert_scorer]), True)],
+        use_pretasks=True,
     )
 
     # Submit job and link
@@ -151,16 +161,17 @@ def run(
 
     # Evaluate the neural model on test collections
     for metric_name in validation.monitored():
-        model = outputs.listeners[validation.id][metric_name]  # type: CrossScorer
+        load_model = outputs.listeners[validation.id][metric_name]
         tests.evaluate_retriever(
             partial(
                 model_based_retrievers,
-                scorer=model,
+                scorer=load_model,
                 retrievers=test_retrievers,
                 device=device,
             ),
             launcher_evaluate,
             model_id=f"monobert-{metric_name}",
+            init_tasks=[],
         )
 
     return PaperResults(

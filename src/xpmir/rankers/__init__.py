@@ -1,7 +1,6 @@
 # This package contains all rankers
 
 from experimaestro import tqdm
-
 from enum import Enum
 from typing import (
     Dict,
@@ -18,25 +17,27 @@ from typing import (
 )
 import torch
 import torch.nn as nn
-
+import attrs
 import numpy as np
 from experimaestro import Param, Config, Meta
 from datamaestro_text.data.ir import (
-    AdhocDocuments,
-    AdhocDocumentStore,
+    Document,
+    Documents,
+    DocumentStore,
 )
+from datamaestro_text.data.ir.base import TextDocument, TextTopic
 from xpmir.utils.utils import Initializable
 from xpmir.letor import Device, Random
 from xpmir.learning.batchers import Batcher
 from xpmir.learning.context import TrainerContext
 from xpmir.learning.optim import Module
 from xpmir.letor.records import (
-    Document,
+    ScoredDocumentRecord,
+    TopicRecord,
     BaseRecords,
     PairwiseRecord,
     PairwiseRecords,
     ProductRecords,
-    Query,
 )
 from xpmir.utils.utils import EasyLogger, easylog
 
@@ -46,17 +47,18 @@ if TYPE_CHECKING:
 logger = easylog()
 
 
+@attrs.define()
 class ScoredDocument:
-    """A data structure which contains the id, the content(optional) and a
-    calculated score for a document"""
+    """A data structure that associated a score with a document"""
 
-    def __init__(self, docid: Optional[str], score: float, content: str = None):
-        self.docid = docid
-        self.score = score
-        self.content = content
+    document: Document
+    """The document"""
+
+    score: float
+    """The associated score"""
 
     def __repr__(self):
-        return f"document({self.docid}, {self.score}, {self.content})"
+        return f"document({self.document}, {self.score})"
 
     def __lt__(self, other):
         return self.score < other.score
@@ -71,12 +73,6 @@ class ScorerOutputType(Enum):
 
     PROBABILITY = 2
     """A probability, in ]0,1["""
-
-
-class LearnableModel(Config):
-    """All learnable models"""
-
-    pass
 
 
 class Scorer(Config, Initializable, EasyLogger):
@@ -141,7 +137,7 @@ class Scorer(Config, Initializable, EasyLogger):
 
 
 def scorer_retriever(
-    documents: AdhocDocuments,
+    documents: Documents,
     *,
     retrievers: "RetrieverFactory",
     scorer: Scorer,
@@ -167,25 +163,31 @@ class RandomScorer(Scorer):
     """The random number generator"""
 
     def rsv(
-        self, query: str, documents: Iterable[ScoredDocument], keepcontent=False
+        self, query: str, scored_documents: Iterable[ScoredDocument]
     ) -> List[ScoredDocument]:
-        scoredDocuments = []
+        result = []
         random = self.random.state
-        for doc in documents:
-            scoredDocuments.append(ScoredDocument(doc.docid, random.random()))
-        return scoredDocuments
+        for scored_document in scored_documents:
+            result.append(ScoredDocument(scored_document.document, random.random()))
+        return result
 
 
-class AbstractLearnableScorer(Scorer, Module):
+class AbstractModuleScorer(Scorer, Module):
     """Base class for all learnable scorer"""
 
+    # Ensures basic operations are redirected to torch.nn.Module methods
     __call__ = nn.Module.__call__
     to = nn.Module.to
+    train = nn.Module.train
 
     def __init__(self):
+        self.logger.info("Initializing %s", self)
         nn.Module.__init__(self)
         super().__init__()
         self._initialized = False
+
+    def __str__(self):
+        return f"scorer {self.__class__.__qualname__}"
 
     def _initialize(self, random):
         raise NotImplementedError(f"_initialize in {self.__class__}")
@@ -221,13 +223,49 @@ class AbstractLearnableScorer(Scorer, Module):
 
         return self
 
+    def rsv(
+        self,
+        query: str,
+        scored_documents: Union[List[ScoredDocument], ScoredDocument, str, List[str]],
+    ) -> List[ScoredDocument]:
+        if isinstance(scored_documents, str):
+            scored_documents = [ScoredDocument(TextDocument(scored_documents), None)]
+        elif isinstance(scored_documents[0], str):
+            scored_documents = [
+                ScoredDocument(TextDocument(scored_document), None)
+                for scored_document in scored_documents
+            ]
 
-class LearnableScorer(AbstractLearnableScorer):
+        # Prepare the inputs and call the model
+        inputs = ProductRecords()
+        inputs.add_topics(TopicRecord(TextTopic(query)))
+
+        inputs.add_documents(
+            *[ScoredDocumentRecord(sd.document, sd.score) for sd in scored_documents]
+        )
+
+        with torch.no_grad():
+            scores = self(inputs, None).cpu().numpy()
+
+        # Returns the scored documents
+        scoredDocuments = []
+        for i in range(len(scored_documents)):
+            scoredDocuments.append(
+                ScoredDocument(
+                    scored_documents[i].document,
+                    float(scores[i]),
+                )
+            )
+
+        return scoredDocuments
+
+
+class LearnableScorer(AbstractModuleScorer):
     """Learnable scorer
 
     A scorer with parameters that can be learnt"""
 
-    def __call__(self, inputs: "BaseRecords", info: Optional[TrainerContext]):
+    def forward(self, inputs: "BaseRecords", info: Optional[TrainerContext]):
         """Computes the score of all (query, document) pairs
 
         Different subclasses can process the input more or
@@ -236,43 +274,8 @@ class LearnableScorer(AbstractLearnableScorer):
         """
         raise NotImplementedError(f"forward in {self.__class__}")
 
-    def rsv(
-        self,
-        query: str,
-        documents: Union[List[ScoredDocument], ScoredDocument, str, List[str]],
-        content=False,
-    ) -> List[ScoredDocument]:
-        if isinstance(documents, str):
-            documents = [ScoredDocument(None, None, documents)]
-        elif isinstance(documents[0], str):
-            documents = [ScoredDocument(None, None, text) for text in documents]
 
-        # Prepare the inputs and call the model
-        inputs = ProductRecords()
-        for doc in documents:
-            assert doc.content is not None
-
-        inputs.addQueries(Query(None, query))
-        inputs.addDocuments(*[Document(d.docid, d.content, d.score) for d in documents])
-
-        with torch.no_grad():
-            scores = self(inputs, None).cpu().numpy()
-
-        # Returns the scored documents
-        scoredDocuments = []
-        for i in range(len(documents)):
-            scoredDocuments.append(
-                ScoredDocument(
-                    documents[i].docid,
-                    float(scores[i]),
-                    documents[i].content if content else None,
-                )
-            )
-
-        return scoredDocuments
-
-
-class DuoLearnableScorer(AbstractLearnableScorer):
+class DuoLearnableScorer(LearnableScorer):
     """Base class for models that can score a triplet (query, document 1, document 2)"""
 
     def forward(self, inputs: "PairwiseRecords", info: Optional[TrainerContext]):
@@ -283,7 +286,7 @@ class DuoLearnableScorer(AbstractLearnableScorer):
 class Retriever(Config):
     """A retriever is a model to return top-scored documents given a query"""
 
-    store: Param[Optional[AdhocDocumentStore]] = None
+    store: Param[Optional[DocumentStore]] = None
     """Give the document store associated with this retriever"""
 
     def initialize(self):
@@ -309,18 +312,18 @@ class Retriever(Config):
             results[key] = self.retrieve(text)
         return results
 
-    def retrieve(self, query: str, content=False) -> List[ScoredDocument]:
+    def retrieve(self, query: str) -> List[ScoredDocument]:
         """Retrieves documents, returning a list sorted by decreasing score
 
         if `content` is true, includes the document full text
         """
         raise NotImplementedError()
 
-    def _store(self) -> Optional[AdhocDocumentStore]:
+    def _store(self) -> Optional[DocumentStore]:
         """Returns the associated document store (if any) that can be
         used to get the full text of the documents"""
 
-    def get_store(self) -> Optional[AdhocDocumentStore]:
+    def get_store(self) -> Optional[DocumentStore]:
         return self.store or self._store()
 
 
@@ -364,20 +367,19 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
         batch: List[ScoredDocument],
         query: str,
         scoredDocuments: List[ScoredDocument],
-        content: bool,
     ):
-        scoredDocuments.extend(self.scorer.rsv(query, batch, content))
+        scoredDocuments.extend(self.scorer.rsv(query, batch))
 
-    def retrieve(self, query: str, content=False):
+    def retrieve(self, query: str):
         # Calls the retriever
-        scoredDocuments = self.retriever.retrieve(query, content=True)
+        scoredDocuments = self.retriever.retrieve(query)
 
         # Scorer in evaluation mode
         self.scorer.eval()
 
         _scoredDocuments = []
         scoredDocuments = self._batcher.process(
-            scoredDocuments, self._retrieve, query, _scoredDocuments, content
+            scoredDocuments, self._retrieve, query, _scoredDocuments
         )
 
         _scoredDocuments.sort(reverse=True)
@@ -408,7 +410,7 @@ class DuoTwoStageRetriever(AbstractTwoStageRetriever):
         aggregation of all the scores
         """
         # get the documents from the retriever
-        scoredDocuments_previous = self.retriever.retrieve(query, content=True)
+        scoredDocuments_previous = self.retriever.retrieve(query)
 
         # transform them into the pairs (i, j)
         # for i != j ranging from 1 to nb of documents
@@ -439,7 +441,7 @@ class DuoTwoStageRetriever(AbstractTwoStageRetriever):
         for i in range(len(scoredDocuments_previous)):
             scoredDocuments.append(
                 ScoredDocument(
-                    scoredDocuments_previous[i].docid, float(_scores_per_document[i])
+                    scoredDocuments_previous[i], float(_scores_per_document[i])
                 )
             )
         scoredDocuments.sort(reverse=True)
@@ -451,11 +453,9 @@ class DuoTwoStageRetriever(AbstractTwoStageRetriever):
         """Given the query and documents in tuple
         return the score for each triplets
         """
-        qry = Query(None, query)
+        qry = TopicRecord(TextTopic(query))
         inputs = PairwiseRecords()
         for doc1, doc2 in documents:
-            doc1 = Document(doc1.docid, doc1.content, doc1.score)
-            doc2 = Document(doc2.docid, doc2.content, doc2.score)
             inputs.add(PairwiseRecord(qry, doc1, doc2))
 
         with torch.no_grad():
@@ -469,7 +469,7 @@ T = TypeVar("T")
 
 
 class DocumentsFunction(Protocol, Generic[KWARGS, ARGS, T]):
-    def __call__(self, documents: AdhocDocuments, *args: ARGS, **kwargs: KWARGS) -> T:
+    def __call__(self, documents: Documents, *args: ARGS, **kwargs: KWARGS) -> T:
         ...
 
 
@@ -482,7 +482,7 @@ def document_cache(fn: DocumentsFunction[KWARGS, ARGS, T]):
     retrievers = {}
 
     def _fn(*args: ARGS, **kwargs: KWARGS):
-        def cached(documents: AdhocDocuments) -> T:
+        def cached(documents: Documents) -> T:
             dataset_id = documents.__identifier__().all
 
             if dataset_id not in retrievers:
@@ -501,17 +501,14 @@ class RetrieverHydrator(Retriever):
     retriever: Param[Retriever]
     """The retriever to hydrate"""
 
-    store: Param[AdhocDocumentStore]
+    store: Param[DocumentStore]
     """The store for document texts"""
 
     def initialize(self):
         return self.retriever.initialize()
 
-    def retrieve(self, query: str, content=False) -> List[ScoredDocument]:
-        results = self.retriever.retrieve(query, content=False)
-
-        if content:
-            for result in results:
-                result.content = self.store.document_text(result.docid)
-
-        return results
+    def retrieve(self, query: str) -> List[ScoredDocument]:
+        return [
+            ScoredDocument(self.store.document_ext(sd.document.get_id()), sd.score)
+            for sd in self.retriever.retrieve(query)
+        ]

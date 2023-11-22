@@ -78,6 +78,9 @@ class Module(Config, Initializable, torch.nn.Module):
     def __call__(self, *args, **kwargs):
         return torch.nn.Module.__call__(self, *args, **kwargs)
 
+    def to(self, *args, **kwargs):
+        return torch.nn.Module.to(self, *args, **kwargs)
+
 
 class ModuleLoader(PathSerializationLWTask):
     def execute(self):
@@ -319,9 +322,16 @@ class TensorboardService(WebService):
         # Wait until config has started
         if job := task.__xpm__.job:
             if job.scheduler is not None:
-                job.scheduler.addlistener(
-                    TensorboardServiceListener(self.path / tagspath(task), path)
-                )
+                tag_path = tagspath(task)
+                if tag_path:
+                    job.scheduler.addlistener(
+                        TensorboardServiceListener(self.path / tag_path, path)
+                    )
+                else:
+                    logger.error(
+                        "The task is not associated with tags: "
+                        "cannot link to tensorboard data"
+                    )
             else:
                 logger.debug("No scheduler: not adding the tensorboard data")
         else:

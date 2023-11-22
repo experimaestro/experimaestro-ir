@@ -4,32 +4,13 @@
 # https://github.com/stanford-futuredata/ColBERT/blob/v0.2/colbert/modeling/colbert.py
 
 from typing import List
-from experimaestro import Config, Constant, Param, default, Annotated
-import torch
+from experimaestro import Constant, Param, default, Annotated
 from torch import nn
 import torch.nn.functional as F
 from xpmir.learning.context import TrainerContext
 from xpmir.letor.records import BaseRecords
 from xpmir.neural.interaction import InteractionScorer
-
-
-class Similarity(Config):
-    def __call__(self, queries, documents) -> torch.Tensor:
-        raise NotImplementedError()
-
-
-class L2Distance(Similarity):
-    def __call__(self, queries, documents):
-        return (
-            (-1.0 * ((queries.unsqueeze(2) - documents.unsqueeze(1)) ** 2).sum(-1))
-            .max(-1)
-            .values.sum(-1)
-        )
-
-
-class CosineDistance(Similarity):
-    def __call__(self, queries, documents):
-        return (queries @ documents.permute(0, 2, 1)).max(2).values.sum(1)
+from .common import Similarity, CosineSimilarity
 
 
 class Colbert(InteractionScorer):
@@ -56,7 +37,7 @@ class Colbert(InteractionScorer):
     doctoken: Param[bool] = True
     """Whether a specific document token should be used as a prefix to the document"""
 
-    similarity: Annotated[Similarity, default(CosineDistance())]
+    similarity: Annotated[Similarity, default(CosineSimilarity())]
     """Which similarity to use"""
 
     linear_dim: Param[int] = 128
@@ -92,7 +73,9 @@ class Colbert(InteractionScorer):
         return F.normalize(output, p=2, dim=2)
 
     def _forward(self, inputs: BaseRecords, info: TrainerContext = None):
-        queries = self._encode([q.text for q in inputs.queries], False)
-        documents = self._encode([d.text for d in inputs.documents], True)
+        queries = self._encode([qr.topic.get_text() for qr in inputs.queries], False)
+        documents = self._encode(
+            [dr.document.get_text() for dr in inputs.documents], True
+        )
 
         return self.similarity(queries, documents)

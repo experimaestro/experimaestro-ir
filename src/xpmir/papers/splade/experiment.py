@@ -3,14 +3,15 @@
 # Benjamin Piwowarski, Stéphane Clinchant), 2021
 # https://arxiv.org/abs/2109.10086
 
+from functools import partial
 import logging
 
+from experimaestro import experiment, setmeta
 from experimaestro.launcherfinder import find_launcher
 
 from xpmir.learning.optim import (
     TensorboardService,
 )
-from experimaestro import experiment, setmeta
 from xpmir.distributed import DistributedHook
 from xpmir.learning.learner import Learner
 from xpmir.letor.learner import ValidationListener
@@ -22,26 +23,24 @@ from xpmir.letor.distillation.pairwise import (
     DistillationPairwiseTrainer,
     MSEDifferenceLoss,
 )
+from xpmir.letor.samplers import PairwiseInBatchNegativesSampler
 from xpmir.papers.cli import paper_command
 from xpmir.letor.trainers.batchwise import BatchwiseTrainer, SoftmaxCrossEntropy
 from xpmir.learning.batchers import PowerAdaptativeBatcher
-from xpmir.neural.dual import Dense
 from xpmir.rankers.standard import BM25
 from xpmir.neural.splade import spladeV2_max, spladeV2_doc
 from xpmir.papers.results import PaperResults
-from xpmir.papers.helpers.msmarco import (
-    v1_tests,
-    v1_validation_dataset,
-    v1_passages,
+from xpmir.papers.helpers.samplers import (
+    msmarco_v1_tests,
+    msmarco_v1_validation_dataset,
+    msmarco_v1_docpairs_sampler,
+    msmarco_hofstaetter_ensemble_hard_negatives,
+    prepare_collection,
 )
 from xpmir.datasets.adapters import RetrieverBasedCollection
-from xpmir.papers.helpers.splade import splade_sampler
 from xpmir.rankers.full import FullRetriever
-from xpmir.documents.samplers import RandomDocumentSampler
 from .configuration import SPLADE
 import xpmir.interfaces.anserini as anserini
-from xpmir.models import AutoModel
-from xpmir.index.faiss import IndexBackedFaiss, FaissRetriever
 
 
 logging.basicConfig(level=logging.INFO)
@@ -63,63 +62,33 @@ def run(
     device = cfg.device
     random = cfg.random
 
-    documents = v1_passages()
-    ds_val_all = v1_validation_dataset(cfg.validation)
+    documents = prepare_collection("irds.msmarco-passage.documents")
+    ds_val_all = msmarco_v1_validation_dataset(cfg.validation)
 
-    tests = v1_tests()
+    tests = msmarco_v1_tests(cfg.dev_test_size)
 
     # -----The baseline------
-    # BM25
-    base_model = BM25().tag("model", "bm25")
+    base_model = BM25()
+    index_builder = anserini.index_builder(launcher=cfg.indexation.launcher)
 
-    bm25_retriever = anserini.AnseriniRetriever(
-        k=cfg.retrieval.topK, index=anserini.index_builder, model=base_model
-    )
+    retrievers = partial(
+        anserini.retriever,
+        index_builder,
+        model=base_model,
+    )  #: Anserini based retrievers
 
-    tests.evaluate_retriever(bm25_retriever, cpu_launcher_index)
-
-    # tas-balanced
-    tasb: Dense = AutoModel.load_from_hf_hub("xpmir/tas-balanced").tag(
-        "model", "tasb"
-    )  # create a scorer from huggingface
-
-    tasb_index = IndexBackedFaiss(
-        indexspec=cfg.indexation.indexspec,
-        device=device,
-        normalize=False,
-        documents=documents,
-        sampler=RandomDocumentSampler(
-            documents=documents,
-            max_count=cfg.indexation.faiss_max_traindocs,
-        ),  # Just use a fraction of the dataset for training
-        encoder=tasb.encoder,
-        batchsize=2048,
-        batcher=PowerAdaptativeBatcher(),
-        hooks=[
-            setmeta(DistributedHook(models=[tasb.encoder, tasb.query_encoder]), True)
-        ],
-    ).submit(launcher=gpu_launcher_index)
-
-    tasb_retriever = FaissRetriever(
-        index=tasb_index,
-        topk=cfg.retrieval.topK,
-        encoder=tasb.encoder,
-    )
-
-    tests.evaluate_retriever(tasb_retriever, gpu_launcher_index)
+    tests.evaluate_retriever(retrievers, cpu_launcher_index)
 
     # Building the validation set of the splade
     # We cannot use the full document dataset to build the validation set.
 
     # This one could be generic for both sparse and dense methods
+
     ds_val = RetrieverBasedCollection(
         dataset=ds_val_all,
-        retrievers=[
-            anserini.AnseriniRetriever(
-                k=cfg.retrieval.retTopK, index=anserini.index_builder, model=base_model
-            ),
-        ],
-    ).submit(launcher=gpu_launcher_index)
+        retrievers=[retrievers(ds_val_all.documents, k=cfg.retrieval.retTopK)],
+    ).submit(launcher=cpu_launcher_index)
+    ds_val.documents.in_memory = True
 
     # Base retrievers for validation
     # It retrieve all the document of the collection with score 0
@@ -133,29 +102,37 @@ def run(
         spladev2, flops = spladeV2_max(
             cfg.splade.lambda_q,
             cfg.splade.lambda_d,
-            cfg.splade.lamdba_warmup_steps,
+            cfg.splade.lambda_warmup_steps,
+            hf_id=cfg.base_hf_id,
         )
     elif cfg.splade.model == "splade_doc":
         spladev2, flops = spladeV2_doc(
             cfg.splade.lambda_q,
             cfg.splade.lambda_d,
-            cfg.splade.lamdba_warmup_steps,
+            cfg.splade.lambda_warmup_steps,
+            hf_id=cfg.base_hf_id,
         )
     else:
         raise NotImplementedError
 
-    # define the trainer based on different dataset
+    # Sampler
     if cfg.splade.dataset == "":
+        splade_sampler = PairwiseInBatchNegativesSampler(
+            sampler=msmarco_v1_docpairs_sampler(
+                sample_rate=cfg.splade.sample_rate, sample_max=cfg.splade.sample_max
+            )
+        )
+
         batchwise_trainer_flops = BatchwiseTrainer(
             batch_size=cfg.splade.optimization.batch_size,
-            sampler=splade_sampler(),
+            sampler=splade_sampler,
             lossfn=SoftmaxCrossEntropy(),
             hooks=[flops],
         )
-    elif cfg.splade.dataset == "bert_hard_negative":
+    elif cfg.splade.dataset == "hofstaetter_kd_hard_negatives":
         batchwise_trainer_flops = DistillationPairwiseTrainer(
             batch_size=cfg.splade.optimization.batch_size,
-            sampler=splade_sampler(),
+            sampler=msmarco_hofstaetter_ensemble_hard_negatives(),
             lossfn=MSEDifferenceLoss(),
             hooks=[flops],
         )
@@ -191,7 +168,6 @@ def run(
         early_stop=cfg.splade.early_stop,
         validation_interval=cfg.splade.validation_interval,
         metrics={"RR@10": True, "AP": False, "nDCG@10": False},
-        # store_last_checkpoint=True if cfg.splade.model == "splade_doc" else False,
     )
 
     # the learner: Put the components together
@@ -202,7 +178,7 @@ def run(
         # How to train the model
         trainer=batchwise_trainer_flops,
         # the model to be trained
-        model=spladev2.tag("model", "splade-v2"),
+        model=spladev2,
         # Optimization settings
         optimizers=cfg.splade.optimization.optimizer,
         steps_per_epoch=cfg.splade.optimization.steps_per_epoch,
@@ -212,14 +188,14 @@ def run(
         listeners=[validation],
         # the hooks
         hooks=hooks,
-    )
+    ).tag("model", "splade-v2")
 
     # submit the learner and build the symbolique link
     outputs = learner.submit(launcher=gpu_launcher_learner)
     tensorboard_service.add(learner, learner.logpath)
 
     # get the trained model
-    trained_model = (
+    load_model = (
         outputs.learned_model
         if cfg.splade.model == "splade_doc"
         else outputs.listeners["bestval"]["RR@10"]
@@ -229,18 +205,19 @@ def run(
     sparse_index = SparseRetrieverIndexBuilder(
         batch_size=512,
         batcher=PowerAdaptativeBatcher(),
-        encoder=trained_model.encoder,
+        encoder=spladev2.encoder,
         device=device,
         documents=documents,
         ordered_index=False,
-    ).submit(launcher=gpu_launcher_index)
+        max_docs=cfg.indexation.max_docs,
+    ).submit(launcher=gpu_launcher_index, init_tasks=[load_model])
 
     # Build the sparse retriever based on the index
     splade_retriever = SparseRetriever(
         index=sparse_index,
         topk=cfg.retrieval.topK,
         batchsize=1,
-        encoder=trained_model._query_encoder,
+        encoder=spladev2._query_encoder,
     )
 
     # evaluate the best model
@@ -248,15 +225,16 @@ def run(
         splade_retriever,
         gpu_launcher_retrieval,
         model_id=f"{cfg.splade.model}-{cfg.splade.dataset}-RR@10",
+        init_tasks=[load_model],
     )
 
     return PaperResults(
-        models={f"{cfg.splade.model}-{cfg.splade.dataset}-RR@10": trained_model},
+        models={f"{cfg.splade.model}-{cfg.splade.dataset}-RR@10": load_model},
         evaluations=tests,
         tb_logs={f"{cfg.splade.model}-{cfg.splade.dataset}-RR@10": learner.logpath},
     )
 
 
-@paper_command(schema=SPLADE, package=__package__)
+@paper_command(schema=SPLADE, package=__package__, tensorboard_service=True)
 def cli(xp: experiment, cfg: SPLADE, tensorboard_service: TensorboardService):
     return run(xp, cfg, tensorboard_service)

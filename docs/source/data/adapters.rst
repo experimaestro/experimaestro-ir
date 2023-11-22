@@ -6,12 +6,29 @@ subsampling document and/or queries.
 
 .. currentmodule:: xpmir.datasets.adapters
 
+Adhoc datasets
+--------------
+
 .. autoxpmconfig:: RandomFold
     :members: folds
 
+.. autoxpmconfig:: ConcatFold
+
+Documents
+---------
+
 .. autoxpmconfig:: RetrieverBasedCollection
 
-.. autoxpmconfig:: AdhocTopicFold
+.. autoxpmconfig:: DocumentSubset
+
+Assessments
+-----------
+
 .. autoxpmconfig:: AdhocAssessmentFold
-.. autoxpmconfig:: AdhocDocumentSubset
+
+Topics
+------
+
+.. autoxpmconfig:: TopicFold
 .. autoxpmconfig:: MemoryTopicStore
+.. autoxpmconfig:: TextStore
