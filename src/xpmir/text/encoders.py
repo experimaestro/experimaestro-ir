@@ -17,7 +17,7 @@ class Encoder(Module, EasyLogger):
 
     def __initialize__(self):
         # Easy and hacky way to get the device
-        super().__init__()
+        super().__initialize__()
         self._dummy_params = nn.Parameter(torch.Tensor())
 
     def static(self):

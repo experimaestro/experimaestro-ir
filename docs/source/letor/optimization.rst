@@ -28,6 +28,35 @@ Optimizers
 .. autoxpmconfig:: xpmir.learning.optim.RegexParameterFilter
 
 
+Parameters
+----------
+
+During learning, some parameter-specific treatments can be applied (e.g. freezing).
+
+
+Selecting
+*********
+
+The classes below allow to select a subset of parameters.
+
+.. autoxpmconfig:: xpmir.learning.parameters.InverseParametersIterator
+.. autoxpmconfig:: xpmir.learning.parameters.ParametersIterator
+.. autoxpmconfig:: xpmir.learning.parameters.SubParametersIterator
+
+Freezing
+********
+
+.. autoxpmconfig:: xpmir.learning.hooks.LayerFreezer
+
+Loading
+*******
+
+.. autoxpmconfig:: xpmir.learning.parameters.NameMapper
+.. autoxpmconfig:: xpmir.learning.parameters.PrefixRenamer
+.. autoxpmconfig:: xpmir.learning.parameters.PartialModuleLoader
+.. autoxpmconfig:: xpmir.learning.parameters.SubModuleLoader
+
+
 Batching
 --------
 

@@ -35,7 +35,7 @@ class ParametersIterator(Config, ABC):
     """Iterator over module parameters
 
     This can be useful to freeze some layers, or perform any other
-    layerwise operation
+    parameter-wise operation
     """
 
     @abstractmethod

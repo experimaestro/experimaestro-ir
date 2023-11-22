@@ -27,7 +27,12 @@ Tokenizers
 .. autoxpmconfig:: OneHotHuggingFaceEncoder
 .. autoxpmconfig:: HuggingfaceTokenizer
 
+Masked-LM
+=========
+
+.. autoxpmconfig:: MLMEncoder
+
 Hooks
 =====
 
-.. autoxpmconfig:: LayerFreezer
+.. autoxpmconfig:: LayerSelector
