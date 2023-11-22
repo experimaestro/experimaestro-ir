@@ -97,10 +97,10 @@ class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
         self.config = AutoConfig.from_pretrained(self.hf_id)
         self.tokenizer = AutoTokenizer.from_pretrained(self.hf_id, use_fast=True)
 
-        self.t5_model = CustomOutputT5(self.config, self.decoder_outdim)
-        self.pad_token_id = self.t5_model.config.pad_token_id
-        self.decoder_start_token_id = self.t5_model.config.decoder_start_token_id
-        self.eos_token_id = self.t5_model.config.eos_token_id
+        self.model = CustomOutputT5(self.config, self.decoder_outdim)
+        self.pad_token_id = self.model.config.pad_token_id
+        self.decoder_start_token_id = self.model.config.decoder_start_token_id
+        self.eos_token_id = self.model.config.eos_token_id
 
     @property
     def device(self):
@@ -142,7 +142,7 @@ class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
         """Returns the encoder_output and the input mask for the given text,
         which could accelerate the autoregressive generation procedure"""
 
-        encoder = self.t5_model.get_encoder()
+        encoder = self.model.get_encoder()
         tokenized = self.batch_tokenize(texts, maxlen=512, mask=True)
         encoder_output = encoder(
             tokenized.ids,
@@ -175,7 +175,7 @@ class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
         # Do a forward pass to get the next token
         # returns three not None values:
         # past_key_values, last_hidden_state, encoder_last_hidden_state
-        decoder_output = self.t5_model(
+        decoder_output = self.model(
             decoder_input_ids=decoder_input_ids,
             encoder_outputs=encoder_outputs,
             attention_mask=encoder_attention_mask,
@@ -190,34 +190,35 @@ class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
         )
 
     def distribute_models(self, update):
-        self.t5_model = update(self.t5_model)
+        self.model = update(self.model)
 
 
 class LoadFromT5(LightweightTask):
     """Load parameters from a T5 model"""
 
-    model: Param[T5IdentifierGenerator]
+    t5_model: Param[T5IdentifierGenerator]
     """the target"""
 
     def execute(self):
-        self.model.initialize(None)
+        self.t5_model.initialize(None)
 
         # Load from checkpoint
-        logging.info("Loading hugginface T5 from checkpoint %s", self.model.hf_id)
+        logging.info("Loading hugginface T5 from checkpoint %s", self.t5_model.hf_id)
         # Load the pre-trained model
-        t5_model = T5ForConditionalGeneration.from_pretrained(self.model.hf_id)
+        t5_model = T5ForConditionalGeneration.from_pretrained(self.t5_model.hf_id)
 
         # Change the state_dict for the lm_head the decoder embedding
         state_dict = t5_model.state_dict()
 
         del state_dict["lm_head.weight"]
 
+        # use random initialized t5 decoder
         decoder_key_names = [name for name in state_dict.keys() if "decoder" in name]
         for name in decoder_key_names:
             del state_dict[name]
 
         logging.info("Loading state dict into CustomOutputT5")
-        self.model.t5_model.load_state_dict(state_dict, strict=False)
+        self.t5_model.model.load_state_dict(state_dict, strict=False)
 
 
 # WIP

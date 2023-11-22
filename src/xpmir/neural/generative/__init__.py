@@ -125,11 +125,22 @@ class GenerativeRetrievalScorer(AbstractModuleScorer):
     """A early finish punishment hyperparameter, trying to make model score less
     if the id list is too short. Default value to 1 means no punishment"""
 
+    start_max_depth: Param[int] = -1
+    """if apply progressive training, the starter max depth. If it is a negative
+    number, means we dont't apply progressive training """
+
     max_depth: Param[int] = 5
     """The max depth we need to consider"""
 
     def _initialize(self, random):
         self.id_generator.initialize()
+        self.current_max_depth = (
+            self.start_max_depth if self.start_max_depth > 0 else self.max_depth
+        )
+
+    def update_depth(self):
+        if self.current_max_depth < self.max_depth:
+            self.current_max_depth += 1
 
     def recursive(
         self,
@@ -144,9 +155,12 @@ class GenerativeRetrievalScorer(AbstractModuleScorer):
         )
 
         # sampling according to the proba distribution --> shape bs
-        next_tokens = torch.multinomial(
-            torch.exp(log_proba.qry), num_samples=1
-        ).squeeze(1)
+        # next_tokens = torch.multinomial(
+        #     torch.exp(log_proba.qry), num_samples=1
+        # ).squeeze(1)
+
+        # take the maximum indices
+        next_tokens = torch.max(torch.exp(log_proba.qry), dim=-1).indices
 
         iterator_vector = torch.arange(len(next_tokens))
         log_proba_next = PairwiseTuple(
@@ -162,7 +176,7 @@ class GenerativeRetrievalScorer(AbstractModuleScorer):
             next_tokens != self.id_generator.eos_token_id
         ) & unfinished_sequences
 
-        if new_unfinished_sequences.max() == 0 or depth == self.max_depth - 1:
+        if new_unfinished_sequences.max() == 0 or depth == self.current_max_depth - 1:
             return torch.exp(log_proba_next.qry)
 
         return self.recursive(

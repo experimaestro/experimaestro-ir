@@ -9,9 +9,13 @@ import logging
 
 from xpmir.letor.samplers import PairwiseSampler
 from xpmir.letor.records import BaseRecords, PairwiseRecords
-from xpmir.neural.generative import IdentifierGenerator, StepwiseGenerator
+from xpmir.neural.generative import (
+    IdentifierGenerator,
+    StepwiseGenerator,
+    GenerativeRetrievalScorer,
+)
 from xpmir.letor.trainers import TrainerContext, LossTrainer
-from xpmir.learning.context import Loss
+from xpmir.learning.context import Loss, ValidationHook
 from xpmir.utils.utils import foreach, easylog
 
 logger = easylog()
@@ -65,6 +69,10 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
     id_generator: Param[IdentifierGenerator]
     """The id generator"""
 
+    start_max_depth: Param[int] = -1
+    """if apply progressive training, the starter max depth. If it is a negative
+    number, means we dont't apply progressive training """
+
     max_depth: Param[int] = 5
     """The max number of the steps we need to consider"""
 
@@ -89,6 +97,13 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
 
     def initialize(self):
         self.kl_lossfn = nn.KLDivLoss(reduction="sum", log_target=True)
+        self.current_max_depth = (
+            self.start_max_depth if self.start_max_depth > 0 else self.max_depth
+        )
+
+    def update_depth(self):
+        if self.current_max_depth < self.max_depth:
+            self.current_max_depth += 1
 
     def recursive(
         self,
@@ -178,10 +193,6 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
 
         # --- Computes the log probability of sampled tokens
 
-        # FIXME: why this comment below?
-        # Here we need to use the raw token to calculate
-        # to avoid the index out of bound pb (it will be masked anyways)
-        # cumulate the proba from root
         batch_range = torch.arange(bs)
         # each of shape [bs]
         log_proba_next = Triplet(*(x[batch_range, next_tokens] for x in log_proba))
@@ -210,7 +221,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         kl_loss = kl_loss.pos_doc + kl_loss.neg_doc + kl_loss.query
 
         # whether need to be end now?
-        if new_unfinished_sequences.max() == 0 or depth == self.max_depth - 1:
+        if new_unfinished_sequences.max() == 0 or depth == self.current_max_depth - 1:
             return GenerativeLossOutput(
                 recursive_loss=(middle_term + last_term)
                 * unfinished_sequences.detach(),
@@ -333,6 +344,26 @@ class GenerativeTrainer(LossTrainer):
     def train_batch(self, records: PairwiseRecords):
         # do the forward pass to get the gradient value
         self.loss.process(records, self.context)
+
+
+class GenerativeRetrievalValidationHook(ValidationHook):
+    """Update the loss and the scorer for validation during the validation
+    procedure"""
+
+    loss: Param[PairwiseGenerativeLoss]
+    """The loss to be updated"""
+
+    scorer: Param[GenerativeRetrievalScorer]
+    """The scorer to be updated"""
+
+    update_interval: Param[int] = 200
+    """The interval to update the learning depth"""
+
+    def after(self, state: TrainerContext):
+        if state.epoch % self.update_interval == 0:
+            self.loss.update_depth()
+            self.scorer.update_depth()
+            logger.info("Update the max depth for the training")
 
 
 # # to test

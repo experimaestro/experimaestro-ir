@@ -121,6 +121,16 @@ class TrainingHook(Config):
     pass
 
 
+class ValidationHook(Config):
+    """Base class for all the validation hooks"""
+
+    def after(self, state: "TrainerContext"):
+        """Called after a validation step"""
+
+    def before(self, state: "TrainerContext"):
+        """Called before a validation step"""
+
+
 class StepTrainingHook(TrainingHook):
     """Base class for hooks called at each step (before/after)"""
 
