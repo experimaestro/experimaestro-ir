@@ -1,12 +1,14 @@
-from experimaestro.compat import cached_property
-from typing import List, Optional, Tuple, Union
-import logging
 import re
-import torch
+import logging
 import torch.nn as nn
+from dataclasses import dataclass
+from typing import List, Optional, Tuple, Union
+
+import torch
+
+from experimaestro.compat import cached_property
 from experimaestro import Param, Constant, deprecate
 from xpmir.distributed import DistributableModel
-from xpmir.learning.context import InitializationTrainingHook, TrainState
 from xpmir.text.encoders import (
     Encoder,
     TokensEncoder,
@@ -15,9 +17,17 @@ from xpmir.text.encoders import (
     TripletTextEncoder,
 )
 from xpmir.utils.utils import easylog
+from xpmir.learning.context import TrainerContext, TrainState
+from xpmir.learning.parameters import ParametersIterator
 
 try:
-    from transformers import AutoModel, AutoTokenizer, AutoConfig, AutoModelForMaskedLM
+    from transformers import (
+        AutoModel,
+        AutoTokenizer,
+        AutoConfig,
+        DataCollatorForLanguageModeling,
+        AutoModelForMaskedLM,
+    )
 except Exception:
     logging.error("Install huggingface transformers to use these configurations")
     raise
@@ -25,6 +35,7 @@ except Exception:
 from xpmir.letor.records import TokenizedTexts
 
 logger = easylog()
+logger.setLevel(logging.INFO)
 
 
 class BaseTransformer(Encoder):
@@ -36,7 +47,10 @@ class BaseTransformer(Encoder):
     trainable: Param[bool]
     """Whether BERT parameters should be trained"""
 
-    # FIXME: move this into a hook
+    layer: Param[int] = 0
+    """Layer to use (0 is the last, -1 to use them all)"""
+
+    # move this into a hook
     dropout: Param[Optional[float]] = 0
     """Define a dropout for all the layers"""
 
@@ -479,50 +493,119 @@ class DualDuoBertTransformerEncoder(BaseTransformer, TripletTextEncoder):
     #     self.model = update(self.model)
 
 
-class LayerFreezer(InitializationTrainingHook):
-    """This training hook class can be used to freeze some of the transformer layers"""
+@dataclass
+class MLMModelOutput:
+    """Format for the output of the model during Masked Language Modeling"""
 
-    RE_LAYER = re.compile(r"""^(?:encoder|transformer)\.layer\.(\d+)\.""")
+    logits: torch.LongTensor
+    labels: torch.Tensor
+
+
+class MLMEncoder(BaseTransformer, DistributableModel, DualTextEncoder):
+    """Implementation of the encoder for the Masked Language Modeling task"""
+
+    maxlen: Param[Optional[int]] = None
+
+    mlm_probability: Param[float] = 0.2
+    """Probability to mask tokens"""
+
+    noinit: Param[bool] = False
+    """Whether to start pre-training from scratch or not"""
+
+    datacollator: DataCollatorForLanguageModeling = None
+
+    @property
+    def automodel(self):
+        return AutoModelForMaskedLM
+
+    def initialize(self):
+        super().initialize(self.noinit)
+        logger.info("Model initialized")
+        self.datacollator = DataCollatorForLanguageModeling(
+            tokenizer=self.tokenizer,
+            mlm_probability=self.mlm_probability,
+            return_tensors="pt",
+        )
+
+    def forward(self, texts: List[str], info: TrainerContext = None) -> MLMModelOutput:
+        tokenized = self.batch_tokenize(texts, mask=True)
+
+        masked = self.datacollator.torch_mask_tokens(tokenized.ids.cpu())
+
+        with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
+            y = self.model(
+                input_ids=masked[0].to(self.device),
+                labels=masked[1].to(self.device),
+                attention_mask=tokenized.mask.to(self.device),
+            )
+
+        # Maybe easier to simply returns the object returned by the BertForMaskedLM?
+        return MLMModelOutput(logits=y.logits, labels=masked[1])
+
+    @property
+    def dimension(self) -> int:
+        return self.config.hidden_size
+
+    def distribute_models(self, update):
+        self.model = update(self.model)
+
+
+class LayerSelector(ParametersIterator):
+    """This class can be used to pick some of the transformer layers"""
+
+    # For freezing everything except the embeddings
+    re_layer: Param[str] = r"""(?:encoder|transformer)\.layer\.(\d+)\."""
 
     transformer: Param[BaseTransformer]
-    """The model for which parameters should be frozen"""
+    """The model for which layers are selected"""
 
-    freeze_embeddings: Param[bool] = False
-    """Whether embeddings should be frozen"""
-
-    frozen: Param[int] = 0
-    """Number of frozen layers
-
-    Counting from the first processing layers (can be negative, i.e. -1 meaning
+    pick_layers: Param[int] = 0
+    """Counting from the first processing layers (can be negative, i.e. -1 meaning
     until the last layer excluded, etc. / 0 means no layer)"""
 
-    def __init__(self):
-        self._initialized = False
+    select_embeddings: Param[bool] = False
+    """Whether to pick the embeddings layer"""
+
+    select_feed_forward: Param[bool] = False
+    """Whether to pick the feed forward of Transformer layers"""
+
+    def __post_init__(self):
+        self._re_layer = re.compile(self.re_layer)
 
     def __validate__(self):
-        if not self.freeze_embeddings and self.frozen == 0:
-            raise AssertionError("The layer freezer would do nothing")
+        if (
+            not (self.select_embeddings or self.select_feed_forward)
+            and self.pick_layers == 0
+        ):
+            raise AssertionError("The layer selector will select nothing")
 
     @cached_property
     def nlayers(self):
         count = 0
-        for name, param in self.transformer.model.named_parameters():
-            if m := LayerFreezer.RE_LAYER.match(name):
+        for name, _ in self.transformer.model.named_parameters():
+            if m := self._re_layer.search(name):
                 count = max(count, int(m.group(1)))
         return count
 
-    def should_freeze(self, name: str):
-        if self.freeze_embeddings and name.startswith("embeddings."):
+    def should_pick(self, name: str) -> bool:
+        if self.select_embeddings and ("embeddings." in name):
             return True
 
-        if self.frozen != 0:
-            if m := LayerFreezer.RE_LAYER.match(name):
+        if self.select_feed_forward and ("intermediate" in name):
+            return True
+
+        if self.pick_layers != 0:
+            if m := self._re_layer.search(name):
                 layer = int(m.group(1))
-                if self.frozen < 0:
-                    return layer <= self.nlayers + self.frozen
-                return layer < self.frozen
+                if self.pick_layers < 0:
+                    return layer <= self.nlayers + self.pick_layers
+                return layer < self.pick_layers
 
         return False
+
+    def iter(self):
+        for name, params in self.transformer.model.named_parameters():
+            yield f"model.{name}", params, self.should_pick(name)
 
     def after(self, state: TrainState):
         if not self._initialized:

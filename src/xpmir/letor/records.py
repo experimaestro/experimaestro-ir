@@ -6,6 +6,7 @@ from datamaestro_text.data.ir.base import (
     Document as BaseDocument,
     TextTopic,
     TextDocument,
+    GenericDocument,
 )
 from typing import (
     Iterable,
@@ -166,6 +167,19 @@ class PointwiseRecords(BaseRecords[PointwiseRecord]):
 
     def __len__(self):
         return len(self.queries)
+
+    def __getitem__(self, ix: Union[slice, int]):
+        if isinstance(ix, slice):
+            records = PointwiseRecords()
+            for i in range(ix.start, min(ix.stop, len(self.topics)), ix.step or 1):
+                records.add(
+                    PointwiseRecord(
+                        self.topics[i], self.documents[i], self.relevances[i]
+                    )
+                )
+            return records
+
+        return PointwiseRecord(self.topics[ix], self.documents[ix], self.relevances[ix])
 
     def pairs(self) -> Tuple[List[int], List[int]]:
         ix = list(range(len(self.queries)))
@@ -403,3 +417,62 @@ class ProductRecords(BatchwiseRecords):
                 topics.append(q)
                 documents.append(d)
         return topics, documents
+
+
+class MaskedLanguageModelingRecord:
+    """A record from a masked language modeling sampler"""
+
+    # The document
+    document: DocumentRecord
+
+    def __init__(
+        self,
+        docid: str,
+        content: str,
+    ):
+        self.document = DocumentRecord(GenericDocument(id=docid, text=content))
+
+
+class MaskedLanguageModelingRecords(List[MaskedLanguageModelingRecord]):
+    """Masked Language Modeling Records are a set of documents"""
+
+    # Text of the documents
+    documents: List[DocumentRecord]
+
+    def __init__(self):
+        super().__init__()
+        self.documents = []
+
+    def add(self, record: MaskedLanguageModelingRecord):
+        self.documents.append(record.document)
+
+    def __len__(self):
+        return len(self.documents)
+
+    def __getitem__(self, ix: Union[slice, int]):
+        if isinstance(ix, slice):
+            records = MaskedLanguageModelingRecords()
+            for i in range(ix.start, min(ix.stop, len(self)), ix.step or 1):
+                records.add(
+                    MaskedLanguageModelingRecord(
+                        self.documents[i].document.id, self.documents[i].document.text
+                    )
+                )
+            return records
+
+        return MaskedLanguageModelingRecords(self.documents[ix])
+
+    @staticmethod
+    def from_texts(
+        documents: List[str],
+    ):
+        records = MaskedLanguageModelingRecords()
+        records.documents = list(documents)
+        return records
+
+    def to_texts(self) -> List[str]:
+        texts = []
+        for doc in self.documents:
+            texts.append(doc.document.text)
+
+        return texts

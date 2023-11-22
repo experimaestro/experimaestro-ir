@@ -7,7 +7,7 @@ from xpmir.papers.helpers.msmarco import RerankerMSMarcoV1Configuration
 
 @configuration()
 class Indexation(LauncherSpecification):
-    requirements: str = "duration=6 days & cpu(mem=4G, cores=8)"
+    requirements: str = "duration=6 days & cpu(cores=8)"
 
 
 @configuration()

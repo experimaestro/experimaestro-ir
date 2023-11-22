@@ -8,6 +8,7 @@ import torch.nn as nn
 from experimaestro import Config, Param
 from xpmir.learning.optim import Module
 from xpmir.letor.records import TokenizedTexts
+
 from xpmir.utils.utils import EasyLogger
 
 
@@ -16,6 +17,7 @@ class Encoder(Module, EasyLogger):
 
     def __initialize__(self):
         # Easy and hacky way to get the device
+        super().__init__()
         self._dummy_params = nn.Parameter(torch.Tensor())
 
     def static(self):
