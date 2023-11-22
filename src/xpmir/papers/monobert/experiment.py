@@ -152,7 +152,6 @@ def run(
         listeners=[validation],
         # The hook used for evaluation
         hooks=[setmeta(DistributedHook(models=[monobert_scorer]), True)],
-        use_pretasks=True,
     )
 
     # Submit job and link
@@ -165,13 +164,13 @@ def run(
         tests.evaluate_retriever(
             partial(
                 model_based_retrievers,
-                scorer=load_model,
+                scorer=monobert_scorer,
                 retrievers=test_retrievers,
                 device=device,
             ),
             launcher_evaluate,
             model_id=f"monobert-{metric_name}",
-            init_tasks=[],
+            init_tasks=[load_model],
         )
 
     return PaperResults(
