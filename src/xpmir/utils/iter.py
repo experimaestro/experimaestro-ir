@@ -10,7 +10,7 @@ logger = easylog()
 
 # --- Utility classes
 
-State = TypeVar("State", default=Any)
+State = TypeVar("State")
 T = TypeVar("T")
 U = TypeVar("U")
 
@@ -35,7 +35,7 @@ class SerializableIteratorAdapter(SerializableIterator[T, State], Generic[T, U, 
     def __init__(
         self,
         main: SerializableIterator[T, State],
-        generator: Callable[[SerializableIterator[T]], Iterator[U]],
+        generator: Callable[[SerializableIterator[T, State]], Iterator[U]],
     ):
         self.generator = generator
         self.main = main
@@ -81,7 +81,7 @@ class SerializableIteratorTransform(
         return self.transform(next(self.iterator))
 
 
-class GenericSerializableIterator(SerializableIterator[T]):
+class GenericSerializableIterator(SerializableIterator[T, State]):
     def __init__(self, iterator: Iterator[T]):
         self.iterator = iterator
         self.state = None
@@ -109,7 +109,7 @@ class GenericSerializableIterator(SerializableIterator[T]):
         return self.next()
 
 
-class RandomSerializableIterator(SerializableIterator[T]):
+class RandomSerializableIterator(SerializableIterator[T, Any]):
     """A serializable iterator based on a random seed"""
 
     def __init__(
@@ -248,11 +248,11 @@ class StatefullIterator(Iterator[Tuple[T, State]], Protocol[State]):
         ...
 
 
-class StatefullIteratorAdapter(Iterator[T]):
-    """Adapts a serializable iterator a statefull iterator that iterates over
+class StatefullIteratorAdapter(Iterator[T, State]):
+    """Adapts a serializable iterator a stateful iterator that iterates over
     (value, state) pairs"""
 
-    def __init__(self, iterator: SerializableIterator[T]):
+    def __init__(self, iterator: SerializableIterator[T, State]):
         self.iterator = iterator
 
     def __next__(self):
@@ -262,14 +262,14 @@ class StatefullIteratorAdapter(Iterator[T]):
 
 
 class MultiprocessSerializableIterator(
-    MultiprocessIterator[T], SerializableIterator[T]
+    MultiprocessIterator[T], SerializableIterator[T, State]
 ):
     """A multi-process adapter for serializable iterators
 
     This can be used to obtain a multiprocess iterator from a serializable iterator
     """
 
-    def __init__(self, iterator: SerializableIterator[T], maxsize=100):
+    def __init__(self, iterator: SerializableIterator[T, State], maxsize=100):
         super().__init__(StatefullIteratorAdapter(iterator), maxsize=maxsize)
 
     def state_dict(self) -> Dict:
