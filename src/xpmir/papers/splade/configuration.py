@@ -52,7 +52,7 @@ class Learner:
     lambda_d: float = 1.0e-4
     """the flop coefficient for document"""
 
-    lamdba_warmup_steps: int = 50000
+    lambda_warmup_steps: int = 50000
     """The numbers of the warmup steps for the lambda to reach the max value"""
 
     requirements: str = "duration=6 days & cuda(mem=24G)"
@@ -77,8 +77,12 @@ class Retrieval:
     """Top-K when building the validation set(tas-balanced)"""
 
     batch_size_full_retriever: int = 200
-    """How many documents to be process once to in the
+    """How many documents to process at once in the
     FullRetrieverScorer(batch_size)"""
+
+    batch_size_validation_retriever: int = 200
+    """How many documents to process at once in the
+    FullRetrieverScorer(batch_size) during validation"""
 
 
 @configuration()

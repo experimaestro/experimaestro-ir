@@ -91,14 +91,16 @@ class SparseRetriever(Retriever):
                 progress.update(1)
             return results
 
+        self.encoder.eval()
         batcher = self.batcher.initialize(self.batchsize)
         results = {}
         items = list(queries.items())
         with tqdm(
             desc="Retrieve documents", total=len(items), unit="queries"
         ) as progress:
-            for batch in batchiter(self.batchsize, items):
-                results = batcher.reduce(batch, reducer, results, progress)
+            with torch.no_grad():
+                for batch in batchiter(self.batchsize, items):
+                    results = batcher.reduce(batch, reducer, results, progress)
 
         return results
 

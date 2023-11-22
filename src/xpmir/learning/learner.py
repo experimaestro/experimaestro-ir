@@ -222,7 +222,7 @@ class Learner(Task, EasyLogger):
 
         # Initialize the scorer and trainer
         self.logger.info("Scorer initialization")
-        self.model.initialize(self.random.state)
+        self.model.initialize()
 
         # Initialize the context and the listeners
         self.trainer.initialize(self.random.state, self.context)

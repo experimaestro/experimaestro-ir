@@ -4,7 +4,8 @@ import logging
 from xpmir.distributed import DistributedHook
 from xpmir.learning.learner import Learner
 from xpmir.letor.learner import ValidationListener
-import xpmir.letor.trainers.pairwise as pairwise
+import xpmir.letor.trainers.pointwise as pointwise
+from xpmir.letor.samplers import PointwiseModelBasedSampler
 from xpmir.neural.cross import CrossScorer
 from experimaestro import experiment, setmeta
 from experimaestro.launcherfinder import find_launcher
@@ -17,10 +18,9 @@ from xpmir.rankers.standard import BM25
 from xpmir.text.huggingface import DualTransformerEncoder
 from xpmir.papers.results import PaperResults
 from xpmir.papers.helpers.samplers import (
-    msmarco_v1_docpairs_sampler,
-    msmarco_v1_tests,
-    msmarco_v1_validation_dataset,
+    finetuning_validation_dataset,
     prepare_collection,
+    msmarco_v1_tests,
 )
 from .configuration import Monobert
 import xpmir.interfaces.anserini as anserini
@@ -69,14 +69,20 @@ def run(
     random = cfg.random
 
     documents = prepare_collection("irds.msmarco-passage.documents")
-    ds_val = msmarco_v1_validation_dataset(
-        cfg.validation, launcher=launcher_preprocessing
+
+    train_dataset = prepare_collection("irds.msmarco-passage.train")
+    ds_val = finetuning_validation_dataset(
+        cfg.validation,
+        dataset_id="irds.msmarco-passage.dev",
+        launcher=launcher_preprocessing,
     )
 
-    tests = msmarco_v1_tests(cfg.dev_test_size)
+    tests = msmarco_v1_tests()
 
     # Setup indices and validation/test base retrievers
     retrievers, model_based_retrievers = get_retrievers(cfg)
+    train_retrievers = partial(retrievers, store=documents, k=cfg.retrieval.k)
+
     val_retrievers = partial(
         retrievers, store=documents, k=cfg.monobert.validation_top_k
     )
@@ -99,15 +105,12 @@ def run(
     # Search and evaluate with the base model
     tests.evaluate_retriever(test_retrievers, cfg.indexation.launcher)
 
-    # Define the different launchers
+    train_retrievers = train_retrievers(train_dataset.documents)
 
-    # define the trainer for monobert
-    monobert_trainer = pairwise.PairwiseTrainer(
-        lossfn=pairwise.PointwiseCrossEntropyLoss(),
-        sampler=msmarco_v1_docpairs_sampler(
-            sample_rate=cfg.monobert.sample_rate,
-            sample_max=cfg.monobert.sample_max,
-            launcher=launcher_preprocessing,
+    monobert_trainer = pointwise.PointwiseTrainer(
+        lossfn=pointwise.BinaryCrossEntropyLoss(),
+        sampler=PointwiseModelBasedSampler(
+            dataset=train_dataset, retriever=train_retrievers
         ),
         batcher=PowerAdaptativeBatcher(),
         batch_size=cfg.monobert.optimization.batch_size,
@@ -149,10 +152,10 @@ def run(
         optimizers=cfg.monobert.optimization.optimizer,
         max_epochs=cfg.monobert.optimization.max_epochs,
         # The listeners (here, for validation)
-        listeners=[validation],
+        # listeners=[validation],
+        listeners=[],
         # The hook used for evaluation
         hooks=[setmeta(DistributedHook(models=[monobert_scorer]), True)],
-        use_pretasks=True,
     )
 
     # Submit job and link
@@ -161,23 +164,22 @@ def run(
 
     # Evaluate the neural model on test collections
     for metric_name in validation.monitored():
-        load_model = outputs.listeners[validation.id][metric_name]
+        model = outputs.learned_model  # type: CrossScorer
         tests.evaluate_retriever(
             partial(
                 model_based_retrievers,
-                scorer=load_model,
+                scorer=model,
                 retrievers=test_retrievers,
                 device=device,
             ),
             launcher_evaluate,
             model_id=f"monobert-{metric_name}",
-            init_tasks=[],
         )
 
     return PaperResults(
-        models={"monobert-RR@10": outputs.listeners[validation.id]["RR@10"]},
+        models={"monobert-last": outputs.learned_model},
         evaluations=tests,
-        tb_logs={"monobert-RR@10": learner.logpath},
+        tb_logs={"monobert-last": learner.logpath},
     )
 
 

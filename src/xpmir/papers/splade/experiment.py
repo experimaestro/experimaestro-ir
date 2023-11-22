@@ -30,12 +30,12 @@ from xpmir.learning.batchers import PowerAdaptativeBatcher
 from xpmir.rankers.standard import BM25
 from xpmir.neural.splade import spladeV2_max, spladeV2_doc
 from xpmir.papers.results import PaperResults
-from xpmir.papers.helpers.msmarco import (
-    v1_tests,
-    v1_validation_dataset,
-    v1_passages,
-    v1_docpairs_sampler,
-    hofstaetter_ensemble_hard_negatives,
+from xpmir.papers.helpers.samplers import (
+    msmarco_v1_tests,
+    msmarco_v1_validation_dataset,
+    msmarco_v1_docpairs_sampler,
+    msmarco_hofstaetter_ensemble_hard_negatives,
+    prepare_collection,
 )
 from xpmir.datasets.adapters import RetrieverBasedCollection
 from xpmir.rankers.full import FullRetriever
@@ -62,10 +62,10 @@ def run(
     device = cfg.device
     random = cfg.random
 
-    documents = v1_passages()
-    ds_val_all = v1_validation_dataset(cfg.validation)
+    documents = prepare_collection("irds.msmarco-passage.documents")
+    ds_val_all = msmarco_v1_validation_dataset(cfg.validation)
 
-    tests = v1_tests(cfg.dev_test_size)
+    tests = msmarco_v1_tests(cfg.dev_test_size)
 
     # -----The baseline------
     base_model = BM25()
@@ -102,14 +102,14 @@ def run(
         spladev2, flops = spladeV2_max(
             cfg.splade.lambda_q,
             cfg.splade.lambda_d,
-            cfg.splade.lamdba_warmup_steps,
+            cfg.splade.lambda_warmup_steps,
             hf_id=cfg.base_hf_id,
         )
     elif cfg.splade.model == "splade_doc":
         spladev2, flops = spladeV2_doc(
             cfg.splade.lambda_q,
             cfg.splade.lambda_d,
-            cfg.splade.lamdba_warmup_steps,
+            cfg.splade.lambda_warmup_steps,
             hf_id=cfg.base_hf_id,
         )
     else:
@@ -118,7 +118,7 @@ def run(
     # Sampler
     if cfg.splade.dataset == "":
         splade_sampler = PairwiseInBatchNegativesSampler(
-            sampler=v1_docpairs_sampler(
+            sampler=msmarco_v1_docpairs_sampler(
                 sample_rate=cfg.splade.sample_rate, sample_max=cfg.splade.sample_max
             )
         )
@@ -132,7 +132,7 @@ def run(
     elif cfg.splade.dataset == "hofstaetter_kd_hard_negatives":
         batchwise_trainer_flops = DistillationPairwiseTrainer(
             batch_size=cfg.splade.optimization.batch_size,
-            sampler=hofstaetter_ensemble_hard_negatives(),
+            sampler=msmarco_hofstaetter_ensemble_hard_negatives(),
             lossfn=MSEDifferenceLoss(),
             hooks=[flops],
         )
