@@ -1,14 +1,6 @@
 import numpy as np
 import torch.multiprocessing as mp
-from typing import (
-    Generic,
-    Callable,
-    Dict,
-    Tuple,
-    Iterator,
-    Protocol,
-    TypeVar,
-)
+from typing import Generic, Callable, Dict, Tuple, Iterator, Protocol, TypeVar, Any
 from xpmir.utils.utils import easylog
 from abc import abstractmethod
 import logging
@@ -18,7 +10,7 @@ logger = easylog()
 
 # --- Utility classes
 
-State = TypeVar("State")
+State = TypeVar("State", default=Any)
 T = TypeVar("T")
 U = TypeVar("U")
 
