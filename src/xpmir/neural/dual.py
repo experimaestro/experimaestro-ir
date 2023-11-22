@@ -187,14 +187,15 @@ class FlopsRegularizer(DualVectorListener):
             info.metrics.add(
                 ScalarMetric(
                     "sparsity_q",
-                    (queries != 0).sum().item() / (queries.shape[0] * queries.shape[1]),
+                    torch.count_nonzero(queries).item()
+                    / (queries.shape[0] * queries.shape[1]),
                     len(q),
                 )
             )
             info.metrics.add(
                 ScalarMetric(
                     "sparsity_d",
-                    (documents != 0).sum().item()
+                    torch.count_nonzero(documents).item()
                     / (documents.shape[0] * documents.shape[1]),
                     len(d),
                 )

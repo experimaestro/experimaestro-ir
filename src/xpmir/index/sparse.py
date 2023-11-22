@@ -21,6 +21,7 @@ from xpmir.utils.utils import batchiter, easylog
 from xpmir.letor import Device, DEFAULT_DEVICE
 from xpmir.text.encoders import TextEncoder
 from xpmir.rankers import Retriever, ScoredDocument
+from xpmir.utils.iter import MultiprocessIterator
 import xpmir_rust
 
 logger = easylog()
@@ -90,14 +91,16 @@ class SparseRetriever(Retriever):
                 progress.update(1)
             return results
 
+        self.encoder.eval()
         batcher = self.batcher.initialize(self.batchsize)
         results = {}
         items = list(queries.items())
         with tqdm(
             desc="Retrieve documents", total=len(items), unit="queries"
         ) as progress:
-            for batch in batchiter(self.batchsize, items):
-                results = batcher.reduce(batch, reducer, results, progress)
+            with torch.no_grad():
+                for batch in batchiter(self.batchsize, items):
+                    results = batcher.reduce(batch, reducer, results, progress)
 
         return results
 
@@ -178,7 +181,7 @@ class SparseRetrieverIndexBuilder(Task):
         doc_iter = tqdm(
             zip(
                 range(sys.maxsize if self.max_docs == 0 else self.max_docs),
-                self.documents.iter_documents(),
+                MultiprocessIterator(self.documents.iter_documents()),
             ),
             total=self.documents.documentcount
             if self.max_docs == 0

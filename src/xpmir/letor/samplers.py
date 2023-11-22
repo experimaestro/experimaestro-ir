@@ -9,7 +9,11 @@ from datamaestro_text.data.ir import (
     PairwiseSample,
     DocumentStore,
 )
-from datamaestro_text.data.ir.base import IDDocument, IDTopic, TextTopic
+from datamaestro_text.data.ir.base import (
+    IDDocument,
+    IDTopic,
+    TextTopic,
+)
 from experimaestro import Param, tqdm, Task, Annotated, pathgenerator
 from experimaestro.annotations import cache
 import torch
@@ -114,17 +118,21 @@ class ModelBasedSampler(Sampler):
     def __validate__(self) -> None:
         super().__validate__()
 
-        assert (
-            self.retriever.get_store() is not None
-        ), "The retriever has no associated document store"
+        assert self.retriever.get_store() is not None or isinstance(
+            self.dataset.documents, DocumentStore
+        ), "The retriever has no associated document store (to get document text)"
 
     def initialize(self, random):
         super().initialize(random)
-        self._store = self.retriever.get_store()
+        self._store = self.retriever.get_store() or self.dataset.documents
+        assert self._store is not None, "No document store found"
 
     def document(self, doc_id):
         """Returns the document textual content"""
         return self._store.document_ext(doc_id)
+
+    def document_text(self, doc_id):
+        return self.document(doc_id).get_text()
 
     @cache("run")
     def _itertopics(
@@ -146,9 +154,9 @@ class ModelBasedSampler(Sampler):
                 assessments: Dict[str, Dict[str, float]] = {}
                 for qrels in self.dataset.assessments.iter():
                     doc2rel = {}
-                    assessments[qrels.qid] = doc2rel
+                    assessments[qrels.topic_id] = doc2rel
                     for qrel in qrels.assessments:
-                        doc2rel[qrel.docid] = qrel.rel
+                        doc2rel[qrel.doc_id] = qrel.rel
                 self.logger.info("Read assessments for %d topics", len(assessments))
 
                 self.logger.info("Retrieving documents for each topic")
@@ -159,11 +167,11 @@ class ModelBasedSampler(Sampler):
                 # Retrieve documents
                 skipped = 0
                 for query in tqdm(queries):
-                    qassessments = assessments.get(query.qid, None)
+                    qassessments = assessments.get(query.get_id(), None)
                     if not qassessments:
                         skipped += 1
                         self.logger.warning(
-                            "Skipping topic %s (no assessments)", query.qid
+                            "Skipping topic %s (no assessments)", query.get_id()
                         )
                         continue
 
@@ -179,7 +187,7 @@ class ModelBasedSampler(Sampler):
 
                     if not positives:
                         self.logger.warning(
-                            "Skipping topic %s (no relevant documents)", query.qid
+                            "Skipping topic %s (no relevant documents)", query.get_id()
                         )
                         skipped += 1
                         continue
@@ -191,16 +199,16 @@ class ModelBasedSampler(Sampler):
                     negatives = []
                     for rank, sd in enumerate(scoreddocuments):
                         # Get the assessment (assumes not relevant)
-                        rel = qassessments.get(sd.docid, 0)
+                        rel = qassessments.get(sd.document.get_id(), 0)
                         if rel > 0:
                             continue
 
-                        negatives.append((sd.docid, rel, sd.score))
-                        fp.write(f"\t{sd.docid}\t{sd.score}\t{rel}\n")
+                        negatives.append((sd.document.get_id(), rel, sd.score))
+                        fp.write(f"\t{sd.document.get_id()}\t{sd.score}\t{rel}\n")
 
                     if not negatives:
                         self.logger.warning(
-                            "Skipping topic %s (no negatives documents)", query.qid
+                            "Skipping topic %s (no negatives documents)", query.get_id()
                         )
                         skipped += 1
                         continue
@@ -253,18 +261,23 @@ class PointwiseModelBasedSampler(PointwiseSampler, ModelBasedSampler):
             "Loaded %d/%d pos/neg records", len(self.pos_records), len(self.neg_records)
         )
 
-    def prepare(self, record: PointwiseRecord):
-        if record.document.text is None:
-            record.document.text = self.document_text(record.document.docid)
-        return record
+    def prepare(self, sample: Tuple[str, int, float]):
+        assert self.document_text(sample[1]) is not None
+        document = self.document_text(sample[1])
 
-    def readrecords(self, runpath):
+        return PointwiseRecord(
+            topic=TopicRecord(TextTopic(sample[0])),
+            document=DocumentRecord(document=document),
+            relevance=sample[3],
+        )
+
+    def readrecords(self, runpath=None):
         pos_records, neg_records = [], []
         for title, positives, negatives in self._itertopics():
             for docno, rel, score in positives:
-                self.pos_records.append(PointwiseRecord(title, docno, None, score, rel))
+                pos_records.append((title, docno, score, rel))
             for docno, rel, score in negatives:
-                self.neg_records.append(PointwiseRecord(title, docno, None, score, rel))
+                neg_records.append((title, docno, score, rel))
 
         return pos_records, neg_records
 
@@ -276,6 +289,19 @@ class PointwiseModelBasedSampler(PointwiseSampler, ModelBasedSampler):
                 yield self.prepare(self.pos_records[self.random.randint(0, npos)])
             else:
                 yield self.prepare(self.neg_records[self.random.randint(0, nneg)])
+
+    def pointwise_iter(self) -> SerializableIterator[PointwiseRecord]:
+        npos = len(self.pos_records)
+        nneg = len(self.neg_records)
+
+        def iter(random):
+            while True:
+                if self.random.random() < self.relevant_ratio:
+                    yield self.prepare(self.pos_records[self.random.randint(0, npos)])
+                else:
+                    yield self.prepare(self.neg_records[self.random.randint(0, nneg)])
+
+        return RandomSerializableIterator(self.random, iter)
 
 
 class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
@@ -297,8 +323,9 @@ class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
         text = None
         while text is None:
             docid, rel, score = samples[self.random.randint(0, len(samples))]
-            text = self.document_text(docid)
-        return DocumentRecord(docid, text, score)
+            document = self.document(docid)
+            text = document.get_text()
+        return ScoredDocumentRecord(document, score)
 
     def pairwise_iter(self) -> SerializableIterator[PairwiseRecord]:
         def iter(random):
@@ -453,7 +480,7 @@ class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
 
 # --- Dataloader
 
-# FIXME: A class for loading the data, need to move the other places.
+# A class for loading the data, need to move the other places.
 class PairwiseSampleDatasetFromTSV(PairwiseSampleDataset):
     """Read the pairwise sample dataset from a csv file"""
 
@@ -466,11 +493,11 @@ class PairwiseSampleDatasetFromTSV(PairwiseSampleDataset):
             query = triplet[0]
             positives = triplet[2].split(" ")
             negatives = triplet[4].split(" ")
-            # FIXME: at the moment, I don't have some good idea to store the algo
+            # at the moment, I don't have some good idea to store the algo
             yield PairwiseSample(query, positives, negatives)
 
 
-# FIXME: A class for loading the data, need to move the other places.
+# A class for loading the data, need to move the other places.
 class PairwiseSamplerFromTSV(PairwiseSampler):
 
     pairwise_samples_path: Param[Path]
@@ -645,7 +672,7 @@ class TeacherModelBasedHardNegativesTripletSampler(Task, Sampler):
         # create the file
         self.hard_negative_triplet.parent.mkdir(parents=True, exist_ok=True)
 
-        # FIXME: make the tqdm progressing wrt one record, not a batch of records
+        # make the tqdm progressing wrt one record, not a batch of records
         with self.hard_negative_triplet.open("wt") as fp:
             for batch in tqdm(self.iter_batches()):
 

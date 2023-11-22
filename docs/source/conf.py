@@ -149,6 +149,7 @@ import torch.nn as nn  # noqa: E402
 
 class TorchModule:
     to = None
+    train = None
 
 
 nn.Module = TorchModule

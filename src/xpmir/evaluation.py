@@ -2,12 +2,13 @@ import sys
 from itertools import chain
 import pandas as pd
 from pathlib import Path
-from typing import DefaultDict, Dict, List, Protocol, Union, Tuple
+from typing import DefaultDict, Dict, List, Protocol, Union, Tuple, Optional
 import ir_measures
-from datamaestro_text.data.ir import Adhoc, AdhocAssessments, Documents
 from experimaestro import Task, Param, pathgenerator, Annotated, tags, TagDict
+from datamaestro_text.data.ir import Adhoc, AdhocAssessments, Documents
 from datamaestro_text.data.ir import AdhocResults
 from datamaestro_text.data.ir.trec import TrecAdhocRun, TrecAdhocResults
+from datamaestro_text.transforms.ir import TopicWrapper
 from xpmir.measures import Measure
 import xpmir.measures as m
 from xpmir.metrics import evaluator
@@ -122,6 +123,9 @@ class Evaluate(BaseEvaluation, Task):
     retriever: Param[Retriever]
     """The retriever to evaluate"""
 
+    topic_wrapper: Param[Optional[TopicWrapper]] = None
+    """Topic extractor"""
+
     def execute(self):
         self.retriever.initialize()
         run = get_run(self.retriever, self.dataset)
@@ -144,11 +148,20 @@ class Evaluations:
     results: List[BaseEvaluation]
     per_tag: Dict[TagDict, AdhocResults]
 
-    def __init__(self, dataset: Adhoc, measures: List[Measure]):
+    topic_wrapper: Optional[TopicWrapper]
+
+    def __init__(
+        self,
+        dataset: Adhoc,
+        measures: List[Measure],
+        *,
+        topic_wrapper: Optional[TopicWrapper] = None,
+    ):
         self.dataset = dataset
         self.measures = measures
         self.results = []
         self.per_tags = {}
+        self.topic_wrapper = topic_wrapper
 
     def evaluate_retriever(
         self,
@@ -161,8 +174,12 @@ class Evaluations:
             retriever = retriever(self.dataset.documents)
 
         evaluation: AdhocResults = Evaluate(
-            retriever=retriever, measures=self.measures, dataset=self.dataset
+            retriever=retriever,
+            measures=self.measures,
+            dataset=self.dataset,
+            topic_wrapper=self.topic_wrapper,
         ).submit(launcher=launcher, init_tasks=init_tasks)
+
         self.add(evaluation)
 
         # Use retriever tags

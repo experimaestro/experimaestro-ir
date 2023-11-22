@@ -5,15 +5,14 @@ from datamaestro import prepare_dataset
 import logging
 import multiprocessing
 
-
-logging.basicConfig(level=logging.INFO)
-CPU_COUNT = multiprocessing.cpu_count()
-
-
 from experimaestro import experiment
 from xpmir.evaluation import Evaluate
 from xpmir.rankers.standard import BM25
 from xpmir.interfaces.anserini import AnseriniRetriever, IndexCollection
+
+
+logging.basicConfig(level=logging.INFO)
+CPU_COUNT = multiprocessing.cpu_count()
 
 # --- Defines the experiment
 
@@ -51,8 +50,8 @@ def cli(port, workdir, dataset, debug):
 
         bm25_eval = Evaluate(dataset=ds, retriever=bm25_retriever).submit()
 
-    print("BM25 results on TREC 1")
-    print(bm25_eval.results.read_text())
+    logging.info("BM25 results on TREC 1")
+    logging.info(bm25_eval.results.read_text())
 
 
 if __name__ == "__main__":

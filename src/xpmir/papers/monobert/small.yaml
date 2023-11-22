@@ -14,7 +14,7 @@ validation:
     size: 10
 
 indexation:
-    requirements: duration=2 days & cpu(mem=4G)
+    requirements: duration=1 days & cpu(cores=4)
 
 retrieval:
     requirements: duration=2 days & cuda(mem=8G)
@@ -36,4 +36,4 @@ monobert:
 
     validation_interval: 1
     validation_top_k: 20
-    requirements: duration=2 days & cuda(mem=8G)
+    requirements: duration=1 days & cuda(mem=8G)

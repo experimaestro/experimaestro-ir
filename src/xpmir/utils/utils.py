@@ -187,7 +187,9 @@ def find_java_home(min_version: int = 6) -> str:
             )
 
             if m := re.search(
-                rb".*\n\s+java.version = (\d+)\.[\d\.]+\n.*", p.stderr, re.MULTILINE
+                rb".*\n\s+java.version = (\d+)\.[\d\.]+(-\w+)?\n.*",
+                p.stderr,
+                re.MULTILINE,
             ):
                 version = int(m[1].decode())
                 if min_version <= version:

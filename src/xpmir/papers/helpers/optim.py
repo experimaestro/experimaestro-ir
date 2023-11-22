@@ -53,6 +53,18 @@ class TransformerOptimization:
             else None
         )
 
+        if not self.re_no_l2_regularization:
+            return get_optimizers(
+                [
+                    ParameterOptimizer(
+                        scheduler=scheduler,
+                        optimizer=AdamW(
+                            lr=self.lr, weight_decay=self.weight_decay, eps=self.eps
+                        ),
+                    ),
+                ]
+            )
+
         return get_optimizers(
             [
                 ParameterOptimizer(
@@ -60,28 +72,6 @@ class TransformerOptimization:
                     optimizer=AdamW(lr=self.lr, weight_decay=0, eps=self.eps),
                     filter=RegexParameterFilter(includes=self.re_no_l2_regularization),
                 ),
-                ParameterOptimizer(
-                    scheduler=scheduler,
-                    optimizer=AdamW(
-                        lr=self.lr, weight_decay=self.weight_decay, eps=self.eps
-                    ),
-                ),
-            ]
-        )
-
-    @cached_property
-    def optimizer_splade(self):
-        scheduler = (
-            LinearWithWarmup(
-                num_warmup_steps=self.num_warmup_steps,
-                min_factor=self.warmup_min_factor,
-            )
-            if self.scheduler
-            else None
-        )
-
-        return get_optimizers(
-            [
                 ParameterOptimizer(
                     scheduler=scheduler,
                     optimizer=AdamW(

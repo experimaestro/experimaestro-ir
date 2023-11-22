@@ -18,16 +18,16 @@ from xpmir.neural.cross import DuoCrossScorer
 from experimaestro import experiment, setmeta
 from xpmir.learning.batchers import PowerAdaptativeBatcher
 from xpmir.papers.cli import paper_command
-from xpmir.papers.helpers.msmarco import (
-    v1_docpairs_sampler,
-    v1_tests,
-    v1_validation_dataset,
+from xpmir.papers.helpers.samplers import (
+    prepare_collection,
+    msmarco_v1_docpairs_sampler,
+    msmarco_v1_tests,
+    msmarco_v1_validation_dataset,
 )
 from xpmir.text.huggingface import DualDuoBertTransformerEncoder
 from xpmir.papers.monobert.experiment import (
     get_retrievers,
     run as monobert_run,
-    v1_passages,
 )
 from xpmir.papers.results import PaperResults
 from .configuration import DuoBERT
@@ -42,18 +42,18 @@ def run(xp: experiment, cfg: DuoBERT, tensorboard_service: TensorboardService):
     launcher_evaluate = find_launcher(cfg.retrieval.requirements)
 
     monobert_scorer = monobert_results.models["monobert-RR@10"]
-    documents = v1_passages()
+    documents = prepare_collection("irds.msmarco-passage.documents")
     device = cfg.device
     random = cfg.random
-    ds_val = v1_validation_dataset(cfg.validation)
-    tests = v1_tests()
+    ds_val = msmarco_v1_validation_dataset(cfg.validation)
+    tests = msmarco_v1_tests()
 
     # ------Start the code for the duobert
 
     # Define the trainer for the duobert
     duobert_trainer = pairwise.DuoPairwiseTrainer(
         lossfn=pairwise.PairwiseLossWithTarget().tag("loss", "duo_logp"),
-        sampler=v1_docpairs_sampler(),
+        sampler=msmarco_v1_docpairs_sampler(),
         batcher=PowerAdaptativeBatcher(),
         batch_size=cfg.duobert.optimization.batch_size,
     )

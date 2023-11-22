@@ -1,4 +1,5 @@
 from typing import Dict
+import logging
 from torch.utils.tensorboard.writer import SummaryWriter
 
 
@@ -40,6 +41,8 @@ class ScalarMetric(Metric):
         self.count += other.count
 
     def report(self, step: int, writer: SummaryWriter, prefix: str):
+        if self.count == 0:
+            logging.warning("Count is 0 when reporting metrics")
         writer.add_scalar(
             f"{prefix}/{self.key}",
             self.sum / self.count,

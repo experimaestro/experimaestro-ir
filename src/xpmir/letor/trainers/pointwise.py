@@ -1,13 +1,15 @@
+from dataclasses import InitVar
 import sys
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from experimaestro import Param, Config
-from xpmir.letor.records import PointwiseRecords
+from xpmir.letor.records import PointwiseRecords, PointwiseRecord
 from xpmir.letor.trainers import LossTrainer
 from xpmir.learning.context import Loss, TrainerContext
 from xpmir.rankers import LearnableScorer, ScorerOutputType
+from xpmir.letor.samplers import PointwiseSampler, SerializableIterator
 
 
 class PointwiseLoss(Config):
@@ -39,7 +41,7 @@ class BinaryCrossEntropyLoss(PointwiseLoss):
     not a probability
     """
 
-    NAME = "ce"
+    NAME = "bce"
 
     def initialize(self, scorer: LearnableScorer):
         if scorer.outputType == ScorerOutputType.PROBABILITY:
@@ -48,7 +50,8 @@ class BinaryCrossEntropyLoss(PointwiseLoss):
             self.loss = nn.BCEWithLogitsLoss()
 
     def compute(self, rel_scores, target_relscores):
-        return self.loss(rel_scores, (target_relscores > 0).float())
+        device = target_relscores.device
+        return self.loss(rel_scores.to(device), (target_relscores > 0).float())
 
 
 class PointwiseTrainer(LossTrainer):
@@ -57,46 +60,45 @@ class PointwiseTrainer(LossTrainer):
     lossfn: Param[PointwiseLoss] = MSELoss()
     """Loss function to use"""
 
-    def initialize(self, random: np.random.RandomState, ranker, context):
+    sampler: Param[PointwiseSampler]
+    """The pairwise sampler"""
+
+    sampler_iter: InitVar[SerializableIterator[PointwiseRecord]]
+
+    def initialize(self, random: np.random.RandomState, context):
         super().initialize(random, context)
 
         self.sampler.initialize(self.random)
-        self.lossfn.initialize(ranker)
+        self.lossfn.initialize(self.ranker)
 
         self.random = random
-        self.train_iter_core = self.sampler.record_iter()
-        self.train_iter = self.iter_batches(self.train_iter_core)
+        self.sampler_iter = self.sampler.pointwise_iter()
 
     def __validate__(self):
-        assert self.grad_acc_batch >= 0, "Adaptative batch size not implemented"
+        # assert self.grad_acc_batch >= 0, "Adaptative batch size not implemented"
+        pass
 
-    def iter_batches(self, it):
+    def iter_batches(self):
         while True:
             batch = PointwiseRecords()
-            for _, record in zip(range(self.batch_size), it):
+            for _, record in zip(range(self.batch_size), self.sampler_iter):
                 batch.add(record)
 
             yield batch
 
-    def train_batch(self, info: TrainerContext):
-        # Get the next batch
-        batch = next(self.train_iter)
+    def train_batch(self, records: PointwiseRecords):
 
-        rel_scores = self.ranker(batch)
+        rel_scores = self.ranker(records, self.context)
+
         if torch.isnan(rel_scores).any() or torch.isinf(rel_scores).any():
             self.logger.error("nan or inf relevance score detected. Aborting.")
             sys.exit(1)
 
-        target_relscores = torch.FloatTensor(batch.relevances).to(self.device)
-
-        # TODO: is this needed?
-        target_relscores[
-            target_relscores == -999.0
-        ] = 0.0  # replace -999 with non-relevant score
+        target_relscores = torch.FloatTensor(records.relevances)
 
         rel_scores = rel_scores.flatten()
 
-        loss = self.lossfn.compute(rel_scores, target_relscores)
+        self.lossfn.process(rel_scores, target_relscores, self.context)
 
         # TODO: Create classes for the missing losses
         # Apply the loss
@@ -137,4 +139,3 @@ class PointwiseTrainer(LossTrainer):
         #     loss = rel_scores.mean()
         # else:
         #     raise ValueError(f"unknown lossfn `{self.lossfn}`")
-        return loss

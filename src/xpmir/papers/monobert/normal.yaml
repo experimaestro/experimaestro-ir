@@ -29,9 +29,9 @@ monobert:
         lr: 3.0e-6
         eps: 1.0e-6
 
-    validation_interval: 32
+    validation_interval: 400
     requirements: duration=4 days & cuda(mem=24G) * 2
 
 retrieval:
-    requirements: duration=12h & cuda(mem=24G)
-    k: 1000
+    requirements: duration=12h & cuda(mem=24G) * 2
+    k: 100
