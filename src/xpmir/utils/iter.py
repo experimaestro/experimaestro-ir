@@ -1,6 +1,16 @@
 import numpy as np
 import torch.multiprocessing as mp
-from typing import Generic, Callable, Dict, Tuple, Iterator, Protocol, TypeVar, Any
+from typing import (
+    Generic,
+    Callable,
+    Dict,
+    Tuple,
+    Iterator,
+    Protocol,
+    TypeVar,
+    Any,
+    TypedDict,
+)
 from xpmir.utils.utils import easylog
 from abc import abstractmethod
 import logging
@@ -87,16 +97,16 @@ class GenericSerializableIterator(SerializableIterator[T, State]):
         self.state = None
 
     @abstractmethod
-    def state_dict(self):
+    def state_dict(self) -> State:
         """Generate the current state dictionary"""
         ...
 
     @abstractmethod
-    def restore_state(self, state):
+    def restore_state(self, state: State):
         """Restore the iterator"""
         ...
 
-    def load_state_dict(self, state):
+    def load_state_dict(self, state: State):
         self.state = state
 
     def __next__(self):
@@ -140,7 +150,13 @@ class RandomSerializableIterator(SerializableIterator[T, Any]):
         return next(self.iter)
 
 
-class SkippingIterator(GenericSerializableIterator[T]):
+class SkippingIteratorState(TypedDict):
+    """Skipping iterator state"""
+
+    count: int
+
+
+class SkippingIterator(GenericSerializableIterator[T, SkippingIteratorState]):
     """An iterator that skips the first entries and can output its state
 
     When serialized (i.e. checkpointing), the iterator saves the current
@@ -155,10 +171,10 @@ class SkippingIterator(GenericSerializableIterator[T]):
         super().__init__(iterator)
         self.position = 0
 
-    def state_dict(self):
+    def state_dict(self) -> SkippingIteratorState:
         return {"count": self.position}
 
-    def restore_state(self, state):
+    def restore_state(self, state: SkippingIteratorState):
         count = state["count"]
         logger.info("Skipping %d records to match state (sampler)", count)
 
