@@ -19,8 +19,7 @@ build:
   jobs:
     # Remove the requirements not needed to build the documentation
     post_checkout:
-      - "/usr/bin/sed -i -e '/SKIP_DOCBUILD/,$d' requirements.txt"
-
+      - /usr/bin/sh docs/rtd.sh
 
 # Install the packages
 python:
