@@ -15,9 +15,15 @@ build:
   tools:
     python: "3.9"
 
+
+  jobs:
+    # Remove the requirements not needed to build the documentation
+    post_checkout:
+      - sed -i -e '/SKIP_DOCBUILD/,$d' requirements.txt
+
+
 # Install the packages
 python:
   install:
-    - method: pip
-      path: .
+    - requirements: docs/requirements-base.txt
     - requirements: docs/requirements.txt
