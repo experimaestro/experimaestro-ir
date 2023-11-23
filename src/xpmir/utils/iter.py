@@ -248,7 +248,7 @@ class StatefullIterator(Iterator[Tuple[T, State]], Protocol[State]):
         ...
 
 
-class StatefullIteratorAdapter(Iterator[T, State]):
+class StatefullIteratorAdapter(Iterator[T], Generic[T, State]):
     """Adapts a serializable iterator a stateful iterator that iterates over
     (value, state) pairs"""
 
