@@ -1,4 +1,5 @@
 import asyncio
+from functools import cached_property
 from pathlib import Path
 import attrs
 import contextlib
@@ -277,22 +278,25 @@ class AnseriniRetriever(Retriever):
     model: Param[Model]
     k: Param[int] = 1500
 
-    def __post_init__(self):
+    @cached_property
+    def searcher(self):
         from pyserini.search.lucene import LuceneSearcher
 
-        self.searcher = LuceneSearcher(str(self.index.path))
+        searcher = LuceneSearcher(str(self.index.path))
 
         modelhandler = Handler()
 
         @modelhandler()
         def handle_bm25(bm25: BM25):
-            self.searcher.set_bm25(bm25.k1, bm25.b)
+            searcher.set_bm25(bm25.k1, bm25.b)
 
         @modelhandler()
         def handle_qld(qld: QLDirichlet):
-            self.searcher.set_qld(qld.mu)
+            searcher.set_qld(qld.mu)
 
         modelhandler[self.model]
+
+        return searcher
 
     def _get_store(self) -> Optional[Index]:
         """Returns the associated index (if any)"""

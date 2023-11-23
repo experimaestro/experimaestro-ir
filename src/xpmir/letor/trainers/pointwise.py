@@ -1,3 +1,4 @@
+from typing import Any
 from dataclasses import InitVar
 import sys
 import numpy as np
@@ -63,7 +64,7 @@ class PointwiseTrainer(LossTrainer):
     sampler: Param[PointwiseSampler]
     """The pairwise sampler"""
 
-    sampler_iter: InitVar[SerializableIterator[PointwiseRecord]]
+    sampler_iter: InitVar[SerializableIterator[PointwiseRecord, Any]]
 
     def initialize(self, random: np.random.RandomState, context):
         super().initialize(random, context)

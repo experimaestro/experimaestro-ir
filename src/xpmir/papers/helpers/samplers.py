@@ -1,7 +1,6 @@
 # Utility functions for MS-Marco experiments
 
 from typing import Union
-from functools import cache
 
 from experimaestro import Launcher
 
@@ -13,6 +12,7 @@ from datamaestro_text.transforms.ir import (
 )
 from datamaestro_text.data.ir import Documents, Adhoc
 
+from xpmir.utils.functools import cache
 from xpmir.datasets.adapters import RandomFold
 from xpmir.evaluation import Evaluations, EvaluationsCollection
 from xpmir.letor.samplers import TripletBasedSampler

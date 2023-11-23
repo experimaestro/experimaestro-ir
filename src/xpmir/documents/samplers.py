@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Iterator
+from typing import Optional, Tuple, Iterator, Any
 from experimaestro import Config, Param
 import torch
 import numpy as np
@@ -92,7 +92,9 @@ class BatchwiseRandomSpanSampler(DocumentSampler, BatchwiseSampler):
     max_spansize: Param[int] = 1000
     """Maximum span size in number of characters"""
 
-    def batchwise_iter(self, batch_size: int) -> SerializableIterator[ProductRecords]:
+    def batchwise_iter(
+        self, batch_size: int
+    ) -> SerializableIterator[ProductRecords, Any]:
         def iterator(random: np.random.RandomState):
             # Pre-compute relevance matrix
             relevances = torch.diag(torch.ones(batch_size, dtype=torch.float))

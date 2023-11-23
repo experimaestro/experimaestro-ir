@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Iterator, List, Tuple, Dict
+from typing import Iterator, List, Tuple, Dict, Any
 import numpy as np
 from datamaestro_text.data.ir import (
     Adhoc,
@@ -46,7 +46,7 @@ logger = easylog()
 
 
 class PointwiseSampler(Sampler):
-    def pointwise_iter(self) -> SerializableIterator[PointwiseRecord]:
+    def pointwise_iter(self) -> SerializableIterator[PointwiseRecord, Any]:
         """Iterable over pointwise records"""
         raise NotImplementedError(f"{self.__class__} should implement PointwiseRecord")
 
@@ -55,7 +55,7 @@ class PairwiseSampler(Sampler):
     """Abstract class for pairwise samplers which output a set of (query,
     positive, negative) triples"""
 
-    def pairwise_iter(self) -> SerializableIterator[PairwiseRecord]:
+    def pairwise_iter(self) -> SerializableIterator[PairwiseRecord, Any]:
         """Iterate over batches of size (# of queries) batch_size
 
         Args:
@@ -63,7 +63,7 @@ class PairwiseSampler(Sampler):
         """
         raise NotImplementedError(f"{self.__class__} should implement __iter__")
 
-    def pairwise_batch_iter(self, size) -> SerializableIterator[PairwiseRecords]:
+    def pairwise_batch_iter(self, size) -> SerializableIterator[PairwiseRecords, Any]:
         """Batchwise iterator
 
         Can be subclassed by some classes to be more efficient"""
@@ -91,7 +91,9 @@ class BatchwiseSampler(Sampler):
     """Base class for batchwise samplers, that provide for each question a list
     of documents"""
 
-    def batchwise_iter(self, batch_size: int) -> SerializableIterator[BatchwiseRecords]:
+    def batchwise_iter(
+        self, batch_size: int
+    ) -> SerializableIterator[BatchwiseRecords, Any]:
         """Iterate over batches of size (# of queries) batch_size
 
         Args:
@@ -289,7 +291,7 @@ class PointwiseModelBasedSampler(PointwiseSampler, ModelBasedSampler):
             else:
                 yield self.prepare(self.neg_records[self.random.randint(0, nneg)])
 
-    def pointwise_iter(self) -> SerializableIterator[PointwiseRecord]:
+    def pointwise_iter(self) -> SerializableIterator[PointwiseRecord, Any]:
         npos = len(self.pos_records)
         nneg = len(self.neg_records)
 
@@ -326,7 +328,7 @@ class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
             text = document.get_text()
         return ScoredDocumentRecord(document, score)
 
-    def pairwise_iter(self) -> SerializableIterator[PairwiseRecord]:
+    def pairwise_iter(self) -> SerializableIterator[PairwiseRecord, Any]:
         def iter(random):
             while True:
                 title, positives, negatives = self.topics[
@@ -351,7 +353,9 @@ class PairwiseInBatchNegativesSampler(BatchwiseSampler):
         super().initialize(random)
         self.sampler.initialize(random)
 
-    def batchwise_iter(self, batch_size: int) -> SerializableIterator[BatchwiseRecords]:
+    def batchwise_iter(
+        self, batch_size: int
+    ) -> SerializableIterator[BatchwiseRecords, Any]:
         def iter(pair_iter):
             # Pre-compute relevance matrix (query x document)
             relevances = torch.cat(
@@ -385,7 +389,7 @@ class TripletBasedSampler(PairwiseSampler):
     source: Param[TrainingTriplets]
     """Triplets"""
 
-    def pairwise_iter(self) -> SerializableIterator[PairwiseRecord]:
+    def pairwise_iter(self) -> SerializableIterator[PairwiseRecord, Any]:
         iterator = (
             PairwiseRecord(TopicRecord(topic), DocumentRecord(pos), DocumentRecord(neg))
             for topic, pos, neg in self.source.iter()
@@ -460,7 +464,7 @@ class PairwiseSamplerFromTSV(PairwiseSampler):
     pairwise_samples_path: Param[Path]
     """The path which stores the existing triplets"""
 
-    def pairwise_iter(self) -> SerializableIterator[PairwiseRecord]:
+    def pairwise_iter(self) -> SerializableIterator[PairwiseRecord, Any]:
         def iter() -> Iterator[PairwiseSample]:
             for triplet in read_tsv(self.pairwise_samples_path):
                 q_id, pos_id, pos_score, neg_id, neg_score = triplet
