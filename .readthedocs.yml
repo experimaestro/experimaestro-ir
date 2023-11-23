@@ -8,7 +8,7 @@ version: 2
 
 # Build documentation with sphinx
 sphinx:
-   configuration: docs/source/conf.py
+  configuration: docs/source/conf.py
 
 build:
   os: ubuntu-20.04
@@ -19,7 +19,8 @@ build:
   jobs:
     # Remove the requirements not needed to build the documentation
     post_checkout:
-      - sed -i -e '/SKIP_DOCBUILD/,$d' requirements.txt
+      - /usr/bin/sed --version
+      - /usr/bin/sed -i -e '/SKIP_DOCBUILD/,$d' requirements.txt
 
 
 # Install the packages
