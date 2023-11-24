@@ -206,7 +206,7 @@ class ScheduledFlopsRegularizer(FlopsRegularizer):
     """
     The FLOPS regularizer where the lamdba_q and lambda_d varie according to the
     steps. The lambda values goes quadratic before the
-    ```lamdba_warmup_steps```, and then remains constant
+    ```lambda_warmup_steps```, and then remains constant
     """
 
     min_lambda_q: Param[float] = 0
@@ -215,14 +215,14 @@ class ScheduledFlopsRegularizer(FlopsRegularizer):
     min_lambda_d: Param[float] = 0
     """Min value for the lambda_d before it increase"""
 
-    lamdba_warmup_steps: Param[int] = 0
+    lambda_warmup_steps: Param[int] = 0
     """The warmup steps for the lambda"""
 
     def quadratic_ratio(self, step):
-        if step > self.lamdba_warmup_steps:
+        if step > self.lambda_warmup_steps:
             return 1
         else:
-            return (step / self.lamdba_warmup_steps) ** 2
+            return (step / self.lambda_warmup_steps) ** 2
 
     def __post_init__(self):
         self.initial_lambda_q = self.lambda_q
