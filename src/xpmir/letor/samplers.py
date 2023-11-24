@@ -580,8 +580,7 @@ class ModelBasedHardNegativeSampler(Task, Sampler):
 
 
 class TeacherModelBasedHardNegativesTripletSampler(Task, Sampler):
-    """For a given set of triplet, assign the score
-    for the documents according to the teacher model"""
+    """Builds a teacher file for pairwise distillation losses"""
 
     sampler: Param[PairwiseSampler]
     """The list of exsting hard negatives which we can sample from"""
