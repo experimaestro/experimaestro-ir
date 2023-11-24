@@ -66,7 +66,7 @@ class BaseTransformer(Encoder):
         return self.tokenizer.pad_token_id
 
     @property
-    def automodel():
+    def automodel(self):
         return AutoModel
 
     def __initialize__(self, noinit=False):
