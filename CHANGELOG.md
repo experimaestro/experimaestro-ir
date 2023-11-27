@@ -1,8 +1,51 @@
 # Changelog
 
-## [Unreleased](https://github.com/experimaestro/experimaestro-ir/tree/HEAD)
+## [1.1.0](https://github.com/experimaestro/experimaestro-ir/tree/1.1.0) (2023-11-23)
 
-[Full Changelog](https://github.com/experimaestro/experimaestro-ir/compare/0.3.0...HEAD)
+[Full Changelog](https://github.com/experimaestro/experimaestro-ir/compare/1.0.0...1.1.0)
+
+**Closed issues:**
+
+- Document all configurations and tasks [\#21](https://github.com/experimaestro/experimaestro-ir/issues/21)
+
+## [1.0.0](https://github.com/experimaestro/experimaestro-ir/tree/1.0.0) (2023-07-24)
+
+[Full Changelog](https://github.com/experimaestro/experimaestro-ir/compare/0.6.2...1.0.0)
+
+**Breaking changes:**
+
+- Move `ir-datasets` support to `datamaestro_text` [\#16](https://github.com/experimaestro/experimaestro-ir/issues/16)
+- Explicit query and document text fields [\#15](https://github.com/experimaestro/experimaestro-ir/issues/15)
+- Fully switch to `ir-datasets` for data structures [\#11](https://github.com/experimaestro/experimaestro-ir/issues/11)
+- Change the Vocab class [\#1](https://github.com/experimaestro/experimaestro-ir/issues/1)
+
+**Implemented enhancements:**
+
+- Accessing pre-trained sub-modules [\#14](https://github.com/experimaestro/experimaestro-ir/issues/14)
+
+**Closed issues:**
+
+- Move `Learner` to a new `learning` module [\#12](https://github.com/experimaestro/experimaestro-ir/issues/12)
+
+## [0.6.2](https://github.com/experimaestro/experimaestro-ir/tree/0.6.2) (2023-04-13)
+
+[Full Changelog](https://github.com/experimaestro/experimaestro-ir/compare/0.6.1...0.6.2)
+
+## [0.6.1](https://github.com/experimaestro/experimaestro-ir/tree/0.6.1) (2023-04-06)
+
+[Full Changelog](https://github.com/experimaestro/experimaestro-ir/compare/0.6.0...0.6.1)
+
+## [0.6.0](https://github.com/experimaestro/experimaestro-ir/tree/0.6.0) (2023-04-06)
+
+[Full Changelog](https://github.com/experimaestro/experimaestro-ir/compare/0.4.0...0.6.0)
+
+## [0.4.0](https://github.com/experimaestro/experimaestro-ir/tree/0.4.0) (2023-02-23)
+
+[Full Changelog](https://github.com/experimaestro/experimaestro-ir/compare/0.5.0...0.4.0)
+
+## [0.5.0](https://github.com/experimaestro/experimaestro-ir/tree/0.5.0) (2023-02-23)
+
+[Full Changelog](https://github.com/experimaestro/experimaestro-ir/compare/0.3.0...0.5.0)
 
 **Paper reproduction:**
 

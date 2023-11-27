@@ -22,7 +22,7 @@ class Indexation(LauncherSpecification):
 
 
 @configuration()
-class Learner:
+class SpladeLearner:
     model: str = "splade_max"
     """The model to use for training"""
 
@@ -90,7 +90,7 @@ class SPLADE(DualMSMarcoV1Configuration):
 
     base_hf_id: str = "distilbert-base-uncased"
     indexation: Indexation = Factory(Indexation)
-    splade: Learner = Factory(Learner)
+    splade: SpladeLearner = Factory(SpladeLearner)
     retrieval: Retrieval = Factory(Retrieval)
 
     dev_test_size: int = 0
