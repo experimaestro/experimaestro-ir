@@ -39,6 +39,12 @@ class CustomOutputT5(T5ForConditionalGeneration):
             self.lm_head.in_features, self.decoder_outdim + 1, bias=False
         )
 
+        # Make the input embedding has the name of encoder.embed_tokens
+        encoder_embeddings = nn.Embedding(self.config.vocab_size, self.config.d_model)
+        self.get_encoder().set_input_embeddings(encoder_embeddings)
+
+        self.config.vocab_size = self.decoder_outdim + 1
+
         # Modify the decoder vocabulary
         decoder_embeddings = nn.Embedding(
             self.decoder_outdim + 2, self.config.d_model, padding_idx=decoder_outdim + 1
