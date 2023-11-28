@@ -82,6 +82,22 @@ class Module(Config, Initializable, torch.nn.Module):
         return torch.nn.Module.to(self, *args, **kwargs)
 
 
+class ModuleList(Config, Initializable, torch.nn.Module):
+    """Groups different models together, to be used within the Learner"""
+
+    modules: List[Param[Module]]
+
+    def __init__(self):
+        Initializable.__init__(self)
+        torch.nn.Module.__init__(self)
+
+    def __call__(self, *args, **kwargs):
+        raise AssertionError("This module cannot be used as such: it is just a ")
+
+    def to(self, *args, **kwargs):
+        return torch.nn.Module.to(self, *args, **kwargs)
+
+
 class ModuleLoader(PathSerializationLWTask):
     def execute(self):
         """Loads the model from disk using the given serialization path"""

@@ -105,7 +105,9 @@ class Learner(Task, EasyLogger):
     """Specifies how to train the model"""
 
     model: Param[Module]
-    """Defines the model that scores documents"""
+    """Defines the model to be learned. If multiple models are used, one can use
+    MultipleModel.
+    """
 
     max_epochs: Param[int] = 1000
     """Maximum number of epochs"""
