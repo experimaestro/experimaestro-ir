@@ -114,7 +114,7 @@ def _splade(
     lambda_q: float,
     lambda_d: float,
     aggregation: Aggregation,
-    lamdba_warmup_steps: int = 0,
+    lambda_warmup_steps: int = 0,
     hf_id: str = "distilbert-base-uncased",
 ):
     # Unlike the cross-encoder, here the encoder returns the whole last layer
@@ -134,7 +134,7 @@ def _splade(
     ), ScheduledFlopsRegularizer(
         lambda_q=lambda_q,
         lambda_d=lambda_d,
-        lamdba_warmup_steps=lamdba_warmup_steps,
+        lambda_warmup_steps=lambda_warmup_steps,
     )
 
 
@@ -142,7 +142,7 @@ def _splade_doc(
     lambda_q: float,
     lambda_d: float,
     aggregation: Aggregation,
-    lamdba_warmup_steps: int = 0,
+    lambda_warmup_steps: int = 0,
     hf_id: str = "distilbert-base-uncased",
 ):
     # Unlike the cross-encoder, here the encoder returns the whole last layer
@@ -163,24 +163,24 @@ def _splade_doc(
     ), ScheduledFlopsRegularizer(
         lambda_q=lambda_q,
         lambda_d=lambda_d,
-        lamdba_warmup_steps=lamdba_warmup_steps,
+        lambda_warmup_steps=lambda_warmup_steps,
     )
 
 
 def spladeV1(
     lambda_q: float,
     lambda_d: float,
-    lamdba_warmup_steps: int = 0,
+    lambda_warmup_steps: int = 0,
     hf_id: str = "distilbert-base-uncased",
 ):
     """Returns the Splade architecture"""
-    return _splade(lambda_q, lambda_d, SumAggregation(), lamdba_warmup_steps, hf_id)
+    return _splade(lambda_q, lambda_d, SumAggregation(), lambda_warmup_steps, hf_id)
 
 
 def spladeV2_max(
     lambda_q: float,
     lambda_d: float,
-    lamdba_warmup_steps: int = 0,
+    lambda_warmup_steps: int = 0,
     hf_id: str = "distilbert-base-uncased",
 ):
     """Returns the Splade-max architecture
@@ -188,13 +188,13 @@ def spladeV2_max(
     SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval
     (arXiv:2109.10086)
     """
-    return _splade(lambda_q, lambda_d, MaxAggregation(), lamdba_warmup_steps, hf_id)
+    return _splade(lambda_q, lambda_d, MaxAggregation(), lambda_warmup_steps, hf_id)
 
 
 def spladeV2_doc(
     lambda_q: float,
     lambda_d: float,
-    lamdba_warmup_steps: int = 0,
+    lambda_warmup_steps: int = 0,
     hf_id: str = "distilbert-base-uncased",
 ):
     """Returns the Splade-doc architecture
@@ -202,4 +202,4 @@ def spladeV2_doc(
     SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval
     (arXiv:2109.10086)
     """
-    return _splade_doc(lambda_q, lambda_d, MaxAggregation(), lamdba_warmup_steps, hf_id)
+    return _splade_doc(lambda_q, lambda_d, MaxAggregation(), lambda_warmup_steps, hf_id)

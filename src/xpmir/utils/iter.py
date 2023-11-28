@@ -8,6 +8,8 @@ from typing import (
     Iterator,
     Protocol,
     TypeVar,
+    Any,
+    TypedDict,
 )
 from xpmir.utils.utils import easylog
 from abc import abstractmethod
@@ -43,7 +45,7 @@ class SerializableIteratorAdapter(SerializableIterator[T, State], Generic[T, U, 
     def __init__(
         self,
         main: SerializableIterator[T, State],
-        generator: Callable[[SerializableIterator[T]], Iterator[U]],
+        generator: Callable[[SerializableIterator[T, State]], Iterator[U]],
     ):
         self.generator = generator
         self.main = main
@@ -89,22 +91,22 @@ class SerializableIteratorTransform(
         return self.transform(next(self.iterator))
 
 
-class GenericSerializableIterator(SerializableIterator[T]):
+class GenericSerializableIterator(SerializableIterator[T, State]):
     def __init__(self, iterator: Iterator[T]):
         self.iterator = iterator
         self.state = None
 
     @abstractmethod
-    def state_dict(self):
+    def state_dict(self) -> State:
         """Generate the current state dictionary"""
         ...
 
     @abstractmethod
-    def restore_state(self, state):
+    def restore_state(self, state: State):
         """Restore the iterator"""
         ...
 
-    def load_state_dict(self, state):
+    def load_state_dict(self, state: State):
         self.state = state
 
     def __next__(self):
@@ -117,7 +119,7 @@ class GenericSerializableIterator(SerializableIterator[T]):
         return self.next()
 
 
-class RandomSerializableIterator(SerializableIterator[T]):
+class RandomSerializableIterator(SerializableIterator[T, Any]):
     """A serializable iterator based on a random seed"""
 
     def __init__(
@@ -148,7 +150,13 @@ class RandomSerializableIterator(SerializableIterator[T]):
         return next(self.iter)
 
 
-class SkippingIterator(GenericSerializableIterator[T]):
+class SkippingIteratorState(TypedDict):
+    """Skipping iterator state"""
+
+    count: int
+
+
+class SkippingIterator(GenericSerializableIterator[T, SkippingIteratorState]):
     """An iterator that skips the first entries and can output its state
 
     When serialized (i.e. checkpointing), the iterator saves the current
@@ -163,10 +171,10 @@ class SkippingIterator(GenericSerializableIterator[T]):
         super().__init__(iterator)
         self.position = 0
 
-    def state_dict(self):
+    def state_dict(self) -> SkippingIteratorState:
         return {"count": self.position}
 
-    def restore_state(self, state):
+    def restore_state(self, state: SkippingIteratorState):
         count = state["count"]
         logger.info("Skipping %d records to match state (sampler)", count)
 
@@ -256,11 +264,11 @@ class StatefullIterator(Iterator[Tuple[T, State]], Protocol[State]):
         ...
 
 
-class StatefullIteratorAdapter(Iterator[T]):
-    """Adapts a serializable iterator a statefull iterator that iterates over
+class StatefullIteratorAdapter(Iterator[T], Generic[T, State]):
+    """Adapts a serializable iterator a stateful iterator that iterates over
     (value, state) pairs"""
 
-    def __init__(self, iterator: SerializableIterator[T]):
+    def __init__(self, iterator: SerializableIterator[T, State]):
         self.iterator = iterator
 
     def __next__(self):
@@ -270,14 +278,14 @@ class StatefullIteratorAdapter(Iterator[T]):
 
 
 class MultiprocessSerializableIterator(
-    MultiprocessIterator[T], SerializableIterator[T]
+    MultiprocessIterator[T], SerializableIterator[T, State]
 ):
     """A multi-process adapter for serializable iterators
 
     This can be used to obtain a multiprocess iterator from a serializable iterator
     """
 
-    def __init__(self, iterator: SerializableIterator[T], maxsize=100):
+    def __init__(self, iterator: SerializableIterator[T, State], maxsize=100):
         super().__init__(StatefullIteratorAdapter(iterator), maxsize=maxsize)
 
     def state_dict(self) -> Dict:

@@ -1,7 +1,7 @@
 from dataclasses import InitVar
 import math
 import sys
-from typing import Iterator
+from typing import Iterator, Any
 import torch
 from torch import nn
 from torch.functional import Tensor
@@ -161,7 +161,7 @@ class PairwiseTrainer(LossTrainer):
     sampler: Param[PairwiseSampler]
     """The pairwise sampler"""
 
-    sampler_iter: InitVar[SerializableIterator[PairwiseRecord]]
+    sampler_iter: InitVar[SerializableIterator[PairwiseRecord, Any]]
 
     def initialize(
         self,
@@ -239,7 +239,7 @@ class DuoPairwiseTrainer(LossTrainer):
     sampler: Param[PairwiseSampler]
     """The pairwise sampler"""
 
-    sampler_iter: InitVar[SerializableIterator[PairwiseRecord]]
+    sampler_iter: InitVar[SerializableIterator[PairwiseRecord, Any]]
 
     def initialize(self, random: np.random.RandomState, context: TrainerContext):
         super().initialize(random, context)

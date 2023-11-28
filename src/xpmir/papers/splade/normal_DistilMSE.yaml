@@ -32,7 +32,7 @@ splade:
     validation_interval: 40
     lambda_q: 0.5
     lambda_d: 0.4
-    lamdba_warmup_steps: 50000
+    lambda_warmup_steps: 50000
     requirements: duration=2 days & cuda(mem=24G)
 
 retrieval:

@@ -8,12 +8,18 @@ version: 2
 
 # Build documentation with sphinx
 sphinx:
-   configuration: docs/source/conf.py
+  configuration: docs/source/conf.py
 
 build:
   os: ubuntu-20.04
   tools:
     python: "3.9"
+
+
+  jobs:
+    # Remove the requirements not needed to build the documentation
+    post_checkout:
+      - /usr/bin/sh docs/rtd.sh
 
 # Install the packages
 python:

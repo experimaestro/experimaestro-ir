@@ -1,4 +1,4 @@
-from typing import Iterable, Iterator, NamedTuple, Optional, Tuple, List
+from typing import Iterable, Iterator, NamedTuple, Optional, Tuple, List, Any
 
 import numpy as np
 from datamaestro.data import File
@@ -119,12 +119,12 @@ class DistillationPairwiseSampler(Sampler):
     def initialize(self, random: np.random.RandomState):
         super().initialize(random)
 
-    def pairwise_iter(self) -> SerializableIterator[PairwiseDistillationSample]:
+    def pairwise_iter(self) -> SerializableIterator[PairwiseDistillationSample, Any]:
         return SkippingIterator.make_serializable(iter(self.samples))
 
     def pairwise_batch_iter(
         self, size
-    ) -> SerializableIterator[List[PairwiseDistillationSample]]:
+    ) -> SerializableIterator[List[PairwiseDistillationSample], Any]:
         """Batchwise iterator
 
         Can be subclassed by some classes to be more efficient"""
