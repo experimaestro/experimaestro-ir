@@ -501,7 +501,7 @@ class MLMModelOutput:
     labels: torch.Tensor
 
 
-class MLMEncoder(BaseTransformer, DistributableModel, DualTextEncoder):
+class MLMEncoder(BaseTransformer, DistributableModel):
     """Implementation of the encoder for the Masked Language Modeling task"""
 
     maxlen: Param[Optional[int]] = None
