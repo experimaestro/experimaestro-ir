@@ -204,8 +204,8 @@ class PairwiseRecord:
     """A pairwise record is composed of a query, a positive and a negative document"""
 
     query: TopicRecord
-    positive: Document
-    negative: Document
+    positive: DocumentRecord
+    negative: DocumentRecord
 
     def __init__(self, query: TopicRecord, positive: Document, negative: Document):
         self.query = query
@@ -252,6 +252,18 @@ class PairwiseRecords(BaseRecords):
     @property
     def topics(self):
         return itertools.chain(self._topics, self._topics)
+
+    def set_unique_topics(self, topics: List[TopicRecord]):
+        assert len(topics) == len(
+            self._topics
+        ), f"Number of topics do not match ({len(topics)} vs {len(self._topics)})"
+        self._topics = topics
+
+    def set_unique_documents(self, documents: List[DocumentRecord]):
+        N = len(self._topics)
+        assert len(documents) == N * 2
+        self.positives = documents[:N]
+        self.negatives = documents[N:]
 
     queries = topics
 

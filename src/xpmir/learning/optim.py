@@ -85,11 +85,15 @@ class Module(Config, Initializable, torch.nn.Module):
 class ModuleList(Config, Initializable, torch.nn.Module):
     """Groups different models together, to be used within the Learner"""
 
-    modules: List[Param[Module]]
+    modules: Param[List[Module]]
 
     def __init__(self):
         Initializable.__init__(self)
         torch.nn.Module.__init__(self)
+
+    def __initialize__(self, *args, **kwargs):
+        for module in self.modules:
+            module.initialize(*args, **kwargs)
 
     def __call__(self, *args, **kwargs):
         raise AssertionError("This module cannot be used as such: it is just a ")
