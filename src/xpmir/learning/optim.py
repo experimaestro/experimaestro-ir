@@ -91,6 +91,10 @@ class ModuleList(Config, Initializable, torch.nn.Module):
         Initializable.__init__(self)
         torch.nn.Module.__init__(self)
 
+    def __initialize__(self, *args, **kwargs):
+        for module in self.modules:
+            module.initialize(*args, **kwargs)
+
     def __call__(self, *args, **kwargs):
         raise AssertionError("This module cannot be used as such: it is just a ")
 
