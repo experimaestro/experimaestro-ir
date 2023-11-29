@@ -378,11 +378,6 @@ class PairwiseInBatchNegativesSampler(BatchwiseSampler):
         return SerializableIteratorAdapter(self.sampler.pairwise_iter(), iter)
 
 
-def always_none(*args, **kwargs):
-    """Just returns None to whatever"""
-    return None
-
-
 class TripletBasedSampler(PairwiseSampler):
     """Sampler based on a triplet source"""
 
