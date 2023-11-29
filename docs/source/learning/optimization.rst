@@ -1,6 +1,7 @@
 Optimization
 ============
 
+.. _Optimization:
 
 Modules
 -------

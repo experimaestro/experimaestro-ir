@@ -2,32 +2,19 @@ Learning to rank
 ----------------
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
 
-   samplers
-   trainers
-   optimization
+   pointwise
+   pairwise
+   distillation
+   mlm
 
 
-Learning to rank is handled by various classes :
-
-- the learner is the main class that runs the full process
-- learner listeners are used for validation
-- trainers that iterate over batches of data
-
-The main class is the Learner task.
-
-.. autoxpmconfig:: xpmir.learning.learner.Learner
-.. autonamedtuple:: xpmir.learning.learner.LearnerOutput
-
+Learning to rank is handled by various classes. Some are located
+in the :ref:`learning module <Learning>`.
 
 Listeners
 =========
-
-Listeners can be used to monitor the learning process
-
-.. autoxpmconfig:: xpmir.learning.learner.LearnerListener
-   :members: __call__
 
 .. autoxpmconfig:: xpmir.letor.learner.ValidationListener
 
@@ -49,3 +36,34 @@ Retrievers
 ==========
 
 Scores can be used as retrievers through a :py:class:`xpmir.rankers.TwoStageRetriever`
+
+Samplers
+--------
+
+.. currentmodule:: xpmir.letor.samplers
+
+Samplers provide samples in the form of *records*. They all inherit from:
+
+.. autoxpmconfig:: Sampler
+.. autoclass:: SerializableIterator
+
+
+.. autoxpmconfig:: ModelBasedSampler
+
+
+Records for training
+--------------------
+
+.. automodule:: xpmir.letor.records
+    :members: PointwiseRecord, PairwiseRecord
+
+
+Document samplers
+=================
+
+Useful for pre-training or when learning index parameters (e.g. for FAISS).
+
+.. currentmodule:: xpmir.documents.samplers
+.. autoxpmconfig:: DocumentSampler
+.. autoxpmconfig:: HeadDocumentSampler
+.. autoxpmconfig:: RandomDocumentSampler
