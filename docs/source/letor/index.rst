@@ -6,6 +6,7 @@ Learning to rank
 
    pointwise
    pairwise
+   batchwise
    distillation
    mlm
 
@@ -55,7 +56,7 @@ Records for training
 --------------------
 
 .. automodule:: xpmir.letor.records
-    :members: PointwiseRecord, PairwiseRecord
+   :members: PointwiseRecord, PairwiseRecord
 
 
 Document samplers
@@ -67,3 +68,9 @@ Useful for pre-training or when learning index parameters (e.g. for FAISS).
 .. autoxpmconfig:: DocumentSampler
 .. autoxpmconfig:: HeadDocumentSampler
 .. autoxpmconfig:: RandomDocumentSampler
+
+Adapters
+********
+
+.. autoxpmconfig:: xpmir.letor.samplers.hydrators.SampleTransform
+.. autoxpmconfig:: xpmir.letor.samplers.hydrators.SampleHydrator

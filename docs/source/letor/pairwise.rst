@@ -16,6 +16,7 @@ Trainer
 -------
 
 .. autoxpmconfig:: xpmir.letor.trainers.pairwise.PairwiseTrainer
+.. autoxpmconfig:: xpmir.letor.trainers.pairwise.DuoPairwiseTrainer
 
 Losses
 ------
@@ -26,15 +27,15 @@ Losses
 .. autoxpmconfig:: xpmir.letor.trainers.pairwise.CrossEntropyLoss
 .. autoxpmconfig:: xpmir.letor.trainers.pairwise.HingeLoss
 .. autoxpmconfig:: xpmir.letor.trainers.pairwise.PointwiseCrossEntropyLoss
-
+.. autoxpmconfig:: xpmir.letor.trainers.pairwise.PairwiseLossWithTarget
 
 Pairwise
 --------
 
+.. currentmodule:: xpmir.letor.samplers
+
 .. autoxpmconfig:: PairwiseSampler
-.. autoxpmconfig:: BatchwiseSampler
 .. autoxpmconfig:: PairwiseModelBasedSampler
-.. autoxpmconfig:: xpmir.documents.samplers.BatchwiseRandomSpanSampler
 
 .. autoxpmconfig:: TripletBasedSampler
 .. autoxpmconfig:: PairwiseDatasetTripletBasedSampler
@@ -42,3 +43,5 @@ Pairwise
 .. autoxpmconfig:: PairwiseSampleDatasetFromTSV
 .. autoxpmconfig:: PairwiseSamplerFromTSV
 .. autoxpmconfig:: ModelBasedHardNegativeSampler
+
+.. autoxpmconfig:: xpmir.letor.samplers.hydrators.PairwiseTransformAdapter

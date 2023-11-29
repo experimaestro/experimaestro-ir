@@ -30,6 +30,8 @@ Losses
 Sampler
 -------
 
+.. currentmodule:: xpmir.letor.samplers
+
 .. autoxpmconfig:: PointwiseSampler
     :members: pointwise_iter
 
