@@ -85,7 +85,7 @@ class Module(Config, Initializable, torch.nn.Module):
 class ModuleList(Config, Initializable, torch.nn.Module):
     """Groups different models together, to be used within the Learner"""
 
-    modules: List[Param[Module]]
+    modules: Param[List[Module]]
 
     def __init__(self):
         Initializable.__init__(self)
