@@ -1,6 +1,7 @@
 # Utility functions for MS-Marco experiments
 
 from typing import Union
+from functools import lru_cache
 
 from experimaestro import Launcher
 
@@ -21,9 +22,9 @@ from xpmir.letor.distillation.samplers import (
     DistillationPairwiseSampler,
     PairwiseHydrator,
 )
+from xpmir.letor.samplers.hydrators import SampleHydrator, PairwiseTransformAdapter
 
 from xpmir.measures import AP, RR, P, nDCG, Success
-from xpmir.utils.functools import partial_cache
 from xpmir.papers import configuration
 
 
@@ -33,9 +34,10 @@ class ValidationSample:
     size: int = 500
 
 
-# Factorizes the different versions of the Callable to avoid redundancy
+@lru_cache
 def prepare_collection(prepare_str: str) -> Union[Documents, Adhoc]:
-    return partial_cache(prepare_dataset, prepare_str)()
+    """Prepare a dataset and caches the result"""
+    return prepare_dataset(prepare_str)
 
 
 MEASURES = [AP, P @ 20, nDCG, nDCG @ 10, nDCG @ 20, RR, RR @ 10, Success @ 5]
@@ -45,9 +47,12 @@ MEASURES = [AP, P @ 20, nDCG, nDCG @ 10, nDCG @ 20, RR, RR @ 10, Success @ 5]
 
 @cache
 def msmarco_v1_docpairs_sampler(
-    *, sample_rate: float = 1.0, sample_max: int = 0, launcher: "Launcher" = None
+    *,
+    sample_rate: float = 1.0,
+    sample_max: int = 0,
+    launcher: "Launcher" = None,
 ) -> TripletBasedSampler:
-    """Train sampler
+    """Train sampler (deprecated: use msmarco_v1_docpairs_efficient_sampler)
 
     This uses shuffled pre-computed triplets from MS Marco
 
@@ -69,6 +74,39 @@ def msmarco_v1_docpairs_sampler(
         data=triplets, store=prepare_collection("irds.msmarco-passage.documents")
     )
     return TripletBasedSampler(source=triplets)
+
+
+@cache
+def msmarco_v1_docpairs_efficient_sampler(
+    *,
+    sample_rate: float = 1.0,
+    sample_max: int = 0,
+    launcher: "Launcher" = None,
+) -> TripletBasedSampler:
+    """Train sampler
+
+    This uses shuffled pre-computed triplets from MS Marco
+
+    :param sample_rate: Sample rate for the triplets (default 1)
+    """
+    topics = prepare_dataset("irds.msmarco-passage.train.queries")
+    train_triples = prepare_dataset("irds.msmarco-passage.train.docpairs")
+    triplets = ShuffledTrainingTripletsLines(
+        seed=123,
+        data=StoreTrainingTripletTopicAdapter(data=train_triples, store=topics),
+        sample_rate=sample_rate,
+        sample_max=sample_max,
+        doc_ids=True,
+        topic_ids=False,
+    ).submit(launcher=launcher)
+
+    # Builds the sampler by hydrating documents
+    sampler = TripletBasedSampler(source=triplets)
+    hydrator = SampleHydrator(
+        documentstore=prepare_collection("irds.msmarco-passage.documents")
+    )
+
+    return PairwiseTransformAdapter(sampler=sampler, adapter=hydrator)
 
 
 @cache
