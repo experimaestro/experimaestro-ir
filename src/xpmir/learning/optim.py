@@ -87,6 +87,11 @@ class ModuleList(Module, Initializable):
 
     sub_modules: Param[List[Module]]
 
+    def __post_init__(self):
+        # Register sub-modules
+        for ix, sub_module in enumerate(self.sub_modules):
+            self.add_module(str(ix), sub_module)
+
     def __initialize__(self, *args, **kwargs):
         for module in self.sub_modules:
             module.initialize(*args, **kwargs)
