@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Generic, Iterator, NamedTuple, TypeVar
+from typing import Generic, Iterator, NamedTuple, TypeVar, Union
 from torch import nn
 import numpy as np
 from experimaestro import Param, Config
@@ -16,6 +16,7 @@ from xpmir.neural.generative import (
 )
 from xpmir.letor.trainers import TrainerContext, LossTrainer
 from xpmir.learning.context import Loss, ValidationHook
+from xpmir.learning.metrics import ScalarMetric
 from xpmir.utils.utils import foreach, easylog
 
 logger = easylog()
@@ -38,6 +39,7 @@ class Triplet(Generic[T]):
 class GenerativeLossOutput(NamedTuple):
     recursive_loss: torch.tensor
     kl_div_loss: torch.tensor
+    pairwise_accuracy: torch.tensor
 
 
 class PairwiseGenerativeLoss(Config, nn.Module):
@@ -71,7 +73,9 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
 
     start_max_depth: Param[int] = -1
     """if apply progressive training, the starter max depth. If it is a negative
-    number, means we dont't apply progressive training """
+    number, means we dont't apply progressive training it is a value counting
+    from 1, 2, 3
+    """
 
     max_depth: Param[int] = 5
     """The max number of the steps we need to consider"""
@@ -81,6 +85,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
 
     @cached_property
     def kl_target(self):
+        assert self.id_generator.eos_token_id == self.id_generator.decoder_outdim
         decoder_outdim = self.id_generator.decoder_outdim
         alphas = torch.tensor(
             [
@@ -95,6 +100,33 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
             )
         )
 
+    @cached_property
+    def perfect_proba(self):
+        max_depth = self.kl_target.shape[0]
+        probas = []
+        for stop_recursive_flag in range(max_depth):
+            probas.append(self.perfect_proba_recursive(0, stop_recursive_flag))
+        return torch.tensor(probas).to(self.id_generator.device)
+
+    def perfect_proba_recursive(self, current_depth, stop_recursive_flag):
+        k = self.id_generator.decoder_outdim
+        other_proba = torch.exp(
+            self.kl_target[current_depth, 0]
+        )  # any token which is not eos
+        alpha = torch.exp(
+            self.kl_target[current_depth, self.id_generator.eos_token_id]
+        )  # eos
+        current_layer_value = k * other_proba * (1 - other_proba) + alpha * (1 - alpha)
+        if current_depth == self.max_depth - 1 or current_depth == stop_recursive_flag:
+            return current_layer_value
+
+        return (
+            self.perfect_proba_recursive(current_depth + 1, stop_recursive_flag)
+            * k
+            * other_proba**2
+            + current_layer_value
+        )
+
     def initialize(self):
         self.kl_lossfn = nn.KLDivLoss(reduction="sum", log_target=True)
         self.current_max_depth = (
@@ -104,16 +136,20 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
     def update_depth(self):
         if self.current_max_depth < self.max_depth:
             self.current_max_depth += 1
+            logger.info(
+                f"Update the depth for loss: current depth is {self.current_max_depth}"
+            )
 
     def recursive(
         self,
         decoder_input_tokens,  # None or [bs]
         unfinished_sequences: torch.tensor,  # shape [bs]
         log_cur_node_proba: Triplet[torch.Tensor],  # shape [bs,3]
-        depth: int,
+        depth: int,  # a value counting from 0
         stepwise_generators: Triplet[StepwiseGenerator],
     ) -> GenerativeLossOutput:
-        """Return two terms, the recursive G and the kl_div loss at depth"""
+        """Return the recursive G and the kl_div loss at depth, also the
+        pairwise accruracy for supervision"""
         # pass get the probas, each one of shape: [bs, dec_dim+1]
         logits = Triplet(*(g.step(decoder_input_tokens) for g in stepwise_generators))
 
@@ -127,7 +163,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
             logger.debug(f"negdoc_proba: {torch.exp(log_proba.neg_doc)}")
             logger.debug(f"query_proba: {torch.exp(log_proba.query)}")
 
-        # --- middle_term in the formula
+        # --- middle_term in the loss formula
         middle_term = torch.sum(
             torch.exp(log_proba.pos_doc.detach() + log_proba.query.detach())
             * (1 - torch.exp(log_proba.neg_doc.detach()))
@@ -141,7 +177,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
             dim=-1,
         )  # shape: [bs]
 
-        # --- last term in the formula
+        # --- last term in the loss formula
         max_values_tmp = torch.max(
             log_proba.pos_doc.detach() + log_proba.query.detach(), dim=-1
         ).values
@@ -164,6 +200,14 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
             * log_proba.neg_doc,
             dim=-1,
         )  # shape: [bs]
+
+        # --- last term for the pairwise accuracy formula
+        with torch.no_grad():
+            pairwise_accuracy_middle_term = torch.sum(
+                torch.exp(log_proba.pos_doc + log_proba.query)
+                * (1 - torch.exp(log_proba.neg_doc)),
+                dim=-1,
+            )
 
         # --- Sample the next token
 
@@ -209,11 +253,17 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"input token for the next step: {next_tokens}")
 
-        # the kl loss to force all the sequence to have the similar proba
+        # the kl loss to force all the sequence to have the similar proba and we
+        # mask out the early finished ones
         kl_loss = Triplet(
             *(
                 self.kl_lossfn(
-                    torch.log(torch.mean(torch.exp(x), 0)), self.kl_target[depth]
+                    torch.log(
+                        torch.mean(
+                            torch.exp(x[unfinished_sequences.type(torch.bool)]), 0
+                        )
+                    ),
+                    self.kl_target[depth],
                 )
                 for x in log_proba
             )
@@ -226,6 +276,8 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
                 recursive_loss=(middle_term + last_term)
                 * unfinished_sequences.detach(),
                 kl_div_loss=kl_loss,
+                pairwise_accuracy=pairwise_accuracy_middle_term
+                * unfinished_sequences.detach(),
             )
 
         # Computing the importance sampling coefficient
@@ -254,6 +306,11 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
                 + last_term
             ),
             kl_div_loss=next_layer_recursive.kl_div_loss + kl_loss,
+            pairwise_accuracy=unfinished_sequences.detach()
+            * (
+                next_layer_recursive.pairwise_accuracy * sampling_multiplier
+                + pairwise_accuracy_middle_term
+            ),
         )
 
     def compute(
@@ -304,6 +361,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         return GenerativeLossOutput(
             recursive_loss=-torch.mean(loss.recursive_loss),
             kl_div_loss=loss.kl_div_loss,
+            pairwise_accuracy=torch.mean(loss.pairwise_accuracy),
         )
 
     def process(self, records: BaseRecords, context: TrainerContext):
@@ -315,6 +373,19 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
             Loss("recursive-loss", loss_output.recursive_loss, self.weight)
         )
         context.add_loss(Loss("kl-div-loss", loss_output.kl_div_loss, self.alpha))
+        context.add_metric(
+            ScalarMetric(
+                "Pairwise-accuracy", float(loss_output.pairwise_accuracy), len(records)
+            )
+        )
+        context.add_metric(
+            ScalarMetric(
+                "Current-accuracy / Perfect-accuracy",
+                float(loss_output.pairwise_accuracy)
+                / float(self.perfect_proba[self.current_max_depth - 1]),
+                len(records),
+            )
+        )
 
 
 class GenerativeTrainer(LossTrainer):
@@ -350,10 +421,10 @@ class GenerativeRetrievalValidationHook(ValidationHook):
     """Update the loss and the scorer for validation during the validation
     procedure"""
 
-    loss: Param[PairwiseGenerativeLoss]
+    loss: Param[Union[PairwiseGenerativeLoss, None]]
     """The loss to be updated"""
 
-    scorer: Param[GenerativeRetrievalScorer]
+    scorer: Param[Union[GenerativeRetrievalScorer, None]]
     """The scorer to be updated"""
 
     update_interval: Param[int] = 200
@@ -361,9 +432,16 @@ class GenerativeRetrievalValidationHook(ValidationHook):
 
     def after(self, state: TrainerContext):
         if state.epoch % self.update_interval == 0:
-            self.loss.update_depth()
-            self.scorer.update_depth()
-            logger.info("Update the max depth for the training")
+            if self.loss:
+                self.loss.update_depth()
+                logger.info(
+                    "Periodically update the max depth for loss during training"
+                )
+            if self.scorer:
+                self.scorer.update_depth()
+                logger.info(
+                    "Periodically update the max depth for scorer during training"
+                )
 
 
 # # to test
