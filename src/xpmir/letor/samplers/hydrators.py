@@ -46,6 +46,14 @@ class SampleHydrator(SampleTransform):
 
 
 class PairwiseTransformAdapter(PairwiseSampler):
+    """Transforms pairwise samples using an adapter
+
+    It is interesting to use this adapter since the transformation is only
+    performed if the samples are used: when using a SkippingIterator, when
+    recovering a checkpoint, all the records might have to be processed
+    otherwise.
+    """
+
     sampler: Param[PairwiseSampler]
     """The distillation samples without texts for query and documents"""
 

@@ -54,8 +54,9 @@ class CrossScorer(LearnableScorer, DistributableModel):
 
 
 class DuoCrossScorer(DuoLearnableScorer, DistributableModel):
-    """Query-document-document Representation classifier based on Bert
-    The encoder usually refer to the encoder of type DualDuoBertTransformerEncoder()
+    """Preference based classifier
+
+    This scorer can be used to train a DuoBERT-type model.
     """
 
     encoder: Param[TripletTextEncoder]
