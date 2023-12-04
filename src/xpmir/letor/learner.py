@@ -1,16 +1,13 @@
 import logging
 import json
 from pathlib import Path
-from typing import Dict, Iterator
+from typing import Dict, Iterator, List
 from datamaestro_text.data.ir import Adhoc
 from experimaestro import Param, pathgenerator, Annotated
 import numpy as np
-from xpmir.utils.utils import easylog
+from xpmir.utils.utils import easylog, foreach
 from xpmir.evaluation import evaluate
-from xpmir.learning.context import (
-    TrainState,
-    TrainerContext,
-)
+from xpmir.learning.context import TrainState, TrainerContext, ValidationHook
 from xpmir.rankers import (
     Retriever,
 )
@@ -54,6 +51,9 @@ class ValidationListener(LearnerListener):
     early_stop: Param[int] = 0
     """Number of epochs without improvement after which we stop learning.
     Should be a multiple of validation_interval or 0 (no early stopping)"""
+
+    hooks: Param[List[ValidationHook]] = []
+    """The list of the hooks during the validation"""
 
     def __validate__(self):
         assert (
@@ -123,6 +123,11 @@ class ValidationListener(LearnerListener):
         if self.should_stop(state.epoch - 1) == LearnerListenerStatus.STOP:
             return LearnerListenerStatus.STOP
 
+        foreach(
+            self.hooks,
+            lambda hook: hook.before(self.context),
+        )
+
         if state.epoch % self.validation_interval == 0:
             # Compute validation metrics
             means, details = evaluate(
@@ -160,6 +165,11 @@ class ValidationListener(LearnerListener):
             # Update information
             with self.info.open("wt") as fp:
                 json.dump(self.top, fp)
+
+        foreach(
+            self.hooks,
+            lambda hook: hook.after(self.context),
+        )
 
         # Early stopping?
         return self.should_stop()

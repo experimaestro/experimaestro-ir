@@ -1,3 +1,4 @@
+import re
 from typing import Optional
 from abc import ABC, abstractmethod
 import torch.nn as nn
@@ -46,6 +47,28 @@ class ParametersIterator(Config, ABC):
             selected or not)
         """
         ...
+
+
+class RegexParametersIterator(ParametersIterator):
+    """Itertor over all the parameters which match the given regex"""
+
+    regex: Param[str]
+    """The regex expression"""
+
+    model: Param[Module]
+    """The model we want to select the parameters from"""
+
+    def __post_init__(self):
+        self._regex = re.compile(self.regex)
+
+    def should_pick(self, name: str) -> bool:
+        """given the name of the str, return true if the regex expression
+        matches"""
+        return bool(self._regex.search(name))
+
+    def iter(self) -> Iterator[ParameterElement]:
+        for name, parameters in self.model.named_parameters():
+            yield ParameterElement(name, parameters, self.should_pick(name))
 
 
 class InverseParametersIterator(ParametersIterator):
