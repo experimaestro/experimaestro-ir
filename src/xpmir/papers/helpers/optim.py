@@ -2,7 +2,6 @@ from typing import List
 from functools import cached_property
 from xpmir.learning.optim import (
     AdamW,
-    SGD,
     ParameterOptimizer,
     RegexParameterFilter,
     get_optimizers,
@@ -30,17 +29,6 @@ class TransformerOptimization:
 
     re_no_l2_regularization: List[str] = [r"\.bias$", r"\.LayerNorm\."]
     """Regular expression for layers """
-
-    @cached_property
-    def debug_optimizer(self):
-        """return a optimizer without scheduler and based on SGD"""
-        return get_optimizers(
-            [
-                ParameterOptimizer(
-                    optimizer=SGD(lr=self.lr),
-                ),
-            ]
-        )
 
     @cached_property
     def optimizer(self):
