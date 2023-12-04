@@ -1,5 +1,4 @@
 import torch
-from experimaestro import Config
 from torch.utils.tensorboard.writer import SummaryWriter
 from pathlib import Path
 import os
@@ -11,7 +10,7 @@ from typing import (
     TYPE_CHECKING,
 )
 from shutil import rmtree
-from xpmir.context import Context, InitializationHook
+from xpmir.context import Context, InitializationHook, Hook
 from xpmir.utils.utils import easylog
 from xpmir.learning.devices import DeviceInformation
 from xpmir.learning.metrics import Metric, Metrics
@@ -115,7 +114,7 @@ class TrainState:
             os.link(self.path / name, path / name)
 
 
-class TrainingHook(Config):
+class TrainingHook(Hook):
     """Base class for all training hooks"""
 
     pass
@@ -131,8 +130,8 @@ class StepTrainingHook(TrainingHook):
         """Called before a training step"""
 
 
-class InitializationTrainingHook(InitializationHook):
-    """Base class for hooks called at each epoch (before/after)"""
+class InitializationTrainingHook(TrainingHook, InitializationHook):
+    """Base class for hooks called at initialization"""
 
     def after(self, state: "TrainerContext"):
         pass
