@@ -69,6 +69,8 @@ class GenerativeRetrievalScorer(AbstractModuleScorer, DepthUpdatable):
 
     def _initialize(self, random):
         self.id_generator.initialize()
+        # if no update or in the final evaluation
+        self.current_max_depth = self.max_depth
 
     def update_depth(self, new_depth):
         if new_depth <= self.max_depth:

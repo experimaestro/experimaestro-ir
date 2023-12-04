@@ -40,7 +40,8 @@ class PairwiseGenerativeLoss(nn.Module, DepthUpdatable):
             self.current_max_depth = self.max_depth
 
     def initialize(self):
-        pass
+        # if no update
+        self.current_max_depth = self.max_depth
 
     def compute(self, records, context):
         pass

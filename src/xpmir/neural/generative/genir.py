@@ -174,6 +174,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
         )
 
     def initialize(self):
+        super().initialize()
         self.kl_lossfn = nn.KLDivLoss(reduction="sum", log_target=True)
 
     def recursive(
