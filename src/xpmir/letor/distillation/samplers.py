@@ -1,20 +1,24 @@
-from typing import Iterable, Iterator, NamedTuple, Optional, Tuple, List, Any
+from typing import (
+    Iterable,
+    Iterator,
+    NamedTuple,
+    Tuple,
+    List,
+    Any,
+)
 
 import numpy as np
 from datamaestro.data import File
-from datamaestro_text.data.ir import DocumentStore
 from datamaestro_text.data.ir.base import (
-    GenericTopic,
     IDTopic,
     TextTopic,
     IDDocument,
     TextDocument,
 )
 from experimaestro import Config, Meta, Param
-
-from xpmir.datasets.adapters import TextStore
 from xpmir.learning import Sampler
 from xpmir.letor.records import TopicRecord
+from xpmir.letor.samplers.hydrators import SampleHydrator
 from xpmir.rankers import ScoredDocument
 from xpmir.utils.iter import (
     SerializableIterator,
@@ -38,35 +42,25 @@ class PairwiseDistillationSamples(Config, Iterable[PairwiseDistillationSample]):
         raise NotImplementedError()
 
 
-class PairwiseHydrator(PairwiseDistillationSamples):
+class PairwiseHydrator(PairwiseDistillationSamples, SampleHydrator):
     """Hydrate ID-based samples with document and/or query content"""
 
     samples: Param[PairwiseDistillationSamples]
     """The distillation samples without texts for query and documents"""
 
-    documentstore: Param[Optional[DocumentStore]]
-    """The store for document texts if needed"""
-
-    querystore: Param[Optional[TextStore]]
-    """The store for query texts if needed"""
-
-    def transform(self, sample):
+    def transform(self, sample: PairwiseDistillationSample):
         topic, documents = sample.query, sample.documents
 
-        if self.querystore is not None:
-            topic = GenericTopic(
-                sample.query.get_id(), self.querystore[sample.query.get_id()]
-            )
-        if self.documentstore is not None:
+        if transformed := self.querystore.transforme_topics():
+            topic = TopicRecord(*transformed)
+
+        if transformed := self.documentstore.transforme_documents():
             documents = tuple(
-                ScoredDocument(
-                    self.documentstore.document_ext(d.document.get_id()), d.score
-                )
-                for d in sample.documents
+                ScoredDocument(d, sd.score)
+                for d, sd in zip(transformed, sample.documents)
             )
 
-        sample = PairwiseDistillationSample(topic, documents)
-        return sample
+        return PairwiseDistillationSample(topic, documents)
 
     def __iter__(self) -> Iterator[PairwiseDistillationSample]:
         iterator = iter(self.samples)

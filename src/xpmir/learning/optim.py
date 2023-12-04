@@ -97,6 +97,27 @@ class Module(Config, Initializable, torch.nn.Module):
         return torch.nn.Module.to(self, *args, **kwargs)
 
 
+class ModuleList(Module, Initializable):
+    """Groups different models together, to be used within the Learner"""
+
+    sub_modules: Param[List[Module]]
+
+    def __post_init__(self):
+        # Register sub-modules
+        for ix, sub_module in enumerate(self.sub_modules):
+            self.add_module(str(ix), sub_module)
+
+    def __initialize__(self, *args, **kwargs):
+        for module in self.sub_modules:
+            module.initialize(*args, **kwargs)
+
+    def __call__(self, *args, **kwargs):
+        raise AssertionError("This module cannot be used as such")
+
+    def to(self, *args, **kwargs):
+        return torch.nn.Module.to(self, *args, **kwargs)
+
+
 class ModuleLoader(PathSerializationLWTask):
     def execute(self):
         """Loads the model from disk using the given serialization path"""
@@ -130,6 +151,9 @@ class RegexParameterFilter(ParameterFilter):
 
     def __validate__(self):
         return self.includes or self.excludes
+
+    def __repr__(self) -> str:
+        return f"RegexParameterFilter({self.includes}, {self.excludes})"
 
     def __call__(self, name, params) -> bool:
         # Look first at included
@@ -174,6 +198,9 @@ class ParameterOptimizer(Config):
             for name, param in module.named_parameters()
             if (self.filter is None or self.filter(name, param)) and filter(name, param)
         ]
+        if not params:
+            raise RuntimeError(f"Parameter list is empty with {self.filter}")
+
         optimizer = self.optimizer(params)
         return optimizer
 
@@ -204,6 +231,11 @@ class ScheduledOptimizer:
         self.optimizers = []
         self.scheduler_steps = -1  # Number of scheduler steps
         self.num_training_steps = num_training_steps
+
+        try:
+            next(module.parameters())
+        except StopIteration:
+            raise RuntimeError("No parameters to optimize in the module")
 
         filter = DuplicateParameterFilter()
         for param_optimizer in param_optimizers:

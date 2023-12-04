@@ -1,6 +1,7 @@
 Optimization
 ============
 
+.. _Optimization:
 
 Modules
 -------
@@ -9,6 +10,8 @@ Modules
 .. autoxpmconfig:: xpmir.learning.optim.Module
     :members:
 
+.. autoxpmconfig:: xpmir.learning.optim.ModuleList
+    :members:
 
 The module loader can be used to load a checkpoint
 

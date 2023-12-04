@@ -66,7 +66,7 @@ class BaseTransformer(Encoder):
         return self.tokenizer.pad_token_id
 
     @property
-    def automodel():
+    def automodel(self):
         return AutoModel
 
     def __initialize__(self, noinit=False):
@@ -501,7 +501,7 @@ class MLMModelOutput:
     labels: torch.Tensor
 
 
-class MLMEncoder(BaseTransformer, DistributableModel, DualTextEncoder):
+class MLMEncoder(BaseTransformer, DistributableModel):
     """Implementation of the encoder for the Masked Language Modeling task"""
 
     maxlen: Param[Optional[int]] = None
