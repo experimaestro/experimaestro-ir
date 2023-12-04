@@ -1,5 +1,4 @@
 import torch
-from experimaestro import Config
 from torch.utils.tensorboard.writer import SummaryWriter
 from pathlib import Path
 import os
@@ -11,7 +10,7 @@ from typing import (
     TYPE_CHECKING,
 )
 from shutil import rmtree
-from xpmir.context import Context, InitializationHook
+from xpmir.context import Context, InitializationHook, Hook
 from xpmir.utils.utils import easylog
 from xpmir.learning.devices import DeviceInformation
 from xpmir.learning.metrics import Metric, Metrics
@@ -115,13 +114,13 @@ class TrainState:
             os.link(self.path / name, path / name)
 
 
-class TrainingHook(Config):
+class TrainingHook(Hook):
     """Base class for all training hooks"""
 
     pass
 
 
-class ValidationHook(Config):
+class ValidationHook(Hook):
     """Base class for all the validation hooks"""
 
     def after(self, state: "TrainerContext"):
