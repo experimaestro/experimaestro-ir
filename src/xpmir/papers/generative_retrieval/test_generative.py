@@ -88,7 +88,6 @@ class ProbaTabIdentifierGenerator(IdentifierGenerator):
         return bias
 
     def _log_probabilities(self, logits: torch.Tensor, last_ix: Tuple[int], depth: int):
-
         if len(last_ix) == 0:
             # End of the recursion: EOS has probability 1
             return {"_": torch.zeros(self.nb_texts)}
