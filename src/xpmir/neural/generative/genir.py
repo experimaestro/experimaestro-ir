@@ -1,23 +1,25 @@
-from dataclasses import dataclass
-from typing import Generic, NamedTuple, TypeVar, Optional, List
-from collections import namedtuple
-from torch import nn
-import numpy as np
-from experimaestro import Param
-from experimaestro.compat import cached_property
-import torch
 import logging
+from collections import namedtuple
+from dataclasses import dataclass
+from typing import Generic, List, NamedTuple, Optional, TypeVar
 
+import numpy as np
+import torch
+from experimaestro import Config, Param
+from experimaestro.compat import cached_property
+from torch import nn
+
+from xpmir.learning.context import Loss, StepTrainingHook
+from xpmir.learning.metrics import ScalarMetric
 from xpmir.letor.records import BaseRecords, PairwiseRecords
+from xpmir.letor.trainers import TrainerContext
+from xpmir.letor.trainers.generative import PairwiseGenerativeLoss
 from xpmir.neural.generative import (
+    GenerativeRetrievalScorer,
     IdentifierGenerator,
     StepwiseGenerator,
-    GenerativeRetrievalScorer,
 )
-from xpmir.letor.trainers import TrainerContext
-from xpmir.learning.context import Loss
-from xpmir.learning.metrics import ScalarMetric
-from xpmir.letor.trainers.generative import PairwiseGenerativeLoss
+from xpmir.rankers import AbstractModuleScorer
 from xpmir.utils.utils import easylog
 
 logger = easylog()
@@ -25,6 +27,30 @@ logger = easylog()
 T = TypeVar("T")
 
 # dataclass for training, compose of pos_doc, neg_doc and query
+
+
+class DepthUpdatable(Config):
+    """Abstract class of the objects which could update their depth"""
+
+    max_depth: Param[int] = 5
+    """The max number of the steps we need to consider, counting from 1"""
+
+    current_max_depth: int
+    """The max_depth for the current learning stage in the progressive training
+    stage"""
+
+    def update_depth(self, new_depth):
+        if new_depth <= self.max_depth:
+            self.current_max_depth = new_depth
+            logger.info(
+                f"Update the max_depth to {self.current_max_depth} for the loss"
+            )
+        else:
+            self.current_max_depth = self.max_depth
+
+    def initialize(self):
+        # if no update
+        self.current_max_depth = self.max_depth
 
 
 @dataclass
@@ -77,7 +103,6 @@ class GeneratorBiasStepwiseGenerator(StepwiseGenerator):
 
 # The model with addtional bias
 class GeneratorBiasAdapter(IdentifierGenerator):
-
     max_depth: Param[int] = 5
     """The max_depth of the generator"""
 
@@ -119,8 +144,7 @@ class GeneratorBiasAdapter(IdentifierGenerator):
 
 
 # --- For training
-class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
-
+class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
     NAME = "PairwiseGenerativeLoss"
 
     id_generator: Param[IdentifierGenerator]
@@ -175,6 +199,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
 
     def initialize(self):
         super().initialize()
+        super(DepthUpdatable).initialize()
         self.kl_lossfn = nn.KLDivLoss(reduction="sum", log_target=True)
 
     def recursive(
@@ -354,7 +379,6 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss):
     def compute(
         self, records: PairwiseRecords, context: TrainerContext
     ) -> GenerativeLossOutput:
-
         posdocs_text = [pdr.document.get_text() for pdr in records.positives]
         negdocs_text = [ndr.document.get_text() for ndr in records.negatives]
         queries_text = [qr.topic.get_text() for qr in records.unique_queries]
@@ -614,3 +638,40 @@ class RandomBasedGenerativeRetrievalScorer(GenerativeRetrievalScorer):
         return self.recursive(
             decoder_input_tokens, unfinished_sequences, 1, stepwise_generator
         )
+
+
+class GenerativeRetrievalScorer(AbstractModuleScorer, DepthUpdatable):
+    """The abstract class for the generative retrieval scorer"""
+
+    id_generator: Param[IdentifierGenerator]
+    """The id generator"""
+
+    def _initialize(self, random):
+        self.id_generator.initialize()
+        super(DepthUpdatable).initialize()
+
+    def update_depth(self, new_depth):
+        if new_depth <= self.max_depth:
+            self.current_max_depth = new_depth
+            logger.info(
+                f"Update the max_depth to {self.current_max_depth} for the scorer"
+            )
+        else:
+            self.current_max_depth = self.max_depth
+
+
+class GenRetDepthUpdateHook(StepTrainingHook):
+    """Update the depth of the training instance(loss, scorer, etc) procedure"""
+
+    objects: Param[List[DepthUpdatable]]
+    """The objects to update the depth during the learning procedure"""
+
+    update_interval: Param[int] = 200
+    """The interval to update the learning depth"""
+
+    def before(self, state: TrainerContext):
+        # start with depth 1
+        if state.steps % (self.update_interval * state.steps_per_epoch) == 1:
+            current_depth = (state.epoch - 1) // self.update_interval + 1
+            for object in self.objects:
+                object.update_depth(current_depth)

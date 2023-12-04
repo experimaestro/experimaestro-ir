@@ -2,7 +2,7 @@ import logging
 
 from transformers import AutoConfig, AutoTokenizer, T5ForConditionalGeneration, T5Config
 from experimaestro import Param, LightweightTask
-from typing import Optional, List
+from typing import Optional, List, NamedTuple
 import matplotlib.pyplot as plt
 
 import torch
@@ -12,7 +12,14 @@ from xpmir.letor.records import TokenizedTexts
 from xpmir.distributed import DistributableModel
 from xpmir.learning.context import StepTrainingHook, TrainerContext
 from xpmir.papers.generative_retrieval.test_generative import FakePairwiseSampler
-from . import IdentifierGenerator, StepwiseGenerator, GeneratorForwardOutput
+from . import IdentifierGenerator, StepwiseGenerator
+
+
+class GeneratorForwardOutput(NamedTuple):
+    """The forward output of the generative retrieval"""
+
+    logits: torch.tensor
+    past_key_values: Optional[torch.tensor] = None
 
 
 class CustomOutputT5(T5ForConditionalGeneration):
