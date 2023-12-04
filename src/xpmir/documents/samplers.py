@@ -4,8 +4,8 @@ import torch
 import numpy as np
 from datamaestro_text.data.ir import DocumentStore
 from xpmir.letor import Random
-from xpmir.letor.records import Document, ProductRecords, Query
-from xpmir.letor.samplers import BatchwiseSampler
+from xpmir.letor.records import Document, PairwiseRecord, ProductRecords, Query
+from xpmir.letor.samplers import BatchwiseSampler, PairwiseSampler
 from xpmir.utils.iter import RandomSerializableIterator, SerializableIterator
 
 
@@ -78,7 +78,7 @@ class RandomDocumentSampler(DocumentSampler):
             yield self.documents.document(int(docid)).text
 
 
-class BatchwiseRandomSpanSampler(DocumentSampler, BatchwiseSampler):
+class BatchwiseRandomSpanSampler(DocumentSampler, BatchwiseSampler, PairwiseSampler):
     """This sampler uses positive samples coming from the same documents
     and negative ones coming from others
 
@@ -91,6 +91,9 @@ class BatchwiseRandomSpanSampler(DocumentSampler, BatchwiseSampler):
 
     max_spansize: Param[int] = 1000
     """Maximum span size in number of characters"""
+
+    def pairwise_iter(self) -> SerializableIterator[PairwiseRecord, Any]:
+        pass
 
     def batchwise_iter(
         self, batch_size: int
