@@ -11,12 +11,10 @@ logger = easylog()
 class StepwiseGenerator:
     """Utility class for generating one token at a time"""
 
-    decoder_input_ids: torch.LongTensor
-    """The current token"""
-
     @abstractmethod
     def init(self, texts: List[str]) -> torch.Tensor:
-        """Returns the distribution over the first generated tokens (BxV)"""
+        """Returns the distribution over the first generated tokens (BxV)
+        given the texts"""
         pass
 
     @abstractmethod
