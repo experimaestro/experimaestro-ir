@@ -26,8 +26,6 @@ logger = easylog()
 
 T = TypeVar("T")
 
-# dataclass for training, compose of pos_doc, neg_doc and query
-
 
 class DepthUpdatable(Config):
     """Abstract class of the objects which could update their depth"""
@@ -53,6 +51,7 @@ class DepthUpdatable(Config):
         self.current_max_depth = self.max_depth
 
 
+# dataclass for training, compose of pos_doc, neg_doc and query
 @dataclass
 class Triplet(Generic[T]):
     pos_doc: T
