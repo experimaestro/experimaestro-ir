@@ -1,6 +1,9 @@
+from dataclasses import dataclass
+from enum import Enum
 import threading
 from typing import Any, Callable, List, Optional, TYPE_CHECKING, Union
 from pathlib import Path
+import numpy as np
 import torch
 import logging
 import re
@@ -83,12 +86,50 @@ class AdamW(Optimizer):
         )
 
 
+class ModuleInitMode(Enum):
+    """Initialization mode"""
+
+    #: Default initialization (i.e. can load default parameters)
+    DEFAULT = 0
+
+    #: No parameter initialization (just initialize the structure of the model)
+    NONE = 1
+
+    #: Random initialization (initialize the structure, then use a the random
+    #: number generator to initialize the values)
+    RANDOM = 2
+
+
+@dataclass
+class ModuleInitOptions:
+    #: Initialization mode
+    mode: ModuleInitMode
+
+    #: Random generator (only defined when mode is RANDOM)
+    random: Optional[np.Random] = None
+
+
+MODULE_INIT_DEFAULT = ModuleInitOptions(ModuleInitMode.DEFAULT)
+MODULE_INIT_NONE = ModuleInitOptions(ModuleInitMode.DEFAULT)
+
+
+def random_module_init_options(random):
+    return ModuleInitOptions(ModuleInitMode.DEFAULT, random=random)
+
+
 class Module(Config, Initializable, torch.nn.Module):
     """A module contains parameters"""
 
     def __init__(self):
         Initializable.__init__(self)
         torch.nn.Module.__init__(self)
+
+    def __initialize__(self, options: ModuleInitOptions):
+        """Initialize a module
+
+        :param options: The initialization options
+        """
+        pass
 
     def __call__(self, *args, **kwargs):
         return torch.nn.Module.__call__(self, *args, **kwargs)
@@ -107,9 +148,9 @@ class ModuleList(Module, Initializable):
         for ix, sub_module in enumerate(self.sub_modules):
             self.add_module(str(ix), sub_module)
 
-    def __initialize__(self, *args, **kwargs):
+    def __initialize__(self, options: ModuleInitOptions):
         for module in self.sub_modules:
-            module.initialize(*args, **kwargs)
+            module.initialize(options)
 
     def __call__(self, *args, **kwargs):
         raise AssertionError("This module cannot be used as such")
@@ -122,7 +163,7 @@ class ModuleLoader(PathSerializationLWTask):
     def execute(self):
         """Loads the model from disk using the given serialization path"""
         logging.info("Loading model from disk: %s", self.path)
-        self.value.initialize(None)
+        self.value.initialize(MODULE_INIT_NONE)
         data = torch.load(self.path)
         self.value.load_state_dict(data)
 

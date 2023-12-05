@@ -26,8 +26,8 @@ class RandomTokensEncoder(TokensEncoder):
     DIMENSION = 7
     MAX_WORDS = 100
 
-    def __initialize__(self):
-        super().__initialize__()
+    def __initialize__(self, options):
+        super().__initialize__(options)
         self.map = {}
         self.embed = torch.nn.Embedding.from_pretrained(
             torch.randn(RandomTokensEncoder.MAX_WORDS, RandomTokensEncoder.DIMENSION)

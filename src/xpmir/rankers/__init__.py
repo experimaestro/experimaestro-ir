@@ -28,6 +28,7 @@ from datamaestro_text.data.ir import (
 from datamaestro_text.data.ir.base import TextDocument, TextTopic
 from xpmir.utils.utils import Initializable
 from xpmir.letor import Device, Random
+from xpmir.learning import ModuleInitOptions
 from xpmir.learning.batchers import Batcher
 from xpmir.learning.context import TrainerContext
 from xpmir.learning.optim import Module
@@ -84,15 +85,10 @@ class Scorer(Config, Initializable, EasyLogger):
     outputType: ScorerOutputType = ScorerOutputType.REAL
     """Determines the type of output scalar (log probability, probability, logit) """
 
-    def __initialize__(self, random: Optional[np.random.RandomState]):
+    def __initialize__(self, options: ModuleInitOptions):
         """Initialize the scorer
 
-        Arguments:
-
-            random:
-                Random state for random number generation; when random is None,
-                this means that the state will be loaded from
-                disk after initializations
+        :param options: Options for initialization
         """
         pass
 
