@@ -61,12 +61,12 @@ class LearnerListener(Config):
         pass
 
     def task_outputs(self, learner: "Learner", dep):
-        """Outputs from this listeners
+        """Outputs from this listeners (deprecated)
 
         :param learner: The learner object
         :param dep: The function that adds a dependency
         """
-        return None
+        raise DeprecationWarning("task_outputs has been deprecated, use init_task")
 
     def init_task(self, learner: "Learner", dep):
         """Returns the initialization task that loads the associated checkpoint
