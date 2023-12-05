@@ -106,7 +106,7 @@ class ModuleInitOptions:
     mode: ModuleInitMode
 
     #: Random generator (only defined when mode is RANDOM)
-    random: Optional[np.Random] = None
+    random: Optional[np.random.RandomState] = None
 
 
 MODULE_INIT_DEFAULT = ModuleInitOptions(ModuleInitMode.DEFAULT)
