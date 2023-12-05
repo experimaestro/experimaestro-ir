@@ -89,7 +89,7 @@ class AdamW(Optimizer):
 class ModuleInitMode(Enum):
     """Initialization mode"""
 
-    #: Default initialization (i.e. can load default parameters)
+    #: Default initialization (i.e. can load default parameters or initialize randomly)
     DEFAULT = 0
 
     #: No parameter initialization (just initialize the structure of the model)
@@ -99,6 +99,9 @@ class ModuleInitMode(Enum):
     #: number generator to initialize the values)
     RANDOM = 2
 
+    def to_options(self, random: Optional[np.random.RandomState] = None):
+        return ModuleInitOptions(self, random)
+
 
 @dataclass
 class ModuleInitOptions:
@@ -107,14 +110,6 @@ class ModuleInitOptions:
 
     #: Random generator (only defined when mode is RANDOM)
     random: Optional[np.random.RandomState] = None
-
-
-MODULE_INIT_DEFAULT = ModuleInitOptions(ModuleInitMode.DEFAULT)
-MODULE_INIT_NONE = ModuleInitOptions(ModuleInitMode.DEFAULT)
-
-
-def random_module_init_options(random):
-    return ModuleInitOptions(ModuleInitMode.DEFAULT, random=random)
 
 
 class Module(Config, Initializable, torch.nn.Module):
@@ -163,7 +158,7 @@ class ModuleLoader(PathSerializationLWTask):
     def execute(self):
         """Loads the model from disk using the given serialization path"""
         logging.info("Loading model from disk: %s", self.path)
-        self.value.initialize(MODULE_INIT_NONE)
+        self.value.initialize(ModuleInitMode.NONE.to_options())
         data = torch.load(self.path)
         self.value.load_state_dict(data)
 
