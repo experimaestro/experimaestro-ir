@@ -1,13 +1,16 @@
 import pytest
+import numpy as np
 from typing import Iterator, Tuple
+from experimaestro import Param
 import datamaestro_text.data.ir as ir
-from datamaestro_text.data.ir.base import GenericTopic, GenericDocument
+from datamaestro_text.data.ir.base import GenericTopic, GenericDocument, Document
 from xpmir.rankers import Retriever
 from xpmir.letor.samplers import (
     TrainingTriplets,
     TripletBasedSampler,
     ModelBasedSampler,
 )
+from xpmir.documents.samplers import RandomSpanSampler
 
 # ---- Serialization
 
@@ -88,3 +91,35 @@ def test_modelbasedsampler():
 
     for a in sampler._itertopics():
         pass
+
+
+class FakeDocumentStore(ir.DocumentStore):
+    id: Param[str] = ""
+
+    def count(self):
+        return int(100)
+
+    def document_int(self, internal_docid: int) -> Document:
+        return GenericDocument(
+            str(internal_docid), f"D{internal_docid} D{internal_docid*2}"
+        )
+
+
+def test_pairwise_randomspansampler():
+    documents = FakeDocumentStore()
+
+    sampler1 = RandomSpanSampler(documents=documents).instance()
+
+    sampler2 = RandomSpanSampler(documents=documents).instance()
+
+    random = np.random.RandomState()
+    sampler1.initialize(random)
+    sampler2.initialize(random)
+    iter1 = sampler1.pairwise_iter()
+    iter2 = sampler2.pairwise_iter()
+
+    for s1, s2, _ in zip(iter1, iter2, range(10)):
+        # check that they are the same with same random state
+        assert s1.query.get_text() == s2.query.get_text()
+        assert s1.positive.get_text() == s2.positive.get_text()
+        assert s1.negative.get_text() == s2.negative.get_text()
