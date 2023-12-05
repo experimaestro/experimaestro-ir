@@ -96,13 +96,12 @@ def test_modelbasedsampler():
 class FakeDocumentStore(ir.DocumentStore):
     id: Param[str] = ""
 
-    def count(self):
-        return int(100)
+    @property
+    def documentcount(self):
+        return 10
 
     def document_int(self, internal_docid: int) -> Document:
-        return GenericDocument(
-            str(internal_docid), f"D{internal_docid} D{internal_docid*2}"
-        )
+        return GenericDocument(str(internal_docid), f"D{internal_docid} " * 10)
 
 
 def test_pairwise_randomspansampler():
@@ -112,14 +111,15 @@ def test_pairwise_randomspansampler():
 
     sampler2 = RandomSpanSampler(documents=documents).instance()
 
-    random = np.random.RandomState()
-    sampler1.initialize(random)
-    sampler2.initialize(random)
+    random1 = np.random.RandomState(seed=0)
+    random2 = np.random.RandomState(seed=0)
+    sampler1.initialize(random1)
+    sampler2.initialize(random2)
     iter1 = sampler1.pairwise_iter()
     iter2 = sampler2.pairwise_iter()
 
     for s1, s2, _ in zip(iter1, iter2, range(10)):
         # check that they are the same with same random state
-        assert s1.query.get_text() == s2.query.get_text()
-        assert s1.positive.get_text() == s2.positive.get_text()
-        assert s1.negative.get_text() == s2.negative.get_text()
+        assert s1.query.topic.get_text() == s2.query.topic.get_text()
+        assert s1.positive.document.get_text() == s2.positive.document.get_text()
+        assert s1.negative.document.get_text() == s2.negative.document.get_text()
