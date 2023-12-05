@@ -18,7 +18,6 @@ from typing import (
 import torch
 import torch.nn as nn
 import attrs
-import numpy as np
 from experimaestro import Param, Config, Meta
 from datamaestro_text.data.ir import (
     Document,
@@ -28,7 +27,7 @@ from datamaestro_text.data.ir import (
 from datamaestro_text.data.ir.base import TextDocument, TextTopic
 from xpmir.utils.utils import Initializable
 from xpmir.letor import Device, Random
-from xpmir.learning import ModuleInitOptions
+from xpmir.learning import ModuleInitOptions, ModuleInitMode
 from xpmir.learning.batchers import Batcher
 from xpmir.learning.context import TrainerContext
 from xpmir.learning.optim import Module
@@ -185,7 +184,7 @@ class AbstractModuleScorer(Scorer, Module):
     def __str__(self):
         return f"scorer {self.__class__.__qualname__}"
 
-    def _initialize(self, random):
+    def _initialize(self, options: ModuleInitOptions):
         raise NotImplementedError(f"_initialize in {self.__class__}")
 
     def train(self, mode=True):
@@ -197,7 +196,7 @@ class AbstractModuleScorer(Scorer, Module):
         self.train(False)
 
     @final
-    def initialize(self, random: Optional[np.random.RandomState] = None):
+    def initialize(self, options: ModuleInitOptions):
         """Initialize a learnable scorer
 
         Initialization can either be determined by a checkpoint (if set) or
@@ -207,13 +206,12 @@ class AbstractModuleScorer(Scorer, Module):
             return
 
         # Sets the current random seed
-        if random is not None:
-            seed = random.randint((2**32) - 1)
+        if options.mode == ModuleInitMode.RANDOM:
+            seed = options.random.randint((2**32) - 1)
             torch.manual_seed(seed)
             torch.cuda.manual_seed_all(seed)
-            self._initialize(random)
-        else:
-            self._initialize(None)
+
+        self._initialize(options)
 
         self._initialized = True
 
