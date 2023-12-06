@@ -1,9 +1,8 @@
 import logging
 from collections import namedtuple
 from dataclasses import dataclass
-from typing import Generic, List, NamedTuple, Optional, TypeVar
+from typing import Generic, List, NamedTuple, TypeVar
 
-import numpy as np
 import torch
 from experimaestro import Config, Param
 from experimaestro.compat import cached_property
@@ -15,8 +14,7 @@ from xpmir.letor.records import BaseRecords, PairwiseRecords
 from xpmir.letor.trainers import TrainerContext
 from xpmir.letor.trainers.generative import PairwiseGenerativeLoss
 from xpmir.neural.generative import (
-    GenerativeRetrievalScorer,
-    IdentifierGenerator,
+    ConditionalGenerator,
     StepwiseGenerator,
 )
 from xpmir.rankers import AbstractModuleScorer
@@ -78,7 +76,7 @@ class GenerativeLossOutput(NamedTuple):
 class GeneratorBiasStepwiseGenerator(StepwiseGenerator):
     def __init__(
         self,
-        id_generator: IdentifierGenerator,
+        id_generator: ConditionalGenerator,
         stepwise_iterator: StepwiseGenerator,
     ):
         super().__init__()
@@ -101,16 +99,16 @@ class GeneratorBiasStepwiseGenerator(StepwiseGenerator):
 
 
 # The model with addtional bias
-class GeneratorBiasAdapter(IdentifierGenerator):
+class GeneratorBiasAdapter(ConditionalGenerator):
     max_depth: Param[int] = 5
     """The max_depth of the generator"""
 
-    vanilla_generator: Param[IdentifierGenerator]
+    vanilla_generator: Param[ConditionalGenerator]
     """The original generator"""
 
-    def __initialize__(self, random: Optional[np.random.RandomState] = None):
+    def __initialize__(self):
         super().__initialize__()
-        self.vanilla_generator.initialize(random)
+        self.vanilla_generator.initialize()
         self.decoder_outdim = self.vanilla_generator.decoder_outdim
         self.eos_token_id = self.vanilla_generator.eos_token_id
         self.pad_token_id = self.vanilla_generator.pad_token_id
@@ -146,7 +144,7 @@ class GeneratorBiasAdapter(IdentifierGenerator):
 class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
     NAME = "PairwiseGenerativeLoss"
 
-    id_generator: Param[IdentifierGenerator]
+    id_generator: Param[ConditionalGenerator]
     """The id generator"""
 
     alpha: Param[float] = 0.0
@@ -449,6 +447,26 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
         )
 
 
+class GenerativeRetrievalScorer(AbstractModuleScorer, DepthUpdatable):
+    """The abstract class for the generative retrieval scorer"""
+
+    id_generator: Param[ConditionalGenerator]
+    """The id generator"""
+
+    def _initialize(self, random):
+        self.id_generator.initialize()
+        super(DepthUpdatable).initialize()
+
+    def update_depth(self, new_depth):
+        if new_depth <= self.max_depth:
+            self.current_max_depth = new_depth
+            logger.info(
+                f"Update the max_depth to {self.current_max_depth} for the scorer"
+            )
+        else:
+            self.current_max_depth = self.max_depth
+
+
 # --- For inference
 class NaiveGenerativeRetrievalScorer(GenerativeRetrievalScorer):
     """A naive scorer which will be used for the inference of the generative
@@ -637,26 +655,6 @@ class RandomBasedGenerativeRetrievalScorer(GenerativeRetrievalScorer):
         return self.recursive(
             decoder_input_tokens, unfinished_sequences, 1, stepwise_generator
         )
-
-
-class GenerativeRetrievalScorer(AbstractModuleScorer, DepthUpdatable):
-    """The abstract class for the generative retrieval scorer"""
-
-    id_generator: Param[IdentifierGenerator]
-    """The id generator"""
-
-    def _initialize(self, random):
-        self.id_generator.initialize()
-        super(DepthUpdatable).initialize()
-
-    def update_depth(self, new_depth):
-        if new_depth <= self.max_depth:
-            self.current_max_depth = new_depth
-            logger.info(
-                f"Update the max_depth to {self.current_max_depth} for the scorer"
-            )
-        else:
-            self.current_max_depth = self.max_depth
 
 
 class GenRetDepthUpdateHook(StepTrainingHook):
