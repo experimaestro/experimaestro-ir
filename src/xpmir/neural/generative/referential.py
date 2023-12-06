@@ -17,6 +17,7 @@ from xpmir.neural.generative import (
     ConditionalGenerator,
     StepwiseGenerator,
 )
+from xpmir.learning import ModuleInitOptions
 from xpmir.rankers import AbstractModuleScorer
 from xpmir.utils.utils import easylog
 
@@ -106,9 +107,9 @@ class GeneratorBiasAdapter(ConditionalGenerator):
     vanilla_generator: Param[ConditionalGenerator]
     """The original generator"""
 
-    def __initialize__(self):
-        super().__initialize__()
-        self.vanilla_generator.initialize()
+    def __initialize__(self, options: ModuleInitOptions):
+        super().__initialize__(options)
+        self.vanilla_generator.initialize(options)
         self.decoder_outdim = self.vanilla_generator.decoder_outdim
         self.eos_token_id = self.vanilla_generator.eos_token_id
         self.pad_token_id = self.vanilla_generator.pad_token_id
@@ -453,8 +454,9 @@ class GenerativeRetrievalScorer(AbstractModuleScorer, DepthUpdatable):
     id_generator: Param[ConditionalGenerator]
     """The id generator"""
 
-    def _initialize(self, random):
-        self.id_generator.initialize()
+    def __initialize__(self, options: ModuleInitOptions):
+        super().__initialize__(options)
+        self.id_generator.initialize(options)
         super(DepthUpdatable).initialize()
 
     def update_depth(self, new_depth):
