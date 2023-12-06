@@ -271,7 +271,7 @@ class ScheduledOptimizer:
         try:
             next(module.parameters())
         except StopIteration:
-            raise RuntimeError("No parameters to optimize in the module")
+            raise RuntimeError(f"No parameters to optimize in the module {module}")
 
         filter = DuplicateParameterFilter()
         for param_optimizer in param_optimizers:

@@ -193,7 +193,7 @@ def test_forward_types(modelfactory, inputfactory):
     """Test that each record type is handled"""
     model = modelfactory()
     random = Random().instance().state
-    model.initialize(random)
+    model.initialize(ModuleInitMode.RANDOM.to_options(random))
 
     inputs = inputfactory()
 

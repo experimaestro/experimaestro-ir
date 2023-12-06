@@ -31,8 +31,9 @@ class CrossScorer(LearnableScorer, DistributableModel):
         super().__validate__()
         assert not self.encoder.static(), "The vocabulary should be learnable"
 
-    def _initialize(self, random):
-        self.encoder.initialize()
+    def __initialize__(self, options):
+        super().__initialize__(options)
+        self.encoder.initialize(options)
         self.classifier = torch.nn.Linear(self.encoder.dimension, 1)
 
     def forward(self, inputs: BaseRecords, info: TrainerContext = None):
@@ -61,8 +62,9 @@ class DuoCrossScorer(DuoLearnableScorer, DistributableModel):
     def __validate__(self):
         assert not self.encoder.static(), "The vocabulary should be learnable"
 
-    def _initialize(self, random):
-        self.encoder.initialize()
+    def __initialize__(self, options):
+        super().__initialize__(options)
+        self.encoder.initialize(options)
         self.classifier = torch.nn.Linear(self.encoder.dimension, 1)
 
     def forward(self, inputs: PairwiseRecords, info: TrainerContext = None):

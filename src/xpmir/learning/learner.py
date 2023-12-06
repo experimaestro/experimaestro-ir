@@ -16,7 +16,7 @@ import numpy as np
 from xpmir.context import Hook, InitializationHook
 from xpmir.utils.utils import EasyLogger, easylog, foreach
 from xpmir.learning.devices import DEFAULT_DEVICE, Device, DeviceInformation
-from xpmir.learning import Random
+from xpmir.learning import Random, ModuleInitMode
 from xpmir.learning.trainers import Trainer
 from xpmir.learning.context import (
     StepTrainingHook,
@@ -223,15 +223,15 @@ class Learner(Task, EasyLogger):
         torch.cuda.manual_seed_all(seed)
 
         # Initialize the scorer and trainer
-        self.logger.info("Scorer initialization")
-        self.model.initialize()
+        self.logger.info("model initialization")
+        self.model.initialize(ModuleInitMode.DEFAULT.to_options(self.random.state))
 
         # Initialize the context and the listeners
         self.trainer.initialize(self.random.state, self.context)
         for listener in self.listeners:
             listener.initialize(self, self.context)
 
-        self.logger.info("Moving to device %s", device_information.device)
+        self.logger.info("Moving model to device %s", device_information.device)
         self.model.to(device_information.device)
         self.trainer.to(device_information.device)
         num_training_steps = self.max_epochs * self.steps_per_epoch

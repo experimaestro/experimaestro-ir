@@ -12,13 +12,11 @@ from typing import (
     Tuple,
     TypeVar,
     Union,
-    final,
     TYPE_CHECKING,
 )
 import torch
 import torch.nn as nn
 import attrs
-import numpy as np
 from experimaestro import Param, Config, Meta
 from datamaestro_text.data.ir import (
     Document,
@@ -185,37 +183,21 @@ class AbstractModuleScorer(Scorer, Module):
     def __str__(self):
         return f"scorer {self.__class__.__qualname__}"
 
-    def _initialize(self, random):
-        raise NotImplementedError(f"_initialize in {self.__class__}")
-
-    def train(self, mode=True):
-        """Put the model in training mode"""
-        return nn.Module.train(self, mode)
-
     def eval(self):
         """Put the model in training mode"""
         self.train(False)
 
-    @final
-    def initialize(self, random: Optional[np.random.RandomState] = None):
+    def __initialize__(self, options: ModuleInitOptions):
         """Initialize a learnable scorer
 
         Initialization can either be determined by a checkpoint (if set) or
         otherwise (random or pre-trained checkpoint depending on the models)
         """
-        if self._initialized:
-            return
-
         # Sets the current random seed
-        if random is not None:
-            seed = random.randint((2**32) - 1)
+        if options.random is not None:
+            seed = options.random.randint((2**32) - 1)
             torch.manual_seed(seed)
             torch.cuda.manual_seed_all(seed)
-            self._initialize(random)
-        else:
-            self._initialize(None)
-
-        self._initialized = True
 
         return self
 
