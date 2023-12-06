@@ -31,9 +31,6 @@ class HFCrossScorer(LearnableScorer, DistributableModel):
         )
         self.tokenizer = AutoTokenizer.from_pretrained(self.hf_id)
 
-    def _initialize(self, random):
-        pass
-
     def batch_tokenize(
         self,
         input_records: BaseRecords,

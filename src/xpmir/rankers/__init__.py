@@ -12,7 +12,6 @@ from typing import (
     Tuple,
     TypeVar,
     Union,
-    final,
     TYPE_CHECKING,
 )
 import torch
@@ -27,7 +26,7 @@ from datamaestro_text.data.ir import (
 from datamaestro_text.data.ir.base import TextDocument, TextTopic
 from xpmir.utils.utils import Initializable
 from xpmir.letor import Device, Random
-from xpmir.learning import ModuleInitOptions, ModuleInitMode
+from xpmir.learning import ModuleInitOptions
 from xpmir.learning.batchers import Batcher
 from xpmir.learning.context import TrainerContext
 from xpmir.learning.optim import Module
@@ -184,36 +183,21 @@ class AbstractModuleScorer(Scorer, Module):
     def __str__(self):
         return f"scorer {self.__class__.__qualname__}"
 
-    def _initialize(self, options: ModuleInitOptions):
-        raise NotImplementedError(f"_initialize in {self.__class__}")
-
-    def train(self, mode=True):
-        """Put the model in training mode"""
-        return nn.Module.train(self, mode)
-
     def eval(self):
         """Put the model in training mode"""
         self.train(False)
 
-    @final
-    def initialize(self, options: ModuleInitOptions):
+    def __initialize__(self, options: ModuleInitOptions):
         """Initialize a learnable scorer
 
         Initialization can either be determined by a checkpoint (if set) or
         otherwise (random or pre-trained checkpoint depending on the models)
         """
-        if self._initialized:
-            return
-
         # Sets the current random seed
-        if options.mode == ModuleInitMode.RANDOM:
+        if options.random is not None:
             seed = options.random.randint((2**32) - 1)
             torch.manual_seed(seed)
             torch.cuda.manual_seed_all(seed)
-
-        self._initialize(options)
-
-        self._initialized = True
 
         return self
 
