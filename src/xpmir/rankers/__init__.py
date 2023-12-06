@@ -26,7 +26,7 @@ from datamaestro_text.data.ir import (
 from datamaestro_text.data.ir.base import TextDocument, TextTopic
 from xpmir.utils.utils import Initializable
 from xpmir.letor import Device, Random
-from xpmir.learning import ModuleInitOptions
+from xpmir.learning import ModuleInitMode, ModuleInitOptions
 from xpmir.learning.batchers import Batcher
 from xpmir.learning.context import TrainerContext
 from xpmir.learning.optim import Module
@@ -329,7 +329,7 @@ class AbstractTwoStageRetriever(Retriever):
     def initialize(self):
         self.retriever.initialize()
         self._batcher = self.batcher.initialize(self.batchsize)
-        self.scorer.initialize(None)
+        self.scorer.initialize(ModuleInitMode.DEFAULT.to_options())
 
         # Compute with the scorer
         if self.device is not None:
