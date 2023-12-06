@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import List
 from abc import abstractmethod
 
@@ -23,8 +24,25 @@ class StepwiseGenerator:
         generates ones (B)"""
         pass
 
+    @abstractmethod
+    def state(self):
+        """Get the current state, so we can start back to a previous generated prefix"""
+        ...
 
-class IdentifierGenerator(Module):
+    @abstractmethod
+    def load_state(self, state):
+        """Load a saved state"""
+        ...
+
+
+@dataclass
+class GenerateOptions:
+    """Options used during sequence generation"""
+
+    pass
+
+
+class ConditionalGenerator(Module):
     """Models that generate an identifier given a document or a query"""
 
     def __initialize__(self):
@@ -32,4 +50,9 @@ class IdentifierGenerator(Module):
 
     @abstractmethod
     def stepwise_iterator(self) -> StepwiseGenerator:
+        pass
+
+    @abstractmethod
+    def generate(self, inputs: List[str], options: GenerateOptions = None):
+        """Generate text given the inputs"""
         pass
