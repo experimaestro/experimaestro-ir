@@ -46,3 +46,5 @@ Listeners can be used to monitor the learning process
 
 .. autoxpmconfig:: xpmir.learning.learner.LearnerListener
    :members: __call__
+
+.. autoxpmconfig:: xpmir.learning.context.ValidationHook

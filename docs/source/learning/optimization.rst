@@ -23,6 +23,7 @@ Optimizers
 
 
 .. autoxpmconfig:: xpmir.learning.optim.Optimizer
+.. autoxpmconfig:: xpmir.learning.optim.SGD
 .. autoxpmconfig:: xpmir.learning.optim.Adam
 .. autoxpmconfig:: xpmir.learning.optim.AdamW
 
@@ -45,6 +46,7 @@ The classes below allow to select a subset of parameters.
 .. autoxpmconfig:: xpmir.learning.parameters.InverseParametersIterator
 .. autoxpmconfig:: xpmir.learning.parameters.ParametersIterator
 .. autoxpmconfig:: xpmir.learning.parameters.SubParametersIterator
+.. autoxpmconfig:: xpmir.learning.parameters.RegexParametersIterator
 
 Freezing
 ********
@@ -58,7 +60,6 @@ Loading
 .. autoxpmconfig:: xpmir.learning.parameters.PrefixRenamer
 .. autoxpmconfig:: xpmir.learning.parameters.PartialModuleLoader
 .. autoxpmconfig:: xpmir.learning.parameters.SubModuleLoader
-
 
 Batching
 --------
