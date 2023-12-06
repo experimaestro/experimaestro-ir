@@ -6,7 +6,7 @@ import torch
 from collections import defaultdict
 from experimaestro import Constant
 from xpmir.index import Index
-from xpmir.letor import Random
+from xpmir.learning import Random, ModuleInitMode
 from xpmir.neural.dual import CosineDense, DotDense
 from datamaestro_text.data.ir.base import GenericDocument
 from xpmir.letor.records import (
@@ -26,8 +26,8 @@ class RandomTokensEncoder(TokensEncoder):
     DIMENSION = 7
     MAX_WORDS = 100
 
-    def __initialize__(self):
-        super().__initialize__()
+    def __initialize__(self, options):
+        super().__initialize__(options)
         self.map = {}
         self.embed = torch.nn.Embedding.from_pretrained(
             torch.randn(RandomTokensEncoder.MAX_WORDS, RandomTokensEncoder.DIMENSION)
@@ -212,7 +212,7 @@ def test_forward_consistency(modelfactory, inputfactoriescouple):
     """Test that outputs are consistent between the different records types"""
     model = modelfactory()
     random = Random().instance().state
-    model.initialize(random)
+    model.initialize(ModuleInitMode.DEFAULT.to_options(random))
 
     outputs = []
     maps = []

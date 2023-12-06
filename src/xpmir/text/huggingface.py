@@ -9,6 +9,7 @@ import torch
 from experimaestro.compat import cached_property
 from experimaestro import Param, Constant, deprecate
 from xpmir.distributed import DistributableModel
+from xpmir.learning.optim import ModuleInitMode, ModuleInitOptions
 from xpmir.text.encoders import (
     Encoder,
     TokensEncoder,
@@ -50,9 +51,9 @@ class BaseTransformer(Encoder):
     layer: Param[int] = 0
     """Layer to use (0 is the last, -1 to use them all)"""
 
-    # move this into a hook
+    # TODO: move this into a hook
     dropout: Param[Optional[float]] = 0
-    """Define a dropout for all the layers"""
+    """(deprecated) Define a dropout for all the layers"""
 
     CLS: int
     SEP: int
@@ -69,30 +70,27 @@ class BaseTransformer(Encoder):
     def automodel(self):
         return AutoModel
 
-    def __initialize__(self, noinit=False):
+    def __initialize__(self, options: ModuleInitOptions):
         """Initialize the HuggingFace transformer
 
         Args:
-            noinit (bool, optional): True when the weights don't need to be
-            loaded. Defaults to False.
-
-            automodel (type, optional): The class
-            used to initialize the model. Defaults to AutoModel.
+            options: loader options
         """
-        super().__initialize__()
+        super().__initialize__(options)
 
+        # Load the model configuration
         config = AutoConfig.from_pretrained(self.model_id)
-        if noinit:
+        if self.dropout != 0:
+            config.hidden_dropout_prob = self.dropout
+            config.attention_probs_dropout_prob = self.dropout
+
+        if options.mode == ModuleInitMode.NONE:
             self.model = self.automodel.from_config(config)
+        elif options.mode == ModuleInitMode.NONE:
+            self.model = self.automodel.from_config(config)
+            self.model.ran
         else:
-            if self.dropout == 0:
-                self.model = self.automodel.from_pretrained(self.model_id)
-            else:
-                config.hidden_dropout_prob = self.dropout
-                config.attention_probs_dropout_prob = self.dropout
-                self.model = self.automodel.from_pretrained(
-                    self.model_id, config=config
-                )
+            self.model = self.automodel.from_pretrained(self.model_id, config=config)
 
         # Loads the tokenizer
         self._tokenizer = AutoTokenizer.from_pretrained(self.model_id, use_fast=True)
@@ -206,8 +204,8 @@ class SentenceTransformerTextEncoder(TextEncoder):
 
     model_id: Param[str] = "sentence-transformers/all-MiniLM-L6-v2"
 
-    def __initialize__(self):
-        super().__initialize__()
+    def __initialize__(self, options: ModuleInitOptions):
+        super().__initialize__(options)
         from sentence_transformers import SentenceTransformer
 
         self.model = SentenceTransformer(self.model_id)
@@ -228,7 +226,7 @@ class OneHotHuggingFaceEncoder(TextEncoder):
 
     version: Constant[int] = 2
 
-    def __initialize__(self):
+    def __initialize__(self, options: ModuleInitOptions):
         super().__initialize__()
         self._tokenizer = AutoTokenizer.from_pretrained(self.model_id, use_fast=True)
         self.CLS = self._tokenizer.cls_token_id
@@ -307,8 +305,8 @@ class TransformerTextEncoderAdapter(TextEncoder, DistributableModel):
     encoder: Param[TransformerEncoder]
     maxlen: Param[Optional[int]] = None
 
-    def __initialize__(self):
-        self.encoder.__initialize__()
+    def __initialize__(self, options: ModuleInitOptions):
+        self.encoder.__initialize__(options)
 
     @property
     def dimension(self):
@@ -372,8 +370,8 @@ class DualDuoBertTransformerEncoder(BaseTransformer, TripletTextEncoder):
     maxlen_doc: Param[int] = 224
     """Maximum length for the query, the first document and the second one"""
 
-    def __initialize__(self, noinit=False):
-        super().__initialize__(noinit)
+    def __initialize__(self, options: ModuleInitOptions):
+        super().__initialize__(options)
 
         # Add an extra token type
         data = self.model.embeddings.token_type_embeddings.weight.data
@@ -509,18 +507,14 @@ class MLMEncoder(BaseTransformer, DistributableModel):
     mlm_probability: Param[float] = 0.2
     """Probability to mask tokens"""
 
-    noinit: Param[bool] = False
-    """Whether to start pre-training from scratch or not"""
-
     datacollator: DataCollatorForLanguageModeling = None
 
     @property
     def automodel(self):
         return AutoModelForMaskedLM
 
-    def initialize(self):
-        super().initialize(self.noinit)
-        logger.info("Model initialized")
+    def __initialize__(self, options: ModuleInitOptions):
+        super().__initialize__(options)
         self.datacollator = DataCollatorForLanguageModeling(
             tokenizer=self.tokenizer,
             mlm_probability=self.mlm_probability,

@@ -21,10 +21,6 @@ class CrossScorer(LearnableScorer, DistributableModel):
 
     Based on a query-document representation representation (e.g. BERT [CLS] token).
     AKA Cross-Encoder
-
-    Attributes:
-        encoder: Document (and query) encoder
-        query_encoder: Query encoder; if null, uses the document encoder
     """
 
     encoder: Param[DualTextEncoder]
