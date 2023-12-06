@@ -15,9 +15,9 @@ from xpmir.utils.utils import EasyLogger
 class Encoder(Module, EasyLogger):
     """Base class for all word and text encoders"""
 
-    def __initialize__(self):
+    def __initialize__(self, options):
         # Easy and hacky way to get the device
-        super().__initialize__()
+        super().__initialize__(options)
         self._dummy_params = nn.Parameter(torch.Tensor())
 
     def static(self):
@@ -231,8 +231,8 @@ class MeanTextEncoder(TextEncoder):
 
     encoder: Param[TokensEncoder]
 
-    def __initialize__(self):
-        self.encoder.__initialize__()
+    def __initialize__(self, options):
+        self.encoder.__initialize__(options)
 
     def static(self):
         return self.encoder.static()

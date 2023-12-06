@@ -17,6 +17,8 @@ Trainer
 
 .. autoxpmconfig:: xpmir.letor.trainers.pairwise.PairwiseTrainer
 .. autoxpmconfig:: xpmir.letor.trainers.pairwise.DuoPairwiseTrainer
+.. autoxpmconfig:: xpmir.letor.trainers.generative.GenerativeTrainer
+
 
 Losses
 ------
@@ -43,5 +45,6 @@ Pairwise
 .. autoxpmconfig:: PairwiseSampleDatasetFromTSV
 .. autoxpmconfig:: PairwiseSamplerFromTSV
 .. autoxpmconfig:: ModelBasedHardNegativeSampler
+.. autoxpmconfig:: TripletBasedInBatchNegativeSampler
 
 .. autoxpmconfig:: xpmir.letor.samplers.hydrators.PairwiseTransformAdapter

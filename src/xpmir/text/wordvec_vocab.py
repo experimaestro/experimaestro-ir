@@ -7,11 +7,10 @@ from pathlib import Path
 from torch import nn
 from experimaestro import cache, Param
 
-# from onir import vocab, util
 from xpmir.letor import Random
 from xpmir.letor.records import TokenizedTexts
+from xpmir.learning import ModuleInitOptions, ModuleInitMode
 
-# from onir.interfaces import wordvec
 from xpmir.text import TokensEncoder
 from datamaestro_text.data.embeddings import WordEmbeddings
 
@@ -139,11 +138,15 @@ class WordvecHashVocab(WordvecVocab):
     init_stddev: Param[float] = 0.5
     log_miss: Param[bool] = False
 
-    def __initialize__(self, random):
-        super().__initialize__()
-        hash_weights = random.normal(
-            scale=self.init_stddev, size=(self.hashspace, self._weights.shape[1])
-        )
+    def __initialize__(self, options: ModuleInitOptions):
+        super().__initialize__(options)
+
+        size = (self.hashspace, self._weights.shape[1])
+        if options.mode == ModuleInitMode.RANDOM:
+            hash_weights = options.random.normal(scale=self.init_stddev, size=size)
+        else:
+            hash_weights: np.empty(size)
+
         self._weights = np.concatenate([self._weights, hash_weights])
 
     def tok2id(self, tok):

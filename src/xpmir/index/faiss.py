@@ -13,6 +13,7 @@ import logging
 from datamaestro_text.data.ir import DocumentStore
 from xpmir.rankers import Retriever, ScoredDocument
 from xpmir.learning.batchers import Batcher
+from xpmir.learning import ModuleInitMode
 from xpmir.text.encoders import TextEncoder
 from xpmir.letor import (
     Device,
@@ -130,7 +131,7 @@ class IndexBackedFaiss(FaissIndex, Task):
         step_iter = tqdm(total=2, desc="Building the FAISS index")
 
         # Initializations
-        self.encoder.initialize()
+        self.encoder.initialize(ModuleInitMode.DEFAULT.to_options())
         index = faiss.index_factory(
             self.encoder.dimension, self.indexspec, faiss.METRIC_INNER_PRODUCT
         )

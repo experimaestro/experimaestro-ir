@@ -16,6 +16,7 @@ from experimaestro import (
     Constant,
 )
 from datamaestro_text.data.ir import Document, DocumentStore
+from xpmir.learning import ModuleInitMode
 from xpmir.learning.batchers import Batcher
 from xpmir.utils.utils import batchiter, easylog
 from xpmir.letor import Device, DEFAULT_DEVICE
@@ -71,7 +72,7 @@ class SparseRetriever(Retriever):
 
     def initialize(self):
         super().initialize()
-        self.encoder.initialize()
+        self.encoder.initialize(ModuleInitMode.RANDOM.to_options(None))
         self.index.initialize(self.in_memory)
 
     def retrieve_all(self, queries: Dict[str, str]) -> Dict[str, List[ScoredDocument]]:
@@ -173,7 +174,7 @@ class SparseRetrieverIndexBuilder(Task):
             f"Load the encoder and transfer to the target device {self.device.value}"
         )
 
-        self.encoder.initialize()
+        self.encoder.initialize(ModuleInitMode.RANDOM.to_options(None))
         self.encoder.to(self.device.value).eval()
 
         batcher = self.batcher.initialize(self.batch_size)

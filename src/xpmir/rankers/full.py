@@ -5,6 +5,7 @@ from . import Retriever, ScoredDocument
 from datamaestro_text.data.ir import Document, Documents
 from xpmir.neural.dual import DualRepresentationScorer
 from xpmir.learning.batchers import Batcher
+from xpmir.learning import ModuleInitMode
 from xpmir.letor import Device
 
 
@@ -38,7 +39,7 @@ class FullRetrieverRescorer(Retriever):
     def initialize(self):
         self.query_batcher = self.batcher.initialize(self.batchsize)
         self.document_batcher = self.batcher.initialize(self.batchsize)
-        self.scorer.initialize(None)
+        self.scorer.initialize(ModuleInitMode.DEFAULT.to_options())
 
         # Compute with the scorer
         if self.device is not None:

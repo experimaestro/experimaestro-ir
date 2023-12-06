@@ -3,6 +3,7 @@ from experimaestro import Config, Param
 import torch.nn.functional as F
 import torch.nn as nn
 import torch
+from xpmir.learning import ModuleInitOptions
 from xpmir.distributed import DistributableModel
 from xpmir.text.huggingface import (
     OneHotHuggingFaceEncoder,
@@ -89,8 +90,8 @@ class SpladeTextEncoder(TextEncoder, DistributableModel):
     maxlen: Param[Optional[int]] = None
     """Max length for texts"""
 
-    def __initialize__(self, random=None):
-        self.encoder.initialize()
+    def __initialize__(self, options: ModuleInitOptions):
+        self.encoder.initialize(options)
         self.model = SpladeTextEncoderModel(self.encoder, self.aggregation)
 
     def forward(self, texts: List[str]) -> torch.Tensor:

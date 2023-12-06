@@ -24,7 +24,8 @@ class ListWrapper(list):
 
 
 class CachedRandomScorer(DualRepresentationScorer):
-    def _initialize(self, _random):
+    def __initialize__(self, options):
+        super().__initialize__(options)
         self._cache = defaultdict(lambda: random.uniform(0, 1))
 
     def cache(self, query: GenericTopic, document: GenericDocument):

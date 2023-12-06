@@ -57,8 +57,8 @@ class Colbert(InteractionScorer):
         assert not self.querytoken, "Not implemented"
         assert not self.doctoken, "Not implemented"
 
-    def _initialize(self, random):
-        super()._initialize(random)
+    def __initialize__(self, options):
+        super().__initialize__(options)
 
         self.linear = nn.Linear(self.vocab.dim(), self.linear_dim, bias=False)
 

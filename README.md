@@ -8,6 +8,8 @@ Information Retrieval module for [experimaestro](https://experimaestro-python.re
 
 The full documentation can be read at [IR@experimaestro](https://experimaestro-ir.readthedocs.io/).
 
+You can find experiments built on top of XPMIR on the [xpmir github workspace](https://github.com/orgs/xpmir/repositories).
+
 Finally, you can find the [roadmap](https://github.com/experimaestro/experimaestro-ir/issues/9).
 
 ## Install

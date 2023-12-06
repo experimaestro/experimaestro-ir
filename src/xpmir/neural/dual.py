@@ -59,10 +59,10 @@ class Dense(DualVectorScorer):
         super().__validate__()
         assert not self.encoder.static(), "The vocabulary should be learnable"
 
-    def _initialize(self, random):
-        self.encoder.initialize()
+    def __initialize__(self, options):
+        self.encoder.initialize(options)
         if self.query_encoder:
-            self.query_encoder.initialize()
+            self.query_encoder.initialize(options)
 
     def score_product(self, queries, documents, info: Optional[TrainerContext]):
         return queries @ documents.T

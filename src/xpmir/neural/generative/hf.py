@@ -6,6 +6,7 @@ from typing import Optional, List, NamedTuple
 
 import torch
 from torch import nn
+from xpmir.learning import ModuleInitOptions, ModuleInitMode
 from xpmir.letor.records import TokenizedTexts
 from xpmir.distributed import DistributableModel
 from . import ConditionalGenerator, StepwiseGenerator
@@ -26,19 +27,24 @@ class T5ConditionalGenerator(ConditionalGenerator, DistributableModel):
     def stepwise_iterator(self) -> StepwiseGenerator:
         return T5StepwiseGenerator(self)
 
-    def __initialize__(self):
-        super().__initialize__()
+    def __initialize__(self, options: ModuleInitOptions):
+        assert options.mode != ModuleInitMode.RANDOM, "Random mode not handled (yet)"
+
+        super().__initialize__(options)
+
         # Easy and hacky way to get the device
         self._dummy_params = nn.Parameter(torch.Tensor())
-        self.config = AutoConfig.from_pretrained(self.hf_id)
+
         self.tokenizer = AutoTokenizer.from_pretrained(self.hf_id, use_fast=True)
-        self.model = self.initialize_model()
+        self.config = AutoConfig.from_pretrained(self.hf_id)
+        self.model = self.initialize_model(options)
+
         self.pad_token_id = self.model.config.pad_token_id
         self.decoder_start_token_id = self.model.config.decoder_start_token_id
         self.eos_token_id = self.model.config.eos_token_id
 
-    def initialize_model(self):
-        return T5ForConditionalGeneration.from_pretrained(self.hf_id)
+    def initialize_model(self, options: ModuleInitOptions):
+        return T5ForConditionalGeneration.from_config(self.config)
 
     @property
     def device(self):
@@ -131,46 +137,6 @@ class T5ConditionalGenerator(ConditionalGenerator, DistributableModel):
         self.model = update(self.model)
 
 
-class CustomOutputT5(T5ForConditionalGeneration):
-    """T5-based identifier generation
-
-    The class modifies T5 to use a custom vocabulary in the decoder
-    """
-
-    def __init__(self, config: T5Config, decoder_outdim):
-        # not including the eos and pad
-        self.decoder_outdim = decoder_outdim
-
-        # modification of the config according to our needs
-        config.pad_token_id = self.decoder_outdim + 1
-        config.decoder_start_token_id = self.decoder_outdim + 1
-        config.eos_token_id = self.decoder_outdim
-        # save
-        self.config = config
-
-        super().__init__(self.config)
-
-        # Modify LM head
-        self.lm_head = nn.Linear(
-            self.lm_head.in_features, self.decoder_outdim + 1, bias=False
-        )
-
-        # Make the input embedding has the name of encoder.embed_tokens
-        encoder_embeddings = nn.Embedding(self.config.vocab_size, self.config.d_model)
-        self.get_encoder().set_input_embeddings(encoder_embeddings)
-
-        self.config.vocab_size = self.decoder_outdim + 1
-
-        # Modify the decoder vocabulary
-        decoder_embeddings = nn.Embedding(
-            self.decoder_outdim + 2, self.config.d_model, padding_idx=decoder_outdim + 1
-        )
-        self.get_decoder().set_input_embeddings(decoder_embeddings)
-
-    def forward(self, **kwargs):
-        return super().forward(**kwargs)
-
-
 class T5StepwiseGenerator(StepwiseGenerator):
     def __init__(self, id_generator: ConditionalGenerator):
         super().__init__()
@@ -196,6 +162,46 @@ class T5StepwiseGenerator(StepwiseGenerator):
         return forward_output.logits
 
 
+class T5ForIdentifierGeneration(T5ForConditionalGeneration):
+    """T5-based identifier generation
+
+    The class modifies T5 to use a custom vocabulary in the decoder
+    """
+
+    def __init__(self, config: T5Config, decoder_outdim: int):
+        # not including the eos and pad
+        self.decoder_outdim = decoder_outdim
+
+        # modification of the config according to our needs
+        config.pad_token_id = self.decoder_outdim + 1
+        config.decoder_start_token_id = self.decoder_outdim + 1
+        config.eos_token_id = self.decoder_outdim
+
+        # Keep config at hand
+        self.config = config
+
+        super().__init__(self.config)
+
+        # Modify LM head
+        self.lm_head = nn.Linear(
+            self.lm_head.in_features, self.decoder_outdim + 1, bias=False
+        )
+
+        # We have one more token (PAD when )
+        encoder_embeddings = nn.Embedding(self.config.vocab_size, self.config.d_model)
+        self.config.vocab_size = self.decoder_outdim + 1
+        self.get_encoder().set_input_embeddings(encoder_embeddings)
+
+        # Modify the decoder vocabulary
+        decoder_embeddings = nn.Embedding(
+            self.decoder_outdim + 2, self.config.d_model, padding_idx=decoder_outdim + 1
+        )
+        self.get_decoder().set_input_embeddings(decoder_embeddings)
+
+    def forward(self, **kwargs):
+        return super().forward(**kwargs)
+
+
 class T5IdentifierGenerator(T5ConditionalGenerator):
     """generate the id of the token based on t5-based models"""
 
@@ -205,33 +211,94 @@ class T5IdentifierGenerator(T5ConditionalGenerator):
     doesn't include the pad token and the eos token
     """
 
-    def initialize_model(self):
-        return CustomOutputT5(self.config, self.decoder_outdim)
+    def initialize_model(self, options: ModuleInitOptions):
+        return T5ForIdentifierGeneration(self.config, self.decoder_outdim)
+
+
+class T5ForConditionalCustomGeneration(T5ForConditionalGeneration):
+    """T5-based model with custom output"""
+
+    def __init__(self, config: T5Config, decoder_outdim: int):
+        # not including the eos and pad
+        self.config = config
+        self.decoder_outdim = decoder_outdim
+        config.decoder_start_token_id = self.decoder_outdim - 1
+
+        super().__init__(self.config)
+
+        # Modify LM head
+        self.lm_head = nn.Linear(
+            self.lm_head.in_features, self.decoder_outdim, bias=False
+        )
+
+        encoder_embeddings = nn.Embedding(self.config.vocab_size, self.config.d_model)
+        self.get_encoder().set_input_embeddings(encoder_embeddings)
+
+        # Modify the decoder vocabulary
+        self.config.vocab_size = self.decoder_outdim
+        decoder_embeddings = nn.Embedding(self.decoder_outdim, self.config.d_model)
+        self.get_decoder().set_input_embeddings(decoder_embeddings)
+
+    def forward(self, **kwargs):
+        return super().forward(**kwargs)
+
+
+class T5CustomOutputGenerator(T5ConditionalGenerator):
+    """generate the id of the token based on t5-based models"""
+
+    #: List of tokens for the output
+    tokens: Param[List[str]]
+
+    def initialize_model(self, options: ModuleInitOptions):
+        return T5ForConditionalCustomGeneration(self.config, len(self.tokens))
 
 
 class LoadFromT5(LightweightTask):
     """Load parameters from a T5 model"""
 
-    t5_model: Param[T5IdentifierGenerator]
+    t5_model: Param[T5ConditionalGenerator]
     """the target"""
 
     def execute(self):
-        self.t5_model.initialize(None)
+        self.t5_model.initialize(ModuleInitMode.DEFAULT.to_options())
 
         # Load from checkpoint
         logging.info("Loading hugginface T5 from checkpoint %s", self.t5_model.hf_id)
-        # Load the pre-trained model
+
+        # Load the T5 pre-trained model
         t5_model = T5ForConditionalGeneration.from_pretrained(self.t5_model.hf_id)
 
         # Change the state_dict for the lm_head the decoder embedding
         state_dict = t5_model.state_dict()
 
-        del state_dict["lm_head.weight"]
+        if isinstance(self.t5_model, T5IdentifierGenerator):
+            # Just forget about the weights
+            del state_dict["lm_head.weight"]
 
-        # use random initialized t5 decoder
-        decoder_key_names = [name for name in state_dict.keys() if "decoder" in name]
-        for name in decoder_key_names:
-            del state_dict[name]
+            # use random initialized t5 decoder
+            decoder_key_names = [
+                name for name in state_dict.keys() if "decoder" in name
+            ]
+            for name in decoder_key_names:
+                del state_dict[name]
+        elif isinstance(self.t5_model, T5CustomOutputGenerator):
+            # Get the token embeddings from the tokenizer
+            token_ids = []
+            for token in self.t5_model.tokens:
+                ids = self.t5_model.tokenizer.encode(token, add_special_tokens=False)
+                if len(ids) != 1:
+                    raise ValueError(f"Token {token} is made of {len(ids)} subtokens")
+                token_ids.append(ids[0])
 
-        logging.info("Loading state dict into CustomOutputT5")
+            # And restrict our dictionary to the possible tokens
+            state_dict["lm_head.weight"] = t5_model.lm_head.weight.detach()[
+                (tuple(token_ids),)
+            ]
+            state_dict[
+                "decoder.embed_tokens.weight"
+            ] = t5_model.lm_head.weight.detach()[(tuple(token_ids),)]
+        else:
+            raise ValueError(f"Type {type(self.t5_model)} not expected")
+
+        logging.info("Loading state dict into the custom T5")
         self.t5_model.model.load_state_dict(state_dict, strict=False)

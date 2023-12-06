@@ -89,6 +89,16 @@ Sparse Models
 .. autoxpmconfig:: xpmir.neural.splade.MaxAggregation
 .. autoxpmconfig:: xpmir.neural.splade.SumAggregation
 
+Generative Models
+=================
+
+.. autoxpmconfig:: xpmir.neural.generative.IdentifierGenerator
+
+.. autoxpmconfig:: xpmir.neural.generative.hf.LoadFromT5
+
+.. autoxpmconfig:: xpmir.neural.generative.hf.T5IdentifierGenerator
+
+
 From Huggingface
 ================
 
