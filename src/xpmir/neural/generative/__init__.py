@@ -27,9 +27,6 @@ class StepwiseGenerator:
 class IdentifierGenerator(Module):
     """Models that generate an identifier given a document or a query"""
 
-    def __initialize__(self):
-        pass
-
     @abstractmethod
     def stepwise_iterator(self) -> StepwiseGenerator:
         pass

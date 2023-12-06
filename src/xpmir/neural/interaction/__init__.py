@@ -23,9 +23,8 @@ class InteractionScorer(LearnableScorer):
     qlen: Param[int] = 20
     dlen: Param[int] = 2000
 
-    def _initialize(self, random):
-        self.random = random
-        self.vocab.initialize()
+    def __initialize__(self, options):
+        self.vocab.initialize(options)
 
     def __validate__(self):
         assert (

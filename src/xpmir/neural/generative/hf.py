@@ -6,7 +6,7 @@ from typing import Optional, List, NamedTuple
 
 import torch
 from torch import nn
-import numpy as np
+from xpmir.learning import ModuleInitOptions, ModuleInitMode
 from xpmir.letor.records import TokenizedTexts
 from xpmir.distributed import DistributableModel
 from . import IdentifierGenerator, StepwiseGenerator
@@ -99,13 +99,16 @@ class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
     def stepwise_iterator(self) -> StepwiseGenerator:
         return T5StepwiseGenerator(self)
 
-    def __initialize__(self, random: Optional[np.random.RandomState] = None):
-        super().__initialize__()
+    def __initialize__(self, options: ModuleInitOptions):
+        assert options.mode != ModuleInitMode.RANDOM, "Random mode not handled (yet)"
+
+        super().__initialize__(options)
 
         # Easy and hacky way to get the device
         self._dummy_params = nn.Parameter(torch.Tensor())
-        self.config = AutoConfig.from_pretrained(self.hf_id)
+
         self.tokenizer = AutoTokenizer.from_pretrained(self.hf_id, use_fast=True)
+        self.config = AutoConfig.from_pretrained(self.hf_id)
 
         self.model = CustomOutputT5(self.config, self.decoder_outdim)
         self.pad_token_id = self.model.config.pad_token_id
