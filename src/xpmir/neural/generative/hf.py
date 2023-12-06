@@ -6,10 +6,9 @@ from typing import Optional, List, NamedTuple
 
 import torch
 from torch import nn
-import numpy as np
 from xpmir.letor.records import TokenizedTexts
 from xpmir.distributed import DistributableModel
-from . import IdentifierGenerator, StepwiseGenerator
+from . import ConditionalGenerator, StepwiseGenerator
 
 
 class GeneratorForwardOutput(NamedTuple):
@@ -19,98 +18,27 @@ class GeneratorForwardOutput(NamedTuple):
     past_key_values: Optional[torch.tensor] = None
 
 
-class CustomOutputT5(T5ForConditionalGeneration):
-    """T5-based identifier generation
-
-    The class modifies T5 to use a custom vocabulary in the decoder
-    """
-
-    def __init__(self, config: T5Config, decoder_outdim):
-        # not including the eos and pad
-        self.decoder_outdim = decoder_outdim
-
-        # modification of the config according to our needs
-        config.pad_token_id = self.decoder_outdim + 1
-        config.decoder_start_token_id = self.decoder_outdim + 1
-        config.eos_token_id = self.decoder_outdim
-        # save
-        self.config = config
-
-        super().__init__(self.config)
-
-        # Modify LM head
-        self.lm_head = nn.Linear(
-            self.lm_head.in_features, self.decoder_outdim + 1, bias=False
-        )
-
-        # Make the input embedding has the name of encoder.embed_tokens
-        encoder_embeddings = nn.Embedding(self.config.vocab_size, self.config.d_model)
-        self.get_encoder().set_input_embeddings(encoder_embeddings)
-
-        self.config.vocab_size = self.decoder_outdim + 1
-
-        # Modify the decoder vocabulary
-        decoder_embeddings = nn.Embedding(
-            self.decoder_outdim + 2, self.config.d_model, padding_idx=decoder_outdim + 1
-        )
-        self.get_decoder().set_input_embeddings(decoder_embeddings)
-
-    def forward(self, **kwargs):
-        return super().forward(**kwargs)
-
-
-class T5StepwiseGenerator(StepwiseGenerator):
-    def __init__(self, id_generator: IdentifierGenerator):
-        super().__init__()
-        # The identifier to use to generate the next step's token
-        self.id_generator = id_generator
-
-    def init(self, texts: List[str]):
-        """Initialize some inner states for further iterations, and return
-        the initial decoder input tokens"""
-        self.encoder_output, self.attention_mask = self.id_generator.encode(texts)
-        self.past_key_values = None
-
-    def step(self, decoder_input_tokens) -> torch.Tensor:  # input shape [bs]
-        """Returns the distribution over next tokens (BxV) by performing a
-        stepwise iteration"""
-        forward_output: GeneratorForwardOutput = self.id_generator(
-            self.attention_mask,
-            self.encoder_output,
-            decoder_input_tokens,
-            past_key_values=self.past_key_values,
-        )
-        self.past_key_values = forward_output.past_key_values
-        return forward_output.logits
-
-
-class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
-    """generate the id of the token based on t5-based models"""
+class T5ConditionalGenerator(ConditionalGenerator, DistributableModel):
 
     hf_id: Param[str]
     """The HuggingFace identifier (to configure the model)"""
 
-    decoder_outdim: Param[int] = 10
-    """The decoder output dimension for the t5 model, use it to
-    rebuild the lm_head and the decoder embedding, this number
-    doesn't include the pad token and the eos token
-    """
-
     def stepwise_iterator(self) -> StepwiseGenerator:
         return T5StepwiseGenerator(self)
 
-    def __initialize__(self, random: Optional[np.random.RandomState] = None):
+    def __initialize__(self):
         super().__initialize__()
-
         # Easy and hacky way to get the device
         self._dummy_params = nn.Parameter(torch.Tensor())
         self.config = AutoConfig.from_pretrained(self.hf_id)
         self.tokenizer = AutoTokenizer.from_pretrained(self.hf_id, use_fast=True)
-
-        self.model = CustomOutputT5(self.config, self.decoder_outdim)
+        self.model = self.initialize_model()
         self.pad_token_id = self.model.config.pad_token_id
         self.decoder_start_token_id = self.model.config.decoder_start_token_id
         self.eos_token_id = self.model.config.eos_token_id
+
+    def initialize_model(self):
+        return T5ForConditionalGeneration.from_pretrained(self.hf_id)
 
     @property
     def device(self):
@@ -201,6 +129,84 @@ class T5IdentifierGenerator(IdentifierGenerator, DistributableModel):
 
     def distribute_models(self, update):
         self.model = update(self.model)
+
+
+class CustomOutputT5(T5ForConditionalGeneration):
+    """T5-based identifier generation
+
+    The class modifies T5 to use a custom vocabulary in the decoder
+    """
+
+    def __init__(self, config: T5Config, decoder_outdim):
+        # not including the eos and pad
+        self.decoder_outdim = decoder_outdim
+
+        # modification of the config according to our needs
+        config.pad_token_id = self.decoder_outdim + 1
+        config.decoder_start_token_id = self.decoder_outdim + 1
+        config.eos_token_id = self.decoder_outdim
+        # save
+        self.config = config
+
+        super().__init__(self.config)
+
+        # Modify LM head
+        self.lm_head = nn.Linear(
+            self.lm_head.in_features, self.decoder_outdim + 1, bias=False
+        )
+
+        # Make the input embedding has the name of encoder.embed_tokens
+        encoder_embeddings = nn.Embedding(self.config.vocab_size, self.config.d_model)
+        self.get_encoder().set_input_embeddings(encoder_embeddings)
+
+        self.config.vocab_size = self.decoder_outdim + 1
+
+        # Modify the decoder vocabulary
+        decoder_embeddings = nn.Embedding(
+            self.decoder_outdim + 2, self.config.d_model, padding_idx=decoder_outdim + 1
+        )
+        self.get_decoder().set_input_embeddings(decoder_embeddings)
+
+    def forward(self, **kwargs):
+        return super().forward(**kwargs)
+
+
+class T5StepwiseGenerator(StepwiseGenerator):
+    def __init__(self, id_generator: ConditionalGenerator):
+        super().__init__()
+        # The identifier to use to generate the next step's token
+        self.id_generator = id_generator
+
+    def init(self, texts: List[str]):
+        """Initialize some inner states for further iterations, and return
+        the initial decoder input tokens"""
+        self.encoder_output, self.attention_mask = self.id_generator.encode(texts)
+        self.past_key_values = None
+
+    def step(self, decoder_input_tokens) -> torch.Tensor:  # input shape [bs]
+        """Returns the distribution over next tokens (BxV) by performing a
+        stepwise iteration"""
+        forward_output: GeneratorForwardOutput = self.id_generator(
+            self.attention_mask,
+            self.encoder_output,
+            decoder_input_tokens,
+            past_key_values=self.past_key_values,
+        )
+        self.past_key_values = forward_output.past_key_values
+        return forward_output.logits
+
+
+class T5IdentifierGenerator(T5ConditionalGenerator):
+    """generate the id of the token based on t5-based models"""
+
+    decoder_outdim: Param[int] = 10
+    """The decoder output dimension for the t5 model, use it to
+    rebuild the lm_head and the decoder embedding, this number
+    doesn't include the pad token and the eos token
+    """
+
+    def initialize_model(self):
+        return CustomOutputT5(self.config, self.decoder_outdim)
 
 
 class LoadFromT5(LightweightTask):

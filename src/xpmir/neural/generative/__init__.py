@@ -42,7 +42,7 @@ class GenerateOptions:
     pass
 
 
-class IdentifierGenerator(Module):
+class ConditionalGenerator(Module):
     """Models that generate an identifier given a document or a query"""
 
     def __initialize__(self):
