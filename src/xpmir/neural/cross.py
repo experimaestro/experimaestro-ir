@@ -14,6 +14,9 @@ from xpmir.rankers import (
     DuoTwoStageRetriever,
     Retriever,
 )
+from xpmir.utils.utils import easylog
+
+logger = easylog()
 
 
 class CrossScorer(LearnableScorer, DistributableModel):
@@ -51,7 +54,13 @@ class CrossScorer(LearnableScorer, DistributableModel):
         return self.classifier(pairs).squeeze(1)
 
     def distribute_models(self, update):
-        self.encoder.model = update(self.encoder.model)
+        if isinstance(self.encoder, DistributableModel):
+            self.encoder = self.distribute_models(self.encoder, update)
+        else:
+            logger.warning(
+                "Cross-encoder encoder is not distributable: "
+                "keeping it on one device"
+            )
 
 
 class DuoCrossScorer(DuoLearnableScorer, DistributableModel):
