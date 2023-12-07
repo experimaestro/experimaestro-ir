@@ -358,7 +358,7 @@ class TripletBasedInBatchNegativeSampler(PairwiseSampler):
         super().initialize(random)
         self.sampler.initialize(random)
 
-    def pairwise_iter(self) -> SerializableIterator[PairwiseRecord]:
+    def pairwise_iter(self) -> SerializableIterator[PairwiseRecord, Any]:
         def iter(pair_iter):
             while True:
                 topics = []
