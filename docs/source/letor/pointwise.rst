@@ -4,7 +4,6 @@ Pointwise
 Trainers are responsible for defining the the way to train
 a learnable scorer.
 
-.. autoxpmconfig:: xpmir.letor.trainers.Trainer
 .. autoxpmconfig:: xpmir.learning.trainers.multiple.MultipleTrainer
 
 .. autoxpmconfig:: xpmir.letor.trainers.LossTrainer

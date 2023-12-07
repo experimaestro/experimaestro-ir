@@ -55,7 +55,6 @@ Table of Contents
    text/index
    papers/index
    pretrained
-   misc
 
 
 Indices and tables

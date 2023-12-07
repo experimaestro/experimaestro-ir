@@ -1,4 +1,3 @@
-import random
 from pathlib import Path
 from typing import Iterator, List, Tuple, Dict, Any
 import numpy as np
@@ -342,48 +341,6 @@ class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
                 )
 
         return RandomSerializableIterator(self.random, iter)
-
-
-class TripletBasedInBatchNegativeSampler(PairwiseSampler):
-    """An in-batch negative sampler which generate the triplets,
-    which use the postives of the other in batch as the negatives"""
-
-    sampler: Param[PairwiseSampler]
-    """The base pairwise sampler"""
-
-    batch_size: Param[int]
-    """How many triplets to be used for building the ibn"""
-
-    def initialize(self, random):
-        super().initialize(random)
-        self.sampler.initialize(random)
-
-    def pairwise_iter(self) -> SerializableIterator[PairwiseRecord, Any]:
-        def iter(pair_iter):
-            while True:
-                topics = []
-                positives = []
-                for _, record in zip(range(self.batch_size), pair_iter):
-                    topics.append(record.query)
-                    positives.append(record.positive)
-                all_qry = [
-                    topic for topic in topics for _ in range(self.batch_size - 1)
-                ]
-                all_pos = [pos for pos in positives for _ in range(self.batch_size - 1)]
-                pos_as_neg = positives * self.batch_size
-                pos_index = [(self.batch_size + 1) * i for i in range(self.batch_size)]
-                all_neg = [
-                    doc for i, doc in enumerate(pos_as_neg) if i not in pos_index
-                ]
-
-                # randomize, to make the same document not gather too close
-                mapping = list(zip(all_qry, all_pos, all_neg))
-                for _ in range(30000):
-                    random.shuffle(mapping)
-                    for (topic, positive, negative) in mapping:
-                        yield PairwiseRecord(topic, positive, negative)
-
-        return SerializableIteratorAdapter(self.sampler.pairwise_iter(), iter)
 
 
 class PairwiseInBatchNegativesSampler(BatchwiseSampler):
