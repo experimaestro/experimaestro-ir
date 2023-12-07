@@ -55,7 +55,7 @@ class CrossScorer(LearnableScorer, DistributableModel):
 
     def distribute_models(self, update):
         if isinstance(self.encoder, DistributableModel):
-            self.encoder = self.distribute_models(self.encoder, update)
+            self.encoder = self.encoder.distribute_models(update)
         else:
             logger.warning(
                 "Cross-encoder encoder is not distributable: "
