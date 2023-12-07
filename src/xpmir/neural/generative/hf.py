@@ -1,5 +1,5 @@
 import logging
-
+import dataclasses
 from transformers import AutoConfig, AutoTokenizer, T5ForConditionalGeneration, T5Config
 from experimaestro import Param, LightweightTask
 from typing import Optional, List, NamedTuple
@@ -9,7 +9,12 @@ from torch import nn
 from xpmir.learning import ModuleInitOptions, ModuleInitMode
 from xpmir.letor.records import TokenizedTexts
 from xpmir.distributed import DistributableModel
-from . import ConditionalGenerator, StepwiseGenerator
+from . import (
+    ConditionalGenerator,
+    GenerateOptions,
+    BeamSearchGenerationOptions,
+    StepwiseGenerator,
+)
 
 
 class GeneratorForwardOutput(NamedTuple):
@@ -17,6 +22,26 @@ class GeneratorForwardOutput(NamedTuple):
 
     logits: torch.tensor
     past_key_values: Optional[torch.tensor] = None
+
+
+class FullSequenceGenerationOutput(NamedTuple):
+    """The output for the generate method"""
+
+    sequences: torch.tensor
+    """The returned sequence
+    shape: [bs, num_sequence, max_depth]"""
+
+    output_mask: torch.tensor
+    """A mask for the output sequences
+    shape: [bs, num_sequence, max_depth]"""
+
+    transition_scores: Optional[torch.tensor] = None
+    """The condtional proba for tokens in the sequences, log, normalized
+    shape: [bs, num_sequence, max_depth]"""
+
+    full_scores: Optional[torch.tensor] = None
+    """The proba for the full sequence, log
+    shape: [bs, num_sequence]"""
 
 
 class T5ConditionalGenerator(ConditionalGenerator, DistributableModel):
@@ -44,7 +69,7 @@ class T5ConditionalGenerator(ConditionalGenerator, DistributableModel):
         self.eos_token_id = self.model.config.eos_token_id
 
     def initialize_model(self, options: ModuleInitOptions):
-        return T5ForConditionalGeneration.from_config(self.config)
+        return T5ForConditionalGeneration(self.config)
 
     @property
     def device(self):
@@ -132,6 +157,72 @@ class T5ConditionalGenerator(ConditionalGenerator, DistributableModel):
         return GeneratorForwardOutput(
             logits=logits, past_key_values=decoder_output.past_key_values
         )
+
+    def generate(
+        self, inputs: List[str], options: GenerateOptions = None
+    ) -> FullSequenceGenerationOutput:
+        bs = len(inputs)
+        inputs = self.batch_tokenize(inputs, mask=True)
+        generate_options_kwargs = dataclasses.asdict(options)
+        if isinstance(options, BeamSearchGenerationOptions):
+            res = self.model.generate(
+                input_ids=inputs.ids,
+                attention_mask=inputs.mask,
+                **generate_options_kwargs,
+            )
+        else:
+            raise NotImplementedError(
+                f"Generation Options not supported for {options.__class__}"
+            )
+
+        if options.return_dict_in_generate:
+            output_mask = (
+                torch.where(res.sequences != self.pad_token_id, 1, 0)
+                .reshape(bs, options.num_return_sequences, -1)
+                .to(self.device)
+            )
+
+            if self.pad_token_id == self.decoder_start_token_id:
+                output_mask[:, 0] = 1
+
+            if not options.output_scores:
+                return FullSequenceGenerationOutput(
+                    sequences=res.sequences.reshape(
+                        bs, options.num_return_sequences, -1
+                    ),
+                    output_mask=output_mask,
+                )
+            else:
+                # -- For the old version should be compute_transition_beam_scores
+                transition_scores = self.model.compute_transition_scores(
+                    res.sequences,
+                    res.scores,
+                    res.beam_indices,
+                    normalize_logits=False,  # for bs the logits are already normalized
+                ).reshape(bs, options.num_return_sequences, -1)
+                full_score = torch.sum(transition_scores, dim=-1)
+                return FullSequenceGenerationOutput(
+                    sequences=res.sequences.reshape(
+                        bs, options.num_return_sequences, -1
+                    ),
+                    output_mask=output_mask,
+                    transition_scores=transition_scores,
+                    full_scores=full_score,
+                )
+        else:
+            output_mask = (
+                torch.where(res != self.pad_token_id, 1, 0)
+                .reshape(bs, options.num_return_sequences, -1)
+                .to(self.device)
+            )
+
+            if self.pad_token_id == self.decoder_start_token_id:
+                output_mask[:, :, 0] = 1
+
+            return FullSequenceGenerationOutput(
+                sequences=res.reshape(bs, options.num_return_sequences, -1),
+                output_mask=output_mask,
+            )
 
     def distribute_models(self, update):
         self.model = update(self.model)
@@ -297,8 +388,6 @@ class LoadFromT5(LightweightTask):
             state_dict[
                 "decoder.embed_tokens.weight"
             ] = t5_model.lm_head.weight.detach()[(tuple(token_ids),)]
-        else:
-            raise ValueError(f"Type {type(self.t5_model)} not expected")
 
         logging.info("Loading state dict into the custom T5")
         self.t5_model.model.load_state_dict(state_dict, strict=False)

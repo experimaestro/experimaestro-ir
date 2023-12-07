@@ -39,7 +39,20 @@ class StepwiseGenerator:
 class GenerateOptions:
     """Options used during sequence generation"""
 
-    pass
+    return_dict_in_generate: bool = True
+    max_new_tokens: int = 10
+    """The number of new tokens to be generated"""
+    output_scores: bool = True
+    num_return_sequences: int = 1
+    """number of returned sequences"""
+
+
+@dataclass
+class BeamSearchGenerationOptions(GenerateOptions):
+    """Options related to the beam search of the generate method"""
+
+    num_beams: int = 1
+    """beam size"""
 
 
 class ConditionalGenerator(Module):
