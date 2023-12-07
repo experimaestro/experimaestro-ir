@@ -1,45 +1,8 @@
 Papers
 ======
 
-
-.. highlight:: bash
-
-experimaestro-IR contains some reproduction of existing papers, which are listed
-here:
-
-- **monobert**: Passage Re-ranking with BERT, (Rodrigo Nogueira, Kyunghyun Cho). 2019
-  https://arxiv.org/abs/1901.04085
-
-
-To get the list of papers
-
-.. code-block:: bash
-
-    $ xpmir papers --help
-
-To get the list of experiments for a paper (here, monobert)
-
-.. code-block:: bash
-
-    $ xpmir papers monobert --help
-
-Runs an experiment (monobert with "small" configuration, training on msmarco)
-
-.. code-block:: bash
-
-    $ xpmir papers monobert msmarco --configuration small /path/to/workdir
-
-with some overriding arguments
-
-.. code-block:: bash
-
-    $ xpmir papers monobert msmarco --configuration small /path/to/workdir learner.lr=2.0e-6 learner.num_warmup_steps=20
-
-You can look at arguments by using the `--show` option
-
-.. code-block:: bash
-
-    $ xpmir papers monobert msmarco --configuration small /path/to/workdir --show
+To ease the reproduction of papers, and the upload of full models on HuggingFace,
+the `xpmir.papers` package can be used.
 
 
 Configuration
@@ -75,6 +38,12 @@ with similar training data, evaluation datasets.
 
 Implemented papers
 ------------------
+
+This page give some information about reproduction of papers based on XPMIR.
+
+- `xpmir/cross-encoders <https://github.com/xpmir/cross-encoders>`_:
+
+    - monoBERT
 
 .. toctree::
    :maxdepth: 2
