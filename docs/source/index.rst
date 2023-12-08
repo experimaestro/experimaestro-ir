@@ -53,6 +53,7 @@ Table of Contents
    neural
    hooks
    text/index
+   experiments
    papers/index
    pretrained
 
