@@ -1,7 +1,6 @@
 # Starts experiments from command line
 
 import inspect
-import io
 import json
 import logging
 import pkgutil
@@ -9,23 +8,22 @@ import sys
 from functools import reduce
 from importlib import import_module
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import click
 import docstring_parser
 import omegaconf
-from experimaestro import LauncherRegistry, Config, RunMode, experiment
+from experimaestro import LauncherRegistry, RunMode, experiment
 from experimaestro.settings import get_workspace
 from omegaconf import OmegaConf, SCMode
 from termcolor import cprint
 
 import xpmir.papers as papers
 from xpmir.configuration import omegaconf_argument
-from xpmir.evaluation import EvaluationsCollection
 from xpmir.learning.optim import TensorboardService
-from xpmir.models import XPMIRHFHub
 from xpmir.papers.helpers import PaperExperiment
 from xpmir.papers.results import PaperResults
+from xpmir.experiments.ir import UploadToHub
 
 
 class ExperimentsCli(click.MultiCommand):
@@ -74,74 +72,6 @@ class PapersCli(click.MultiCommand):
             pass
 
         return
-
-
-class UploadToHub:
-    def __init__(self, model_id: Optional[str], doc: docstring_parser.Docstring):
-        self.model_id = model_id
-        self.doc = doc
-
-    def send_scorer(
-        self,
-        models: Dict[str, Config],
-        *,
-        evaluations: Optional[EvaluationsCollection] = None,
-        tb_logs: Dict[str, Path],
-        add_des: str = "",
-    ):
-        """Upload the scorer(s) to the HuggingFace Hub
-
-        :param models: The models to upload, each with a key
-        :param tb_logs: The tensorboard logs
-        :param evaluations: Models evaluations, defaults to None
-        :param add_des: Extra documentation, defaults to ""
-        """
-        if self.model_id is None:
-            return
-
-        out = io.StringIO()
-        out.write(
-            """---
-library_name: xpmir
----
-"""
-        )
-
-        out.write(f"{self.doc}\n\n")
-        out.write(f"{add_des}\n\n")
-
-        out.write("\n## Using the model")
-        out.write(
-            f"""
-The model can be loaded with [experimaestro
-IR](https://experimaestro-ir.readthedocs.io/en/latest/)
-
-```py from xpmir.models import AutoModel
-from xpmir.models import AutoModel
-
-# Model that can be re-used in experiments
-model, init_tasks = AutoModel.load_from_hf_hub("{self.model_id}")
-
-# Use this if you want to actually use the model
-model = AutoModel.load_from_hf_hub("{self.model_id}", as_instance=True)
-model.rsv("walgreens store sales average", "The average Walgreens salary ranges...")
-```
-"""
-        )
-
-        assert len(models) == 1, "Cannot deal with more than one variant"
-        ((key, model),) = list(models.items())
-
-        if evaluations is not None:
-            out.write("\n## Results\n\n")
-            evaluations.output_model_results(key, file=out)
-
-        readme_md = out.getvalue()
-
-        logging.info("Uploading to HuggingFace Hub")
-        XPMIRHFHub(model, readme=readme_md, tb_logs=tb_logs).push_to_hub(
-            repo_id=self.model_id, config={}
-        )
 
 
 def paper_command(
