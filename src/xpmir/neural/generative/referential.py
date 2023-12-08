@@ -1,5 +1,6 @@
 import logging
 from collections import namedtuple
+import dataclasses
 from dataclasses import dataclass
 from typing import Generic, List, NamedTuple, TypeVar
 
@@ -7,7 +8,7 @@ import torch
 from experimaestro import Config, Param
 from experimaestro.compat import cached_property
 from torch import nn, LongTensor, FloatTensor
-from transformers import LogitsProcessor
+from transformers import LogitsProcessor, LogitsProcessorList
 
 from xpmir.learning.context import Loss, StepTrainingHook
 from xpmir.learning.metrics import ScalarMetric
@@ -18,7 +19,9 @@ from xpmir.neural.generative import (
     ConditionalGenerator,
     GenerateOptions,
     StepwiseGenerator,
+    BeamSearchGenerationOptions,
 )
+from xpmir.neural.generative.hf import FullSequenceGenerationOutput
 from xpmir.learning import ModuleInitOptions
 from xpmir.rankers import AbstractModuleScorer
 from xpmir.utils.utils import easylog
@@ -83,8 +86,10 @@ class DepthBasedSequenceBiasLogitsProcessor(LogitsProcessor):
         self.sequence_bias = sequence_bias  # shape [bs*num_beam, decoder_dim+1]
 
     def __call__(self, input_ids: LongTensor, scores: FloatTensor) -> FloatTensor:
-        current_depth = input_ids.shape[1] - 1
-        return scores + self.sequence_bias[current_depth]
+        # We don't need to renormalize the logits here, we can just set
+        # renormalize_logits=True during the generation
+        current_depth = input_ids.shape[1]  # counting from 1, 2, ..
+        return scores + self.sequence_bias[current_depth - 1]
 
 
 # The stepwise generator for the model with additional bias
@@ -119,7 +124,7 @@ class GeneratorBiasAdapter(ConditionalGenerator):
     """The max_depth of the generator"""
 
     vanilla_generator: Param[ConditionalGenerator]
-    """The original generator"""
+    """The original generator, for the moment a T5ConditionalGenerator"""
 
     def __initialize__(self, options: ModuleInitOptions):
         super().__initialize__(options)
@@ -127,6 +132,7 @@ class GeneratorBiasAdapter(ConditionalGenerator):
         self.decoder_outdim = self.vanilla_generator.decoder_outdim
         self.eos_token_id = self.vanilla_generator.eos_token_id
         self.pad_token_id = self.vanilla_generator.pad_token_id
+        self.decoder_start_token_id = self.vanilla_generator.decoder_start_token_id
 
     def stepwise_iterator(self) -> StepwiseGenerator:
         return GeneratorBiasStepwiseGenerator(
@@ -155,7 +161,51 @@ class GeneratorBiasAdapter(ConditionalGenerator):
         )
 
     def generate(self, inputs: List[str], options: GenerateOptions = None):
-        pass
+        assert options.return_dict_in_generate, "Must return dict in this case"
+        assert options.output_scores, "Must return scores in this case"
+
+        # prepare the LogitsProcessor
+        logit_processor_list = LogitsProcessorList(
+            [DepthBasedSequenceBiasLogitsProcessor(self.bias_terms)]
+        )
+        bs = len(inputs)
+        inputs = self.vanilla_generator.batch_tokenize(inputs, mask=True)
+        generate_options_kwargs = dataclasses.asdict(options)
+        if isinstance(options, BeamSearchGenerationOptions):
+            res = self.vanilla_generator.model.generate(
+                input_ids=inputs.ids,
+                attention_mask=inputs.mask,
+                renormalize_logits=True,  # important,
+                logits_processor=logit_processor_list,
+                **generate_options_kwargs,
+            )
+        else:
+            raise NotImplementedError(
+                f"Generation Options not supported for {options.__class__}"
+            )
+
+        # -- For the old version should be compute_transition_beam_scores
+        output_mask = (
+            torch.where(res.sequences != self.pad_token_id, 1, 0)
+            .reshape(bs, options.num_return_sequences, -1)
+            .to(self.device)
+        )
+
+        if self.pad_token_id == self.decoder_start_token_id:
+            output_mask[:, :, 0] = 1
+        transition_scores = self.vanilla_generator.model.compute_transition_scores(
+            res.sequences,
+            res.scores,
+            res.beam_indices,
+            normalize_logits=False,  # for bs the logits are already normalized
+        ).reshape(bs, options.num_return_sequences, -1)
+        full_score = torch.sum(transition_scores, dim=-1)
+        return FullSequenceGenerationOutput(
+            sequences=res.sequences.reshape(bs, options.num_return_sequences, -1),
+            output_mask=output_mask,
+            transition_scores=transition_scores,
+            full_scores=full_score,
+        )
 
 
 # --- For training

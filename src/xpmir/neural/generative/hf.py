@@ -183,7 +183,7 @@ class T5ConditionalGenerator(ConditionalGenerator, DistributableModel):
             )
 
             if self.pad_token_id == self.decoder_start_token_id:
-                output_mask[:, 0] = 1
+                output_mask[:, :, 0] = 1
 
             if not options.output_scores:
                 return FullSequenceGenerationOutput(
