@@ -1,33 +1,21 @@
+from typing import Any, List
 import click
+import inspect
+
 from xpmir.papers.results import PaperResults
-from xpmir.experiments import Experiment
-from experimaestro import RunMode, experiment
+from xpmir.experiments import ExperimentHelper
+from experimaestro import RunMode
 
 
-class ir_experiment(Experiment):
-    """Wraps an experiment into an IR experiment
-
-    1. Upload to github (if requested)
-    2.
-
-    :param func: The function to be wrapped
-    """
-
-    def __init__(self, *args):
-        if len(args) == 1:
-            self.func = args[0]
-
-    def __call__(self, func):
-        self.func = func
-        return self
-
-    def run(self, extra_args, xp: experiment, *args, **kwargs):
+class IRExperimentHelper(ExperimentHelper):
+    def run(self, extra_args: List[str], config: Any):
         @click.option("--upload_to_hub", type=str)
         @click.command()
         def cli(upload_to_hub: str):
-            results = self.func(xp, *args, **kwargs)
+            results = self.callable(self, config)
+            self.xp.wait()
 
-            if isinstance(results, PaperResults) and xp.run_mode == RunMode.NORMAL:
+            if isinstance(results, PaperResults) and self.xp.run_mode == RunMode.NORMAL:
                 if upload_to_hub is not None:
                     upload_to_hub.send_scorer(
                         results.models,
@@ -38,3 +26,20 @@ class ir_experiment(Experiment):
                 print(results.evaluations.to_dataframe())  # noqa: T201
 
         return cli(extra_args, standalone_mode=False)
+
+
+def ir_experiment(*args, **kwargs):
+    """Wraps an experiment into an IR experiment
+
+    1. Upload to github (if requested)
+    2.
+
+    :param func: The function to be wrapped
+    """
+    if len(args) == 1 and len(kwargs) == 0 and inspect.isfunction(args[0]):
+        return IRExperimentHelper(callable)
+
+    def wrapper(callable):
+        return IRExperimentHelper(callable)
+
+    return wrapper

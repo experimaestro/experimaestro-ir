@@ -1,18 +1,45 @@
+import inspect
 import json
 import logging
-import inspect
 import sys
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Protocol, Tuple
+from functools import cached_property
 
-import omegaconf
-from omegaconf import OmegaConf, SCMode
-from termcolor import cprint
 import click
+import omegaconf
 import yaml
-from xpmir.learning.optim import TensorboardService
 from experimaestro import LauncherRegistry, RunMode, experiment
 from experimaestro.settings import get_workspace
+from omegaconf import OmegaConf, SCMode
+from termcolor import cprint
+
+from xpmir.learning.optim import TensorboardService
+
+
+class ExperimentHelper:
+    """Helper for experiments"""
+
+    xp: experiment
+    callable: "ExperimentCallable"
+
+    def __init__(self, callable: "ExperimentCallable"):
+        self.callable = callable
+
+    @cached_property
+    def tensorboard_service(self):
+        return self.xp.add_service(TensorboardService(self.xp.resultspath / "runs"))
+
+    """Handles extra arguments"""
+
+    def run(self, args: List[str], configuration: Any):
+        assert len(args) == 0
+        self.callable.run(self, configuration)
+
+
+class ExperimentCallable(Protocol):
+    def __call__(self, helper: ExperimentHelper, configuration: Any):
+        ...
 
 
 def load(yaml_file: Path):
@@ -138,19 +165,19 @@ def experiments_cli(
         sys.path.pop()
 
     # --- ... and runs it
-    fn_experiment = _locals.get("experiment", None)
-    if fn_experiment is None:
-        raise ValueError(f"Could not find experiment function in {the__file__}")
+    helper = _locals.get("run", None)
+    if helper is None:
+        raise ValueError(f"Could not find run function in {the__file__}")
 
-    from . import Experiment
+    if not isinstance(helper, ExperimentHelper):
+        helper = ExperimentHelper(helper)
 
-    command = None
-    if isinstance(fn_experiment, Experiment):
-        command = fn_experiment
-        fn_experiment = fn_experiment.func
-
-    parameters = inspect.signature(fn_experiment).parameters
+    parameters = inspect.signature(helper.callable).parameters
     list_parameters = list(parameters.values())
+    assert len(list_parameters) == 2, (
+        "Callable function should only "
+        f"have two arguments (got {len(list_parameters)})"
+    )
 
     schema = list_parameters[1].annotation
     omegaconf_schema = OmegaConf.structured(schema())
@@ -166,7 +193,7 @@ def experiments_cli(
             sys.exit(1)
 
     # Move to an object container
-    configuration = OmegaConf.to_container(
+    configuration: schema = OmegaConf.to_container(
         configuration, structured_config_mode=SCMode.INSTANTIATE
     )
 
@@ -180,21 +207,16 @@ def experiments_cli(
         logging.info("Using working directory %s", workdir)
 
     # --- Runs the experiment
-    kwargs = {}
     with experiment(
         workdir, configuration.id, host=host, port=port, run_mode=run_mode
     ) as xp:
-        if "tensorboard_service" in parameters:
-            kwargs["tensorboard_service"] = xp.add_service(
-                TensorboardService(xp.resultspath / "runs")
-            )
-
+        # Set up the environment
         for key, value in env:
             xp.setenv(key, value)
 
-        if command:
-            command.run(list(args), xp, configuration, **kwargs)
-        else:
-            fn_experiment(xp, configuration, **kwargs)
+        # Run the experiment
+        helper.xp = xp
+        helper.run(list(args), configuration)
 
+        # ... and wait
         xp.wait()
