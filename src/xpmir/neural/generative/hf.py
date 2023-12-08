@@ -14,7 +14,6 @@ from . import (
     GenerateOptions,
     BeamSearchGenerationOptions,
     StepwiseGenerator,
-    StepOutput,
 )
 
 
@@ -241,7 +240,7 @@ class T5StepwiseGenerator(StepwiseGenerator):
         self.encoder_output, self.attention_mask = self.id_generator.encode(texts)
         self.past_key_values = None
 
-    def step(self, decoder_input_tokens) -> StepOutput:  # input shape [bs]
+    def step(self, decoder_input_tokens) -> torch.Tensor:  # input shape [bs]
         """Returns the distribution over next tokens (BxV) by performing a
         stepwise iteration"""
         forward_output: GeneratorForwardOutput = self.id_generator(
@@ -251,8 +250,7 @@ class T5StepwiseGenerator(StepwiseGenerator):
             past_key_values=self.past_key_values,
         )
         self.past_key_values = forward_output.past_key_values
-        log_softmax = nn.functional.log_softmax(forward_output.logits, dim=-1)
-        return StepOutput(logits=forward_output.logits, log_softmax=log_softmax)
+        return forward_output.logits
 
 
 class T5ForIdentifierGeneration(T5ForConditionalGeneration):
