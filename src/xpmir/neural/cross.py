@@ -54,13 +54,7 @@ class CrossScorer(LearnableScorer, DistributableModel):
         return self.classifier(pairs).squeeze(1)
 
     def distribute_models(self, update):
-        if isinstance(self.encoder, DistributableModel):
-            self.encoder = self.encoder.distribute_models(update)
-        else:
-            logger.warning(
-                "Cross-encoder encoder is not distributable: "
-                "keeping it on one device"
-            )
+        self.encoder = update(self.encoder)
 
 
 class DuoCrossScorer(DuoLearnableScorer, DistributableModel):
