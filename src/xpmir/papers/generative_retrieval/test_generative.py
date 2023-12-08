@@ -25,11 +25,12 @@ from xpmir.letor.samplers import (
     PairwiseSampler,
     TopicRecord,
 )
-from xpmir.neural.generative import IdentifierGenerator, StepwiseGenerator
+from xpmir.neural.generative import ConditionalGenerator, StepwiseGenerator
 from xpmir.utils.iter import RandomSerializableIterator, SerializableIterator
+from xpmir.neural.generative.referential import PairwiseGenerativeRetrievalLoss
 
 
-class ProbaTabIdentifierGenerator(IdentifierGenerator):
+class ProbaTabIdentifierGenerator(ConditionalGenerator):
     """generate the id of the token based on a proba table,
     Assuming that there are only 1 depth"""
 
@@ -283,7 +284,7 @@ def test_generative(tmp_path: Path):
     sampler = FakePairwiseSampler(nb_doc=NB_DOCS)
 
     proba_tab_trainer = generative.GenerativeTrainer(
-        loss=generative.PairwiseGenerativeRetrievalLoss(
+        loss=PairwiseGenerativeRetrievalLoss(
             id_generator=proba_tab_model, max_depth=MAX_DEPTH, alpha=ALPHA
         ),
         sampler=sampler,
