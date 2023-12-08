@@ -263,8 +263,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
         )
 
     def initialize(self):
-        super().initialize()
-        super(DepthUpdatable).initialize()
+        super().initialize()  # call the initialize of DepthUpdatable
         self.kl_lossfn = nn.KLDivLoss(reduction="sum", log_target=True)
 
     def recursive(
