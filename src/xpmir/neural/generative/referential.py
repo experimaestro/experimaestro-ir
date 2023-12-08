@@ -6,7 +6,8 @@ from typing import Generic, List, NamedTuple, TypeVar
 import torch
 from experimaestro import Config, Param
 from experimaestro.compat import cached_property
-from torch import nn
+from torch import nn, LongTensor, FloatTensor
+from transformers import LogitsProcessor
 
 from xpmir.learning.context import Loss, StepTrainingHook
 from xpmir.learning.metrics import ScalarMetric
@@ -15,6 +16,7 @@ from xpmir.letor.trainers import TrainerContext
 from xpmir.letor.trainers.generative import PairwiseGenerativeLoss
 from xpmir.neural.generative import (
     ConditionalGenerator,
+    GenerateOptions,
     StepwiseGenerator,
 )
 from xpmir.learning import ModuleInitOptions
@@ -71,6 +73,18 @@ class GenerativeLossOutput(NamedTuple):
     recursive_loss: torch.tensor
     kl_div_loss: torch.tensor
     pairwise_accuracy: torch.tensor
+
+
+class DepthBasedSequenceBiasLogitsProcessor(LogitsProcessor):
+    """Only support the bias term of length 1, and the bias is only added at the eos"""
+
+    def __init__(self, sequence_bias: torch.tensor) -> None:
+        super().__init__()
+        self.sequence_bias = sequence_bias  # shape [bs*num_beam, decoder_dim+1]
+
+    def __call__(self, input_ids: LongTensor, scores: FloatTensor) -> FloatTensor:
+        current_depth = input_ids.shape[1] - 1
+        return scores + self.sequence_bias[current_depth]
 
 
 # The stepwise generator for the model with additional bias
@@ -131,7 +145,7 @@ class GeneratorBiasAdapter(ConditionalGenerator):
         decoder_dim = self.vanilla_generator.decoder_outdim
         alphas = torch.tensor(
             [
-                sum(decoder_dim**i for i in range(j + 1))
+                sum(decoder_dim**i for i in range(j))
                 for j in range(self.max_depth, 0, -1)
             ]
         ).to(self.device)
@@ -139,6 +153,9 @@ class GeneratorBiasAdapter(ConditionalGenerator):
         return torch.cat(
             (torch.zeros(alphas.shape[0], decoder_dim).to(self.device), alphas), -1
         )
+
+    def generate(self, inputs: List[str], options: GenerateOptions = None):
+        pass
 
 
 # --- For training
