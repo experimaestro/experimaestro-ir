@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List
+from typing import List, NamedTuple, Optional
 from abc import abstractmethod
 
 import torch
@@ -7,6 +7,17 @@ from xpmir.learning.optim import Module
 from xpmir.utils.utils import easylog
 
 logger = easylog()
+
+
+class StepOutput(NamedTuple):
+    """The output for the step method of StepwiseGenerator"""
+
+    logits: torch.tensor
+    """The output logits"""
+
+    log_softmax: Optional[torch.tensor] = None
+    """The log_softmaxed logits: To fit the huggingface's LogitProcessor
+    which process the scores instead of the logits"""
 
 
 class StepwiseGenerator:
@@ -19,7 +30,7 @@ class StepwiseGenerator:
         pass
 
     @abstractmethod
-    def step(self, token_ids: torch.LongTensor) -> torch.Tensor:
+    def step(self, token_ids: torch.LongTensor) -> StepOutput:
         """Returns the distribution over next tokens (BxV), given the last
         generates ones (B)"""
         pass
