@@ -1,6 +1,6 @@
 from torch import nn
 import numpy as np
-from experimaestro import Param, Config
+from experimaestro import Param
 import logging
 
 from xpmir.letor.samplers import PairwiseSampler
@@ -13,7 +13,7 @@ from xpmir.utils.utils import foreach, easylog
 logger = easylog()
 
 
-class PairwiseGenerativeLoss(Config, nn.Module):
+class PairwiseGenerativeLoss(nn.Module):
     """Generic loss for generative models"""
 
     NAME = "?"
