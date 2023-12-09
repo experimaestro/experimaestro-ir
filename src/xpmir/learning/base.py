@@ -1,5 +1,5 @@
-import numpy as np
 from typing import Optional
+import numpy as np
 from functools import cached_property
 from experimaestro import Config, Param
 from xpmir.utils.utils import EasyLogger

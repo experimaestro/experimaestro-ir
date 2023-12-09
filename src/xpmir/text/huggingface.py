@@ -48,6 +48,7 @@ class BaseTransformer(Encoder):
     trainable: Param[bool]
     """Whether BERT parameters should be trained"""
 
+    # FIXME: remove this
     layer: Param[int] = 0
     """Layer to use (0 is the last, -1 to use them all)"""
 
