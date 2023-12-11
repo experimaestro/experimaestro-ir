@@ -29,19 +29,23 @@ class FullSequenceGenerationOutput(NamedTuple):
 
     sequences: torch.tensor
     """The returned sequence
-    shape: [bs, num_sequence, max_depth]"""
+    shape: [bs*num_sequence, max_depth]"""
 
     output_mask: torch.tensor
     """A mask for the output sequences
-    shape: [bs, num_sequence, max_depth]"""
+    shape: [bs*num_sequence, max_depth]"""
 
     transition_scores: Optional[torch.tensor] = None
     """The condtional proba for tokens in the sequences, log, normalized
-    shape: [bs, num_sequence, max_depth]"""
+    shape: [bs * num_sequence, max_depth]"""
 
-    full_scores: Optional[torch.tensor] = None
+    all_scores: Optional[tuple[torch.tensor]] = None
+    """All the probabilities, log, normalized, tuple of length max_depth
+    each tensor of the tuple has the shape of [bs * num_sequence, vs]"""
+
+    sequence_scores: Optional[torch.tensor] = None
     """The proba for the full sequence, log
-    shape: [bs, num_sequence]"""
+    shape: [bs * num_sequence]"""
 
 
 class T5ConditionalGenerator(ConditionalGenerator, DistributableModel):
@@ -161,7 +165,6 @@ class T5ConditionalGenerator(ConditionalGenerator, DistributableModel):
     def generate(
         self, inputs: List[str], options: GenerateOptions = None
     ) -> FullSequenceGenerationOutput:
-        bs = len(inputs)
         inputs = self.batch_tokenize(inputs, mask=True)
         generate_options_kwargs = dataclasses.asdict(options)
         if isinstance(options, BeamSearchGenerationOptions):
@@ -176,20 +179,16 @@ class T5ConditionalGenerator(ConditionalGenerator, DistributableModel):
             )
 
         if options.return_dict_in_generate:
-            output_mask = (
-                torch.where(res.sequences != self.pad_token_id, 1, 0)
-                .reshape(bs, options.num_return_sequences, -1)
-                .to(self.device)
+            output_mask = torch.where(res.sequences != self.pad_token_id, 1, 0).to(
+                self.device
             )
 
             if self.pad_token_id == self.decoder_start_token_id:
-                output_mask[:, :, 0] = 1
+                output_mask[:, 0] = 1
 
             if not options.output_scores:
                 return FullSequenceGenerationOutput(
-                    sequences=res.sequences.reshape(
-                        bs, options.num_return_sequences, -1
-                    ),
+                    sequences=res.sequences,
                     output_mask=output_mask,
                 )
             else:
@@ -199,28 +198,22 @@ class T5ConditionalGenerator(ConditionalGenerator, DistributableModel):
                     res.scores,
                     res.beam_indices,
                     normalize_logits=False,  # for bs the logits are already normalized
-                ).reshape(bs, options.num_return_sequences, -1)
-                full_score = torch.sum(transition_scores, dim=-1)
+                )
+                sequence_scores = torch.sum(transition_scores, dim=-1)
                 return FullSequenceGenerationOutput(
-                    sequences=res.sequences.reshape(
-                        bs, options.num_return_sequences, -1
-                    ),
+                    sequences=res.sequences,
                     output_mask=output_mask,
                     transition_scores=transition_scores,
-                    full_scores=full_score,
+                    sequence_scores=sequence_scores,
                 )
         else:
-            output_mask = (
-                torch.where(res != self.pad_token_id, 1, 0)
-                .reshape(bs, options.num_return_sequences, -1)
-                .to(self.device)
-            )
+            output_mask = torch.where(res != self.pad_token_id, 1, 0).to(self.device)
 
             if self.pad_token_id == self.decoder_start_token_id:
-                output_mask[:, :, 0] = 1
+                output_mask[:, 0] = 1
 
             return FullSequenceGenerationOutput(
-                sequences=res.reshape(bs, options.num_return_sequences, -1),
+                sequences=res,
                 output_mask=output_mask,
             )
 
