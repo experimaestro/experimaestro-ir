@@ -84,11 +84,8 @@ class BaseTransformer(Encoder):
             config.hidden_dropout_prob = self.dropout
             config.attention_probs_dropout_prob = self.dropout
 
-        if options.mode == ModuleInitMode.NONE:
+        if options.mode == ModuleInitMode.NONE or options.mode == ModuleInitMode.RANDOM:
             self.model = self.automodel.from_config(config)
-        elif options.mode == ModuleInitMode.NONE:
-            self.model = self.automodel.from_config(config)
-            self.model.ran
         else:
             self.model = self.automodel.from_pretrained(self.model_id, config=config)
 

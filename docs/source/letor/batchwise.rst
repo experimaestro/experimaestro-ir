@@ -20,4 +20,5 @@ Samplers
 
 
 .. autoxpmconfig:: BatchwiseSampler
-.. autoxpmconfig:: xpmir.documents.samplers.BatchwiseRandomSpanSampler
+
+.. autoxpmconfig:: xpmir.documents.samplers.RandomSpanSampler
