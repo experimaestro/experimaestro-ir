@@ -50,7 +50,7 @@ class DepthUpdatable(Config):
         else:
             self.current_max_depth = self.max_depth
 
-    def initialize(self):
+    def __post_init__(self):
         # if no update
         self.current_max_depth = self.max_depth
 
@@ -168,7 +168,6 @@ class GeneratorBiasAdapter(ConditionalGenerator):
         logit_processor_list = LogitsProcessorList(
             [DepthBasedSequenceBiasLogitsProcessor(self.bias_terms)]
         )
-        bs = len(inputs)
         inputs = self.vanilla_generator.batch_tokenize(inputs, mask=True)
         generate_options_kwargs = dataclasses.asdict(options)
         if isinstance(options, BeamSearchGenerationOptions):
@@ -185,26 +184,24 @@ class GeneratorBiasAdapter(ConditionalGenerator):
             )
 
         # -- For the old version should be compute_transition_beam_scores
-        output_mask = (
-            torch.where(res.sequences != self.pad_token_id, 1, 0)
-            .reshape(bs, options.num_return_sequences, -1)
-            .to(self.device)
+        output_mask = torch.where(res.sequences != self.pad_token_id, 1, 0).to(
+            self.device
         )
-
         if self.pad_token_id == self.decoder_start_token_id:
-            output_mask[:, :, 0] = 1
+            output_mask[:, 0] = 1
         transition_scores = self.vanilla_generator.model.compute_transition_scores(
             res.sequences,
             res.scores,
             res.beam_indices,
             normalize_logits=False,  # for bs the logits are already normalized
-        ).reshape(bs, options.num_return_sequences, -1)
+        )
         full_score = torch.sum(transition_scores, dim=-1)
         return FullSequenceGenerationOutput(
-            sequences=res.sequences.reshape(bs, options.num_return_sequences, -1),
+            sequences=res.sequences,
             output_mask=output_mask,
             transition_scores=transition_scores,
-            full_scores=full_score,
+            all_scores=res.scores,
+            sequence_scores=full_score,
         )
 
 
@@ -263,7 +260,6 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
         )
 
     def initialize(self):
-        super().initialize()  # call the initialize of DepthUpdatable
         self.kl_lossfn = nn.KLDivLoss(reduction="sum", log_target=True)
 
     def recursive(
@@ -523,7 +519,6 @@ class GenerativeRetrievalScorer(AbstractModuleScorer, DepthUpdatable):
     def __initialize__(self, options: ModuleInitOptions):
         super().__initialize__(options)
         self.id_generator.initialize(options)
-        super(DepthUpdatable).initialize()
 
     def update_depth(self, new_depth):
         if new_depth <= self.max_depth:
@@ -654,7 +649,7 @@ class RandomBasedGenerativeRetrievalScorer(GenerativeRetrievalScorer):
         )
 
         log_proba_randdoc = self.random_distribution[depth - 1]
-        # -- the exact term of the loss
+        # -- the exact term of the scorer
         exact_term = torch.sum(
             torch.exp(log_proba.qry + log_proba.doc)
             * (1 - torch.exp(log_proba_randdoc)),
@@ -723,6 +718,106 @@ class RandomBasedGenerativeRetrievalScorer(GenerativeRetrievalScorer):
         return self.recursive(
             decoder_input_tokens, unfinished_sequences, 1, stepwise_generator
         )
+
+
+class BeamSearchRandomBasedGenerativeRetrievalScorer(
+    RandomBasedGenerativeRetrievalScorer
+):
+    """A scorer based on the probability that a document is better than a random
+    document given a query, but we choose plusieur paths for the query"""
+
+    num_beams: Param[int] = 16
+
+    def recursive(
+        self,
+        depth,  # a value counting from 1
+        stepwise_generator: StepwiseGenerator,
+        query_generate_output: FullSequenceGenerationOutput,
+    ):
+        assert depth <= self.current_max_depth
+        decoder_input_tokens = (
+            None if depth == 1 else query_generate_output.sequences[:, depth - 1]
+        )
+        # pass get the probas
+        document_logits = stepwise_generator.step(decoder_input_tokens)
+        document_log_proba = nn.functional.log_softmax(
+            document_logits, dim=-1
+        )  # [bs*num_beam, vocab_size]
+        log_proba_randdoc = self.random_distribution[depth - 1]
+
+        # print(document_log_proba.shape)
+
+        # -- the exact term of the scorer
+        exact_term = torch.sum(
+            torch.exp(query_generate_output.all_scores[depth - 1] + document_log_proba)
+            * (1 - torch.exp(log_proba_randdoc)),
+            dim=-1,
+        )
+
+        # get the tokens passed for the next layers --> predefined by query
+        next_tokens = query_generate_output.sequences[:, depth]  # shape [bs*num_beam]
+        # print(next_tokens.shape)
+
+        batch_range = torch.arange(len(next_tokens))
+
+        # print(batch_range)
+        log_proba_next_doc = document_log_proba[batch_range, next_tokens]
+
+        log_proba_next_randdoc = torch.where(
+            next_tokens == self.id_generator.eos_token_id,
+            log_proba_randdoc[self.id_generator.eos_token_id],
+            log_proba_randdoc[0],
+        )
+        unfinished_sequences = query_generate_output.output_mask[:, depth - 1]
+        new_unfinished_sequences = query_generate_output.output_mask[:, depth]
+        if new_unfinished_sequences.max() == 0 or depth == self.current_max_depth:
+            return unfinished_sequences * exact_term
+
+        return unfinished_sequences * (
+            self.recursive(
+                depth + 1,
+                stepwise_generator,
+                query_generate_output,
+            )
+            * torch.exp(log_proba_next_doc + log_proba_next_randdoc)
+            + exact_term
+        )
+
+    def forward(self, inputs: BaseRecords, info: TrainerContext = None):
+        self.id_generator.eval()
+        queries_text = [pdr.topic.get_text() for pdr in inputs.topics]
+        query_generate_options = BeamSearchGenerationOptions(
+            max_new_tokens=self.current_max_depth,
+            num_return_sequences=self.num_beams,
+            num_beams=self.num_beams,
+        )
+        query_generate_output: FullSequenceGenerationOutput = (
+            self.id_generator.generate(queries_text, query_generate_options)
+        )
+        documents_text = [ndr.document.get_text() for ndr in inputs.documents]
+        documents_text_repeat = [
+            d for d in documents_text for _ in range(self.num_beams)
+        ]
+
+        document_stepwise_generator = self.id_generator.stepwise_iterator()
+        document_stepwise_generator.init(documents_text_repeat)
+
+        recursive_output = self.recursive(
+            1, document_stepwise_generator, query_generate_output
+        )  # shape [bs, num_beams]
+
+        # sequence_scores_sum = torch.sum(
+        #     torch.exp(query_generate_output.sequence_scores).reshape(
+        #         -1, self.num_beams
+        #     ),
+        #     dim=-1,
+        # )
+        # info.add_metric(
+        #     ScalarMetric(
+        #         "Query total portion", float(sequence_scores_sum), len(queries_text)
+        #     )
+        # )
+        return torch.sum(recursive_output.reshape(-1, self.num_beams), -1)
 
 
 class GenRetDepthUpdateHook(StepTrainingHook):
