@@ -45,7 +45,6 @@ Samplers
 
 Samplers provide samples in the form of *records*. They all inherit from:
 
-.. autoxpmconfig:: Sampler
 .. autoclass:: SerializableIterator
 
 
