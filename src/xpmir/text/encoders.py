@@ -226,6 +226,23 @@ class TripletTextEncoder(Encoder):
         raise NotImplementedError(f"forward in {self.__class__}")
 
 
+class TextListEncoder(Encoder):
+    """The generic class for list encoders
+
+
+    This encoding is used in models such as DuoBERT that compute
+    whether a pair is preferred to another
+    """
+
+    @property
+    def dimension(self) -> int:
+        raise NotImplementedError()
+
+    def forward(self, texts: List[List[str]]) -> torch.Tensor:
+        """Computes the representation of a list of pair of texts"""
+        raise NotImplementedError(f"forward in {self.__class__}")
+
+
 class MeanTextEncoder(TextEncoder):
     """Returns the mean of the word embeddings"""
 

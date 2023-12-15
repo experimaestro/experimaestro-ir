@@ -1,48 +1,64 @@
 from abc import ABC, abstractmethod
 from dataclasses import InitVar
 from functools import cached_property
-import math
 import sys
-from typing import Iterator
+from typing import Dict, Iterator, List
+from attr import define
 import torch
-from torch import nn
-from torch.functional import Tensor
-import torch.nn.functional as F
 from experimaestro import Config, Param
-from datamaestro_text.data.conversation import (
-    ContextualizedQueryRewriting,
-    ContextualizedRewrittenQuery,
-)
+from datamaestro_text.data.conversation import Conversation, ConversationDataset
+from xpmir.learning import Module
 from xpmir.learning.context import Loss
-from xpmir.learning.metrics import ScalarMetric
 from xpmir.learning.base import Sampler
+from xpmir.text.encoders import TextEncoder
 from xpmir.letor.trainers import TrainerContext, LossTrainer
 import numpy as np
-from xpmir.rankers import LearnableScorer, ScorerOutputType
-from xpmir.utils.utils import foreach
 from xpmir.utils.iter import (
     RandomSerializableIterator,
     SerializableIterator,
 )
 
 
+@define
+class ConversationRepresentationOutput:
+    representation: torch.Tensor
+
+
+class ConversationRepresentationEncoder(Module, ABC):
+    @abstractmethod
+    def forward(
+        self, conversations: List[Conversation]
+    ) -> ConversationRepresentationOutput:
+        pass
+
+
+class GoldQueryConversationRepresentationEncoder(ConversationRepresentationEncoder):
+    encoder: Param[TextEncoder]
+
+    def forward(
+        self, conversations: List[Conversation]
+    ) -> ConversationRepresentationOutput:
+        texts = [conversation.decontextualized_query for conversation in conversations]
+        return ConversationRepresentationOutput(self.encoder(texts))
+
+
 class ContextualizedQueryRewritingSamplerBase(Sampler, ABC):
     @abstractmethod
-    def iter(self) -> SerializableIterator[ContextualizedRewrittenQuery]:
+    def iter(self) -> SerializableIterator[Conversation]:
         pass
 
 
 class ContextualizedQueryRewritingSampler(Sampler):
     """Sampler for a contextualized query rewriting datasets"""
 
-    dataset: Param[ContextualizedQueryRewriting]
+    dataset: Param[ConversationDataset]
     """The dataset used by the sampler"""
 
     @cached_property
     def data(self):
         return [x for x in self.dataset.iter()]
 
-    def iter(self) -> RandomSerializableIterator[ContextualizedRewrittenQuery]:
+    def iter(self) -> RandomSerializableIterator[Conversation]:
         def generator(random):
             while True:
                 yield self.data[random.randint(0, len(self.data))]
@@ -51,19 +67,20 @@ class ContextualizedQueryRewritingSampler(Sampler):
 
 
 class QueryRewritingSamplerLoss(Config):
-    pass
+    weight: Param[float] = 1.0
+    """The weight for this loss"""
 
 
 class ReformulationTrainerBase(LossTrainer):
     """Base reformulation-based trainer"""
 
-    lossfn: Param[QueryRewritingSamplerLoss]
-    """The loss function"""
+    losses: Param[Dict[str, QueryRewritingSamplerLoss]]
+    """The loss function(s)"""
 
     sampler: Param[ContextualizedQueryRewritingSamplerBase]
     """The pairwise sampler"""
 
-    sampler_iter: InitVar[SerializableIterator[ContextualizedRewrittenQuery]]
+    sampler_iter: InitVar[SerializableIterator[Conversation]]
     """The iterator over samples"""
 
     def initialize(
@@ -75,9 +92,9 @@ class ReformulationTrainerBase(LossTrainer):
         self.sampler.initialize(random)
         self.sampler_iter = self.sampler.iter()
 
-    def iter_batches(self) -> Iterator[ContextualizedRewrittenQuery]:
+    def iter_batches(self) -> Iterator[Conversation]:
         while True:
-            batch = ContextualizedRewrittenQuery()
+            batch = Conversation()
             for _, record in zip(range(self.batch_size), self.sampler_iter):
                 batch.add(record)
             yield batch
@@ -85,9 +102,15 @@ class ReformulationTrainerBase(LossTrainer):
 
 class ContextualizedRepresentationLoss(QueryRewritingSamplerLoss, ABC):
     @abstractmethod
-    def __call__(self, input: torch.Tensor, target: torch.Tensor):
-        """Computes the loss given two tensor of shape (B, d) where B is the
-        batch size and d the dimension of the representation"""
+    def __call__(
+        self,
+        input: ConversationRepresentationOutput,
+        target: ConversationRepresentationOutput,
+    ):
+        """Computes the reconstruction loss
+
+        :param target: a tensor of size BxD
+        """
         ...
 
 
@@ -98,24 +121,39 @@ class MSEContextualizedRepresentationLoss(ContextualizedRepresentationLoss):
     def __post_init__(self):
         self.mse = torch.nn.MSELoss()
 
-    def __call__(self, input: torch.Tensor, target: torch.Tensor):
-        return self.mse(input, target)
+    def __call__(
+        self,
+        input: ConversationRepresentationOutput,
+        target: ConversationRepresentationOutput,
+    ):
+        return self.mse(input.representation, target.representation)
 
 
 class RepresentationReformulationTrainer(ReformulationTrainerBase):
-    """Compares the contextualized query representation with an expected query representation"""
+    """Compares the contextualized query representation with an expected query
+    representation
 
-    lossfn: Param[ContextualizedRepresentationLoss]
+    Both the representations are expected to a be in a vector space
+    """
+
+    losses: Param[Dict[str, ContextualizedRepresentationLoss]]
     """The loss function"""
 
-    def train_batch(self, records: ContextualizedRewrittenQuery):
-        # Get the next batch and compute the scores for each query/document
-        rel_scores = self.ranker(records, self.context)
+    target_model: Param[ConversationRepresentationEncoder]
+    """Target model"""
 
-        if torch.isnan(rel_scores).any() or torch.isinf(rel_scores).any():
+    def train_batch(self, records: List[Conversation]):
+        # Get the next batch and compute the scores for each query/document
+        output: ConversationRepresentationOutput = self.model(records, self.context)
+        target: ConversationRepresentationOutput = self.target_model(records)
+
+        if (
+            torch.isnan(output.representation).any()
+            or torch.isinf(output.representation).any()
+        ):
             self.logger.error("nan or inf relevance score detected. Aborting.")
             sys.exit(1)
 
-        # Reshape to get the pairs and compute the loss
-        pairwise_scores = rel_scores.reshape(2, len(records)).T
-        self.lossfn.process(pairwise_scores, self.context)
+        for key, loss in self.losses.items():
+            value = loss(output, target)
+            self.context.add_loss(Loss(key, value, loss.weight))
