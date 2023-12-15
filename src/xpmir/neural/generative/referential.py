@@ -2,7 +2,7 @@ import logging
 from collections import namedtuple
 import dataclasses
 from dataclasses import dataclass
-from typing import Generic, List, NamedTuple, TypeVar
+from typing import Generic, List, NamedTuple, TypeVar, Optional
 
 import torch
 from experimaestro import Config, Param
@@ -25,6 +25,8 @@ from xpmir.neural.generative.hf import FullSequenceGenerationOutput
 from xpmir.learning import ModuleInitOptions
 from xpmir.rankers import AbstractModuleScorer
 from xpmir.utils.utils import easylog
+from xpmir.documents.samplers import UpdatableRandomSpanSampler
+from xpmir.context import Hook
 
 logger = easylog()
 
@@ -74,8 +76,19 @@ PairwiseTuple = namedtuple("PairwiseTuple", ["doc", "qry"])
 
 class GenerativeLossOutput(NamedTuple):
     recursive_loss: torch.tensor
+    """The recursive loss"""
+
     kl_div_loss: torch.tensor
+    """The kl_div_loss"""
+
     pairwise_accuracy: torch.tensor
+    """The pairwise accuracy"""
+
+    sampled_tokens: Optional[torch.tensor] = None
+    """The sampled_tokens if needed, of shape [depth, bs]"""
+
+    log_current_node_proba: Optional[Triplet[torch.tensor]] = None
+    """The probability of the current node, shape [bs]"""
 
 
 class DepthBasedSequenceBiasLogitsProcessor(LogitsProcessor):
@@ -205,6 +218,46 @@ class GeneratorBiasAdapter(ConditionalGenerator):
         )
 
 
+# -- Hooks
+class LossProcessHook(Hook):
+    def process(self):
+        """Called after process"""
+        pass
+
+
+class NegativeUpdateHook(LossProcessHook):
+
+    sampler: Param[UpdatableRandomSpanSampler]
+    """The sampler which contains the hard negatives"""
+
+    max_depth: Param[int]
+    """The max depth for the model"""
+
+    def process(
+        self,
+        loss_output: GenerativeLossOutput,
+        ids: list[int],
+        current_max_depth: int,
+    ):
+        self.sampler.current_depth = current_max_depth
+        if current_max_depth < self.max_depth:
+            # we are not at the final depth, need to update matrix
+            # get the tokens
+            sampled_tokens = loss_output.sampled_tokens.cpu()  # shape [depth, bs]
+
+            # get the log_probas, shape [bs]
+            log_proba = loss_output.log_current_node_proba
+            # we use a max pooling for the pos and qry as in the pretraining
+            # they belong to the same document
+            log_proba_pos = torch.max(log_proba.query, log_proba.pos_doc).cpu()
+
+            self.sampler.update_matrix(
+                sampled_tokens,  # shape [depth, bs]
+                torch.tensor(ids, dtype=torch.int32),  # shape [bs]
+                log_proba_pos,  # shape [bs]
+            )
+
+
 # --- For training
 class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
     NAME = "PairwiseGenerativeLoss"
@@ -214,6 +267,9 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
 
     alpha: Param[float] = 0.0
     """The hyperparameter for the KL divergence"""
+
+    loss_hooks: Param[List[LossProcessHook]] = []
+    """The hook"""
 
     @cached_property
     def kl_target(self):
@@ -264,7 +320,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
 
     def recursive(
         self,
-        decoder_input_tokens,  # None or [bs]
+        decoder_input_tokens,  # None or [depth - 1, bs]
         unfinished_sequences: torch.tensor,  # shape [bs]
         log_cur_node_proba: Triplet[torch.Tensor],  # shape [bs,3]
         depth: int,  # a value counting from 1
@@ -274,7 +330,14 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
         pairwise accruracy for supervision"""
         assert depth <= self.current_max_depth
         # pass get the probas, each one of shape: [bs, dec_dim+1]
-        logits = Triplet(*(g.step(decoder_input_tokens) for g in stepwise_generators))
+        if decoder_input_tokens is None:
+            logits = Triplet(
+                *(g.step(decoder_input_tokens) for g in stepwise_generators)
+            )
+        else:
+            logits = Triplet(
+                *(g.step(decoder_input_tokens[-1]) for g in stepwise_generators)
+            )
 
         log_proba = Triplet(
             *(nn.functional.log_softmax(logit, dim=-1) for logit in logits)
@@ -353,10 +416,18 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
 
             next_tokens = torch.multinomial(
                 torch.exp(log_p_next_token), num_samples=1
-            ).squeeze(1)
+            ).squeeze(
+                1
+            )  # shape [bs]
 
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(f"sampled token is {next_tokens} of depth {depth}")
+
+            # append the tokens to the next_step to make it to shape: [depth, bs]
+            if decoder_input_tokens is None:
+                decoder_input_tokens = next_tokens.unsqueeze(0)
+            else:
+                decoder_input_tokens = torch.vstack((decoder_input_tokens, next_tokens))
 
         # --- Computes the log probability of sampled tokens
 
@@ -401,6 +472,8 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
                 kl_div_loss=kl_loss,
                 pairwise_accuracy=pairwise_accuracy_middle_term
                 * unfinished_sequences.detach(),
+                sampled_tokens=decoder_input_tokens,
+                log_current_node_proba=log_cur_node_proba,
             )
 
         # Computing the importance sampling coefficient
@@ -414,7 +487,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
             )
 
         next_layer_recursive = self.recursive(
-            next_tokens,
+            decoder_input_tokens,
             new_unfinished_sequences,
             log_cur_node_proba,
             depth + 1,
@@ -434,6 +507,8 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
                 next_layer_recursive.pairwise_accuracy * sampling_multiplier
                 + pairwise_accuracy_middle_term
             ),
+            sampled_tokens=next_layer_recursive.sampled_tokens,
+            log_current_node_proba=next_layer_recursive.log_current_node_proba,
         )
 
     def compute(
@@ -484,6 +559,8 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
             recursive_loss=-torch.mean(loss.recursive_loss),
             kl_div_loss=loss.kl_div_loss,
             pairwise_accuracy=torch.mean(loss.pairwise_accuracy),
+            sampled_tokens=loss.sampled_tokens,
+            log_current_node_proba=loss.log_current_node_proba,
         )
 
     def process(self, records: BaseRecords, context: TrainerContext):
@@ -508,6 +585,10 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
                 len(records),
             )
         )
+        ids = [pdr.document.get_id() for pdr in records.positives]
+
+        for hook in self.loss_hooks:
+            hook.process(loss_output, ids, self.current_max_depth)
 
 
 class GenerativeRetrievalScorer(AbstractModuleScorer, DepthUpdatable):
