@@ -21,6 +21,10 @@ class GenerativeCrossScorer(LearnableScorer, DistributableModel):
     #: Relevant token ID
     relevant_token_id: Param[int]
 
+    def __initialize__(self, options):
+        super().__initialize__(options)
+        self.generator.initialize(options)
+
     def forward(self, inputs: BaseRecords, info: TrainerContext = None):
         # Encode queries and documents
         inputs = [
