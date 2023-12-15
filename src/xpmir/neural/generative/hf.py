@@ -72,6 +72,8 @@ class T5ConditionalGenerator(ConditionalGenerator, DistributableModel):
         self.decoder_start_token_id = self.model.config.decoder_start_token_id
         self.eos_token_id = self.model.config.eos_token_id
 
+        self.encoder = self.model.get_encoder()
+
     def initialize_model(self, options: ModuleInitOptions):
         return T5ForConditionalGeneration(self.config)
 
@@ -115,9 +117,8 @@ class T5ConditionalGenerator(ConditionalGenerator, DistributableModel):
         """Returns the encoder_output and the input mask for the given text,
         which could accelerate the autoregressive generation procedure"""
 
-        encoder = self.model.get_encoder()
         tokenized = self.batch_tokenize(texts, maxlen=512, mask=True)
-        encoder_output = encoder(
+        encoder_output = self.encoder(
             tokenized.ids,
             attention_mask=tokenized.mask,
             return_dict=True,
@@ -218,6 +219,7 @@ class T5ConditionalGenerator(ConditionalGenerator, DistributableModel):
             )
 
     def distribute_models(self, update):
+        self.encoder = update(self.model.get_encoder())
         self.model = update(self.model)
 
 

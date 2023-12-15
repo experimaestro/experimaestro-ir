@@ -1,6 +1,5 @@
 from experimaestro import Param
 from xpmir.neural.generative import ConditionalGenerator
-from xpmir.distributed import DistributableModel
 from xpmir.letor.records import (
     BaseRecords,
 )
@@ -8,7 +7,7 @@ from xpmir.learning.context import TrainerContext
 from xpmir.rankers import LearnableScorer
 
 
-class GenerativeCrossScorer(LearnableScorer, DistributableModel):
+class GenerativeCrossScorer(LearnableScorer):
     """A cross-encoder based on a generative model"""
 
     #: The pattern used to condition the decoder, with query / document replaced
@@ -38,6 +37,3 @@ class GenerativeCrossScorer(LearnableScorer, DistributableModel):
         step_generator.init(inputs)
         logits = step_generator.step(None)
         return logits.log_softmax(dim=1)[:, self.relevant_token_id]
-
-    def distribute_models(self, update):
-        self.generator = update(self.generator)
