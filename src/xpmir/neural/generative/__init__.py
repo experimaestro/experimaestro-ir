@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import List
 from abc import abstractmethod
 
@@ -23,10 +24,45 @@ class StepwiseGenerator:
         generates ones (B)"""
         pass
 
+    @abstractmethod
+    def state(self):
+        """Get the current state, so we can start back to a previous generated prefix"""
+        ...
 
-class IdentifierGenerator(Module):
+    @abstractmethod
+    def load_state(self, state):
+        """Load a saved state"""
+        ...
+
+
+@dataclass
+class GenerateOptions:
+    """Options used during sequence generation"""
+
+    return_dict_in_generate: bool = True
+    max_new_tokens: int = 10
+    """The number of new tokens to be generated"""
+    output_scores: bool = True
+    num_return_sequences: int = 1
+    """number of returned sequences"""
+
+
+@dataclass
+class BeamSearchGenerationOptions(GenerateOptions):
+    """Options related to the beam search of the generate method"""
+
+    num_beams: int = 1
+    """beam size"""
+
+
+class ConditionalGenerator(Module):
     """Models that generate an identifier given a document or a query"""
 
     @abstractmethod
     def stepwise_iterator(self) -> StepwiseGenerator:
+        pass
+
+    @abstractmethod
+    def generate(self, inputs: List[str], options: GenerateOptions = None):
+        """Generate text given the inputs"""
         pass
