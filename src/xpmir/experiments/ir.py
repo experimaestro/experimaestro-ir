@@ -4,6 +4,7 @@ from pathlib import Path
 import click
 import inspect
 import io
+from functools import cached_property
 
 import docstring_parser
 from experimaestro import RunMode, Config
@@ -11,6 +12,7 @@ from xpmir.evaluation import EvaluationsCollection
 from xpmir.models import XPMIRHFHub
 from xpmir.papers.results import PaperResults
 from xpmir.experiments import ExperimentHelper
+from xpmir.learning.optim import TensorboardService
 
 
 class UploadToHub:
@@ -106,6 +108,10 @@ class IRExperimentHelper(ExperimentHelper):
                 print(results.evaluations.to_dataframe())  # noqa: T201
 
         return cli(extra_args, standalone_mode=False)
+
+    @cached_property
+    def tensorboard_service(self):
+        return self.xp.add_service(TensorboardService(self.xp.resultspath / "runs"))
 
 
 def ir_experiment(*args, **kwargs):

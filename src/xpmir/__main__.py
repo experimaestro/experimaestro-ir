@@ -1,5 +1,5 @@
 import click
-from xpmir.experiments.cli import experiments_cli
+from experimaestro.experiments.cli import experiments_cli
 
 
 @click.group()
