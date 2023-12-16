@@ -1,1 +1,5 @@
-from .cli import experiments_cli, ExperimentHelper, ExperimentCallable  # noqa: F401
+from experimaestro.experiments.cli import (  # noqa: F401
+    experiments_cli,
+    ExperimentHelper,
+    ExperimentCallable,
+)
