@@ -1,15 +1,13 @@
 from abc import ABC, abstractmethod
 from dataclasses import InitVar
-from functools import cached_property
 import sys
 from typing import Dict, Iterator, List
 from attr import define
 import torch
 from experimaestro import Config, Param
-from datamaestro_text.data.conversation import Conversation, ConversationDataset
+from datamaestro_text.data.conversation import Conversation
 from xpmir.learning import Module
 from xpmir.learning.context import Loss
-from xpmir.learning.base import Sampler
 from xpmir.text.encoders import TextEncoder
 from xpmir.letor.trainers import TrainerContext, LossTrainer
 import numpy as np
@@ -40,30 +38,6 @@ class GoldQueryConversationRepresentationEncoder(ConversationRepresentationEncod
     ) -> ConversationRepresentationOutput:
         texts = [conversation.decontextualized_query for conversation in conversations]
         return ConversationRepresentationOutput(self.encoder(texts))
-
-
-class ContextualizedQueryRewritingSamplerBase(Sampler, ABC):
-    @abstractmethod
-    def iter(self) -> SerializableIterator[Conversation]:
-        pass
-
-
-class ContextualizedQueryRewritingSampler(Sampler):
-    """Sampler for a contextualized query rewriting datasets"""
-
-    dataset: Param[ConversationDataset]
-    """The dataset used by the sampler"""
-
-    @cached_property
-    def data(self):
-        return [x for x in self.dataset.iter()]
-
-    def iter(self) -> RandomSerializableIterator[Conversation]:
-        def generator(random):
-            while True:
-                yield self.data[random.randint(0, len(self.data))]
-
-        return RandomSerializableIterator(self.random, generator)
 
 
 class QueryRewritingSamplerLoss(Config):
