@@ -236,9 +236,10 @@ class NegativeUpdateHook(LossProcessHook):
     def process(
         self,
         loss_output: GenerativeLossOutput,
-        ids: list[int],
+        records: BaseRecords,
         current_max_depth: int,
     ):
+        ids = [pdr.document.get_id() for pdr in records.positives]
         self.sampler.current_depth = current_max_depth
         if current_max_depth < self.max_depth:
             # we are not at the final depth, need to update matrix
@@ -585,10 +586,9 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
                 len(records),
             )
         )
-        ids = [pdr.document.get_id() for pdr in records.positives]
 
         for hook in self.loss_hooks:
-            hook.process(loss_output, ids, self.current_max_depth)
+            hook.process(loss_output, records, self.current_max_depth)
 
 
 class GenerativeRetrievalScorer(AbstractModuleScorer, DepthUpdatable):
