@@ -3,6 +3,7 @@ from functools import cached_property
 from xpmir.learning.optim import (
     AdamW,
     Adam,
+    Adafactor,
     SGD,
     ParameterOptimizer,
     RegexParameterFilter,
@@ -34,16 +35,23 @@ class TransformerOptimization:
     """Regular expression for layers"""
 
     def get_optimizer(self, regularization):
+        # Set weight decay to 0 if no regularization
+        weight_decay = self.weight_decay if regularization else 0
+
         if self.optimizer_name == "adam-w":
             return AdamW(
                 lr=self.lr,
-                weight_decay=self.weight_decay if regularization else 0,
+                weight_decay=weight_decay,
                 eps=self.eps,
             )
-        elif self.optimizer_name == "adam-w":
-            return Adam(self.lr, weight_decay=0, eps=self.eps)
+        elif self.optimizer_name == "adam":
+            return Adam(self.lr, weight_decay=weight_decay, eps=self.eps)
         elif self.optimizer_name == "sgd":
-            return SGD(lr=self.lr)
+            return SGD(lr=self.lr, weight_decay=weight_decay)
+        elif self.optimizer_name == "adafactor":
+            return Adafactor(
+                lr=self.lr, weight_decay=weight_decay, relative_step=self.lr is None
+            )
         else:
             raise ValueError(f"Cannot handle optimizer named {self.optimizer_Name}")
 

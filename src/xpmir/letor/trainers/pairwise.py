@@ -21,6 +21,8 @@ import numpy as np
 from xpmir.rankers import LearnableScorer, ScorerOutputType
 from xpmir.utils.utils import foreach
 from xpmir.utils.iter import MultiprocessSerializableIterator
+from xpmir.utils.utils import EasyLogger
+from xpmir.learning.losses import bce_with_logits_loss
 
 
 class PairwiseLoss(Config, nn.Module):
@@ -97,18 +99,7 @@ class HingeLoss(PairwiseLoss):
         ).mean()
 
 
-class BCEWithLogLoss(nn.Module):
-    """Custom cross-entropy loss when outputs are log probabilities"""
-
-    def __call__(self, log_probs: torch.Tensor, info: TrainerContext):
-        # Assumes target is a two column matrix (rel. / not rel.)
-        assert torch.all(log_probs < 0.0)
-        loss = -log_probs[:, 0].sum() - (1.0 - log_probs[:, 1].exp()).log().sum()
-
-        return loss / log_probs.numel()
-
-
-class PointwiseCrossEntropyLoss(PairwiseLoss):
+class PointwiseCrossEntropyLoss(PairwiseLoss, EasyLogger):
     r"""Point-wise cross-entropy loss
 
     This is a point-wise loss adapted as a pairwise one.
@@ -132,18 +123,18 @@ class PointwiseCrossEntropyLoss(PairwiseLoss):
         super().initialize(ranker)
         self.rankerOutputType = ranker.outputType
         if ranker.outputType == ScorerOutputType.REAL:
+            self.logger.info("Ranker outputs logits: using BCEWithLogitsLoss")
             self.loss = nn.BCEWithLogitsLoss()
         elif ranker.outputType == ScorerOutputType.PROBABILITY:
+            self.logger.info("Ranker outputs probabilities: using BCELoss")
             self.loss = nn.BCELoss()
         elif ranker.outputType == ScorerOutputType.LOG_PROBABILITY:
-            self.loss = BCEWithLogLoss()
+            self.logger.info("Ranker outputs probabilities: using BCEWithLogLoss")
+            self.loss = bce_with_logits_loss
         else:
             raise Exception("Not implemented")
 
     def compute(self, rel_scores_by_record, info: TrainerContext):
-        if self.rankerOutputType == ScorerOutputType.LOG_PROBABILITY:
-            return self.loss(rel_scores_by_record, info)
-
         device = rel_scores_by_record.device
         dim = rel_scores_by_record.shape[0]
         target = torch.cat(

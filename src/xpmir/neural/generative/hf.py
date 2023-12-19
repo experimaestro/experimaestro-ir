@@ -2,7 +2,7 @@ import logging
 import dataclasses
 from transformers import AutoConfig, AutoTokenizer, T5ForConditionalGeneration, T5Config
 from experimaestro import Param, LightweightTask
-from typing import Optional, List, NamedTuple
+from typing import Optional, List, NamedTuple, Tuple
 
 import torch
 from torch import nn
@@ -39,7 +39,7 @@ class FullSequenceGenerationOutput(NamedTuple):
     """The condtional proba for tokens in the sequences, log, normalized
     shape: [bs * num_sequence, max_depth]"""
 
-    all_scores: Optional[tuple[torch.tensor]] = None
+    all_scores: Optional[Tuple[torch.tensor]] = None
     """All the probabilities, log, normalized, tuple of length max_depth
     each tensor of the tuple has the shape of [bs * num_sequence, vs]"""
 
