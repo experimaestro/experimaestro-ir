@@ -6,6 +6,7 @@ from datamaestro_text.data.conversation import (
     Conversation,
     AnswerEntry,
 )
+from xpmir.learning import Module
 from xpmir.conversation.learning.reformulation import (
     ContextualizedRepresentationLoss,
     ConversationRepresentationEncoder,
@@ -27,16 +28,23 @@ class AsymetricMSEContextualizedRepresentationLoss(ContextualizedRepresentationL
         return torch.maximum(target.representation - input.q_answers, 0).sum()
 
 
+
+class SPLADEQueryEncoder(Module):
+    pass
+
+class SPLADEHistoryEncoder(Module):
+    pass
+
 class CoSPLADE(ConversationRepresentationEncoder):
     """CoSPLADE model"""
 
     history_size: Param[int] = 0
     """Size of history to take into account"""
 
-    queries_encoder: Param[TextListEncoder]
+    queries_encoder: Param[SPLADEQueryEncoder]
     """Encoder for the query history (the first one being the current one)"""
 
-    history_encoder: Param[DualTextEncoder]
+    history_encoder: Param[SPLADEHistoryEncoder]
     """Encoder for (query, answer) pairs"""
 
     def forward(self, records: List[Conversation[AnswerEntry]]):

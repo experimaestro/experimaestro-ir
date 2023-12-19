@@ -16,7 +16,6 @@ from xpmir.text.encoders import (
     TokensEncoder,
     DualTextEncoder,
     TextEncoder,
-    TextListEncoder,
     TripletTextEncoder,
     Tokenizer,
     TokenizedEncoder,
@@ -667,6 +666,9 @@ class TransformerTokenizer(Tokenizer):
         self.cls_token_id = self.tokenizer.cls_token_id
         self.sep_token_id = self.tokenizer.sep_token_id
         self.pad_token_id = self.tokenizer.pad_token_id
+
+class TextListTokenizer(Tokenizer):
+    """Tokenizes list of text by separating them with [SEP]"""
 
 
 class TransformerTokenEncoder(TokenizedEncoder):

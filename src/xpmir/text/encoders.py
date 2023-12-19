@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, List, Tuple
+from typing import List, Tuple, TypeVar, Generic
 import sys
 import re
 
@@ -11,6 +11,8 @@ from experimaestro import Config, Param
 from xpmir.learning.optim import Module
 
 from xpmir.utils.utils import EasyLogger
+
+T = TypeVar("T")
 
 
 @define
@@ -242,23 +244,6 @@ class TripletTextEncoder(Encoder):
         raise NotImplementedError(f"forward in {self.__class__}")
 
 
-class TextListEncoder(Encoder):
-    """The generic class for list encoders
-
-
-    This encoding is used in models such as DuoBERT that compute
-    whether a pair is preferred to another
-    """
-
-    @property
-    def dimension(self) -> int:
-        raise NotImplementedError()
-
-    def forward(self, texts: List[List[str]]) -> torch.Tensor:
-        """Computes the representation of a list of pair of texts"""
-        raise NotImplementedError(f"forward in {self.__class__}")
-
-
 class MeanTextEncoder(TextEncoder):
     """Returns the mean of the word embeddings"""
 
@@ -279,37 +264,3 @@ class MeanTextEncoder(TextEncoder):
         emb_texts = self.encoder(tokenized)
         # Computes the mean over the time dimension (vocab output is batch x time x dim)
         return emb_texts.mean(1)
-
-
-#
-# These new class define a more flexible way to process text, by using a
-# tokenizer followed by a contextual representation
-#
-
-
-class BaseTokenizer(Config, ABC):
-    """A base tokenizer can take various forms of inputs and returns tokenized texts"""
-
-    @abstractmethod
-    def forward(self, data: Any) -> TokenizedTexts:
-        ...
-
-
-@define
-class TokenizedRepresentation:
-
-    value: torch.Tensor
-    """The tokens representations"""
-
-
-class TokenizedEncoder(Encoder, ABC):
-    """Represent a sequence of token representations in a vector space"""
-
-    @abstractmethod
-    def forward(self, tokenized: TokenizedTexts) -> TokenizedRepresentation:
-        """
-        Returns embeddings for the tokenized texts.
-
-        tokenized: tokenized texts
-        """
-        ...
