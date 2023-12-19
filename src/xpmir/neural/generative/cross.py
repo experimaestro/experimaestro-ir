@@ -1,14 +1,24 @@
-from experimaestro import Param
+from experimaestro import Param, Constant
 from xpmir.neural.generative import ConditionalGenerator
 from xpmir.letor.records import (
     BaseRecords,
 )
 from xpmir.learning.context import TrainerContext
-from xpmir.rankers import LearnableScorer
+from xpmir.rankers import LearnableScorer, ScorerOutputType
 
 
 class GenerativeCrossScorer(LearnableScorer):
     """A cross-encoder based on a generative model"""
+
+    version: Constant[int] = 2
+    """Generative cross scorer version
+
+    changelog:
+
+        1. corrects output type probability
+    """
+
+    outputType: ScorerOutputType = ScorerOutputType.LOG_PROBABILITY
 
     #: The pattern used to condition the decoder, with query / document replaced
     # by their string values
