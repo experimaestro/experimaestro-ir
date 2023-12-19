@@ -48,6 +48,24 @@ class SGD(Optimizer):
         return SGD(parameters, lr=self.lr, weight_decay=self.weight_decay)
 
 
+class Adafactor(Optimizer):
+    """Wrapper for Adafactor optimizer in Transformers library
+
+    See :class:`transformers.optimization.Adafactor` for full documentation
+    """
+
+    lr: Param[Optional[float]] = None
+    """Learning rate"""
+
+    weight_decay: Param[float] = 0.0
+    """Weight decay (L2)"""
+
+    def __call__(self, parameters):
+        from transformers.optimization import Adafactor
+
+        return Adafactor(parameters, lr=self.lr, weight_decay=self.weight_decay)
+
+
 class Adam(Optimizer):
     """Wrapper for Adam optimizer in PyTorch"""
 
