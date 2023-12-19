@@ -1,17 +1,16 @@
 from typing import TypeVar, Iterable
-from xpmir.letor.records import BaseRecords
+from attrs import define
+from xpmir.letor.records import BaseRecords, TopicRecord
 
 RT = TypeVar("RT")
 
 
-class HistoryRecord:
+class History:
     pass
 
 
-class BaseConversationRecords(BaseRecords[RT]):
-    """Triplets (query, document, history)
+@define()
+class HistoryRecord(TopicRecord):
+    """A topic record with a history context"""
 
-    The base class does not impose anything on the structure of the data
-    """
-
-    history: Iterable[HistoryRecord]
+    history: History

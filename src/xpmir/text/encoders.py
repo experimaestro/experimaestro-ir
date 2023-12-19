@@ -1,15 +1,31 @@
-from typing import List, Tuple
+from abc import ABC, abstractmethod
+from typing import Any, List, Tuple
 import sys
 import re
 
+from attrs import define
 import torch
 import torch.nn as nn
 
 from experimaestro import Config, Param
 from xpmir.learning.optim import Module
-from xpmir.letor.records import TokenizedTexts
 
 from xpmir.utils.utils import EasyLogger
+
+
+@define
+class TokenizedTexts:
+    tokens: List[List[str]]
+    """The list of tokens"""
+
+    ids: torch.LongTensor
+    """A matrix containing the ids"""
+
+    lens: List[int]
+    """the lengths of each text (in tokens)"""
+
+    mask: torch.LongTensor
+    """The mask for the ids matrix"""
 
 
 class Encoder(Module, EasyLogger):
@@ -146,11 +162,11 @@ class TokensEncoder(Tokenizer, Encoder):
             self(tokenized_documents),
         )
 
-    def forward(self, tok_texts: TokenizedTexts):
+    def forward(self, tokenized: TokenizedTexts):
         """
         Returns embeddings for the tokenized texts.
 
-        tok_texts: tokenized texts
+        tokenized: tokenized texts
         """
         raise NotImplementedError()
 
@@ -263,3 +279,37 @@ class MeanTextEncoder(TextEncoder):
         emb_texts = self.encoder(tokenized)
         # Computes the mean over the time dimension (vocab output is batch x time x dim)
         return emb_texts.mean(1)
+
+
+#
+# These new class define a more flexible way to process text, by using a
+# tokenizer followed by a contextual representation
+#
+
+
+class BaseTokenizer(Config, ABC):
+    """A base tokenizer can take various forms of inputs and returns tokenized texts"""
+
+    @abstractmethod
+    def forward(self, data: Any) -> TokenizedTexts:
+        ...
+
+
+@define
+class TokenizedRepresentation:
+
+    value: torch.Tensor
+    """The tokens representations"""
+
+
+class TokenizedEncoder(Encoder, ABC):
+    """Represent a sequence of token representations in a vector space"""
+
+    @abstractmethod
+    def forward(self, tokenized: TokenizedTexts) -> TokenizedRepresentation:
+        """
+        Returns embeddings for the tokenized texts.
+
+        tokenized: tokenized texts
+        """
+        ...

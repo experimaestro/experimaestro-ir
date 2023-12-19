@@ -85,10 +85,19 @@ class PointwiseRecord:
 
 class TokenizedTexts(NamedTuple):
     tokens: List[List[str]]
+    """The list of tokens"""
+    
     ids: torch.LongTensor
+    """A matrix containing the ids"""
+    
     lens: List[int]
+    """the lengths of each text (in tokens)"""
+    
     mask: torch.LongTensor
+    """The mask for the ids matrix"""
+    
     token_type_ids: torch.LongTensor = None
+    """The types of tokens"""
 
 
 RT = TypeVar("RT")

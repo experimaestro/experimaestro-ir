@@ -8,7 +8,7 @@ from torch import nn
 from experimaestro import cache, Param
 
 from xpmir.letor import Random
-from xpmir.letor.records import TokenizedTexts
+from xpmir.text.encoders import TokenizedTexts
 from xpmir.learning import ModuleInitOptions, ModuleInitMode
 
 from xpmir.text import TokensEncoder
