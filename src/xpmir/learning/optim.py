@@ -60,10 +60,19 @@ class Adafactor(Optimizer):
     weight_decay: Param[float] = 0.0
     """Weight decay (L2)"""
 
+    relative_step: Param[bool] = True
+    """If true, time-dependent learning rate is computed instead of external
+    learning rate"""
+
     def __call__(self, parameters):
         from transformers.optimization import Adafactor
 
-        return Adafactor(parameters, lr=self.lr, weight_decay=self.weight_decay)
+        return Adafactor(
+            parameters,
+            lr=self.lr,
+            weight_decay=self.weight_decay,
+            relative_step=self.relative_step,
+        )
 
 
 class Adam(Optimizer):

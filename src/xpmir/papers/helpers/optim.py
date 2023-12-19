@@ -49,7 +49,9 @@ class TransformerOptimization:
         elif self.optimizer_name == "sgd":
             return SGD(lr=self.lr, weight_decay=weight_decay)
         elif self.optimizer_name == "adafactor":
-            return Adafactor(lr=self.lr, weight_decay=weight_decay)
+            return Adafactor(
+                lr=self.lr, weight_decay=weight_decay, relative_step=self.lr is None
+            )
         else:
             raise ValueError(f"Cannot handle optimizer named {self.optimizer_Name}")
 
