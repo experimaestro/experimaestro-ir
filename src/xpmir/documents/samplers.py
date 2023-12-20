@@ -225,9 +225,11 @@ class UpdatableRandomSpanSampler(RandomSpanSampler):
             shape_mean = [self.dimension for _ in range(depth)]
             shape_ids = shape_mean + [nb_docs]
             # initialize the ids with -1.
-            self.id_matrix.append(torch.ones(shape_ids, dtype=torch.int32) * (-1))
+            self.id_matrix.append(
+                torch.ones(shape_ids, dtype=torch.int32).detach() * (-1)
+            )
             # initialize the log_probabilities with the a small probability
-            self.log_proba_mean_matrix.append(torch.full(shape_mean, -10.0))
+            self.log_proba_mean_matrix.append(torch.full(shape_mean, -10.0).detach())
 
     def update_matrix(
         self,
@@ -235,37 +237,40 @@ class UpdatableRandomSpanSampler(RandomSpanSampler):
         ids: torch.tensor,  # shape: bs
         log_proba: torch.tensor,  # shape: bs
     ):
-        current_depth, _ = sampled_tokens.shape
+        with torch.no_grad():
+            current_depth, _ = sampled_tokens.shape
 
-        # the previous average probability for the current given ids
-        log_proba_mean = self.log_proba_mean_matrix[current_depth - 1][
-            tuple(sampled_tokens)
-        ]
-        # update the means(using a fake average)
-        self.log_proba_mean_matrix[current_depth - 1][tuple(sampled_tokens)] = (
-            log_proba_mean * self.fake_average_coeff
-            + (1 - self.fake_average_coeff) * log_proba
-        )
+            # the previous average probability for the current given ids
+            log_proba_mean = self.log_proba_mean_matrix[current_depth - 1][
+                tuple(sampled_tokens)
+            ]
+            # update the means(using a fake average)
+            self.log_proba_mean_matrix[current_depth - 1][tuple(sampled_tokens)] = (
+                log_proba_mean * self.fake_average_coeff
+                + (1 - self.fake_average_coeff) * log_proba
+            )
 
-        # get the ids and the sequences which is better than the average
-        better_indices = torch.where(log_proba > log_proba_mean)[0]
-        better_ids = ids[better_indices]
-        better_sampled_tokens = sampled_tokens[:, better_indices]
+            # get the ids and the sequences which is better than the average
+            better_indices = torch.where(log_proba > log_proba_mean)[0]
+            better_ids = ids[better_indices]
+            better_sampled_tokens = sampled_tokens[:, better_indices]
 
-        # shape [nb_better, nb_documents]
-        ids_sequences = self.id_matrix[current_depth - 1][tuple(better_sampled_tokens)]
+            # shape [nb_better, nb_documents]
+            ids_sequences = self.id_matrix[current_depth - 1][
+                tuple(better_sampled_tokens)
+            ]
 
-        # randomly replace the previous ids
-        indices_doc_to_replace = torch.randint(
-            self.id_matrix[current_depth - 1].shape[-1],
-            (ids_sequences.shape[0],),
-            dtype=torch.int32,
-        )
+            # randomly replace the previous ids
+            indices_doc_to_replace = torch.randint(
+                self.id_matrix[current_depth - 1].shape[-1],
+                (ids_sequences.shape[0],),
+                dtype=torch.int32,
+            )
 
-        # replace them!
-        self.id_matrix[current_depth - 1][
-            tuple(torch.vstack((better_sampled_tokens, indices_doc_to_replace)))
-        ] = better_ids
+            # replace them!
+            self.id_matrix[current_depth - 1][
+                tuple(torch.vstack((better_sampled_tokens, indices_doc_to_replace)))
+            ] = better_ids
 
     def hierarchical_neg_mining(
         self,
@@ -274,26 +279,29 @@ class UpdatableRandomSpanSampler(RandomSpanSampler):
         random: np.random.RandomState,
     ):
         """return the internal id of the negative, if not find, return None"""
-        indices = torch.where(id_matrix == target_id)
-        if indices[0].shape[0] == 0:  # target id not found in matrix
-            return None
+        with torch.no_grad():  # this no_grad should be unneccessary
+            indices = torch.where(id_matrix == target_id)
+            if indices[0].shape[0] == 0:  # target id not found in matrix
+                return None
 
-        # random choose one to as the target sequence
-        random_choosed = torch.vstack(indices)[:, random.randint(indices[0].shape[0])]
-        # build the hierarchical matrix to search
-        # e.g. the input is at [7,8,2,6], first we search from [7,8,2], if not found,
-        # we go to [7, 8], etc
-        for i in range(self.current_depth - 1, 0, -1):
-            hierarchical_targets = id_matrix[tuple(random_choosed[:i])]
-            satisfied = torch.where(
-                torch.logical_and(
-                    hierarchical_targets != -1, hierarchical_targets != target_id
+            # random choose one to as the target sequence
+            random_choosed = torch.vstack(indices)[
+                :, random.randint(indices[0].shape[0])
+            ]
+            # build the hierarchical matrix to search
+            # e.g. the input is at [7,8,2,6], first we search from [7,8,2],
+            # if not found, we go to [7, 8], etc
+            for i in range(self.current_depth - 1, 0, -1):
+                hierarchical_targets = id_matrix[tuple(random_choosed[:i])]
+                satisfied = torch.where(
+                    torch.logical_and(
+                        hierarchical_targets != -1, hierarchical_targets != target_id
+                    )
                 )
-            )
-            if hierarchical_targets[satisfied].shape[0] > 0:  # found at this level
-                return random.choice(hierarchical_targets[satisfied])
+                if hierarchical_targets[satisfied].shape[0] > 0:  # found at this level
+                    return random.choice(hierarchical_targets[satisfied])
 
-        return None  # not found over all the hierarchical matrix
+            return None  # not found over all the hierarchical matrix
 
     def pairwise_iter(self) -> SerializableIterator[PairwiseRecord, Any]:
         def iter(random: np.random.RandomState):
