@@ -59,7 +59,9 @@ class SumAggregation(Aggregation):
 
 
 class SpladeTextEncoderModel(nn.Module):
-    def __init__(self, encoder, aggregation):
+    def __init__(
+        self, encoder: TransformerTokensEncoderWithMLMOutput, aggregation: Aggregation
+    ):
         super().__init__()
         self.encoder = encoder
         self.aggregation = aggregation
