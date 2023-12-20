@@ -16,10 +16,10 @@ from xpmir.letor.records import (
     PointwiseRecord,
     PointwiseRecords,
     ProductRecords,
-    TokenizedTexts,
     TopicRecord,
 )
-from xpmir.text.encoders import TokensEncoder, DualTextEncoder, MeanTextEncoder
+from xpmir.text.encoders import TokensEncoder, DualTextEncoder, TokenizedTexts
+from xpmir.text.adapters import MeanTextEncoder
 
 
 class RandomTokensEncoder(TokensEncoder):

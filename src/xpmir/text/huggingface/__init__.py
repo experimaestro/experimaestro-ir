@@ -1,10 +1,9 @@
 import re
 import logging
 import torch.nn as nn
-from dataclasses import InitVar, dataclass
+from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
-from attrs import define
 import torch
 
 from experimaestro.compat import cached_property
@@ -17,10 +16,6 @@ from xpmir.text.encoders import (
     DualTextEncoder,
     TextEncoder,
     TripletTextEncoder,
-    Tokenizer,
-    TokenizedEncoder,
-    TokenizedRepresentation,
-    TokenizedTexts as TokenizedTextsBase,
 )
 from xpmir.utils.utils import easylog
 from xpmir.learning.context import TrainerContext, TrainState
@@ -38,14 +33,10 @@ except Exception:
     logging.error("Install huggingface transformers to use these configurations")
     raise
 
+from xpmir.letor.records import TokenizedTexts
 
 logger = easylog()
-
-
-@define
-class TokenizedTexts(TokenizedTextsBase):
-    token_type_ids: torch.LongTensor = None
-    """The types of tokens"""
+logger.setLevel(logging.INFO)
 
 
 class BaseTransformer(Encoder):
@@ -57,11 +48,9 @@ class BaseTransformer(Encoder):
     trainable: Param[bool]
     """Whether BERT parameters should be trained"""
 
-    # FIXME: remove this
     layer: Param[int] = 0
     """Layer to use (0 is the last, -1 to use them all)"""
 
-    # TODO: move this into a hook
     dropout: Param[Optional[float]] = 0
     """(deprecated) Define a dropout for all the layers"""
 
@@ -498,21 +487,6 @@ class DualDuoBertTransformerEncoder(BaseTransformer, TripletTextEncoder):
     #     self.model = update(self.model)
 
 
-class TransformerListEncoder(BaseTransformer, TextListEncoder):
-    """Encodes list of texts separating them with [SEP]"""
-
-    def forward(self, text_lists: List[List[str]], info: TrainerContext = None):
-        tokenized = self.batch_tokenize(
-            ["".join(texts) for texts in text_lists], mask=True
-        )
-
-        with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
-            return self.model(
-                tokenized.ids,
-                attention_mask=tokenized.mask.to(self.device),
-            )
-
-
 @dataclass
 class MLMModelOutput:
     """Format for the output of the model during Masked Language Modeling"""
@@ -638,66 +612,3 @@ class TransformerTokensEncoderWithMLMOutput(TransformerTokensEncoder):
     @property
     def automodel(self):
         return AutoModelForMaskedLM
-
-
-class TransformerTokenizer(Tokenizer):
-    model_id: Param[str]
-    """Model ID from huggingface"""
-
-    cls_token_id: InitVar[int]
-    sep_token_id: InitVar[int]
-    pad_token_id: InitVar[int]
-
-    @cached_property
-    def tokenizer(self):
-        return AutoTokenizer.from_pretrained(self.model_id, use_fast=True)
-
-    def __initialize__(self, options: ModuleInitOptions):
-        """Initialize the HuggingFace transformer
-
-        Args:
-            options: loader options
-        """
-        super().__initialize__(options)
-
-        # Load the model configuration
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_id, use_fast=True)
-
-        self.cls_token_id = self.tokenizer.cls_token_id
-        self.sep_token_id = self.tokenizer.sep_token_id
-        self.pad_token_id = self.tokenizer.pad_token_id
-
-class TextListTokenizer(Tokenizer):
-    """Tokenizes list of text by separating them with [SEP]"""
-
-
-class TransformerTokenEncoder(TokenizedEncoder):
-    """Base transformer class from Huggingface"""
-
-    model_id: Param[str]
-    """Model ID from Huggingface"""
-
-    @property
-    def automodel(self):
-        return AutoModel
-
-    def __initialize__(self, options: ModuleInitOptions):
-        super().__initialize__(options)
-
-        # Load the model configuration
-        config = AutoConfig.from_pretrained(self.model_id)
-
-        if options.mode == ModuleInitMode.NONE or options.mode == ModuleInitMode.RANDOM:
-            self.model = self.automodel.from_config(config)
-        else:
-            self.model = self.automodel.from_pretrained(self.model_id, config=config)
-
-    def train(self, mode: bool = True):
-        # We should not make this layer trainable unless asked
-        self.model.train(mode)
-
-    def dim(self):
-        return self.model.config.hidden_size
-
-    def forward(self, tokenized: TokenizedTexts) -> TokenizedRepresentation:
-        TokenizedRepresentation()

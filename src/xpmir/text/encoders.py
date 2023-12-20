@@ -1,36 +1,28 @@
 from abc import ABC, abstractmethod
-from typing import List, Tuple, TypeVar, Generic
+from typing import Generic, List, Tuple, TypeVar, Union
 import sys
-import re
 
 from attrs import define
+from experimaestro import Param
 import torch
 import torch.nn as nn
 
-from experimaestro import Config, Param
 from xpmir.learning.optim import Module
 
 from xpmir.utils.utils import EasyLogger
+from .tokenizers import (
+    Tokenizer,
+    TokenizedTexts,
+    SimpleTokenizer,
+    DualTokenizer,
+    TripletTokenizer,
+    ListTokenizer,
+)
 
 T = TypeVar("T")
 
 
-@define
-class TokenizedTexts:
-    tokens: List[List[str]]
-    """The list of tokens"""
-
-    ids: torch.LongTensor
-    """A matrix containing the ids"""
-
-    lens: List[int]
-    """the lengths of each text (in tokens)"""
-
-    mask: torch.LongTensor
-    """The mask for the ids matrix"""
-
-
-class Encoder(Module, EasyLogger):
+class Encoder(Module, EasyLogger, ABC):
     """Base class for all word and text encoders"""
 
     def __initialize__(self, options):
@@ -46,103 +38,20 @@ class Encoder(Module, EasyLogger):
         return self._dummy_params.device
 
 
-def lengthToMask(length, max_len=None, dtype=None):
-    """length: B.
-    return B x max_len.
-    If max_len is None, then max of length will be used.
-    """
-    assert len(length.shape) == 1, "Length shape should be 1 dimensional."
-    max_len = max_len or length.max().item()
-    mask = torch.arange(max_len, device=length.device, dtype=length.dtype).expand(
-        len(length), max_len
-    ) < length.unsqueeze(1)
-    if dtype is not None:
-        mask = torch.as_tensor(mask, dtype=dtype, device=length.device)
-    return mask
+@define
+class TokensEncoderOutput:
+    """Output representation for text encoder"""
 
+    tokenized: TokenizedTexts
+    """Tokenized texts"""
 
-class Tokenizer(Config):
-    """
-    Represents a vocabulary and a tokenization method
-    """
-
-    def tokenize(self, text):
-        """
-        Meant to be overwritten in to provide vocab-specific tokenization when necessary
-        e.g., BERT's WordPiece tokenization
-        """
-        text = text.lower()
-        text = re.sub(r"[^a-z0-9]", " ", text)
-        return text.split()
-
-    def pad_sequences(self, tokensList: List[List[int]], batch_first=True, maxlen=0):
-        padding_value = 0
-        lens = [len(s) for s in tokensList]
-        if maxlen is None:
-            maxlen = max(lens)
-        else:
-            maxlen = min(maxlen or 0, max(lens))
-
-        if batch_first:
-            out_tensor = torch.full(
-                (len(tokensList), maxlen), padding_value, dtype=torch.long
-            )
-            for i, tokens in enumerate(tokensList):
-                out_tensor[i, : lens[i], ...] = torch.LongTensor(tokens[:maxlen])
-        else:
-            out_tensor = torch.full(
-                (maxlen, len(tokensList)), padding_value, dtype=torch.long
-            )
-            for i, tokens in enumerate(tokensList):
-                out_tensor[: lens[i], i, ...] = tokens[:maxlen]
-
-        return out_tensor.to(self._dummy_params.device), lens
-
-    def batch_tokenize(
-        self, texts: List[str], batch_first=True, maxlen=None, mask=False
-    ) -> TokenizedTexts:
-        """
-        Returns tokenized texts
-
-        Arguments:
-            mask: Whether a mask should be computed
-        """
-        toks = [self.tokenize(text) for text in texts]
-        tokids, lens = self.pad_sequences(
-            [[self.tok2id(t) for t in tok] for tok in toks],
-            batch_first=batch_first,
-            maxlen=maxlen,
-        )
-
-        _mask = lengthToMask(torch.LongTensor(lens)) if mask else None
-
-        return TokenizedTexts(toks, tokids, lens, _mask)
-
-    @property
-    def pad_tokenid(self) -> int:
-        raise NotImplementedError()
-
-    def tok2id(self, tok: str) -> int:
-        """
-        Converts a token to an integer id
-        """
-        raise NotImplementedError()
-
-    def id2tok(self, idx: int) -> str:
-        """
-        Converts an integer id to a token
-        """
-        raise NotImplementedError()
-
-    def lexicon_size(self) -> int:
-        """
-        Returns the number of items in the lexicon
-        """
-        raise NotImplementedError()
+    value: torch.Tensor
+    """The encoder output"""
 
 
 class TokensEncoder(Tokenizer, Encoder):
-    """Represent a text as a sequence of token representations"""
+    """(deprecated, use TokensEncoderBase) Represent a text as a sequence of
+    token representations"""
 
     def enc_query_doc(
         self, queries: List[str], documents: List[str], d_maxlen=None, q_maxlen=None
@@ -193,74 +102,119 @@ class TokensEncoder(Tokenizer, Encoder):
         """
         return True
 
-    def maxtokens(self) -> float:
+    def maxtokens(self) -> int:
         """Maximum number of tokens that can be processed"""
         return sys.maxsize
 
 
-class TextEncoder(Encoder):
-    """Vectorial representation of a text - can be dense or sparse"""
+class TokensEncoderBase(Encoder, ABC):
+    """Represent a text as a sequence of token representations"""
+
+    def forward(self, texts: TokenizedTexts) -> TokensEncoderOutput:
+        ...
+
+
+LegacyEncoderInput = Union[List[str], List[Tuple[str, str]], List[Tuple[str, str, str]]]
+
+
+InputType = TypeVar("InputType")
+
+
+class TextEncoderBase(Encoder, Generic[InputType]):
+    """Base class for legacy text encoders"""
 
     @property
     def dimension(self) -> int:
-        """Returns the dimension of the representation"""
-        raise NotImplementedError(f"dimension for {self.__class__}")
-
-    def forward(self, texts: List[str]) -> torch.Tensor:
-        """Returns a matrix encoding the provided texts"""
-        raise NotImplementedError(f"forward for {self.__class__}")
-
-
-class DualTextEncoder(Encoder):
-    """Vectorial representation for a pair of texts
-
-    This is used for instance in the case of BERT models
-    that represent the (query, document couple)
-    """
-
-    @property
-    def dimension(self) -> int:
+        """Returns the dimension of the output space"""
         raise NotImplementedError()
 
-    def forward(self, texts: List[Tuple[str, str]]) -> torch.Tensor:
-        """Computes the representation of a list of pair of texts"""
-        raise NotImplementedError(f"forward in {self.__class__}")
-
-
-class TripletTextEncoder(Encoder):
-    """The generic class for triplet encoders: query-document-document
-
-
-    This encoding is used in models such as DuoBERT that compute
-    whether a pair is preferred to another
-    """
-
-    @property
-    def dimension(self) -> int:
+    @abstractmethod
+    def forward(self, texts: InputType) -> torch.Tensor:
         raise NotImplementedError()
 
-    def forward(self, texts: List[Tuple[str, str, str]]) -> torch.Tensor:
-        """Computes the representation of a list of pair of texts"""
-        raise NotImplementedError(f"forward in {self.__class__}")
+
+class TextEncoder(TextEncoderBase[str]):
+    """Encodes a text into a vector"""
+
+    pass
 
 
-class MeanTextEncoder(TextEncoder):
-    """Returns the mean of the word embeddings"""
+class DualTextEncoder(TextEncoderBase[Tuple[str, str]]):
+    """Encodes a pair of text into a vector"""
 
-    encoder: Param[TokensEncoder]
+    pass
 
-    def __initialize__(self, options):
-        self.encoder.__initialize__(options)
 
-    def static(self):
-        return self.encoder.static()
+class TripletTextEncoder(TextEncoderBase[Tuple[str, str, str]]):
+    """Encodes a triplet of text into a vector
 
-    @property
-    def dimension(self):
-        return self.encoder.dim()
+    This is used in models such as DuoBERT where we encode (query, positive,
+    negative) triplets.
+    """
 
-    def forward(self, texts: List[str]) -> torch.Tensor:
-        tokenized = self.encoder.batch_tokenize(texts, True)
-        emb_texts = self.encoder(tokenized)
-        # Computes the mean over the time dimension (vocab output is batch x time x dim)
-        return emb_texts.mean(1)
+    pass
+
+
+class ListTextEncoder(TextEncoderBase[List[str]]):
+    """Encodes a list of strings (variable length) into a vector"""
+
+    pass
+
+
+# --- Tokenized text encoders
+
+
+class TokenizedTextEncoder(Encoder):
+    """Encodes a tokenized text into a vector"""
+
+    @abstractmethod
+    def forward(self, inputs: TokenizedTexts) -> torch.Tensor:
+        pass
+
+
+class SimpleTokenizedTextEncoder(TextEncoderBase[str]):
+    """Encodes a text into a vector"""
+
+    tokenizer: Param[SimpleTokenizer]
+    encoder: Param[TokenizedTextEncoder]
+
+    def forward(self, inputs: List[str]):
+        tokenized = self.tokenizer(inputs)
+        return self.encoder(tokenized)
+
+
+class DualTokenizedTextEncoder(TextEncoderBase[Tuple[str, str]]):
+    """Encodes a pair of text into a vector"""
+
+    tokenizer: Param[DualTokenizer]
+    encoder: Param[TokenizedTextEncoder]
+
+    def forward(self, inputs: List[Tuple[str, str]]):
+        tokenized = self.tokenizer(inputs)
+        return self.encoder(tokenized)
+
+
+class TripletTokenizedTextEncoder(TextEncoderBase[Tuple[str, str, str]]):
+    """Encodes a triplet of text into a vector
+
+    This is used in models such as DuoBERT where we encode (query, positive,
+    negative) triplets.
+    """
+
+    tokenizer: Param[TripletTokenizer]
+    encoder: Param[TokenizedTextEncoder]
+
+    def forward(self, inputs: List[Tuple[str, str, str]]):
+        tokenized = self.tokenizer(inputs)
+        return self.encoder(tokenized)
+
+
+class ListTokenizedTextEncoder(TextEncoderBase[List[str]]):
+    """Encodes a list of strings (variable length) into a vector"""
+
+    tokenizer: Param[ListTokenizer]
+    encoder: Param[TokenizedTextEncoder]
+
+    def forward(self, inputs: List[List[str]]):
+        tokenized = self.tokenizer(inputs)
+        return self.encoder(tokenized)
