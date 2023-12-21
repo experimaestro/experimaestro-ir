@@ -1,31 +1,54 @@
+from abc import ABC, abstractmethod
+from dataclasses import InitVar
 import logging
+from typing import Type
 
-from experimaestro import Param
+from experimaestro import Config, Param
 
 from xpmir.learning import Module
 from xpmir.learning.optim import ModuleInitMode, ModuleInitOptions
 
 try:
-    from transformers import AutoConfig, AutoModel
+    from transformers import AutoConfig, AutoModel, AutoModelForMaskedLM
 except Exception:
     logging.error("Install huggingface transformers to use these configurations")
     raise
 
 
-class HFBaseModel(Module):
-    """Base class for HuggingFace models"""
+class HFModelConfig(Config, ABC):
+    @abstractmethod
+    def __call__(self, options: ModuleInitOptions):
+        ...
 
-    pass
+
+class HFModelConfigId(Config):
+    model_id: Param[str]
+    """HuggingFace Model ID"""
+
+    def __call__(self, options: ModuleInitOptions, automodel: Type[AutoModel]):
+        # Load the model configuration
+        config = AutoConfig.from_pretrained(self.model_id)
+
+        if options.mode == ModuleInitMode.NONE or options.mode == ModuleInitMode.RANDOM:
+            return config, automodel.from_config(config)
+
+        return config, automodel.from_pretrained(self.model_id, config=config)
 
 
-class HFNamedModel(Module):
+class HFModel(Module):
     """Base transformer class from Huggingface
 
     Loads the pre-trained checkpoint (unless initialized otherwise)
     """
 
-    model_id: Param[str]
+    config: Param[HFModelConfig]
     """Model ID from huggingface"""
+
+    model: InitVar[AutoModel]
+
+    @classmethod
+    def from_model_id(cls, model_id: str):
+        return cls(config=HFModelConfigId(model_id=model_id))
 
     @property
     def automodel(self):
@@ -39,10 +62,12 @@ class HFNamedModel(Module):
         """
         super().__initialize__(options)
 
-        # Load the model configuration
-        config = AutoConfig.from_pretrained(self.model_id)
+        self.config, self.model = self.config(options, self.automodel)
 
-        if options.mode == ModuleInitMode.NONE or options.mode == ModuleInitMode.RANDOM:
-            self.model = self.automodel.from_config(config)
-        else:
-            self.model = self.automodel.from_pretrained(self.model_id, config=config)
+
+class HFMaskedLanguageModel(HFModel):
+    model: InitVar[AutoModelForMaskedLM]
+
+    @property
+    def automodel(self):
+        return AutoModelForMaskedLM
