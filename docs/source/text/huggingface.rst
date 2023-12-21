@@ -4,8 +4,14 @@ Huggingface Transformers
 Base
 ----
 
+.. autoxpmconfig:: xpmir.text.huggingface.base.HFModelConfig
+.. autoxpmconfig:: xpmir.text.huggingface.base.HFModelConfigId
+
+Models
+------
+
 .. autoxpmconfig:: xpmir.text.huggingface.base.HFBaseModel
-.. autoxpmconfig:: xpmir.text.huggingface.base.HFNamedModel
+.. autoxpmconfig:: xpmir.text.huggingface.base.HFMaskedLanguageModel
 
 Tokenizers
 ----------
