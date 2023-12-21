@@ -28,12 +28,13 @@ class AsymetricMSEContextualizedRepresentationLoss(ContextualizedRepresentationL
         return torch.maximum(target.representation - input.q_answers, 0).sum()
 
 
-
 class SPLADEQueryEncoder(Module):
     pass
 
+
 class SPLADEHistoryEncoder(Module):
     pass
+
 
 class CoSPLADE(ConversationRepresentationEncoder):
     """CoSPLADE model"""
