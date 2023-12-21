@@ -82,6 +82,7 @@ def msmarco_v1_docpairs_efficient_sampler(
     sample_rate: float = 1.0,
     sample_max: int = 0,
     launcher: "Launcher" = None,
+    seed: int = 123,
 ) -> TripletBasedSampler:
     """Train sampler
 
@@ -92,7 +93,7 @@ def msmarco_v1_docpairs_efficient_sampler(
     topics = prepare_dataset("irds.msmarco-passage.train.queries")
     train_triples = prepare_dataset("irds.msmarco-passage.train.docpairs")
     triplets = ShuffledTrainingTripletsLines(
-        seed=123,
+        seed=seed,
         data=StoreTrainingTripletTopicAdapter(data=train_triples, store=topics),
         sample_rate=sample_rate,
         sample_max=sample_max,

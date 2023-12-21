@@ -56,6 +56,7 @@ Table of Contents
    experiments
    papers/index
    pretrained
+   cli
 
 
 Indices and tables

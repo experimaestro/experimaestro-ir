@@ -92,12 +92,18 @@ Sparse Models
 Generative Models
 =================
 
-.. autoxpmconfig:: xpmir.neural.generative.IdentifierGenerator
+
+.. autoxpmconfig:: xpmir.neural.generative.ConditionalGenerator
+
+.. autoxpmconfig:: xpmir.neural.generative.cross.GenerativeCrossScorer
+
+HuggingFace Generative Models
+*****************************
 
 .. autoxpmconfig:: xpmir.neural.generative.hf.LoadFromT5
-
 .. autoxpmconfig:: xpmir.neural.generative.hf.T5IdentifierGenerator
-
+.. autoxpmconfig:: xpmir.neural.generative.hf.T5ConditionalGenerator
+.. autoxpmconfig:: xpmir.neural.generative.hf.T5CustomOutputGenerator
 
 From Huggingface
 ================

@@ -26,6 +26,7 @@ Optimizers
 .. autoxpmconfig:: xpmir.learning.optim.SGD
 .. autoxpmconfig:: xpmir.learning.optim.Adam
 .. autoxpmconfig:: xpmir.learning.optim.AdamW
+.. autoxpmconfig:: xpmir.learning.optim.Adafactor
 
 .. autoxpmconfig:: xpmir.learning.optim.ParameterOptimizer
 .. autoxpmconfig:: xpmir.learning.optim.ParameterFilter

@@ -8,6 +8,7 @@ Learning to rank
    pairwise
    batchwise
    distillation
+   generative
    mlm
 
 

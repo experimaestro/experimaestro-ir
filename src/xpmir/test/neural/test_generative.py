@@ -1,10 +1,15 @@
 from xpmir.neural.generative.hf import T5ConditionalGenerator, LoadFromT5
 from xpmir.neural.generative import BeamSearchGenerationOptions
+from xpmir.test import skip_if_ci
 from transformers import T5ForConditionalGeneration, T5Tokenizer
 import torch
 
 
+@skip_if_ci
+@torch.no_grad
 def test_t5_generate():
+    """Test consistency in generation"""
+
     hf_id = "t5-small"
     # our model
     options = BeamSearchGenerationOptions(num_return_sequences=5, num_beams=5)

@@ -2,7 +2,7 @@ import logging
 import dataclasses
 from transformers import AutoConfig, AutoTokenizer, T5ForConditionalGeneration, T5Config
 from experimaestro import Param, LightweightTask
-from typing import Optional, List, NamedTuple
+from typing import Optional, List, NamedTuple, Tuple
 
 import torch
 from torch import nn
@@ -39,7 +39,7 @@ class FullSequenceGenerationOutput(NamedTuple):
     """The condtional proba for tokens in the sequences, log, normalized
     shape: [bs * num_sequence, max_depth]"""
 
-    all_scores: Optional[tuple[torch.tensor]] = None
+    all_scores: Optional[Tuple[torch.tensor]] = None
     """All the probabilities, log, normalized, tuple of length max_depth
     each tensor of the tuple has the shape of [bs * num_sequence, vs]"""
 
@@ -71,6 +71,8 @@ class T5ConditionalGenerator(ConditionalGenerator, DistributableModel):
         self.pad_token_id = self.model.config.pad_token_id
         self.decoder_start_token_id = self.model.config.decoder_start_token_id
         self.eos_token_id = self.model.config.eos_token_id
+
+        self.encoder = self.model.get_encoder()
 
     def initialize_model(self, options: ModuleInitOptions):
         return T5ForConditionalGeneration(self.config)
@@ -115,9 +117,8 @@ class T5ConditionalGenerator(ConditionalGenerator, DistributableModel):
         """Returns the encoder_output and the input mask for the given text,
         which could accelerate the autoregressive generation procedure"""
 
-        encoder = self.model.get_encoder()
         tokenized = self.batch_tokenize(texts, maxlen=512, mask=True)
-        encoder_output = encoder(
+        encoder_output = self.encoder(
             tokenized.ids,
             attention_mask=tokenized.mask,
             return_dict=True,
@@ -218,6 +219,7 @@ class T5ConditionalGenerator(ConditionalGenerator, DistributableModel):
             )
 
     def distribute_models(self, update):
+        self.encoder = update(self.model.get_encoder())
         self.model = update(self.model)
 
 

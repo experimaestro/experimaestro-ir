@@ -287,7 +287,7 @@ class Learner(Task, EasyLogger):
 
                 # Stop if max epoch is reached
                 if self.context.epoch >= self.max_epochs:
-                    self.logger.warn(
+                    self.logger.warning(
                         "stopping after epoch {max_epochs} (max_epoch)".format(
                             **self.__dict__
                         )
