@@ -17,7 +17,7 @@ With `full.yaml` located in the same folder as `experiment.py`
 
 The experiment can be started with
 
-.. code-block: sh
+.. code-block:: sh
 
     experimaestro run-experiment --run-mode normal full.yaml
 
