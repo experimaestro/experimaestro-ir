@@ -54,15 +54,15 @@ class HFTokenizer(Tokenizer):
             r["input_ids"].to(self.device),
             r["length"],
             r.get("attention_mask", None),
-            r.get("token_type_ids", None),  # if r["token_type_ids"] else None
+            r.get("token_type_ids", None),
         )
 
     def id2tok(self, idx):
+        """Returns the token strings corresponding to the token ids"""
         if torch.is_tensor(idx):
             if len(idx.shape) == 0:
                 return self.id2tok(idx.item())
             return [self.id2tok(x) for x in idx]
-        # return self.tokenizer.ids_to_tokens[idx]
         return self.tokenizer.id_to_token(idx)
 
     def lexicon_size(self) -> int:
