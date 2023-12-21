@@ -1,21 +1,30 @@
 Running IR experiments
 ----------------------
 
-The module `xpmir.experiments` contain code factorizing boilerplate for launching experiments
+The module `experimaestro.experiments` contain code factorizing boilerplate for
+launching experiments, which is specialized in `xpmir` with specific experiment
+helpers.
 
 For instance, one can define a standard IR experiments that learns (with tensorboard),
 evaluates a model on a different metrics and upload it to HuggingFace.
 
+The experiment can be started with
+
+.. code-block: sh
+
+    experimaestro run-experiment --run-mode normal full.yaml
+
+
+IR experiment
+=============
 
 Example
-=======
+*******
 
-An `experiment.py` file:
+.. code-block:: python
 
-.. code-block:: py3
-
+    from experimaestro.experiments import configuration
     from xpmir.experiments.ir import PaperResults, ir_experiment, ExperimentHelper
-    from xpmir.papers import configuration
 
     @configuration
     class Configuration:
@@ -34,7 +43,6 @@ An `experiment.py` file:
             tb_logs={"my-model@RR10": learner.logpath},
         )
 
-
 With `full.yaml` located in the same folder as `experiment.py`
 
 .. code-block:: yaml
@@ -44,18 +52,12 @@ With `full.yaml` located in the same folder as `experiment.py`
 
 The experiment can be started with
 
-.. code-block: sh
+.. code-block:: sh
 
-    xpmir run-experiment --run-mode normal full.yaml
+    experimaestro run-experiment --run-mode normal full.yaml
 
-Common handling
-===============
-
-.. automodule:: xpmir.experiments.cli
-    :members:
-
-IR experiment
-=============
+API
+***
 
 .. automodule:: xpmir.experiments.ir
     :members:

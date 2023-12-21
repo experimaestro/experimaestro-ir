@@ -2,15 +2,16 @@ from typing import Any, List, Optional, Dict
 import logging
 from pathlib import Path
 import click
-import inspect
 import io
+from functools import cached_property
 
 import docstring_parser
 from experimaestro import RunMode, Config
 from xpmir.evaluation import EvaluationsCollection
 from xpmir.models import XPMIRHFHub
 from xpmir.papers.results import PaperResults
-from xpmir.experiments import ExperimentHelper
+from xpmir.experiments.learning import LearningExperimentHelper
+from xpmir.learning.optim import TensorboardService
 
 
 class UploadToHub:
@@ -81,7 +82,9 @@ model.rsv("walgreens store sales average", "The average Walgreens salary ranges.
         )
 
 
-class IRExperimentHelper(ExperimentHelper):
+class IRExperimentHelper(LearningExperimentHelper):
+    """Helper for IR experiments"""
+
     def run(self, extra_args: List[str], configuration: Any):
         @click.option("--upload-to-hub", type=str)
         @click.command()
@@ -107,17 +110,15 @@ class IRExperimentHelper(ExperimentHelper):
 
         return cli(extra_args, standalone_mode=False)
 
+    @cached_property
+    def tensorboard_service(self):
+        return self.xp.add_service(TensorboardService(self.xp.resultspath / "runs"))
 
-def ir_experiment(*args, **kwargs):
-    """Wraps an experiment into an IR experiment
 
-    1. Upload to github (if requested)
-    2. Print the results
-    """
-    if len(args) == 1 and len(kwargs) == 0 and inspect.isfunction(args[0]):
-        return IRExperimentHelper(callable)
+ir_experiment = IRExperimentHelper.decorator
+"""Uses an IR experiment helper that provides
 
-    def wrapper(callable):
-        return IRExperimentHelper(callable)
-
-    return wrapper
+1. Tensorboard service (from Learning)
+1. Upload to HuggingFace
+1. Printing the evaluation results
+"""
