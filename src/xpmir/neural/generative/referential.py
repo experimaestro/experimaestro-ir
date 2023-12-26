@@ -54,6 +54,7 @@ class DepthUpdatable(Config):
 
     def __post_init__(self):
         # if no update
+        logger.info(f"If no further updates, the max_depth we use is {self.max_depth}")
         self.current_max_depth = self.max_depth
 
 
