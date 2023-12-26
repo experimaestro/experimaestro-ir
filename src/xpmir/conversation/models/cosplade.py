@@ -1,18 +1,14 @@
-from typing import List, NamedTuple
-from attr import dataclass, define
+from typing import List, Tuple
+from attr import define
 import torch
-from experimaestro import Config, Param
-from datamaestro_text.data.conversation import (
-    Conversation,
-    AnswerEntry,
-)
-from xpmir.learning import Module
+from experimaestro import Param
+from xpmir.conversation.records import HistoryRecord
 from xpmir.conversation.learning.reformulation import (
     ContextualizedRepresentationLoss,
     ConversationRepresentationEncoder,
     ConversationRepresentationOutput,
 )
-from xpmir.text.encoders import TextListEncoder, DualTextEncoder
+from xpmir.neural.splade import SpladeTextEncoderV2
 
 
 @define
@@ -28,34 +24,32 @@ class AsymetricMSEContextualizedRepresentationLoss(ContextualizedRepresentationL
         return torch.maximum(target.representation - input.q_answers, 0).sum()
 
 
-class SPLADEQueryEncoder(Module):
-    pass
-
-
-class SPLADEHistoryEncoder(Module):
-    pass
-
-
 class CoSPLADE(ConversationRepresentationEncoder):
     """CoSPLADE model"""
 
     history_size: Param[int] = 0
     """Size of history to take into account"""
 
-    queries_encoder: Param[SPLADEQueryEncoder]
+    queries_encoder: Param[SpladeTextEncoderV2]
     """Encoder for the query history (the first one being the current one)"""
 
-    history_encoder: Param[SPLADEHistoryEncoder]
+    history_encoder: Param[SpladeTextEncoderV2]
     """Encoder for (query, answer) pairs"""
 
-    def forward(self, records: List[Conversation[AnswerEntry]]):
-        # Prepare the data
-        queries = []
-        query_answer_pairs = []
-        pair_origins = []
+    def forward(self, records: List[HistoryRecord]):
+        queries: List[List[str]] = []
+        query_answer_pairs: List[Tuple[str, str]] = []
+        pair_origins: List[int] = []
+
         for ix, record in enumerate(records):
-            queries.append(record.history[-1].query)
-            for item, _ in zip(reversed(record.history), self.history_size):
+            # Adds q_n, q_1, ..., q_{n-1}
+            queries.append(
+                [record.topic.get_text()]
+                + [topic.get_text() for topic in record.history]
+            )
+
+            # List of query/answer couples
+            for item, _ in zip(reversed(record.history), range(self.history_size)):
                 query_answer_pairs.append((item.query, item.answer))
                 pair_origins.append(ix)
 
