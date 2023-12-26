@@ -1,25 +1,27 @@
 import torch
-from typing import List, Optional, Union, Tuple
+from typing import List, Optional
 from experimaestro import copyconfig, Param
-from xpmir.text.encoders import TextEncoder, DualTextEncoder, TokensEncoder
-from .base import HFTokenizer, HFBaseModel
+from xpmir.text.encoders import (
+    TextEncoder,
+    DualTextEncoder,
+    TripletTextEncoder,
+    ListTextEncoder,
+)
+from .base import HFBaseModel
+from .tokenizers import HFTokenizerBase, HFTokenizer, HFListTokenizer
 
 
-class HFTextEncoder(TextEncoder, DualTextEncoder):
-    """Encodes a text (or a pair of texts) using the [CLS] token"""
+class HFTextEncoder(TextEncoder, DualTextEncoder, TripletTextEncoder):
+    """Encodes a text using the [CLS] token"""
 
-    tokenizer: Param[HFTokenizer]
+    tokenizer: Param[HFTokenizerBase]
     model: Param[HFBaseModel]
 
     maxlen: Param[Optional[int]] = None
     """Limit the text to be encoded"""
 
-    def forward(
-        self, texts: Union[List[str], List[Tuple[str, str]]], maxlen=None
-    ) -> torch.Tensor:
-        tokenized = self.tokenizer.batch_tokenize(
-            texts, maxlen=maxlen or self.maxlen, mask=True
-        )
+    def forward(self, texts: List) -> torch.Tensor:
+        tokenized = self.tokenizer.batch_tokenize(texts, maxlen=self.maxlen, mask=True)
 
         y = self.model(tokenized.ids, attention_mask=tokenized.mask.to(self.device))
 
@@ -37,33 +39,9 @@ class HFTextEncoder(TextEncoder, DualTextEncoder):
         self.model = update(self.model)
 
 
-class HFTextListTokensEncoder(TokensEncoder):
-    """Encodes a text (composed of a list of texts) using the [CLS] token"""
-
+class HFTextEncoder(HFTextEncoder, TextEncoder, DualTextEncoder):
     tokenizer: Param[HFTokenizer]
-    model: Param[HFBaseModel]
 
-    maxlen: Param[Optional[int]] = None
-    """Limit the text to be encoded"""
 
-    def forward(
-        self, texts: Union[List[str], List[Tuple[str, str]]], maxlen=None
-    ) -> torch.Tensor:
-        tokenized = self.tokenizer.batch_tokenize(
-            texts, maxlen=maxlen or self.maxlen, mask=True
-        )
-
-        y = self.model(tokenized.ids, attention_mask=tokenized.mask.to(self.device))
-
-        # Assumes that [CLS] is the first token
-        return y.last_hidden_state[:, 0]
-
-    @property
-    def dimension(self):
-        return self.dim()
-
-    def with_maxlength(self, maxlen: int):
-        return copyconfig(self, maxlen=maxlen)
-
-    def distribute_models(self, update):
-        self.model = update(self.model)
+class HFListTextEncoder(HFTextEncoder, ListTextEncoder):
+    tokenizer: Param[HFListTokenizer]

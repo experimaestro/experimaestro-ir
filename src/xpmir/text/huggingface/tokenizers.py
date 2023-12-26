@@ -2,7 +2,7 @@ import logging
 from typing import List, Tuple, Union
 
 import torch
-from experimaestro import Param
+from experimaestro import Config, Param
 
 from xpmir.learning.optim import ModuleInitOptions
 from xpmir.text.tokenizers import ListTokenizer, TokenizedTexts, Tokenizer
@@ -14,10 +14,11 @@ except Exception:
     raise
 
 
-class HFTokenizer(Tokenizer):
-    model_id: Param[str]
-    """Model ID from huggingface"""
+class HFTokenizerBase(Config):
+    pass
 
+
+class HFTokenizer(Tokenizer):
     def __initialize__(self, options: ModuleInitOptions):
         """Initialize the HuggingFace transformer"""
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
