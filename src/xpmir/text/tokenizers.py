@@ -112,6 +112,8 @@ TokenizerOutput = TypeVar("TokenizerOutput", bound=TokenizedTexts)
 
 
 class TokenizerBase(Tokenizer, Generic[TokenizerInput, TokenizerOutput], ABC):
+    """Base tokenizer"""
+
     @abstractmethod
     def encode(self, inputs: List[TokenizerInput]) -> TokenizerOutput:
         ...

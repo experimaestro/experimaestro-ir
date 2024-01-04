@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Any
 from experimaestro import Config, Param
 import torch.nn as nn
 import torch
@@ -141,7 +141,7 @@ class SpladeTextEncoderV2(TextEncoder, DistributableModel):
             self.aggregation.get_output_module(output_embeddings)
         )
 
-    def forward(self, texts: List[str]) -> torch.Tensor:
+    def forward(self, texts: List[Any]) -> torch.Tensor:
         """Returns a batch x vocab tensor"""
         tokenized = self.tokenizer.batch_tokenize(texts, mask=True, maxlen=self.maxlen)
         return self.encoder(tokenized)
