@@ -54,13 +54,22 @@ library_name: xpmir
 The model can be loaded with [experimaestro
 IR](https://experimaestro-ir.readthedocs.io/en/latest/)
 
-```py from xpmir.models import AutoModel
+If you want to use the model in further experiments with XPMIR,
+use this code:
+```py
+from xpmir.models import AutoModel
 from xpmir.models import AutoModel
 
-# Model that can be re-used in experiments
 model, init_tasks = AutoModel.load_from_hf_hub("{self.model_id}")
+```
 
-# Use this if you want to actually use the model
+
+Use this code if you want to use the model in inference only:
+
+```py
+from xpmir.models import AutoModel
+from xpmir.models import AutoModel
+
 model = AutoModel.load_from_hf_hub("{self.model_id}", as_instance=True)
 model.rsv("walgreens store sales average", "The average Walgreens salary ranges...")
 ```
