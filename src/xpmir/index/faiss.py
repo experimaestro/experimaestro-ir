@@ -84,7 +84,7 @@ class IndexBackedFaiss(FaissIndex, Task):
 
     def full_sampler(self) -> Tuple[int, Iterator[str]]:
         """Returns an iterator over the full set of documents"""
-        iter = (d.text for d in self.documents.iter_documents())
+        iter = (d for d in self.documents.iter_documents())
         return self.documents.documentcount or 0, iter
 
     def train(
