@@ -90,7 +90,7 @@ class RandomDocumentSampler(DocumentSampler):
             yield self.documents.document(int(docid))
 
 
-class RandomSpanSampler(DocumentSampler, BatchwiseSampler, PairwiseSampler):
+class RandomSpanSampler(BatchwiseSampler, PairwiseSampler):
     """This sampler uses positive samples coming from the same documents
     and negative ones coming from others
 
@@ -100,6 +100,9 @@ class RandomSpanSampler(DocumentSampler, BatchwiseSampler, PairwiseSampler):
         Aug. 2021, Accessed: Sep. 17, 2021. [Online].
         http://arxiv.org/abs/2108.05540
     """
+
+    documents: Param[DocumentStore]
+    """The document store to use"""
 
     max_spansize: Param[int] = 1000
     """Maximum span size in number of characters"""
