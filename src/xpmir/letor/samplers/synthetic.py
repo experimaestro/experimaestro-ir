@@ -1,10 +1,8 @@
 from pathlib import Path
 import json
-from typing import Any, Callable, Optional, Tuple, Iterator, List
-import numpy as np
+from typing import Any, Callable
 
 from experimaestro import Task, Param, Meta, Annotated, pathgenerator, tqdm
-from datamaestro_text.data.ir import DocumentStore
 from experimaestro.core.objects import Config
 
 from xpmir.documents.samplers import DocumentSampler
@@ -23,17 +21,13 @@ class SynetheticQueryGeneration(Task):
     model: Param[T5ConditionalGenerator]
     """The model we use to generate the queries"""
 
-    documents: Param[DocumentStore]
-    """The set of documents"""
-
     batchsize: Param[int] = 128
 
     num_qry_per_doc: Param[int] = 5
     """How many synthetic qry to generate per document"""
 
-    sampler: Param[Optional[DocumentSampler]]
-    """Optional document sampler when training the index -- by default, all the
-    documents from the collection are used"""
+    sampler: Param[DocumentSampler]
+    """document sampler to iterate over the corpus"""
 
     device: Meta[Device] = DEFAULT_DEVICE
     """The device used by the encoder"""
@@ -53,27 +47,14 @@ class SynetheticQueryGeneration(Task):
         )
 
     def task_outputs(self, dep: Callable[[Config], None]) -> Any:
-        # TODO: read the file and pass it to the sampler
-        pass
-
-    def full_sampler(self) -> Tuple[int, Iterator[str]]:
-        """Returns an iterator over the full set of documents"""
-        internal_ids = np.arange(self.documents.documentcount)
-        np.random.shuffle(internal_ids)
-        id_list = internal_ids.tolist()
-
-        iter = (
-            (self.documents.document_int(id).id, self.documents.document_int(id).text)
-            for id in id_list
-        )
-        return self.documents.documentcount or 0, iter
+        return self.synthetic_samples
 
     def execute(self):
         self.device.execute(self.device_execute)
 
-    def generate(self, batch: List[Tuple[str, str]], fp):
+    def generate(self, batch, fp):
         generate_output = self.model.generate(
-            [d[1] for d in batch], self.generation_config
+            [d.text for d in batch], self.generation_config
         )
         # length: bs*num_qry_per_doc
         queries = self.model.batch_decode(generate_output)
@@ -83,7 +64,7 @@ class SynetheticQueryGeneration(Task):
             queries[i : i + self.num_qry_per_doc]
             for i in range(0, len(queries), self.num_qry_per_doc)
         ]
-        doc_ids = [d[0] for d in batch]
+        doc_ids = [d.id for d in batch]
 
         for qry, doc_id in zip(grouped_queries, doc_ids):
             dict_query_doc = dict()
@@ -94,9 +75,7 @@ class SynetheticQueryGeneration(Task):
             fp.write("\n")
 
     def device_execute(self, device_information: DeviceInformation):
-        count, iter = (
-            self.sampler() if self.sampler is not None else self.full_sampler()
-        )
+        count, iter = self.sampler()
         doc_iter = tqdm(
             iter, total=count, desc="Collecting the representation of documents (train)"
         )
