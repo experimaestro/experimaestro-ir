@@ -5,7 +5,12 @@ import torch
 from experimaestro import Config, Param
 
 from xpmir.learning.optim import ModuleInitOptions
-from xpmir.text.tokenizers import ListTokenizer, TokenizedTexts, Tokenizer
+from xpmir.text.tokenizers import (
+    TokenizerBase,
+    ListTokenizer,
+    TokenizedTexts,
+    Tokenizer,
+)
 
 try:
     from transformers import AutoTokenizer
@@ -14,11 +19,10 @@ except Exception:
     raise
 
 
-class HFTokenizerBase(Config):
-    pass
-
-
 class HFTokenizer(Tokenizer):
+    model_id: Param[str]
+    """The tokenizer hugginface ID"""
+
     def __initialize__(self, options: ModuleInitOptions):
         """Initialize the HuggingFace transformer"""
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
@@ -81,11 +85,13 @@ class HFTokenizer(Tokenizer):
         return self.tokenizer.vocab_size
 
 
-class HFListTokenizer(ListTokenizer):
-    """Process list of texts by separating them by a separator token"""
-
+class HFTokenizerBase(TokenizerBase):
     tokenizer: Param[HFTokenizer]
-    """The HF tokenizer"""
+    """The HuggingFace tokenizer"""
+
+
+class HFListTokenizer(HFTokenizerBase, ListTokenizer):
+    """Process list of texts by separating them by a separator token"""
 
     def tokenize(self, text_lists: List[List[str]]) -> TokenizedTexts:
         assert self.tokenizer.sep_token is not None

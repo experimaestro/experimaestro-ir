@@ -21,7 +21,7 @@ class HFModelConfig(Config, ABC):
         ...
 
 
-class HFModelConfigId(Config):
+class HFModelConfigFromId(Config):
     model_id: Param[str]
     """HuggingFace Model ID"""
 
