@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import Iterator, List, Tuple, Dict, Any
 import numpy as np
@@ -15,6 +16,7 @@ from datamaestro_text.data.ir.base import (
 )
 from experimaestro import Param, tqdm, Task, Annotated, pathgenerator
 from experimaestro.annotations import cache
+from experimaestro.compat import cached_property
 import torch
 from xpmir.rankers import ScoredDocument
 from xpmir.datasets.adapters import TextStore
@@ -393,6 +395,7 @@ class TripletBasedSampler(PairwiseSampler):
         return SkippingIterator(iterator)
 
 
+# FIXME: need to change to the version where there is a list of queries
 class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
     """Sampler based on a dataset where each query is associated
     with (1) a set of relevant documents (2) negative documents,
@@ -436,9 +439,9 @@ class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
 
 # --- Dataloader
 
-# A class for loading the data, need to move the other places.
-class PairwiseSampleDatasetFromTSV(PairwiseSampleDataset):
-    """Read the pairwise sample dataset from a csv file"""
+# FIXME: need to fix the change where there is a list of queries and type of return
+class TSVPairwiseSampleDataset(PairwiseSampleDataset):
+    """Read the pairwise sample dataset from a tsv file"""
 
     hard_negative_samples_path: Param[Path]
     """The path which stores the existing ids"""
@@ -451,6 +454,48 @@ class PairwiseSampleDatasetFromTSV(PairwiseSampleDataset):
             negatives = triplet[4].split(" ")
             # at the moment, I don't have some good idea to store the algo
             yield PairwiseSample(query, positives, negatives)
+
+
+class JSONLPairwiseSampleDataset(PairwiseSampleDataset):
+    """Transform a jsonl file to a pairwise dataset
+    General format:
+    {
+        queries: [str, str],
+        pos_ids: [id, id],
+        neg_ids: {
+            "bm25": [id, id],
+            "random": [id, id]
+        }
+    }
+    """
+
+    path: Param[Path]
+    """The path to the Jsonl file"""
+
+    @cached_property
+    def count(self):
+        with self.path.open("r") as fp:
+            line_count = sum(1 for _ in fp)
+        return line_count
+
+    def iter(self) -> Iterator[PairwiseSample]:
+        with self.path.open("r") as fp:
+            for line in fp:
+                sample = json.loads(line)
+                topics = []
+                positives = []
+                negatives = {}
+                for topic_text in sample["queries"]:
+                    topics.append(TextTopic(text=topic_text))
+                for pos_id in sample["pos_ids"]:
+                    positives.append(IDDocument(id=pos_id))
+                for algo in sample["neg_ids"].keys():
+                    negatives[algo] = []
+                    for neg_id in sample["neg_ids"][algo]:
+                        negatives[algo].append(IDDocument(id=neg_id))
+                yield PairwiseSample(
+                    topics=topics, positives=positives, negatives=negatives
+                )
 
 
 # A class for loading the data, need to move the other places.
@@ -490,7 +535,7 @@ class ModelBasedHardNegativeSampler(Task, Sampler):
     def task_outputs(self, dep) -> PairwiseSampleDataset:
         """return a iterator of PairwiseSample"""
         return dep(
-            PairwiseSampleDatasetFromTSV(
+            TSVPairwiseSampleDataset(
                 ids=self.dataset.id,
                 hard_negative_samples_path=self.hard_negative_samples,
             )
