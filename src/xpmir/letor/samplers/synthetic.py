@@ -123,7 +123,7 @@ class JSONLNegativeGeneration(Task):
     pairwise_dataset: Param[JSONLPairwiseSampleDataset]
     """The pairwise dataset where we are going to add the negatives"""
 
-    retrievers: Param[Dict[str, Retriever]] = {}
+    retrievers: Param[Dict[str, Retriever]]
     """The retrievers to retrieve the top k document wrt the query, if no
     retriever's provided, we just use the random negatives"""
 
@@ -142,11 +142,8 @@ class JSONLNegativeGeneration(Task):
         )
 
     def execute(self):
-        if len(self.retrievers) == 0:
-            logger.info("No retriever provided, completing only the random negatives")
-        else:
-            for retriever in self.retrievers.values():
-                retriever.initialize()
+        for retriever in self.retrievers.values():
+            retriever.initialize()
 
         logger.info("Start to generate the negatives")
 
@@ -165,21 +162,11 @@ class JSONLNegativeGeneration(Task):
                 dict_query_doc["pos_ids"] = positive_ids
 
                 negatives = {}
-                # random negatives
                 state = (
                     np.random.RandomState()
                     if self.random is None
                     else self.random.state
                 )
-                int_ids = state.choice(
-                    np.arange(self.documents.documentcount), size=self.k, replace=False
-                ).tolist()
-                ext_ids = [
-                    self.documents.docid_internal2external(int_id) for int_id in int_ids
-                ]
-
-                filitered = [ext_id for ext_id in ext_ids if ext_id not in positive_ids]
-                negatives["random"] = filitered
 
                 # Retrieve based on the algo
                 # TODO: Make it in batch

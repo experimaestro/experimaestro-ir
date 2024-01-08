@@ -402,15 +402,29 @@ class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
     where each negative is sampled with a specific algorithm
     """
 
+    documents: Param[DocumentStore]
+    """The document store"""
+
     dataset: Param[PairwiseSampleDataset]
+    """The dataset which contains the generated queries with its positives and
+    negatives"""
+
+    negative_algo: Param[str] = "random"
+    """The algo to sample the negatives, default value is random"""
 
     def pairwise_iter(self) -> SkippingIterator[PairwiseRecord]:
         class _Iterator(SkippingIterator[PairwiseRecord]):
             def __init__(
-                self, random: np.random.RandomState, iterator: Iterator[PairwiseSample]
+                self,
+                random: np.random.RandomState,
+                iterator: Iterator[PairwiseSample],
+                negative_algo: str,
+                documents: DocumentStore,
             ):
                 super().__init__(iterator)
                 self.random = random
+                self.negative_algo = negative_algo
+                self.documents = documents
 
             def load_state_dict(self, state):
                 super().load_state_dict(state)
@@ -425,16 +439,38 @@ class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
 
             def next(self):
                 sample = super().next()  # type: PairwiseSample
+                possible_algos = sample.negatives.keys()
+
+                assert (
+                    self.negative_algo in possible_algos
+                    or self.negative_algo == "random"
+                )
 
                 pos = sample.positives[self.random.randint(len(sample.positives))]
+                qry = sample.topics[self.random.randint(len(sample.topics))]
 
-                all_negatives = sample.negatives().values()
-                negatives = all_negatives[self.random.randint(len(all_negatives))]
-                neg = negatives[self.random.randint(len(negatives))]
+                if self.negative_algo == "random":
+                    # choose the random negatives
+                    while True:
+                        neg_id = self.documents.docid_internal2external(
+                            self.random.randint(0, self.documents.documentcount)
+                        )
+                        if neg_id != pos.id:
+                            break
+                    neg = IDDocument(id=neg_id)
+                else:
+                    negatives = sample.negatives[self.negative_algo]
+                    neg = negatives[self.random.randint(len(negatives))]
 
-                return PairwiseRecord(sample.query, pos, neg)
+                return PairwiseRecord(
+                    TopicRecord(qry), DocumentRecord(pos), DocumentRecord(neg)
+                )
 
-        return SkippingIterator(_Iterator(self.random, self.dataset.iter()))
+        return SkippingIterator(
+            _Iterator(
+                self.random, self.dataset.iter(), self.negative_algo, self.documents
+            )
+        )
 
 
 # --- Dataloader
