@@ -485,11 +485,11 @@ class TSVPairwiseSampleDataset(PairwiseSampleDataset):
     def iter(self) -> Iterator[PairwiseSample]:
         """return a iterator over a set of pairwise_samples"""
         for triplet in read_tsv(self.hard_negative_samples_path):
-            query = triplet[0]
+            topics = [triplet[0]]
             positives = triplet[2].split(" ")
             negatives = triplet[4].split(" ")
             # at the moment, I don't have some good idea to store the algo
-            yield PairwiseSample(query, positives, negatives)
+            yield PairwiseSample(topics, positives, negatives)
 
 
 class JSONLPairwiseSampleDataset(PairwiseSampleDataset):
