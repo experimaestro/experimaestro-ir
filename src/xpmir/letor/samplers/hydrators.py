@@ -1,6 +1,7 @@
+from abc import ABC, abstractmethod
 from typing import Iterator, Optional, List, Any
 from experimaestro import Config, Param
-
+import numpy as np
 import datamaestro_text.data.ir.base as ir
 from datamaestro_text.data.ir import DocumentStore
 from xpmir.datasets.adapters import TextStore
@@ -18,8 +19,16 @@ from xpmir.utils.iter import (
 )
 
 
-class SampleTransform(Config):
-    pass
+class SampleTransform(Config, ABC):
+    @abstractmethod
+    def transform_topics(self, topics: List[ir.Topic]) -> Optional[List[ir.Topic]]:
+        ...
+
+    @abstractmethod
+    def transform_documents(
+        self, documents: List[ir.Document]
+    ) -> Optional[List[ir.Document]]:
+        ...
 
 
 class SampleHydrator(SampleTransform):
@@ -60,11 +69,16 @@ class PairwiseTransformAdapter(PairwiseSampler):
     adapter: Param[SampleTransform]
     """The transformation"""
 
+    def initialize(self, random: Optional[np.RandomState] = None):
+        super().initialize(random)
+        self.sampler.initialize(random)
+
     def transform_record(self, record: PairwiseRecord) -> PairwiseRecord:
-        (topic,) = self.adapter.transform_topics([record.query.topic])
-        pos, neg = self.adapter.transform_documents(
-            [record.positive.document, record.negative.document]
-        )
+        (topic,) = self.adapter.transform_topics([record.query.topic]) or [
+            record.query.topic
+        ]
+        docs = [record.positive.document, record.negative.document]
+        pos, neg = self.adapter.transform_documents(docs) or docs
         return PairwiseRecord(
             TopicRecord(topic), DocumentRecord(pos), DocumentRecord(neg)
         )
