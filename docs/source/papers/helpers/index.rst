@@ -1,7 +1,7 @@
 Generic helpers
 ===============
 
-.. currentmodule:: xpmir.papers.helpers
+.. currentmodule:: xpmir.experiments.helpers
 
 .. autoclass:: PaperExperiment
     :members:
