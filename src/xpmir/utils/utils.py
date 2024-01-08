@@ -1,5 +1,6 @@
 import inspect
 import logging
+from functools import cached_property
 import os
 from pathlib import Path
 import re
@@ -17,7 +18,7 @@ from typing import (
     Union,
     Iterable,
 )
-from .functools import cache
+from xpmir.utils.functools import cache
 
 T = TypeVar("T")
 
@@ -150,7 +151,7 @@ def easylog():
 
 
 class EasyLogger:
-    @property
+    @cached_property
     def logger(self):
         clsdict = self.__class__.__dict__
 

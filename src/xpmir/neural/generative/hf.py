@@ -218,6 +218,12 @@ class T5ConditionalGenerator(ConditionalGenerator, DistributableModel):
                 output_mask=output_mask,
             )
 
+    def batch_decode(self, generate_output: FullSequenceGenerationOutput) -> List[str]:
+        """Decode the sequences to meaningful texts"""
+        return self.tokenizer.batch_decode(
+            generate_output.sequences, skip_special_tokens=True
+        )
+
     def distribute_models(self, update):
         self.encoder = update(self.model.get_encoder())
         self.model = update(self.model)

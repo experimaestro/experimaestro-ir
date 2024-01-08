@@ -69,7 +69,7 @@ class PairwiseTransformAdapter(PairwiseSampler):
     adapter: Param[SampleTransform]
     """The transformation"""
 
-    def initialize(self, random: Optional[np.RandomState] = None):
+    def initialize(self, random: Optional[np.random.RandomState] = None):
         super().initialize(random)
         self.sampler.initialize(random)
 
