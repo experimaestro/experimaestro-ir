@@ -10,7 +10,7 @@ import torch.nn.functional as F
 from xpmir.learning.context import TrainerContext
 from xpmir.letor.records import BaseRecords
 from xpmir.neural.interaction import InteractionScorer
-from .common import Similarity, CosineSimilarity
+from .interaction.common import Similarity, CosineSimilarity
 
 
 class Colbert(InteractionScorer):
@@ -26,19 +26,10 @@ class Colbert(InteractionScorer):
     """
 
     version: Constant[int] = 2
-    """Current version of the code (changes when a bug is found)"""
-
-    masktoken: Param[bool] = True
-    """Whether a [MASK] token should be used instead of padding"""
-
-    querytoken: Param[bool] = True
-    """Whether a specific query token should be used as a prefix to the question"""
-
-    doctoken: Param[bool] = True
-    """Whether a specific document token should be used as a prefix to the document"""
+    """Current version of the code (changes if a bug is found)"""
 
     similarity: Annotated[Similarity, default(CosineSimilarity())]
-    """Which similarity to use"""
+    """Which similarity function to use - ColBERT uses a cosine similarity by default"""
 
     linear_dim: Param[int] = 128
     """Size of the last linear layer (before computing inner products)"""
@@ -48,34 +39,50 @@ class Colbert(InteractionScorer):
 
     def __validate__(self):
         super().__validate__()
-        assert not self.vocab.static(), "The vocabulary should be learnable"
+        assert not self.encoder.static(), "The vocabulary should be learnable"
 
         assert self.compression_size >= 0, "Last layer size should be 0 or above"
 
-        # TODO: implement the "official" Colbert
-        assert not self.masktoken, "Not implemented"
-        assert not self.querytoken, "Not implemented"
-        assert not self.doctoken, "Not implemented"
-
     def __initialize__(self, options):
         super().__initialize__(options)
-
-        self.linear = nn.Linear(self.vocab.dim(), self.linear_dim, bias=False)
-
-    def _encode(self, texts: List[str], maskoutput=False):
-        tokens = self.vocab.batch_tokenize(texts, mask=maskoutput)
-        output = self.linear(self.vocab(tokens))
-
-        if maskoutput:
-            mask = tokens.mask.unsqueeze(2).float().to(output.device)
-            output = output * mask
-
-        return F.normalize(output, p=2, dim=2)
+        self.linear = nn.Linear(self.encoder.dim(), self.linear_dim, bias=False)
 
     def _forward(self, inputs: BaseRecords, info: TrainerContext = None):
-        queries = self._encode([qr.topic.get_text() for qr in inputs.queries], False)
+        queries = self.encoder([qr.topic.get_text() for qr in inputs.queries], False)
         documents = self._encode(
             [dr.document.get_text() for dr in inputs.documents], True
         )
 
         return self.similarity(queries, documents)
+
+
+def colbert(
+    model_id: str,
+    *,
+    query_token: bool = False,
+    doc_token: bool = False,
+    mask_token: bool = True,
+):
+    """Creates standard ColBERT model based on a HuggingFace transformer
+
+    :param model_id: The HF model ID
+    :param query_token: Whether to use a query prefix token when encoding
+        queries, defaults to False
+    :param doc_token: Whether to use a document prefix token to encode
+        documents, defaults to False
+    :param mask_token: Whether to use a mask tokens to encode queries, defaults
+        to True
+    :return: A ColBERT configuration object
+    """
+    from xpmir.text.huggingface import HFStringTokenizer, HFModel
+    from xpmir.text.encoders import TokenizedTextEncoder
+
+    assert query_token is False, "Not implemented: use [QUERY] token"
+    assert doc_token is False, "Not implemented: use [DOCUMENT] token"
+    assert mask_token is False, "Not implemented: use [MASK] token"
+
+    encoder = TokenizedTextEncoder(
+        tokenizer=HFStringTokenizer.from_pretrained_id(model_id),
+        encoder=HFModel.from_pretrained_id(model_id),
+    )
+    return Colbert(encoder=encoder)

@@ -1,47 +1,70 @@
-import torch
 from typing import List, Optional
-from experimaestro import copyconfig, Param
+
+from experimaestro import Config, Param
 from xpmir.text.encoders import (
-    TextEncoder,
-    DualTextEncoder,
-    TripletTextEncoder,
-    ListTextEncoder,
+    TextsRepresentationOutput,
+    TokenizedEncoder,
+    TokenizedTexts,
+    TokensRepresentationOutput,
 )
-from .base import HFBaseModel
-from .tokenizers import HFTokenizerBase, HFTokenizer, HFListTokenizer
+
+from .base import HFModel
+from .tokenizers import HFTokenizer, HFTokenizerBase
 
 
-class HFTextEncoder(TextEncoder, DualTextEncoder, TripletTextEncoder):
-    """Encodes a text using the [CLS] token"""
+class HFEncoderBase(Config):
+    """Base HuggingFace encoder"""
 
     tokenizer: Param[HFTokenizerBase]
-    model: Param[HFBaseModel]
+    """The tokenizer"""
+
+    model: Param[HFModel]
+    """A Hugging-Face model"""
+
+    @classmethod
+    def from_pretrained_id(cls, model_id: str):
+        """Returns a new encoder
+
+        :param model_id: The HuggingFace Hub ID
+        :return: A hugging-fasce based encoder
+        """
+        return cls(
+            tokenizer=HFTokenizer(model_id=model_id),
+            model=HFModel.from_pretrained_id(model_id),
+        )
+
+
+class HFTokensEncoder(
+    HFEncoderBase, TokenizedEncoder[TokenizedTexts, TokensRepresentationOutput]
+):
+    """HuggingFace-based tokenized"""
+
+    def dim(self):
+        return self.tokenizer.dimension
+
+    def forward(self, tokenized: TokenizedTexts) -> TokensRepresentationOutput:
+        y = self.model.contextual_model(
+            tokenized.ids, attention_mask=s.mask.to(self.device)
+        )
+        return TokensRepresentationOutput(
+            tokenized=tokenized, value=y.last_hidden_state
+        )
+
+
+class HFCLSEncoder(
+    HFEncoderBase, TokenizedEncoder[TokenizedTexts, TextsRepresentationOutput]
+):
+    """Encodes a text using the [CLS] token"""
 
     maxlen: Param[Optional[int]] = None
     """Limit the text to be encoded"""
 
-    def forward(self, texts: List) -> torch.Tensor:
-        tokenized = self.tokenizer.batch_tokenize(texts, maxlen=self.maxlen, mask=True)
-
-        y = self.model(tokenized.ids, attention_mask=tokenized.mask.to(self.device))
+    def forward(self, tokenized: TokenizedTexts) -> TextsRepresentationOutput:
+        y = self.model.contextual_model(
+            tokenized.ids, attention_mask=tokenized.mask.to(self.device)
+        )
 
         # Assumes that [CLS] is the first token
-        return y.last_hidden_state[:, 0]
-
-    @property
-    def dimension(self):
-        return self.dim()
-
-    def with_maxlength(self, maxlen: int):
-        return copyconfig(self, maxlen=maxlen)
-
-    def distribute_models(self, update):
-        self.model = update(self.model)
-
-
-class HFTextEncoder(HFTextEncoder, TextEncoder, DualTextEncoder):
-    tokenizer: Param[HFTokenizer]
-
-
-class HFListTextEncoder(HFTextEncoder, ListTextEncoder):
-    tokenizer: Param[HFListTokenizer]
+        return TextsRepresentationOutput(
+            tokenized=tokenized, value=y.last_hidden_state[:, 0]
+        )

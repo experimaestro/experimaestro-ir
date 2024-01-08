@@ -4,11 +4,16 @@ Huggingface Transformers
 Base
 ----
 
+Models architectures and default parameters are specificied using
+a `HFModelConfig`.
+
 .. autoxpmconfig:: xpmir.text.huggingface.base.HFModelConfig
-.. autoxpmconfig:: xpmir.text.huggingface.base.HFModelConfigId
+.. autoxpmconfig:: xpmir.text.huggingface.base.HFModelConfigFromId
 
 Models
 ------
+
+Models follow the HuggingFace hierarchy
 
 .. autoxpmconfig:: xpmir.text.huggingface.base.HFBaseModel
 .. autoxpmconfig:: xpmir.text.huggingface.base.HFMaskedLanguageModel
@@ -22,12 +27,20 @@ Tokenizers
 Encoders
 --------
 
+
+.. autoxpmconfig:: xpmir.text.huggingface.encoders.HFEncoderBase
+    :members: from_pretrained_id
+
+.. autoxpmconfig:: xpmir.text.huggingface.encoders.HFTokensEncoder
 .. autoxpmconfig:: xpmir.text.huggingface.encoders.HFTextEncoder
 .. autoxpmconfig:: xpmir.text.huggingface.encoders.HFTextListTokensEncoder
 
 
 Legacy
 ******
+
+The old huggingface wrappers are listed below for reference, but should not be used
+for future development.
 
 .. currentmodule:: xpmir.text.huggingface
 

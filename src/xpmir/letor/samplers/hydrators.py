@@ -1,6 +1,5 @@
 from typing import Iterator, Optional, List, Any
 from experimaestro import Config, Param
-
 import datamaestro_text.data.ir.base as ir
 from datamaestro_text.data.ir import DocumentStore
 from xpmir.datasets.adapters import TextStore

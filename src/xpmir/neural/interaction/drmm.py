@@ -112,22 +112,22 @@ class Drmm(InteractionScorer):
         ), "index must be provided if using IDF"
 
     def __initialize__(self, options):
-        if not self.vocab.static():
+        if not self.encoder.static():
             self.logger.warning(
                 "In most cases, using vocab.train=True will not have an effect on DRMM "
                 "because the histogram is not differentiable. An exception might be if "
                 "the gradient is proped back by another means, e.g. BERT [CLS] token."
             )
         super().__initialize__(options)
-        self.simmat = modules.InteractionMatrix(self.vocab.pad_tokenid)
-        channels = self.vocab.emb_views()
+        self.simmat = modules.InteractionMatrix(self.encoder.pad_tokenid)
+        channels = self.encoder.emb_views()
         self.hidden_1 = nn.Linear(self.hist.nbins * channels, self.hidden)
         self.hidden_2 = nn.Linear(self.hidden, 1)
         self.needs_idf = isinstance(self.combine, IdfCombination)
 
     def _forward(self, inputs, info):
         simmat, tokq, tokd = self.simmat.encode_query_doc(
-            self.vocab, inputs, d_maxlen=self.dlen, q_maxlen=self.qlen
+            self.encoder, inputs, d_maxlen=self.dlen, q_maxlen=self.qlen
         )
 
         # Computes the IDF if needed

@@ -15,7 +15,7 @@ class TokenizedTexts(NamedTuple):
     """The list of tokens"""
 
     ids: torch.LongTensor
-    """A matrix containing the ids"""
+    """A matrix containing the token IDs"""
 
     lens: List[int]
     """the lengths of each text (in tokens)"""
@@ -30,6 +30,8 @@ class TokenizedTexts(NamedTuple):
 class Tokenizer(Config):
     """
     Represents a vocabulary and a tokenization method
+
+    **Deprecated**: Use TokenizerBase instead
     """
 
     def tokenize(self, text):
@@ -111,33 +113,31 @@ TokenizerInput = TypeVar("TokenizerInput")
 TokenizerOutput = TypeVar("TokenizerOutput", bound=TokenizedTexts)
 
 
-class TokenizerBase(Tokenizer, Generic[TokenizerInput, TokenizerOutput], ABC):
+class TokenizerBase(Config, Generic[TokenizerInput, TokenizerOutput], ABC):
     """Base tokenizer"""
 
     @abstractmethod
-    def encode(self, inputs: List[TokenizerInput]) -> TokenizerOutput:
+    def tokenize(self, inputs: TokenizerInput) -> TokenizerOutput:
+        """Encodes the inputs"""
         ...
 
+    @abstractmethod
+    def vocabulary_size(self) -> int:
+        """
+        Returns the number of tokens
+        """
+        ...
 
-class SimpleTokenizer(TokenizerBase[str, TokenizedTexts]):
-    """Tokenizes a text"""
+    @abstractmethod
+    def tok2id(self, tok: str) -> int:
+        """
+        Converts a token to an integer id
+        """
+        ...
 
-    pass
-
-
-class DualTokenizer(TokenizerBase[Tuple[str, str], TokenizedTexts]):
-    """Tokenizes a pair of text"""
-
-    pass
-
-
-class TripletTokenizer(TokenizerBase[Tuple[str, str, str], TokenizedTexts]):
-    """Tokenizes a triplet of texttor"""
-
-    pass
-
-
-class ListTokenizer(TokenizerBase[List[str], TokenizedTexts]):
-    """Tokenizes a list of strings (variable length)"""
-
-    pass
+    @abstractmethod
+    def id2tok(self, idx: int) -> str:
+        """
+        Converts an integer id to a token
+        """
+        ...

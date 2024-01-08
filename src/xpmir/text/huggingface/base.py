@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from dataclasses import InitVar
 import logging
 from typing import Type
-
+import torch.nn as nn
 from experimaestro import Config, Param
 
 from xpmir.learning import Module
@@ -16,12 +16,14 @@ except Exception:
 
 
 class HFModelConfig(Config, ABC):
+    """Base class for all HuggingFace model configurations"""
+
     @abstractmethod
     def __call__(self, options: ModuleInitOptions):
         ...
 
 
-class HFModelConfigFromId(Config):
+class HFModelConfigFromId(HFModelConfig):
     model_id: Param[str]
     """HuggingFace Model ID"""
 
@@ -38,17 +40,18 @@ class HFModelConfigFromId(Config):
 class HFModel(Module):
     """Base transformer class from Huggingface
 
-    Loads the pre-trained checkpoint (unless initialized otherwise)
+    The config specifies the architecture
     """
 
     config: Param[HFModelConfig]
     """Model ID from huggingface"""
 
     model: InitVar[AutoModel]
+    """The HF model"""
 
     @classmethod
-    def from_model_id(cls, model_id: str):
-        return cls(config=HFModelConfigId(model_id=model_id))
+    def from_pretrained_id(cls, model_id: str):
+        return cls(config=HFModelConfigFromId(model_id=model_id))
 
     @property
     def automodel(self):
@@ -63,6 +66,11 @@ class HFModel(Module):
         super().__initialize__(options)
 
         self.config, self.model = self.config(options, self.automodel)
+
+    def contextual_model(self) -> nn.Module:
+        """Returns the model that only outputs base representations"""
+        # TODO: Checks that the model is OK
+        return self.model
 
 
 class HFMaskedLanguageModel(HFModel):

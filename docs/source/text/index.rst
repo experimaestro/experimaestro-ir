@@ -46,7 +46,6 @@ Text Encoders
 
 .. autoxpmconfig:: xpmir.text.encoders.TripletTextEncoder
 
-.. autoxpmconfig:: xpmir.text.encoders.ListTextEncoder
 
 Tokenizer-based encoders
 ************************

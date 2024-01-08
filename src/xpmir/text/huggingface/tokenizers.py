@@ -7,9 +7,8 @@ from experimaestro import Config, Param
 from xpmir.learning.optim import ModuleInitOptions
 from xpmir.text.tokenizers import (
     TokenizerBase,
-    ListTokenizer,
     TokenizedTexts,
-    Tokenizer,
+    TokenizerInput,
 )
 
 try:
@@ -19,7 +18,12 @@ except Exception:
     raise
 
 
-class HFTokenizer(Tokenizer):
+HFTokenizerInput = Union[List[str], List[Tuple[str, str]]]
+
+
+class HFTokenizer(Config):
+    """This is the main tokenizer class"""
+
     model_id: Param[str]
     """The tokenizer hugginface ID"""
 
@@ -31,9 +35,9 @@ class HFTokenizer(Tokenizer):
         self.cls_id = self.tokenizer.cls_token_id
         self.sep_id = self.tokenizer.sep_token_id
 
-    def batch_tokenize(
+    def tokenize(
         self,
-        texts: Union[List[str], List[Tuple[str, str]]],
+        texts: HFTokenizerInput,
         batch_first=True,
         maxlen=None,
         mask=False,
@@ -77,7 +81,7 @@ class HFTokenizer(Tokenizer):
         return self.tokenizer.model_max_length
 
     def dim(self):
-        return self.model.config.hidden_size
+        return self.tokenizer.config.hidden_size
 
     @property
     def vocab_size(self) -> int:
@@ -85,16 +89,42 @@ class HFTokenizer(Tokenizer):
         return self.tokenizer.vocab_size
 
 
-class HFTokenizerBase(TokenizerBase):
+class HFTokenizerBase(TokenizerBase[TokenizerInput, TokenizedTexts]):
+    """Base class for all Hugging-Face tokenizers"""
+
     tokenizer: Param[HFTokenizer]
     """The HuggingFace tokenizer"""
 
+    @classmethod
+    def from_pretrained_id(cls, hf_id: str):
+        return cls(tokenizer=HFTokenizer(model_id=hf_id))
 
-class HFListTokenizer(HFTokenizerBase, ListTokenizer):
+    def vocabulary_size(self):
+        return self.tokenizer.vocab_size
+
+    def tok2id(self, tok: str) -> int:
+        return self.tokenizer.tok2id(tok)
+
+    def id2tok(self, idx: int) -> str:
+        return self.tokenizer.id2tok(idx)
+
+
+class HFStringTokenizer(HFTokenizerBase[HFTokenizerInput]):
+    """Process list of texts"""
+
+    def tokenize(self, texts: List[str]) -> TokenizedTexts:
+        assert self.tokenizer.sep_token is not None
+
+        return self.tokenizer.tokenize(texts)
+
+
+class HFListTokenizer(HFTokenizerBase[List[List[str]]]):
     """Process list of texts by separating them by a separator token"""
 
     def tokenize(self, text_lists: List[List[str]]) -> TokenizedTexts:
         assert self.tokenizer.sep_token is not None
         sep = f" {self.tokenizer.cls_token} "
 
-        self.tokenizer.batch_tokenize([sep.join(text_list) for text_list in text_lists])
+        return self.tokenizer.tokenize(
+            [sep.join(text_list) for text_list in text_lists]
+        )

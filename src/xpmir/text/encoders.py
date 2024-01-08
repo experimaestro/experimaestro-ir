@@ -9,14 +9,7 @@ import torch.nn as nn
 
 from xpmir.learning.optim import Module
 from xpmir.utils.utils import EasyLogger
-from .tokenizers import (
-    Tokenizer,
-    TokenizedTexts,
-    SimpleTokenizer,
-    DualTokenizer,
-    TripletTokenizer,
-    ListTokenizer,
-)
+from .tokenizers import Tokenizer, TokenizedTexts, TokenizerBase, TokenizerOutput
 
 
 class Encoder(Module, EasyLogger, ABC):
@@ -47,8 +40,7 @@ class TokensEncoderOutput:
 
 
 class TokensEncoder(Tokenizer, Encoder):
-    """(deprecated, use TokensEncoderBase) Represent a text as a sequence of
-    token representations"""
+    """(deprecated) Represent a text as a sequence of token representations"""
 
     def enc_query_doc(
         self, queries: List[str], documents: List[str], d_maxlen=None, q_maxlen=None
@@ -104,21 +96,15 @@ class TokensEncoder(Tokenizer, Encoder):
         return sys.maxsize
 
 
-class TokensEncoderBase(Encoder, ABC):
-    """Represent a text as a sequence of token representations"""
-
-    def forward(self, texts: TokenizedTexts) -> TokensEncoderOutput:
-        ...
-
-
 LegacyEncoderInput = Union[List[str], List[Tuple[str, str]], List[Tuple[str, str, str]]]
 
 
 InputType = TypeVar("InputType")
+EncoderOutput = TypeVar("EncoderOutput")
 
 
-class TextEncoderBase(Encoder, Generic[InputType]):
-    """Base class for legacy text encoders"""
+class TextEncoderBase(Encoder, Generic[InputType, EncoderOutput]):
+    """Base class for all text encoders"""
 
     @property
     def dimension(self) -> int:
@@ -126,23 +112,23 @@ class TextEncoderBase(Encoder, Generic[InputType]):
         raise NotImplementedError()
 
     @abstractmethod
-    def forward(self, texts: InputType) -> torch.Tensor:
+    def forward(self, texts: List[InputType]) -> torch.Tensor:
         raise NotImplementedError()
 
 
-class TextEncoder(TextEncoderBase[str]):
+class TextEncoder(TextEncoderBase[str, torch.Tensor]):
     """Encodes a text into a vector"""
 
     pass
 
 
-class DualTextEncoder(TextEncoderBase[Tuple[str, str]]):
+class DualTextEncoder(TextEncoderBase[Tuple[str, str], torch.Tensor]):
     """Encodes a pair of text into a vector"""
 
     pass
 
 
-class TripletTextEncoder(TextEncoderBase[Tuple[str, str, str]]):
+class TripletTextEncoder(TextEncoderBase[Tuple[str, str, str], torch.Tensor]):
     """Encodes a triplet of text into a vector
 
     This is used in models such as DuoBERT where we encode (query, positive,
@@ -152,66 +138,48 @@ class TripletTextEncoder(TextEncoderBase[Tuple[str, str, str]]):
     pass
 
 
-class ListTextEncoder(TextEncoderBase[List[str]]):
-    """Encodes a list of strings (variable length) into a vector"""
-
-    pass
+# --- Generic tokenized text encoders
 
 
-# --- Tokenized text encoders
+class TokensRepresentationOutput:
+    tokenized: TokenizedTexts
+    """Tokenized texts"""
+
+    value: torch.Tensor
+    """A 3D tensor (batch x tokens x dimension)"""
 
 
-class TokenizedTextEncoder(Encoder):
+class TextsRepresentationOutput:
+    tokenized: TokenizedTexts
+    """Tokenized texts"""
+
+    value: torch.Tensor
+    """A 2D tensor representing full texts (batch x dimension)"""
+
+
+class TokenizedEncoder(Encoder, Generic[EncoderOutput, TokenizerOutput]):
     """Encodes a tokenized text into a vector"""
 
     @abstractmethod
-    def forward(self, inputs: TokenizedTexts) -> torch.Tensor:
+    def forward(self, inputs: TokenizerOutput) -> EncoderOutput:
         pass
 
 
-class SimpleTokenizedTextEncoder(TextEncoderBase[str]):
-    """Encodes a text into a vector"""
+class TokenizedTextEncoder(
+    TextEncoderBase[InputType, EncoderOutput],
+    Generic[InputType, EncoderOutput, TokenizerOutput],
+):
+    """Encodes a tokenizer input into a vector
 
-    tokenizer: Param[SimpleTokenizer]
-    encoder: Param[TokenizedTextEncoder]
+    This pipelines two objects:
 
-    def forward(self, inputs: List[str]):
-        tokenized = self.tokenizer(inputs)
-        return self.encoder(tokenized)
-
-
-class DualTokenizedTextEncoder(TextEncoderBase[Tuple[str, str]]):
-    """Encodes a pair of text into a vector"""
-
-    tokenizer: Param[DualTokenizer]
-    encoder: Param[TokenizedTextEncoder]
-
-    def forward(self, inputs: List[Tuple[str, str]]):
-        tokenized = self.tokenizer(inputs)
-        return self.encoder(tokenized)
-
-
-class TripletTokenizedTextEncoder(TextEncoderBase[Tuple[str, str, str]]):
-    """Encodes a triplet of text into a vector
-
-    This is used in models such as DuoBERT where we encode (query, positive,
-    negative) triplets.
+    1. A tokenizer that segments the text;
+    2. An encoder that returns a representation of the tokens in a vector space
     """
 
-    tokenizer: Param[TripletTokenizer]
-    encoder: Param[TokenizedTextEncoder]
+    tokenizer: Param[TokenizerBase[InputType, TokenizerOutput]]
+    encoder: Param[TokenizedEncoder[TokenizerOutput, EncoderOutput]]
 
-    def forward(self, inputs: List[Tuple[str, str, str]]):
-        tokenized = self.tokenizer(inputs)
-        return self.encoder(tokenized)
-
-
-class ListTokenizedTextEncoder(TextEncoderBase[List[str]]):
-    """Encodes a list of strings (variable length) into a vector"""
-
-    tokenizer: Param[ListTokenizer]
-    encoder: Param[TokenizedTextEncoder]
-
-    def forward(self, inputs: List[List[str]]):
-        tokenized = self.tokenizer(inputs)
+    def forward(self, inputs: List[InputType]):
+        tokenized = self.tokenizer.tokenize(inputs)
         return self.encoder(tokenized)
