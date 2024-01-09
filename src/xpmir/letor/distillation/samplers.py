@@ -123,7 +123,7 @@ class DistillationPairwiseSampler(Sampler):
 
         Can be subclassed by some classes to be more efficient"""
 
-        class BatchIterator:
+        class BatchIterator(SerializableIterator):
             def __init__(self, sampler: DistillationPairwiseSampler):
                 self.iter = sampler.pairwise_iter()
 
