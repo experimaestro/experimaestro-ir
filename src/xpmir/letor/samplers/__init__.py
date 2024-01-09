@@ -70,7 +70,7 @@ class PairwiseSampler(Sampler):
 
         Can be subclassed by some classes to be more efficient"""
 
-        class BatchIterator:
+        class BatchIterator(SerializableIterator):
             def __init__(self, sampler: PairwiseSampler):
                 self.iter = sampler.pairwise_iter()
 
@@ -395,7 +395,6 @@ class TripletBasedSampler(PairwiseSampler):
         return SkippingIterator(iterator)
 
 
-# FIXME: need to change to the version where there is a list of queries
 class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
     """Sampler based on a dataset where each query is associated
     with (1) a set of relevant documents (2) negative documents,
