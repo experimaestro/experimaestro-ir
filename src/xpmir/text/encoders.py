@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Generic, List, Tuple, TypeVar, Union
+from typing import Generic, List, Tuple, TypeVar, Union, Optional
 import sys
 
 from experimaestro import Param
@@ -9,7 +9,13 @@ import torch.nn as nn
 
 from xpmir.learning.optim import Module
 from xpmir.utils.utils import EasyLogger
-from .tokenizers import Tokenizer, TokenizedTexts, TokenizerBase, TokenizerOutput
+from .tokenizers import (
+    Tokenizer,
+    TokenizedTexts,
+    TokenizerBase,
+    TokenizerOutput,
+    TokenizerOptions,
+)
 
 
 class Encoder(Module, EasyLogger, ABC):
@@ -106,14 +112,19 @@ EncoderOutput = TypeVar("EncoderOutput")
 class TextEncoderBase(Encoder, Generic[InputType, EncoderOutput]):
     """Base class for all text encoders"""
 
+    @abstractmethod
+    def forward(self, texts: List[InputType]) -> EncoderOutput:
+        raise NotImplementedError()
+
     @property
+    @abstractmethod
     def dimension(self) -> int:
         """Returns the dimension of the output space"""
         raise NotImplementedError()
 
-    @abstractmethod
-    def forward(self, texts: List[InputType]) -> torch.Tensor:
-        raise NotImplementedError()
+    def max_tokens(self):
+        """Returns the maximum number of tokens this encoder can process"""
+        return sys.maxsize
 
 
 class TextEncoder(TextEncoderBase[str, torch.Tensor]):
@@ -141,6 +152,7 @@ class TripletTextEncoder(TextEncoderBase[Tuple[str, str, str], torch.Tensor]):
 # --- Generic tokenized text encoders
 
 
+@define
 class TokensRepresentationOutput:
     tokenized: TokenizedTexts
     """Tokenized texts"""
@@ -149,6 +161,7 @@ class TokensRepresentationOutput:
     """A 3D tensor (batch x tokens x dimension)"""
 
 
+@define
 class TextsRepresentationOutput:
     tokenized: TokenizedTexts
     """Tokenized texts"""
@@ -163,6 +176,11 @@ class TokenizedEncoder(Encoder, Generic[EncoderOutput, TokenizerOutput]):
     @abstractmethod
     def forward(self, inputs: TokenizerOutput) -> EncoderOutput:
         pass
+
+    @property
+    def max_length(self):
+        """Returns the maximum length that the model can process"""
+        return sys.maxsize
 
 
 class TokenizedTextEncoder(
@@ -180,6 +198,24 @@ class TokenizedTextEncoder(
     tokenizer: Param[TokenizerBase[InputType, TokenizerOutput]]
     encoder: Param[TokenizedEncoder[TokenizerOutput, EncoderOutput]]
 
-    def forward(self, inputs: List[InputType]):
-        tokenized = self.tokenizer.tokenize(inputs)
+    def __initialize__(self, options):
+        super().__initialize__(options)
+        self.tokenizer.initialize(options)
+        self.encoder.initialize(options)
+
+    def forward(
+        self, inputs: List[InputType], options: Optional[TokenizerOptions] = None
+    ):
+        options = options or TokenizerOptions()
+        options.max_length = min(
+            self.encoder.max_length, options.max_length or sys.maxsize
+        )
+        tokenized = self.tokenizer.tokenize(inputs, options)
         return self.encoder(tokenized)
+
+    def static(self):
+        """Whether embeddings parameters are learnable"""
+        return self.encoder.static()
+
+    def dimension(self):
+        return self.encoder.dimension()

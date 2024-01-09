@@ -3,10 +3,9 @@
 # From
 # https://github.com/stanford-futuredata/ColBERT/blob/v0.2/colbert/modeling/colbert.py
 
-from typing import List
 from experimaestro import Constant, Param, default, Annotated
 from torch import nn
-import torch.nn.functional as F
+from xpmir.text import TokenizerOptions
 from xpmir.learning.context import TrainerContext
 from xpmir.letor.records import BaseRecords
 from xpmir.neural.interaction import InteractionScorer
@@ -45,15 +44,19 @@ class Colbert(InteractionScorer):
 
     def __initialize__(self, options):
         super().__initialize__(options)
-        self.linear = nn.Linear(self.encoder.dim(), self.linear_dim, bias=False)
+        self.linear = nn.Linear(self.encoder.dimension(), self.linear_dim, bias=False)
 
     def _forward(self, inputs: BaseRecords, info: TrainerContext = None):
-        queries = self.encoder([qr.topic.get_text() for qr in inputs.queries], False)
-        documents = self._encode(
-            [dr.document.get_text() for dr in inputs.documents], True
+        queries = self._query_encoder(
+            [qr.topic.get_text() for qr in inputs.queries],
+            options=TokenizerOptions(max_length=self.qlen),
+        )
+        documents = self.encoder(
+            [dr.document.get_text() for dr in inputs.documents],
+            options=TokenizerOptions(max_length=self.dlen),
         )
 
-        return self.similarity(queries, documents)
+        return self.similarity(queries.value, documents.value)
 
 
 def colbert(
@@ -74,7 +77,7 @@ def colbert(
         to True
     :return: A ColBERT configuration object
     """
-    from xpmir.text.huggingface import HFStringTokenizer, HFModel
+    from xpmir.text.huggingface import HFStringTokenizer, HFTokensEncoder
     from xpmir.text.encoders import TokenizedTextEncoder
 
     assert query_token is False, "Not implemented: use [QUERY] token"
@@ -83,6 +86,6 @@ def colbert(
 
     encoder = TokenizedTextEncoder(
         tokenizer=HFStringTokenizer.from_pretrained_id(model_id),
-        encoder=HFModel.from_pretrained_id(model_id),
+        encoder=HFTokensEncoder.from_pretrained_id(model_id),
     )
     return Colbert(encoder=encoder)

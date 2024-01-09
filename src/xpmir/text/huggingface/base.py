@@ -34,6 +34,7 @@ class HFModelConfigFromId(HFModelConfig):
         if options.mode == ModuleInitMode.NONE or options.mode == ModuleInitMode.RANDOM:
             return config, automodel.from_config(config)
 
+        logging.info("Loading model from HF (%s)", self.model_id)
         return config, automodel.from_pretrained(self.model_id, config=config)
 
 
@@ -65,11 +66,14 @@ class HFModel(Module):
         """
         super().__initialize__(options)
 
-        self.config, self.model = self.config(options, self.automodel)
+        self.hf_config, self.model = self.config(options, self.automodel)
 
+    @property
     def contextual_model(self) -> nn.Module:
         """Returns the model that only outputs base representations"""
-        # TODO: Checks that the model is OK
+
+        # This method needs to be updated to cater for various types of models,
+        # i.e. MLM, classification, etc.
         return self.model
 
 
