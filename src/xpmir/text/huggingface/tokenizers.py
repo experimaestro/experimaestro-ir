@@ -1,14 +1,16 @@
 import logging
-from typing import List, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 from experimaestro import Config, Param
 
 from xpmir.learning.optim import ModuleInitOptions
+from xpmir.utils.utils import Initializable
 from xpmir.text.tokenizers import (
     TokenizerBase,
     TokenizedTexts,
     TokenizerInput,
+    TokenizerOptions,
 )
 
 try:
@@ -21,15 +23,22 @@ except Exception:
 HFTokenizerInput = Union[List[str], List[Tuple[str, str]]]
 
 
-class HFTokenizer(Config):
+class HFTokenizer(Config, Initializable):
     """This is the main tokenizer class"""
 
     model_id: Param[str]
     """The tokenizer hugginface ID"""
 
+    max_length: Param[int] = 4096
+    """Maximum length for the tokenizer (can be overridden)"""
+
+    DEFAULT_OPTIONS = TokenizerOptions()
+
     def __initialize__(self, options: ModuleInitOptions):
         """Initialize the HuggingFace transformer"""
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            self.model_id, model_max_length=self.max_length
+        )
 
         self.cls = self.tokenizer.cls_token
         self.cls_id = self.tokenizer.cls_token_id
@@ -38,29 +47,27 @@ class HFTokenizer(Config):
     def tokenize(
         self,
         texts: HFTokenizerInput,
-        batch_first=True,
-        maxlen=None,
-        mask=False,
+        options: Optional[TokenizerOptions] = None,
     ) -> TokenizedTexts:
-        if maxlen is None:
-            maxlen = self.tokenizer.model_max_length
+        options = options or HFTokenizer.DEFAULT_OPTIONS
+        max_length = options.max_length
+        if max_length is None:
+            max_length = self.tokenizer.model_max_length
         else:
-            maxlen = min(maxlen, self.tokenizer.model_max_length)
-
-        assert batch_first, "Batch first is the only option"
+            max_length = min(max_length, self.tokenizer.model_max_length)
 
         r = self.tokenizer(
             list(texts),
-            max_length=maxlen,
+            max_length=max_length,
             truncation=True,
             padding=True,
             return_tensors="pt",
-            return_length=True,
-            return_attention_mask=mask,
+            return_length=options.return_length,
+            return_attention_mask=options.return_mask,
         )
         return TokenizedTexts(
             None,
-            r["input_ids"].to(self.device),
+            r["input_ids"],
             r["length"],
             r.get("attention_mask", None),
             r.get("token_type_ids", None),
@@ -95,6 +102,10 @@ class HFTokenizerBase(TokenizerBase[TokenizerInput, TokenizedTexts]):
     tokenizer: Param[HFTokenizer]
     """The HuggingFace tokenizer"""
 
+    def __initialize__(self, options: ModuleInitOptions):
+        super().__initialize__(options)
+        self.tokenizer.initialize(options)
+
     @classmethod
     def from_pretrained_id(cls, hf_id: str):
         return cls(tokenizer=HFTokenizer(model_id=hf_id))
@@ -112,19 +123,21 @@ class HFTokenizerBase(TokenizerBase[TokenizerInput, TokenizedTexts]):
 class HFStringTokenizer(HFTokenizerBase[HFTokenizerInput]):
     """Process list of texts"""
 
-    def tokenize(self, texts: List[str]) -> TokenizedTexts:
-        assert self.tokenizer.sep_token is not None
-
-        return self.tokenizer.tokenize(texts)
+    def tokenize(
+        self, texts: List[str], options: Optional[TokenizerOptions] = None
+    ) -> TokenizedTexts:
+        return self.tokenizer.tokenize(texts, options=options)
 
 
 class HFListTokenizer(HFTokenizerBase[List[List[str]]]):
     """Process list of texts by separating them by a separator token"""
 
-    def tokenize(self, text_lists: List[List[str]]) -> TokenizedTexts:
+    def tokenize(
+        self, text_lists: List[List[str]], options: Optional[TokenizerOptions] = None
+    ) -> TokenizedTexts:
         assert self.tokenizer.sep_token is not None
         sep = f" {self.tokenizer.cls_token} "
 
         return self.tokenizer.tokenize(
-            [sep.join(text_list) for text_list in text_lists]
+            [sep.join(text_list) for text_list in text_lists], options=options
         )

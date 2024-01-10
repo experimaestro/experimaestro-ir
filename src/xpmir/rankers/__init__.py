@@ -4,7 +4,6 @@ from abc import ABC, abstractmethod
 from experimaestro import tqdm
 from enum import Enum
 from typing import (
-    Callable,
     Dict,
     Generic,
     Iterable,
@@ -92,12 +91,30 @@ class Scorer(Config, Initializable, EasyLogger, ABC):
         """
         pass
 
+    def rsv(
+        self,
+        topic: Union[str, TopicRecord],
+        documents: Union[List[ScoredDocument], ScoredDocument, str, List[str]],
+    ) -> List[ScoredDocument]:
+        if isinstance(documents, str):
+            documents = [ScoredDocument(TextDocument(documents), None)]
+        elif isinstance(documents[0], str):
+            documents = [
+                ScoredDocument(TextDocument(scored_document), None)
+                for scored_document in documents
+            ]
+
+        if isinstance(topic, str):
+            topic = TopicRecord(TextTopic(topic))
+
+        return self.compute(topic, documents)
+
     @abstractmethod
     def compute(
         self, topic: TopicRecord, documents: Iterable[ScoredDocument]
     ) -> List[ScoredDocument]:
         """Score all documents with respect to the topic"""
-        raise NotImplementedError()
+        ...
 
     def eval(self):
         """Put the model in inference/evaluation mode"""
@@ -214,21 +231,12 @@ class AbstractModuleScorer(Scorer, Module):
         return self
 
     def compute(
-        self,
-        records: TopicRecord,
-        scored_documents: Union[List[ScoredDocument], ScoredDocument, str, List[str]],
+        self, topic: TopicRecord, scored_documents: Iterable[ScoredDocument]
     ) -> List[ScoredDocument]:
-        if isinstance(scored_documents, str):
-            scored_documents = [ScoredDocument(TextDocument(scored_documents), None)]
-        elif isinstance(scored_documents[0], str):
-            scored_documents = [
-                ScoredDocument(TextDocument(scored_document), None)
-                for scored_document in scored_documents
-            ]
 
         # Prepare the inputs and call the model
         inputs = ProductRecords()
-        inputs.add_topics(records)
+        inputs.add_topics(topic)
 
         inputs.add_documents(
             *[ScoredDocumentRecord(sd.document, sd.score) for sd in scored_documents]

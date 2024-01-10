@@ -1,11 +1,15 @@
 from abc import ABC, abstractmethod
-from typing import List, NamedTuple, Optional, TypeVar, Tuple, Generic
+from typing import List, NamedTuple, Optional, TypeVar, Generic
+from attr import define
 import re
 
 import torch
 
 from experimaestro import Config
 from xpmir.text.utils import lengthToMask
+from xpmir.learning.optim import ModuleInitOptions
+from xpmir.utils.utils import Initializable
+from xpmir.utils.torch import to_device
 
 
 class TokenizedTexts(NamedTuple):
@@ -20,11 +24,23 @@ class TokenizedTexts(NamedTuple):
     lens: List[int]
     """the lengths of each text (in tokens)"""
 
-    mask: torch.LongTensor
+    mask: Optional[torch.LongTensor]
     """The mask for the ids matrix"""
 
     token_type_ids: Optional[torch.LongTensor] = None
     """Type of each token"""
+
+    def to(self, device: torch.device):
+        if device is self.ids.device:
+            return self
+
+        return TokenizedTexts(
+            self.tokens,
+            self.ids.to(device),
+            self.lens,
+            to_device(self.mask, device),
+            to_device(self.token_type_ids, device),
+        )
 
 
 class Tokenizer(Config):
@@ -113,11 +129,25 @@ TokenizerInput = TypeVar("TokenizerInput")
 TokenizerOutput = TypeVar("TokenizerOutput", bound=TokenizedTexts)
 
 
-class TokenizerBase(Config, Generic[TokenizerInput, TokenizerOutput], ABC):
+@define
+class TokenizerOptions:
+    max_length: Optional[int] = None
+    return_mask: Optional[bool] = True
+    return_length: Optional[bool] = True
+
+
+class TokenizerBase(
+    Config, Initializable, Generic[TokenizerInput, TokenizerOutput], ABC
+):
     """Base tokenizer"""
 
+    def __initialize__(self, options: ModuleInitOptions):
+        super().__initialize__(options)
+
     @abstractmethod
-    def tokenize(self, inputs: TokenizerInput) -> TokenizerOutput:
+    def tokenize(
+        self, inputs: TokenizerInput, options: Optional[TokenizerOptions] = None
+    ) -> TokenizerOutput:
         """Encodes the inputs"""
         ...
 

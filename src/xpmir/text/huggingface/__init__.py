@@ -20,12 +20,12 @@ from xpmir.text.encoders import (
 from xpmir.utils.utils import easylog
 from xpmir.learning.context import TrainerContext, TrainState
 from xpmir.learning.parameters import ParametersIterator
-from .tokenizers import (
+from .tokenizers import (  # noqa: F401
     HFTokenizerBase,
     HFStringTokenizer,
     HFListTokenizer,
-)  # noqa: F401
-from .encoders import HFModel  # noqa: F401
+)
+from .encoders import HFModel, HFTokensEncoder  # noqa: F401
 
 
 try:

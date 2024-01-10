@@ -32,7 +32,7 @@ class TransformerOptimization:
     eps: float = 1e-8
 
     re_no_l2_regularization: List[str] = [r"\.bias$", r"\.LayerNorm\."]
-    """Regular expression for layers"""
+    """Regular expression for layers (targets BERT parameters)"""
 
     def get_optimizer(self, regularization):
         # Set weight decay to 0 if no regularization
