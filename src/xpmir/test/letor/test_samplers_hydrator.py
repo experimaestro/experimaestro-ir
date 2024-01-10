@@ -43,9 +43,9 @@ class FakeDocumentStore(ir.DocumentStore):
 def test_pairwise_hydrator():
     sampler = TripletBasedSampler(source=TripletIterator(id="test-triplets"))
 
-    hydrator = SampleHydrator(
-        querystore=FakeTextStore(), documentstore=FakeDocumentStore()
-    )
+    hydrator = [
+        SampleHydrator(querystore=FakeTextStore(), documentstore=FakeDocumentStore())
+    ]
 
     h_sampler = PairwiseTransformAdapter(sampler=sampler, adapter=hydrator)
     h_sampler.instance()
