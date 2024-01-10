@@ -108,7 +108,7 @@ class PairwiseTransformAdapter(PairwiseSampler):
     sampler: Param[PairwiseSampler]
     """The distillation samples without texts for query and documents"""
 
-    adapters: Param[List[SampleTransform]]
+    adapter: Param[SampleTransform]
     """The transformation"""
 
     def initialize(self, random: Optional[np.random.RandomState] = None):
@@ -119,9 +119,8 @@ class PairwiseTransformAdapter(PairwiseSampler):
         topics = [record.query.topic]
         docs = [record.positive.document, record.negative.document]
 
-        for adapter in self.adapters:
-            topics = adapter.transform_topics(topics) or topics
-            docs = adapter.transform_documents(docs) or docs
+        topics = self.adapter.transform_topics(topics) or topics
+        docs = self.adapter.transform_documents(docs) or docs
 
         return PairwiseRecord(
             TopicRecord(topics[0]), DocumentRecord(docs[0]), DocumentRecord(docs[1])

@@ -1,14 +1,17 @@
 from typing import List, Optional
 from experimaestro import Constant, Param
 from torch import nn
-import torch
-from torch._tensor import Tensor
 from xpmir.text import (
     TokensEncoderOutput,
     TokenizedTextEncoderBase,
     TokenizerOptions,
 )
-from xpmir.neural.interaction import InteractionScorer, SimilarityInput, TrainerContext
+from xpmir.neural.interaction import (
+    InteractionScorer,
+    SimilarityInput,
+    SimilarityOutput,
+    TrainerContext,
+)
 from xpmir.neural.interaction.common import CosineSimilarity
 
 
@@ -49,32 +52,22 @@ class Colbert(InteractionScorer):
         options: TokenizerOptions,
     ) -> SimilarityInput:
         encoded = encoder(texts, options=options)
-        return SimilarityInput(self.linear(encoded.value), encoded.tokenized.mask)
+        return self.similarity.preprocess(
+            SimilarityInput(self.linear(encoded.value), encoded.tokenized.mask)
+        )
 
-    def score_pairs(
+    def compute_scores(
         self,
         queries: SimilarityInput,
         documents: SimilarityInput,
+        value: SimilarityOutput,
         info: Optional[TrainerContext] = None,
-    ) -> torch.Tensor:
-        # Shape B x Lq x Ld or Bq x Lq x Bd x Ld
-        value = self.similarity.compute_pairs(queries, documents)
+    ):
+        # Similarity matrix B x Lq x Ld or Bq x Lq x Bd x Ld
         s = value.similarity.masked_fill(
-            value.d_mask.logical_not(), float("-inf")
-        ).masked_fill(value.q_mask.logical_not(), 0)
-        return s.max(-1).values.sum(1)
-
-    def score_product(
-        self,
-        queries: SimilarityInput,
-        documents: SimilarityInput,
-        info: Optional[TrainerContext] = None,
-    ) -> Tensor:
-        value = self.similarity.compute_product(queries, documents)
-        s = value.similarity.masked_fill(
-            value.d_mask.logical_not(), float("-inf")
-        ).masked_fill(value.q_mask.logical_not(), 0)
-        return s.max(-1).values.sum(1)
+            value.d_view(documents.mask).logical_not(), float("-inf")
+        ).masked_fill(value.q_view(queries.mask).logical_not(), 0)
+        return s.max(-1).values.sum(1).flatten()
 
 
 def colbert(

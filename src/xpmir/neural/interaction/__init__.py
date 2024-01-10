@@ -1,6 +1,8 @@
+from abc import abstractmethod
 from typing import Iterable, Optional, List
-
+import torch
 from experimaestro import Param
+from xpmir.learning.context import TrainerContext
 
 from xpmir.neural.dual import (
     DualVectorScorer,
@@ -8,8 +10,7 @@ from xpmir.neural.dual import (
     DocumentRecord,
 )
 from xpmir.text import TokenizedTextEncoderBase, TokenizerOptions, TokensEncoderOutput
-
-from .common import SimilarityInput, Similarity
+from .common import SimilarityInput, SimilarityOutput, Similarity
 
 
 class InteractionScorer(DualVectorScorer[SimilarityInput, SimilarityInput]):
@@ -53,8 +54,10 @@ class InteractionScorer(DualVectorScorer[SimilarityInput, SimilarityInput]):
         encoder: TokenizedTextEncoderBase[str, TokensEncoderOutput],
         options: TokenizerOptions,
     ) -> SimilarityInput:
-        encoded = encoder(texts)
-        return SimilarityInput(encoded.value, encoded.tokenized.mask, options=options)
+        encoded = encoder(texts, options=options)
+        return self.similarity.preprocess(
+            SimilarityInput(encoded.value, encoded.tokenized.mask)
+        )
 
     def encode_documents(self, records: Iterable[DocumentRecord]) -> SimilarityInput:
         return self.similarity.preprocess(
@@ -73,3 +76,31 @@ class InteractionScorer(DualVectorScorer[SimilarityInput, SimilarityInput]):
                 TokenizerOptions(self.qlen),
             )
         )
+
+    def score_pairs(
+        self,
+        queries: SimilarityInput,
+        documents: SimilarityInput,
+        info: Optional[TrainerContext] = None,
+    ) -> torch.Tensor:
+        similarity = self.similarity.compute_pairs(queries, documents)
+        return self.compute_scores(queries, documents, similarity, info)
+
+    def score_product(
+        self,
+        queries: SimilarityInput,
+        documents: SimilarityInput,
+        info: Optional[TrainerContext] = None,
+    ) -> torch.Tensor:
+        similarity = self.similarity.compute_product(queries, documents)
+        return self.compute_scores(queries, documents, similarity, info)
+
+    @abstractmethod
+    def compute_scores(
+        self,
+        queries: SimilarityInput,
+        documents: SimilarityInput,
+        similarity: SimilarityOutput,
+        info: Optional[TrainerContext] = None,
+    ):
+        ...

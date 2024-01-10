@@ -1,12 +1,20 @@
 import math
-from typing import Optional
+from typing import Optional, List
 from experimaestro import Config, Param, default
 import torch
 from torch import nn
 from typing_extensions import Annotated
 from xpmir.index import Index
-from xpmir.neural.interaction import InteractionScorer
 import xpmir.neural.modules as modules
+from xpmir.neural.interaction import (
+    InteractionScorer,
+    SimilarityOutput,
+    TrainerContext,
+    TokenizedTextEncoderBase,
+    TokenizerOptions,
+    TokensEncoderOutput,
+)
+from .common import SimilarityInputWithTokens
 
 # The code below is heavily borrowed from OpenNIR
 
@@ -20,15 +28,11 @@ class CountHistogram(Config, nn.Module):
 
     nbins: Param[int] = 29
 
-    def forward(self, simmat, dlens, dtoks, qtoks):
-        BATCH, CHANNELS, QLEN, DLEN = simmat.shape
-
+    def forward(self, simmat: torch.Tensor, dlens, mask: torch.BoolTensor):
         # +1e-5 to nudge scores of 1 to above threshold
         bins = ((simmat + 1.00001) / 2.0 * (self.nbins - 1)).int()
-        weights = (
-            (dtoks != -1).reshape(BATCH, 1, DLEN).expand(BATCH, QLEN, DLEN)
-            * (qtoks != -1).reshape(BATCH, QLEN, 1).expand(BATCH, QLEN, DLEN)
-        ).float()
+        weights = mask.float()
+
         # apparently no way to batch this...
         # https://discuss.pytorch.org/t/histogram-function-in-pytorch/5350
 
@@ -57,15 +61,15 @@ class CountHistogram(Config, nn.Module):
 
 
 class NormalizedHistogram(CountHistogram):
-    def forward(self, simmat, dlens, dtoks, qtoks):
-        result = super().forward(simmat, dlens, dtoks, qtoks)
+    def forward(self, simmat, dlens, mask):
+        result = super().forward(simmat, dlens, mask)
         BATCH, QLEN, _ = simmat.shape
         return result / dlens.reshape(BATCH, 1).expand(BATCH, QLEN)
 
 
 class LogCountHistogram(CountHistogram):
-    def forward(self, simmat, dlens, dtoks, qtoks):
-        result = super().forward(simmat, dlens, dtoks, qtoks)
+    def forward(self, simmat, dlens, mask):
+        result = super().forward(simmat, dlens, mask)
         return (result.float() + 1e-5).log()
 
 
@@ -112,44 +116,60 @@ class Drmm(InteractionScorer):
         ), "index must be provided if using IDF"
 
     def __initialize__(self, options):
-        if not self.encoder.static():
-            self.logger.warning(
-                "In most cases, using vocab.train=True will not have an effect on DRMM "
-                "because the histogram is not differentiable. An exception might be if "
-                "the gradient is proped back by another means, e.g. BERT [CLS] token."
-            )
         super().__initialize__(options)
         self.simmat = modules.InteractionMatrix(self.encoder.pad_tokenid)
-        channels = self.encoder.emb_views()
-        self.hidden_1 = nn.Linear(self.hist.nbins * channels, self.hidden)
+        self.hidden_1 = nn.Linear(self.hist.nbins, self.hidden)
         self.hidden_2 = nn.Linear(self.hidden, 1)
         self.needs_idf = isinstance(self.combine, IdfCombination)
 
-    def _forward(self, inputs, info):
-        simmat, tokq, tokd = self.simmat.encode_query_doc(
-            self.encoder, inputs, d_maxlen=self.dlen, q_maxlen=self.qlen
+    def _encode(
+        self,
+        texts: List[str],
+        encoder: TokenizedTextEncoderBase[str, TokensEncoderOutput],
+        options: TokenizerOptions,
+    ) -> SimilarityInputWithTokens:
+        encoded = encoder(texts, options=options)
+        return SimilarityInputWithTokens(
+            self.similarity.preprocess(encoded.value),
+            encoded.tokenized.mask,
+            encoded.tokenized.tokens,
         )
 
+    def compute_scores(
+        self,
+        queries: SimilarityInputWithTokens,
+        documents: SimilarityInputWithTokens,
+        value: SimilarityOutput,
+        info: Optional[TrainerContext] = None,
+    ):
+        """Compute the scores given the tensor of similarities (B x Lq x Ld) or
+        (Bq x Lq x Bd x Ld)"""
         # Computes the IDF if needed
         query_idf = None
         if self.needs_idf:
             assert self.index is not None
-            query_idf = torch.full_like(tokq.ids, float("-inf"), dtype=torch.float)
+            query_idf = torch.full_like(queries.mask, float("-inf"), dtype=torch.float)
             log_nd = math.log(self.index.documentcount + 1)
-            for i, tok in enumerate(tokq.tokens):
-                for j, t in zip(range(self.qlen), tok):
+            for i, tokens_i in enumerate(queries.tokens):
+                for j, t in enumerate(tokens_i):
                     query_idf[i, j] = log_nd - math.log(self.index.term_df(t) + 1)
 
-        qterm_features = self.histogram_pool(simmat, tokq, tokd)
+        mask = value.q_view(queries.mask) * value.d_view(documents.mask)
+        similarity = value.similarity
+        if similarity.ndim == 4:
+            similarity = value.similarity.transpose(1, 2).flatten(0, 1)
+            mask = mask.transpose(1, 2).flatten(0, 1)
+        dlens = [len(tokens) for tokens in documents.tokens]
+        qterm_features = self.histogram_pool(similarity, dlens, mask)
         BAT, QLEN, _ = qterm_features.shape
         qterm_scores = self.hidden_2(torch.relu(self.hidden_1(qterm_features))).reshape(
             BAT, QLEN
         )
         return self.combine(qterm_scores, query_idf)
 
-    def histogram_pool(self, simmat, tokq, tokd):
-        histogram = self.hist(simmat, tokd.lens, tokd.ids, tokq.ids)
-        BATCH, CHANNELS, QLEN, BINS = histogram.shape
+    def histogram_pool(self, simmat, dlens, mask):
+        histogram = self.hist(simmat, dlens, mask)
+        BATCH, QLEN, BINS = histogram.shape
         histogram = histogram.permute(0, 2, 3, 1)
-        histogram = histogram.reshape(BATCH, QLEN, BINS * CHANNELS)
+        histogram = histogram.reshape(BATCH, QLEN, BINS)
         return histogram

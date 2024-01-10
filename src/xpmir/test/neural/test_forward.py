@@ -100,8 +100,13 @@ def registermodel(method):
 def drmm():
     """Drmm factory"""
     from xpmir.neural.interaction.drmm import Drmm
+    from xpmir.neural.interaction.common import CosineSimilarity
 
-    drmm = Drmm(vocab=RandomTokensEncoder(), index=CustomIndex())
+    drmm = Drmm(
+        encoder=RandomTokensEncoder(),
+        index=CustomIndex(),
+        similarity=CosineSimilarity(),
+    )
     return drmm.instance()
 
 
@@ -118,7 +123,7 @@ def colbert_cos():
 
 @registermodel
 def dotdense():
-    """Colbert model factory"""
+    """Dense model factory"""
     return DotDense(
         encoder=MeanTextEncoder(encoder=RandomTokensEncoder()),
         query_encoder=MeanTextEncoder(encoder=RandomTokensEncoder()),
@@ -127,7 +132,7 @@ def dotdense():
 
 @registermodel
 def cosinedense():
-    """Colbert model factory"""
+    """Cosine model factory"""
     return CosineDense(
         encoder=MeanTextEncoder(encoder=RandomTokensEncoder()),
         query_encoder=MeanTextEncoder(encoder=RandomTokensEncoder()),

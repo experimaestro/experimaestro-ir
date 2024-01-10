@@ -26,7 +26,7 @@ class DualRepresentationScorer(LearnableScorer, Generic[QueriesRep, DocsRep]):
 
         # Score product
         if isinstance(inputs, ProductRecords):
-            self.score_product(enc_queries, enc_documents)
+            return self.score_product(enc_queries, enc_documents).flatten()
 
         # Score pairs
         pairs = inputs.pairs()
@@ -39,7 +39,7 @@ class DualRepresentationScorer(LearnableScorer, Generic[QueriesRep, DocsRep]):
                 d_ix,
             ],
             info,
-        )
+        ).flatten()
 
     def encode(self, texts: Iterable[str]) -> Union[DocsRep, QueriesRep]:
         """Encode a list of texts (document or query)

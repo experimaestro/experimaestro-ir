@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Union
+from typing import List, Union
+from attrs import evolve
 
 import torch
 from attrs import define
@@ -24,7 +25,18 @@ class SimilarityInput(Sliceable["SimilarityInput"]):
 
 
 @define
-class SimilarityOutput:
+class SimilarityInputWithTokens(SimilarityInput):
+    tokens: List[List[str]]
+    """A 3D tensor (batch x max_length x dim)"""
+
+    def __getitem__(self, index: Union[int, slice]) -> "SimilarityInput":
+        return SimilarityInputWithTokens(
+            self.value[index], self.mask[index], self.tokens[index]
+        )
+
+
+@define
+class SimilarityOutput(ABC):
     """Output for token similarities"""
 
     similarity: torch.Tensor
@@ -33,11 +45,31 @@ class SimilarityOutput:
     The shape (Bq x Lq x Bd x Ld) when computing products, or (B x Lq x Ld) when
     computing pairs"""
 
-    q_mask: torch.BoolTensor
-    """Mask for query tokens (broadcastable)"""
+    @abstractmethod
+    def q_view(self, x: torch.Tensor) -> torch.Tensor:
+        ...
 
-    d_mask: torch.BoolTensor
-    """Mask for document tokens (broadcastable)"""
+    @abstractmethod
+    def d_view(self, x: torch.Tensor) -> torch.Tensor:
+        ...
+
+
+@define
+class PairsSimilarityOutput(SimilarityOutput):
+    def q_view(self, x: torch.Tensor) -> torch.Tensor:
+        return x.unsqueeze(2)
+
+    def d_view(self, x: torch.Tensor) -> torch.Tensor:
+        return x.unsqueeze(1)
+
+
+@define
+class ProductSimilarityOutput(SimilarityOutput):
+    def d_view(self, x: torch.Tensor) -> torch.Tensor:
+        return x.reshape(1, 1, *x.shape)
+
+    def q_view(self, x: torch.Tensor) -> torch.Tensor:
+        return x.reshape(*x.shape, 1, 1)
 
 
 class Similarity(Config, ABC):
@@ -87,38 +119,30 @@ class DotProductSimilarity(Similarity):
         queries: SimilarityInput,
         documents: SimilarityInput,
     ):
-        q, q_mask = queries.value, queries.mask
-        d, d_mask = documents.value, documents.mask
+        q = queries.value
+        d = documents.value
 
         # Bq x Lq x Bd x Ld
         inner = (q.flatten(0, 1) @ d.flatten(0, 1).transpose(0, 1)).reshape(
             q.shape[:2] + d.shape[:2]
         )
 
-        # Reshape query of document masks
-        d_mask = d_mask.reshape(1, 1, *d_mask.shape)
-        q_mask = q_mask.reshape(*q_mask.shape, 1, 1)
-
         # Max on document tokens, sum over query tokens
-        return SimilarityOutput(inner, q_mask, d_mask)
+        return ProductSimilarityOutput(inner)
 
     def compute_pairs(
         self,
         queries: SimilarityInput,
         documents: SimilarityInput,
     ):
-        q, q_mask = queries.value, queries.mask
-        d, d_mask = documents.value, documents.mask
+        q = queries.value
+        d = documents.value
 
         # B x Lq x Ld
         assert len(q) == len(d), "Batch sizes don't match"
         inner = q @ d.transpose(1, 2)
 
-        # Reshape query of document masks
-        q_mask = q_mask.unsqueeze(2)
-        d_mask = d_mask.unsqueeze(1)
-
-        return SimilarityOutput(inner, q_mask, d_mask)
+        return PairsSimilarityOutput(inner)
 
 
 class CosineSimilarity(DotProductSimilarity):
@@ -127,4 +151,4 @@ class CosineSimilarity(DotProductSimilarity):
 
     def preprocess(self, output: SimilarityInput):
         value = output.value / output.value.norm(p="fro", dim=-1, keepdim=True)
-        return SimilarityInput(value, output.mask)
+        return evolve(output, value=value)
