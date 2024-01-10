@@ -6,7 +6,7 @@ import torch
 
 
 @skip_if_ci
-@torch.no_grad
+@torch.no_grad()
 def test_t5_generate():
     """Test consistency in generation"""
 
@@ -45,6 +45,6 @@ def test_t5_generate():
         return_dict_in_generate=True,
         output_scores=True,
     )
-    official_sequences = official_output.sequences.reshape(len(test_text), 5, -1)
+    official_sequences = official_output.sequences
 
     assert torch.equal(our_sequence, official_sequences)

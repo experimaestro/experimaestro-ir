@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import Iterator, List, Tuple, Dict, Any
 import numpy as np
@@ -15,6 +16,7 @@ from datamaestro_text.data.ir.base import (
 )
 from experimaestro import Param, tqdm, Task, Annotated, pathgenerator
 from experimaestro.annotations import cache
+from experimaestro.compat import cached_property
 import torch
 from xpmir.rankers import ScoredDocument
 from xpmir.datasets.adapters import TextStore
@@ -68,7 +70,7 @@ class PairwiseSampler(Sampler):
 
         Can be subclassed by some classes to be more efficient"""
 
-        class BatchIterator:
+        class BatchIterator(SerializableIterator):
             def __init__(self, sampler: PairwiseSampler):
                 self.iter = sampler.pairwise_iter()
 
@@ -399,15 +401,29 @@ class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
     where each negative is sampled with a specific algorithm
     """
 
+    documents: Param[DocumentStore]
+    """The document store"""
+
     dataset: Param[PairwiseSampleDataset]
+    """The dataset which contains the generated queries with its positives and
+    negatives"""
+
+    negative_algo: Param[str] = "random"
+    """The algo to sample the negatives, default value is random"""
 
     def pairwise_iter(self) -> SkippingIterator[PairwiseRecord]:
         class _Iterator(SkippingIterator[PairwiseRecord]):
             def __init__(
-                self, random: np.random.RandomState, iterator: Iterator[PairwiseSample]
+                self,
+                random: np.random.RandomState,
+                iterator: Iterator[PairwiseSample],
+                negative_algo: str,
+                documents: DocumentStore,
             ):
                 super().__init__(iterator)
                 self.random = random
+                self.negative_algo = negative_algo
+                self.documents = documents
 
             def load_state_dict(self, state):
                 super().load_state_dict(state)
@@ -422,23 +438,45 @@ class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
 
             def next(self):
                 sample = super().next()  # type: PairwiseSample
+                possible_algos = sample.negatives.keys()
+
+                assert (
+                    self.negative_algo in possible_algos
+                    or self.negative_algo == "random"
+                )
 
                 pos = sample.positives[self.random.randint(len(sample.positives))]
+                qry = sample.topics[self.random.randint(len(sample.topics))]
 
-                all_negatives = sample.negatives().values()
-                negatives = all_negatives[self.random.randint(len(all_negatives))]
-                neg = negatives[self.random.randint(len(negatives))]
+                if self.negative_algo == "random":
+                    # choose the random negatives
+                    while True:
+                        neg_id = self.documents.docid_internal2external(
+                            self.random.randint(0, self.documents.documentcount)
+                        )
+                        if neg_id != pos.id:
+                            break
+                    neg = IDDocument(id=neg_id)
+                else:
+                    negatives = sample.negatives[self.negative_algo]
+                    neg = negatives[self.random.randint(len(negatives))]
 
-                return PairwiseRecord(sample.query, pos, neg)
+                return PairwiseRecord(
+                    TopicRecord(qry), DocumentRecord(pos), DocumentRecord(neg)
+                )
 
-        return SkippingIterator(_Iterator(self.random, self.dataset.iter()))
+        return SkippingIterator(
+            _Iterator(
+                self.random, self.dataset.iter(), self.negative_algo, self.documents
+            )
+        )
 
 
 # --- Dataloader
 
-# A class for loading the data, need to move the other places.
-class PairwiseSampleDatasetFromTSV(PairwiseSampleDataset):
-    """Read the pairwise sample dataset from a csv file"""
+# FIXME: need to fix the change where there is a list of queries and type of return
+class TSVPairwiseSampleDataset(PairwiseSampleDataset):
+    """Read the pairwise sample dataset from a tsv file"""
 
     hard_negative_samples_path: Param[Path]
     """The path which stores the existing ids"""
@@ -451,6 +489,48 @@ class PairwiseSampleDatasetFromTSV(PairwiseSampleDataset):
             negatives = triplet[4].split(" ")
             # at the moment, I don't have some good idea to store the algo
             yield PairwiseSample(topics, positives, negatives)
+
+
+class JSONLPairwiseSampleDataset(PairwiseSampleDataset):
+    """Transform a jsonl file to a pairwise dataset
+    General format:
+    {
+        queries: [str, str],
+        pos_ids: [id, id],
+        neg_ids: {
+            "bm25": [id, id],
+            "random": [id, id]
+        }
+    }
+    """
+
+    path: Param[Path]
+    """The path to the Jsonl file"""
+
+    @cached_property
+    def count(self):
+        with self.path.open("r") as fp:
+            line_count = sum(1 for _ in fp)
+        return line_count
+
+    def iter(self) -> Iterator[PairwiseSample]:
+        with self.path.open("r") as fp:
+            for line in fp:
+                sample = json.loads(line)
+                topics = []
+                positives = []
+                negatives = {}
+                for topic_text in sample["queries"]:
+                    topics.append(TextTopic(text=topic_text))
+                for pos_id in sample["pos_ids"]:
+                    positives.append(IDDocument(id=pos_id))
+                for algo in sample["neg_ids"].keys():
+                    negatives[algo] = []
+                    for neg_id in sample["neg_ids"][algo]:
+                        negatives[algo].append(IDDocument(id=neg_id))
+                yield PairwiseSample(
+                    topics=topics, positives=positives, negatives=negatives
+                )
 
 
 # A class for loading the data, need to move the other places.
@@ -490,7 +570,7 @@ class ModelBasedHardNegativeSampler(Task, Sampler):
     def task_outputs(self, dep) -> PairwiseSampleDataset:
         """return a iterator of PairwiseSample"""
         return dep(
-            PairwiseSampleDatasetFromTSV(
+            TSVPairwiseSampleDataset(
                 ids=self.dataset.id,
                 hard_negative_samples_path=self.hard_negative_samples,
             )

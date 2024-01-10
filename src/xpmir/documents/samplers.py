@@ -68,9 +68,6 @@ class RandomDocumentSampler(DocumentSampler):
     random: Param[Optional[Random]]
     """Random sampler"""
 
-    def __validate__(self):
-        assert self.max_count > 0 or self.max_ratio > 0
-
     def __call__(self) -> Tuple[int, Iterator[str]]:
         # Compute the number of documents to sample
         count = (self.max_ratio or 1) * self.documents.documentcount
@@ -87,7 +84,7 @@ class RandomDocumentSampler(DocumentSampler):
             np.arange(self.documents.documentcount), size=count, replace=False
         )
         for docid in docids:
-            yield self.documents.document(int(docid))
+            yield self.documents.document_int(int(docid))
 
 
 class RandomSpanSampler(BatchwiseSampler, PairwiseSampler):
