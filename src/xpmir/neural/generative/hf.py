@@ -7,7 +7,7 @@ from typing import Optional, List, NamedTuple, Tuple
 import torch
 from torch import nn
 from xpmir.learning import ModuleInitOptions, ModuleInitMode
-from xpmir.letor.records import TokenizedTexts
+from xpmir.text.encoders import TokenizedTexts
 from xpmir.distributed import DistributableModel
 from . import (
     ConditionalGenerator,

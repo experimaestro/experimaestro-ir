@@ -1,8 +1,8 @@
-from typing import List, Tuple
+from typing import List, Tuple, Iterable
 from experimaestro import Param
-import datamaestro_text.data.ir.base as ir
 from xpmir.rankers import Scorer, ScoredDocument
 from xpmir.letor.samplers.hydrators import SampleTransform
+from xpmir.letor.records import TopicRecord
 from xpmir.learning import ModuleInitOptions
 
 
@@ -25,22 +25,24 @@ class ScorerTransformAdapter(Scorer):
         self.scorer.to(device)
 
     def transform_records(
-        self, qry: str, scored_documents: List[ScoredDocument]
-    ) -> Tuple[str, List[ScoredDocument]]:
-        topics = [ir.TextTopic(qry)]
+        self, topic: TopicRecord, scored_documents: Iterable[ScoredDocument]
+    ) -> Tuple[TopicRecord, List[ScoredDocument]]:
+        topics = [topic.topic]
         docs = [sd.document for sd in scored_documents]
 
         for adapter in self.adapters:
             topics = adapter.transform_topics(topics) or topics
             docs = adapter.transform_documents(docs) or docs
 
-        qry_text = topics[0].text
+        topic_record = TopicRecord(topics[0])
         sd_list = [
             ScoredDocument(doc, sd.score) for (doc, sd) in zip(docs, scored_documents)
         ]
 
-        return (qry_text, sd_list)
+        return (topic_record, sd_list)
 
-    def rsv(self, query: str, scored_documents) -> List[ScoredDocument]:
-        qry, sd_list = self.transform_records(query, scored_documents)
-        return self.scorer.rsv(qry, sd_list)
+    def compute(
+        self, topic: TopicRecord, documents: Iterable[ScoredDocument]
+    ) -> List[ScoredDocument]:
+        topic, sd_list = self.transform_records(topic, documents)
+        return self.scorer.compute(topic, sd_list)

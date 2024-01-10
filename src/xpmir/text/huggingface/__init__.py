@@ -20,6 +20,13 @@ from xpmir.text.encoders import (
 from xpmir.utils.utils import easylog
 from xpmir.learning.context import TrainerContext, TrainState
 from xpmir.learning.parameters import ParametersIterator
+from .tokenizers import (  # noqa: F401
+    HFTokenizerBase,
+    HFStringTokenizer,
+    HFListTokenizer,
+)
+from .encoders import HFModel, HFTokensEncoder  # noqa: F401
+
 
 try:
     from transformers import (
@@ -33,7 +40,7 @@ except Exception:
     logging.error("Install huggingface transformers to use these configurations")
     raise
 
-from xpmir.letor.records import TokenizedTexts
+from xpmir.text.encoders import TokenizedTexts
 
 logger = easylog()
 logger.setLevel(logging.INFO)
@@ -51,7 +58,6 @@ class BaseTransformer(Encoder):
     layer: Param[int] = 0
     """Layer to use (0 is the last, -1 to use them all)"""
 
-    # TODO: move this into a hook
     dropout: Param[Optional[float]] = 0
     """(deprecated) Define a dropout for all the layers"""
 
@@ -199,7 +205,7 @@ class TransformerVocab(TransformerTokensEncoder):
 class SentenceTransformerTextEncoder(TextEncoder):
     """A Sentence Transformers text encoder"""
 
-    model_id: Param[str] = "sentence-transformers/all-MiniLM-L6-v2"
+    model_id: Param[str]
 
     def __initialize__(self, options: ModuleInitOptions):
         super().__initialize__(options)
@@ -324,13 +330,11 @@ class TransformerTextEncoderAdapter(TextEncoder, DistributableModel):
 
 
 class DualTransformerEncoder(BaseTransformer, DualTextEncoder):
-    """Encodes the (query, document pair) using the [CLS] token
-
-    maxlen: Maximum length of the query document pair (in tokens) or None if
-    using the transformer limit
-    """
+    """Encodes the (query, document pair) using the [CLS] token"""
 
     maxlen: Param[Optional[int]] = None
+    """Maximum length of the query document pair (in tokens) or None if
+    using the transformer limit"""
 
     version: Constant[int] = 2
 
@@ -613,3 +617,142 @@ class TransformerTokensEncoderWithMLMOutput(TransformerTokensEncoder):
     @property
     def automodel(self):
         return AutoModelForMaskedLM
+
+
+# --- New HuggingFace wrappers
+
+
+class BaseTransformer(Encoder):
+    """Base transformer class from Huggingface"""
+
+    model_id: Param[str] = "bert-base-uncased"
+    """Model ID from huggingface"""
+
+    trainable: Param[bool]
+    """Whether BERT parameters should be trained"""
+
+    layer: Param[int] = 0
+    """Layer to use (0 is the last, -1 to use them all)"""
+
+    dropout: Param[Optional[float]] = 0
+    """(deprecated) Define a dropout for all the layers"""
+
+    CLS: int
+    SEP: int
+
+    @cached_property
+    def tokenizer(self):
+        return AutoTokenizer.from_pretrained(self.model_id, use_fast=True)
+
+    @property
+    def pad_tokenid(self) -> int:
+        return self.tokenizer.pad_token_id
+
+    @property
+    def automodel(self):
+        return AutoModel
+
+    def __initialize__(self, options: ModuleInitOptions):
+        """Initialize the HuggingFace transformer
+
+        Args:
+            options: loader options
+        """
+        super().__initialize__(options)
+
+        # Load the model configuration
+        config = AutoConfig.from_pretrained(self.model_id)
+        if self.dropout != 0:
+            config.hidden_dropout_prob = self.dropout
+            config.attention_probs_dropout_prob = self.dropout
+
+        if options.mode == ModuleInitMode.NONE or options.mode == ModuleInitMode.RANDOM:
+            self.model = self.automodel.from_config(config)
+        else:
+            self.model = self.automodel.from_pretrained(self.model_id, config=config)
+
+        # Loads the tokenizer
+        self._tokenizer = AutoTokenizer.from_pretrained(self.model_id, use_fast=True)
+
+        self.CLS = self.tokenizer.cls_token_id
+        self.SEP = self.tokenizer.sep_token_id
+
+        if self.trainable:
+            self.model.train()
+        else:
+            self.model.eval()
+
+    def parameters(self, recurse=True):
+        if self.trainable:
+            return super().parameters(recurse)
+        return []
+
+    def train(self, mode: bool = True):
+        # We should not make this layer trainable unless asked
+        if mode:
+            if self.trainable:
+                self.model.train(mode)
+        else:
+            self.model.train(mode)
+
+    def tokenize(self, text):
+        return self.tokenizer.tokenize(text)
+
+    def tok2id(self, tok):
+        return self.tokenizer.vocab[tok]
+
+    def static(self):
+        return not self.trainable
+
+    def batch_tokenize(
+        self,
+        texts: Union[List[str], List[Tuple[str, str]]],
+        batch_first=True,
+        maxlen=None,
+        mask=False,
+    ) -> TokenizedTexts:
+        if maxlen is None:
+            maxlen = self.tokenizer.model_max_length
+        else:
+            maxlen = min(maxlen, self.tokenizer.model_max_length)
+
+        assert batch_first, "Batch first is the only option"
+
+        r = self.tokenizer(
+            list(texts),
+            max_length=maxlen,
+            truncation=True,
+            padding=True,
+            return_tensors="pt",
+            return_length=True,
+            return_attention_mask=mask,
+        )
+        return TokenizedTexts(
+            None,
+            r["input_ids"].to(self.device),
+            r["length"],
+            r.get("attention_mask", None),
+            r.get("token_type_ids", None),  # if r["token_type_ids"] else None
+        )
+
+    def id2tok(self, idx):
+        if torch.is_tensor(idx):
+            if len(idx.shape) == 0:
+                return self.id2tok(idx.item())
+            return [self.id2tok(x) for x in idx]
+        # return self.tokenizer.ids_to_tokens[idx]
+        return self.tokenizer.id_to_token(idx)
+
+    def lexicon_size(self) -> int:
+        return self.tokenizer._tokenizer.get_vocab_size()
+
+    def maxtokens(self) -> int:
+        return self.tokenizer.model_max_length
+
+    def dim(self):
+        return self.model.config.hidden_size
+
+    @property
+    def vocab_size(self) -> int:
+        """Returns the size of the vocabulary"""
+        return self.tokenizer.vocab_size

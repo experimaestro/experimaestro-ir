@@ -8,28 +8,11 @@ from torch import nn
 from experimaestro import cache, Param
 
 from xpmir.letor import Random
-from xpmir.letor.records import TokenizedTexts
+from xpmir.text.encoders import TokenizedTexts
 from xpmir.learning import ModuleInitOptions, ModuleInitMode
 
 from xpmir.text import TokensEncoder
 from datamaestro_text.data.embeddings import WordEmbeddings
-
-# TODO: add sources to datamaestro _SOURCES = { 'fasttext': {
-# 'wiki-news-300d-1M':
-#     wordvec.zip_handler('https://dl.fbaipublicfiles.com/fasttext/vectors-english/wiki-news-300d-1M.vec.zip'),
-#         'crawl-300d-2M':
-#         wordvec.zip_handler('https://dl.fbaipublicfiles.com/fasttext/vectors-english/crawl-300d-2M.vec.zip'),
-#     }, 'convknrm': { 'knrm-bing':
-#     wordvec.convknrm_handler('http://boston.lti.cs.cmu.edu/appendices/WSDM2018-ConvKNRM/K-NRM/bing/'),
-#         'knrm-sogou':
-#         wordvec.convknrm_handler('http://boston.lti.cs.cmu.edu/appendices/WSDM2018-ConvKNRM/K-NRM/sogou/'),
-#         'convknrm-bing':
-#         wordvec.convknrm_handler('http://boston.lti.cs.cmu.edu/appendices/WSDM2018-ConvKNRM/Conv-KNRM/bing/'),
-#     'convknrm-sogou':
-#     wordvec.convknrm_handler('http://boston.lti.cs.cmu.edu/appendices/WSDM2018-ConvKNRM/Conv-KNRM/sogou/')
-#         }, 'bionlp': { 'pubmed-pmc':
-#     wordvec.gensim_w2v_handler('http://evexdb.org/pmresources/vec-space-models/PubMed-and-PMC-w2v.bin')
-#     }, 'nil': wordvec.nil_handler }
 
 
 class WordvecVocab(TokensEncoder, nn.Module):

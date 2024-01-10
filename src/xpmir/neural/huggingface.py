@@ -3,7 +3,7 @@ from xpmir.letor.records import BaseRecords
 from xpmir.rankers import LearnableScorer
 from experimaestro import Param
 from transformers import AutoModelForSequenceClassification, AutoTokenizer, AutoConfig
-from xpmir.letor.records import TokenizedTexts
+from xpmir.text.encoders import TokenizedTexts
 from typing import List, Tuple
 from xpmir.distributed import DistributableModel
 import torch
