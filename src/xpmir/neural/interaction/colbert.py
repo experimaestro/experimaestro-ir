@@ -1,15 +1,15 @@
-# ColBERT implementation
-#
-# From
-# https://github.com/stanford-futuredata/ColBERT/blob/v0.2/colbert/modeling/colbert.py
-
-from experimaestro import Constant, Param, default, Annotated
+from typing import List, Optional
+from experimaestro import Constant, Param
 from torch import nn
-from xpmir.text import TokenizerOptions
-from xpmir.learning.context import TrainerContext
-from xpmir.letor.records import BaseRecords
-from xpmir.neural.interaction import InteractionScorer
-from .interaction.common import Similarity, CosineSimilarity
+import torch
+from torch._tensor import Tensor
+from xpmir.text import (
+    TokensEncoderOutput,
+    TokenizedTextEncoderBase,
+    TokenizerOptions,
+)
+from xpmir.neural.interaction import InteractionScorer, SimilarityInput, TrainerContext
+from xpmir.neural.interaction.common import CosineSimilarity
 
 
 class Colbert(InteractionScorer):
@@ -21,14 +21,11 @@ class Colbert(InteractionScorer):
         Passage Search via Contextualized Late Interaction over BERT.” SIGIR
         2020, Xi'An, China
 
-    For the standard Colbert model, use BERT as the vocab(ulary)
+    For the standard Colbert model, use the colbert function
     """
 
     version: Constant[int] = 2
     """Current version of the code (changes if a bug is found)"""
-
-    similarity: Annotated[Similarity, default(CosineSimilarity())]
-    """Which similarity function to use - ColBERT uses a cosine similarity by default"""
 
     linear_dim: Param[int] = 128
     """Size of the last linear layer (before computing inner products)"""
@@ -38,7 +35,6 @@ class Colbert(InteractionScorer):
 
     def __validate__(self):
         super().__validate__()
-        assert not self.encoder.static(), "The vocabulary should be learnable"
 
         assert self.compression_size >= 0, "Last layer size should be 0 or above"
 
@@ -46,17 +42,39 @@ class Colbert(InteractionScorer):
         super().__initialize__(options)
         self.linear = nn.Linear(self.encoder.dimension(), self.linear_dim, bias=False)
 
-    def _forward(self, inputs: BaseRecords, info: TrainerContext = None):
-        queries = self._query_encoder(
-            [qr.topic.get_text() for qr in inputs.queries],
-            options=TokenizerOptions(max_length=self.qlen),
-        )
-        documents = self.encoder(
-            [dr.document.get_text() for dr in inputs.documents],
-            options=TokenizerOptions(max_length=self.dlen),
-        )
+    def _encode(
+        self,
+        texts: List[str],
+        encoder: TokenizedTextEncoderBase[str, TokensEncoderOutput],
+        options: TokenizerOptions,
+    ) -> SimilarityInput:
+        encoded = encoder(texts, options=options)
+        return SimilarityInput(self.linear(encoded.value), encoded.tokenized.mask)
 
-        return self.similarity(queries.value, documents.value)
+    def score_pairs(
+        self,
+        queries: SimilarityInput,
+        documents: SimilarityInput,
+        info: Optional[TrainerContext] = None,
+    ) -> torch.Tensor:
+        # Shape B x Lq x Ld or Bq x Lq x Bd x Ld
+        value = self.similarity.compute_pairs(queries, documents)
+        s = value.similarity.masked_fill(
+            value.d_mask.logical_not(), float("-inf")
+        ).masked_fill(value.q_mask.logical_not(), 0)
+        return s.max(-1).values.sum(1)
+
+    def score_product(
+        self,
+        queries: SimilarityInput,
+        documents: SimilarityInput,
+        info: Optional[TrainerContext] = None,
+    ) -> Tensor:
+        value = self.similarity.compute_product(queries, documents)
+        s = value.similarity.masked_fill(
+            value.d_mask.logical_not(), float("-inf")
+        ).masked_fill(value.q_mask.logical_not(), 0)
+        return s.max(-1).values.sum(1)
 
 
 def colbert(
@@ -88,4 +106,4 @@ def colbert(
         tokenizer=HFStringTokenizer.from_pretrained_id(model_id),
         encoder=HFTokensEncoder.from_pretrained_id(model_id),
     )
-    return Colbert(encoder=encoder)
+    return Colbert(encoder=encoder, similarity=CosineSimilarity())

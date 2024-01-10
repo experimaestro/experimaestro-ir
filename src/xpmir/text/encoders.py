@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Generic, List, Tuple, TypeVar, Union, Optional
+from typing import Generic, List, Tuple, TypeVar, Union, Optional, Callable
 import sys
 
 from experimaestro import Param
@@ -112,6 +112,8 @@ EncoderOutput = TypeVar("EncoderOutput")
 class TextEncoderBase(Encoder, Generic[InputType, EncoderOutput]):
     """Base class for all text encoders"""
 
+    __call__: Callable[Tuple["TextEncoderBase", List[InputType]], EncoderOutput]
+
     @abstractmethod
     def forward(self, texts: List[InputType]) -> EncoderOutput:
         raise NotImplementedError()
@@ -183,8 +185,16 @@ class TokenizedEncoder(Encoder, Generic[EncoderOutput, TokenizerOutput]):
         return sys.maxsize
 
 
+class TokenizedTextEncoderBase(TextEncoderBase[InputType, EncoderOutput]):
+    @abstractmethod
+    def forward(
+        self, inputs: List[InputType], options: Optional[TokenizerOptions] = None
+    ) -> EncoderOutput:
+        ...
+
+
 class TokenizedTextEncoder(
-    TextEncoderBase[InputType, EncoderOutput],
+    TokenizedTextEncoderBase[InputType, EncoderOutput],
     Generic[InputType, EncoderOutput, TokenizerOutput],
 ):
     """Encodes a tokenizer input into a vector
@@ -205,7 +215,7 @@ class TokenizedTextEncoder(
 
     def forward(
         self, inputs: List[InputType], options: Optional[TokenizerOptions] = None
-    ):
+    ) -> EncoderOutput:
         options = options or TokenizerOptions()
         options.max_length = min(
             self.encoder.max_length, options.max_length or sys.maxsize

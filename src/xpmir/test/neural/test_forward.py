@@ -18,27 +18,20 @@ from xpmir.letor.records import (
     ProductRecords,
     TopicRecord,
 )
-from xpmir.text.encoders import TokensEncoder, DualTextEncoder, TokenizedTexts
+from xpmir.text.tokenizers import Tokenizer
+from xpmir.text.encoders import (
+    TokenizedTextEncoderBase,
+    DualTextEncoder,
+    TokensRepresentationOutput,
+    TokenizerOptions,
+)
 from xpmir.text.adapters import MeanTextEncoder
 
 
-class RandomTokensEncoder(TokensEncoder):
-    DIMENSION = 7
-    MAX_WORDS = 100
-
-    def __initialize__(self, options):
-        super().__initialize__(options)
+class TestTokenizer(Tokenizer):
+    def __init__(self):
         self.map = {}
-        self.embed = torch.nn.Embedding.from_pretrained(
-            torch.randn(RandomTokensEncoder.MAX_WORDS, RandomTokensEncoder.DIMENSION)
-        )
-
-    def dim(self) -> int:
-        return RandomTokensEncoder.DIMENSION
-
-    @property
-    def pad_tokenid(self) -> int:
-        return 0
+        self._dummy_params = torch.nn.Parameter(torch.Tensor())
 
     def tok2id(self, tok: str) -> int:
         try:
@@ -48,8 +41,31 @@ class RandomTokensEncoder(TokensEncoder):
             self.map[tok] = tokid
             return tokid
 
-    def forward(self, tok_texts: TokenizedTexts):
-        return self.embed(tok_texts.ids)
+
+class RandomTokensEncoder(TokenizedTextEncoderBase[str, TokensRepresentationOutput]):
+    DIMENSION = 7
+    MAX_WORDS = 100
+
+    def __initialize__(self, options):
+        super().__initialize__(options)
+        self.embed = torch.nn.Embedding.from_pretrained(
+            torch.randn(RandomTokensEncoder.MAX_WORDS, RandomTokensEncoder.DIMENSION)
+        )
+        self.tokenizer = TestTokenizer().instance()
+
+    def dimension(self) -> int:
+        return RandomTokensEncoder.DIMENSION
+
+    @property
+    def pad_tokenid(self) -> int:
+        return 0
+
+    def forward(self, texts: List[str], options=None):
+        options = options or TokenizerOptions()
+        tok_texts = self.tokenizer.batch_tokenize(
+            texts, maxlen=options.max_length, mask=True
+        )
+        return TokensRepresentationOutput(tok_texts, self.embed(tok_texts.ids))
 
     def static(self) -> bool:
         return False
@@ -90,12 +106,13 @@ def drmm():
 
 
 @registermodel
-def colbert():
+def colbert_cos():
     """Colbert model factory"""
-    from xpmir.neural.colbert import Colbert
+    from xpmir.neural.interaction.colbert import Colbert
+    from xpmir.neural.interaction.common import CosineSimilarity
 
     return Colbert(
-        vocab=RandomTokensEncoder(), masktoken=False, doctoken=False, querytoken=False
+        encoder=RandomTokensEncoder(), similarity=CosineSimilarity()
     ).instance()
 
 
