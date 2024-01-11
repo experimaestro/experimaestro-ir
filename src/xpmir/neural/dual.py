@@ -3,10 +3,11 @@ import torch
 from experimaestro import Param
 from xpmir.distributed import DistributableModel
 from xpmir.learning.batchers import Batcher
-from xpmir.neural import DualRepresentationScorer
+from xpmir.letor.records import TopicRecord, DocumentRecord
+from xpmir.neural import DualRepresentationScorer, QueriesRep, DocsRep
 from xpmir.rankers import Retriever
 from xpmir.utils.utils import easylog, foreach
-from xpmir.text.encoders import TextEncoder
+from xpmir.text.encoders import TextEncoderBase
 from xpmir.learning.context import Loss, TrainerContext, TrainingHook
 from xpmir.learning.metrics import ScalarMetric
 
@@ -40,34 +41,36 @@ class DualVectorListener(TrainingHook):
         raise NotImplementedError(f"__call__ in {self.__class__}")
 
 
-class DualVectorScorer(DualRepresentationScorer):
+class DualVectorScorer(DualRepresentationScorer[QueriesRep, DocsRep]):
     """A scorer based on dual vectorial representations"""
 
-    pass
-
-
-class Dense(DualVectorScorer):
-    """A scorer based on a pair of (query, document) dense vectors"""
-
-    encoder: Param[TextEncoder]
+    encoder: Param[TextEncoderBase]
     """The document (and potentially query) encoder"""
 
-    query_encoder: Param[Optional[TextEncoder]]
+    query_encoder: Param[Optional[TextEncoderBase]]
     """The query encoder (optional, if not defined uses the query_encoder)"""
-
-    def __validate__(self):
-        super().__validate__()
-        assert not self.encoder.static(), "The vocabulary should be learnable"
 
     def __initialize__(self, options):
         self.encoder.initialize(options)
         if self.query_encoder:
             self.query_encoder.initialize(options)
 
-    def score_product(self, queries, documents, info: Optional[TrainerContext]):
+    @property
+    def _query_encoder(self):
+        return self.query_encoder or self.encoder
+
+    def __validate__(self):
+        super().__validate__()
+        assert not self.encoder.static(), "The vocabulary should be learnable"
+
+
+class Dense(DualVectorScorer[QueriesRep, DocsRep]):
+    """A scorer based on a pair of (query, document) dense vectors"""
+
+    def score_product(self, queries, documents, info: Optional[TrainerContext] = None):
         return queries @ documents.T
 
-    def score_pairs(self, queries, documents, info: TrainerContext):
+    def score_pairs(self, queries, documents, info: Optional[TrainerContext] = None):
         scores = (queries.unsqueeze(1) @ documents.unsqueeze(2)).squeeze(-1).squeeze(-1)
 
         # Apply the dual vector hook
@@ -77,10 +80,6 @@ class Dense(DualVectorScorer):
                 lambda hook: hook(info, queries, documents),
             )
         return scores
-
-    @property
-    def _query_encoder(self):
-        return self.query_encoder or self.encoder
 
     @classmethod
     def from_sentence_transformers(cls, hf_id: str, **kwargs):
@@ -100,12 +99,14 @@ class Dense(DualVectorScorer):
 class CosineDense(Dense):
     """Dual model based on cosine similarity."""
 
-    def encode_queries(self, texts):
-        queries = (self.query_encoder or self.encoder)(texts)
+    def encode_queries(self, records: List[TopicRecord]):
+        queries = (self.query_encoder or self.encoder)(
+            [record.topic.get_text() for record in records]
+        )
         return queries / queries.norm(dim=1, keepdim=True)
 
-    def encode_documents(self, texts):
-        documents = self.encoder(texts)
+    def encode_documents(self, records: List[DocumentRecord]):
+        documents = self.encoder([record.document.get_text() for record in records])
         return documents / documents.norm(dim=1, keepdim=True)
 
 
@@ -116,13 +117,13 @@ class DotDense(Dense, DistributableModel):
         super().__validate__()
         assert not self.encoder.static(), "The vocabulary should be learnable"
 
-    def encode_queries(self, texts: List[str]):
+    def encode_queries(self, records: List[TopicRecord]):
         """Encode the different queries"""
-        return self._query_encoder(texts)
+        return self._query_encoder([record.topic.get_text() for record in records])
 
-    def encode_documents(self, texts: List[str]):
+    def encode_documents(self, records: List[DocumentRecord]):
         """Encode the different documents"""
-        return self.encoder(texts)
+        return self.encoder([record.document.get_text() for record in records])
 
     def getRetriever(
         self, retriever: "Retriever", batch_size: int, batcher: Batcher, device=None

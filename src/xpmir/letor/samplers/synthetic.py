@@ -23,7 +23,7 @@ from xpmir.utils.utils import batchiter, easylog, foreach
 logger = easylog()
 
 
-class SynetheticQueryGeneration(Task):
+class SyntheticQueryGeneration(Task):
 
     model: Param[T5ConditionalGenerator]
     """The model we use to generate the queries"""
