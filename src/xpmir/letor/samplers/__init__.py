@@ -38,6 +38,9 @@ from xpmir.utils.iter import (
     SerializableIterator,
     SerializableIteratorAdapter,
     SkippingIterator,
+    RandomStateSerializableAdaptor,
+    InfiniteSkippingIterator,
+    iterable_of,
 )
 from datamaestro_text.interfaces.plaintext import read_tsv
 
@@ -412,11 +415,13 @@ class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
     """The algo to sample the negatives, default value is random"""
 
     def pairwise_iter(self) -> SkippingIterator[PairwiseRecord]:
-        class _Iterator(SkippingIterator[PairwiseRecord]):
+        class _Iterator(
+            RandomStateSerializableAdaptor[SerializableIterator[PairwiseSample]]
+        ):
             def __init__(
                 self,
+                iterator: SerializableIterator[PairwiseSample],
                 random: np.random.RandomState,
-                iterator: Iterator[PairwiseSample],
                 negative_algo: str,
                 documents: DocumentStore,
             ):
@@ -425,19 +430,8 @@ class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
                 self.negative_algo = negative_algo
                 self.documents = documents
 
-            def load_state_dict(self, state):
-                super().load_state_dict(state)
-                self.random.set_state(state["random"])
-
-            def state_dict(self):
-                return {"random": self.random.get_state(), **super().state_dict()}
-
-            def restore_state(self, state):
-                self.random.set_state(state["random"])
-                self.iter = super().restore_state(state)
-
-            def next(self):
-                sample = super().next()  # type: PairwiseSample
+            def __next__(self):
+                sample = next(self.iterator)  # type: PairwiseSample
                 possible_algos = sample.negatives.keys()
 
                 assert (
@@ -465,11 +459,9 @@ class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
                     TopicRecord(qry), DocumentRecord(pos), DocumentRecord(neg)
                 )
 
-        return SkippingIterator(
-            _Iterator(
-                self.random, self.dataset.iter(), self.negative_algo, self.documents
-            )
-        )
+        base = InfiniteSkippingIterator(iterable_of(lambda: self.dataset.iter()))
+
+        return _Iterator(base, self.random, self.negative_algo, self.documents)
 
 
 # --- Dataloader
