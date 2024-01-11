@@ -32,6 +32,9 @@ Optimizers
 .. autoxpmconfig:: xpmir.learning.optim.ParameterFilter
 .. autoxpmconfig:: xpmir.learning.optim.RegexParameterFilter
 
+.. autoxpmconfig:: xpmir.learning.optim.OptimizationHook
+.. autoxpmconfig:: xpmir.learning.optim.GradientHook
+.. autoxpmconfig:: xpmir.learning.optim.GradientClippingHook
 
 Parameters
 ----------

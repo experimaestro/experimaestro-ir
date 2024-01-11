@@ -124,7 +124,7 @@ class HFStringTokenizer(HFTokenizerBase[HFTokenizerInput]):
     """Process list of texts"""
 
     def tokenize(
-        self, texts: List[str], options: Optional[TokenizerOptions] = None
+        self, texts: List[HFTokenizerInput], options: Optional[TokenizerOptions] = None
     ) -> TokenizedTexts:
         return self.tokenizer.tokenize(texts, options=options)
 

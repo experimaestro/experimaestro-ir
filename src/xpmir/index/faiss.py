@@ -125,7 +125,7 @@ class IndexBackedFaiss(FaissIndex, Task):
 
     def _execute(self, device_information: DeviceInformation):
         # Initialization hooks
-        context = Context(device_information, hooks=self.hooks)
+        context = Context(hooks=self.hooks)
         foreach(context.hooks(InitializationHook), lambda hook: hook.before(context))
 
         step_iter = tqdm(total=2, desc="Building the FAISS index")
