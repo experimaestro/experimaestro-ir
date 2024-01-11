@@ -11,7 +11,7 @@ class ScorerTransformAdapter(Scorer):
     scorer: Param[Scorer]
     """The original scorer to be transform"""
 
-    adapters: Param[List[SampleTransform]]
+    adapter: Param[SampleTransform]
     """The list of sample transforms to apply"""
 
     def __initialize__(self, options: ModuleInitOptions):
@@ -30,9 +30,8 @@ class ScorerTransformAdapter(Scorer):
         topics = [topic.topic]
         docs = [sd.document for sd in scored_documents]
 
-        for adapter in self.adapters:
-            topics = adapter.transform_topics(topics) or topics
-            docs = adapter.transform_documents(docs) or docs
+        topics = self.adapter.transform_topics(topics) or topics
+        docs = self.adapter.transform_documents(docs) or docs
 
         topic_record = TopicRecord(topics[0])
         sd_list = [
