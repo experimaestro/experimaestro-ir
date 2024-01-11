@@ -26,6 +26,14 @@ T = TypeVar("T")
 U = TypeVar("U")
 
 
+class iterable_of(Generic[T]):
+    def __init__(self, factory: Callable[[], Iterator[T]]):
+        self.factory = factory
+
+    def __iter__(self):
+        return self.factory()
+
+
 class SerializableIterator(Iterator[T], Generic[T, State]):
     """An iterator that can be serialized through state dictionaries.
 
