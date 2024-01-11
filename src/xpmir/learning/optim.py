@@ -24,7 +24,7 @@ from xpmir.learning.metrics import ScalarMetric
 from .schedulers import Scheduler
 
 if TYPE_CHECKING:
-    from xpmir.learning.context import TrainerContext
+    from xpmir.learning.context import TrainerContext, Context
 
 logger = easylog()
 
@@ -321,8 +321,8 @@ class ScheduledOptimizer:
         self.optimizers = []
         self.scheduler_steps = -1  # Number of scheduler steps
         self.num_training_steps = num_training_steps
-        self.hooks = hooks
         self.module = module
+        self.context = Context(hooks)
 
         try:
             next(module.parameters())
@@ -396,7 +396,7 @@ class ScheduledOptimizer:
         else:
             # Unscale first
             for optimizer in self.optimizers:
-                self.scaler._unscale(optimizer)
+                self.scaler.unscale_(optimizer)
 
             # Apply gradient hooks
             foreach(
