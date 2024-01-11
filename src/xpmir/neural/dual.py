@@ -64,7 +64,7 @@ class DualVectorScorer(DualRepresentationScorer[QueriesRep, DocsRep]):
         assert not self.encoder.static(), "The vocabulary should be learnable"
 
 
-class Dense(DualRepresentationScorer):
+class Dense(DualVectorScorer[QueriesRep, DocsRep]):
     """A scorer based on a pair of (query, document) dense vectors"""
 
     def score_product(self, queries, documents, info: Optional[TrainerContext]):

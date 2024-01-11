@@ -134,18 +134,17 @@ class PairwiseTransformAdapter(PairwiseSampler):
         )
 
     def transform_records(self, records: PairwiseRecords) -> PairwiseRecords:
-        for adapter in self.adapters:
-            if topics := adapter.transform_topics(
-                [tr.topic for tr in records.unique_topics]
-            ):
-                records.set_unique_topics([TopicRecord(topic) for topic in topics])
+        if topics := self.adapter.transform_topics(
+            [tr.topic for tr in records.unique_topics]
+        ):
+            records.set_unique_topics([TopicRecord(topic) for topic in topics])
 
-            if documents := adapter.transform_documents(
-                [dr.document for dr in records.unique_documents]
-            ):
-                records.set_unique_documents(
-                    [DocumentRecord(document) for document in documents]
-                )
+        if documents := self.adapter.transform_documents(
+            [dr.document for dr in records.unique_documents]
+        ):
+            records.set_unique_documents(
+                [DocumentRecord(document) for document in documents]
+            )
         return records
 
     def pairwise_batch_iter(self, size) -> SerializableIterator[PairwiseRecords, Any]:

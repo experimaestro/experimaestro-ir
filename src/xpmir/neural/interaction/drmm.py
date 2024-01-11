@@ -129,10 +129,12 @@ class Drmm(InteractionScorer):
         options: TokenizerOptions,
     ) -> SimilarityInputWithTokens:
         encoded = encoder(texts, options=options)
-        return SimilarityInputWithTokens(
-            self.similarity.preprocess(encoded.value),
-            encoded.tokenized.mask,
-            encoded.tokenized.tokens,
+        return self.similarity.preprocess(
+            SimilarityInputWithTokens(
+                encoded.value,
+                encoded.tokenized.mask,
+                encoded.tokenized.tokens,
+            )
         )
 
     def compute_scores(
