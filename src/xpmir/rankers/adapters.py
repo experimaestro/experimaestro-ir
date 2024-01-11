@@ -7,6 +7,7 @@ from xpmir.learning import ModuleInitOptions
 
 
 class ScorerTransformAdapter(Scorer):
+    """Transforms topic and/or documents output by a scorer when rescoring documents"""
 
     scorer: Param[Scorer]
     """The original scorer to be transform"""

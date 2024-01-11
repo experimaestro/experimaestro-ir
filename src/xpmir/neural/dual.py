@@ -64,13 +64,13 @@ class DualVectorScorer(DualRepresentationScorer[QueriesRep, DocsRep]):
         assert not self.encoder.static(), "The vocabulary should be learnable"
 
 
-class Dense(DualRepresentationScorer):
+class Dense(DualVectorScorer[QueriesRep, DocsRep]):
     """A scorer based on a pair of (query, document) dense vectors"""
 
-    def score_product(self, queries, documents, info: Optional[TrainerContext]):
+    def score_product(self, queries, documents, info: Optional[TrainerContext] = None):
         return queries @ documents.T
 
-    def score_pairs(self, queries, documents, info: TrainerContext):
+    def score_pairs(self, queries, documents, info: Optional[TrainerContext] = None):
         scores = (queries.unsqueeze(1) @ documents.unsqueeze(2)).squeeze(-1).squeeze(-1)
 
         # Apply the dual vector hook
@@ -99,12 +99,14 @@ class Dense(DualRepresentationScorer):
 class CosineDense(Dense):
     """Dual model based on cosine similarity."""
 
-    def encode_queries(self, texts):
-        queries = (self.query_encoder or self.encoder)(texts)
+    def encode_queries(self, records: List[TopicRecord]):
+        queries = (self.query_encoder or self.encoder)(
+            [record.topic.get_text() for record in records]
+        )
         return queries / queries.norm(dim=1, keepdim=True)
 
-    def encode_documents(self, texts):
-        documents = self.encoder(texts)
+    def encode_documents(self, records: List[DocumentRecord]):
+        documents = self.encoder([record.document.get_text() for record in records])
         return documents / documents.norm(dim=1, keepdim=True)
 
 

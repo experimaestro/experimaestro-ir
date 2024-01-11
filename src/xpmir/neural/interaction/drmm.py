@@ -1,4 +1,5 @@
 import math
+import numpy as np
 from typing import Optional, List
 from experimaestro import Config, Param, default
 import torch
@@ -28,36 +29,22 @@ class CountHistogram(Config, nn.Module):
 
     nbins: Param[int] = 29
 
-    def forward(self, simmat: torch.Tensor, dlens, mask: torch.BoolTensor):
+    def forward(self, simmat: torch.Tensor, dlens: List[int], mask: torch.BoolTensor):
+        """Computes the histograms for each query term
+
+        :param simmat: A (B... x Lq x Ld) matrix
+        :param mask: A (B... x Lq x Ld) mask
+        :param dlens: The document lengths (vector of size D)
+        :return: A (B... x Lq x nbins) matrix containing counts
+        """
         # +1e-5 to nudge scores of 1 to above threshold
-        bins = ((simmat + 1.00001) / 2.0 * (self.nbins - 1)).int()
+        bins = ((simmat + 1.00001) / 2.0 * (self.nbins - 1)).long()
         weights = mask.float()
 
-        # apparently no way to batch this...
-        # https://discuss.pytorch.org/t/histogram-function-in-pytorch/5350
-
-        # WARNING: this line (and the similar line below) improve performance
-        # tenfold when on GPU
-        bins, weights = (
-            bins.cpu(),
-            weights.cpu(),
+        hist = torch.zeros(
+            *simmat.shape[:-1], self.nbins, device=simmat.device, dtype=simmat.dtype
         )
-        histogram = []
-        for superbins, w in zip(bins, weights):
-            result = []
-            for b in superbins:
-                result.append(
-                    torch.stack(
-                        [torch.bincount(q, x, self.nbins) for q, x in zip(b, w)], dim=0
-                    )
-                )
-            result = torch.stack(result, dim=0)
-            histogram.append(result)
-        histogram = torch.stack(histogram, dim=0)
-        # WARNING: this line (and the similar line above) improve performance
-        # tenfold when on GPU
-        histogram = histogram.to(simmat.device)
-        return histogram
+        return hist.scatter_add_(simmat.ndim - 1, bins, weights)
 
 
 class NormalizedHistogram(CountHistogram):
@@ -74,18 +61,24 @@ class LogCountHistogram(CountHistogram):
 
 
 class Combination(Config, nn.Module):
-    pass
+    def forward(self, scores: torch.Tensor, idf: torch.Tensor):
+        """Combines term scores with IDF
+
+        :param scores: A (B... x Lq) tensor
+        :param idf: A (B... x Lq) tensor
+        """
+        ...
 
 
 class SumCombination(Combination):
     def forward(self, scores, idf):
-        return scores.sum(dim=1)
+        return scores.sum(dim=-1)
 
 
 class IdfCombination(Combination):
-    def forward(self, scores, idf):
-        idf = idf.softmax(dim=1)
-        return (scores * idf).sum(dim=1)
+    def forward(self, scores: torch.Tensor, idf: torch.Tensor):
+        idf = idf.softmax(dim=-1)
+        return (scores * idf).sum(dim=-1)
 
 
 class Drmm(InteractionScorer):
@@ -129,10 +122,12 @@ class Drmm(InteractionScorer):
         options: TokenizerOptions,
     ) -> SimilarityInputWithTokens:
         encoded = encoder(texts, options=options)
-        return SimilarityInputWithTokens(
-            self.similarity.preprocess(encoded.value),
-            encoded.tokenized.mask,
-            encoded.tokenized.tokens,
+        return self.similarity.preprocess(
+            SimilarityInputWithTokens(
+                encoded.value,
+                encoded.tokenized.mask,
+                np.array(encoded.tokenized.tokens),
+            )
         )
 
     def compute_scores(
@@ -156,20 +151,20 @@ class Drmm(InteractionScorer):
 
         mask = value.q_view(queries.mask) * value.d_view(documents.mask)
         similarity = value.similarity
-        if similarity.ndim == 4:
-            similarity = value.similarity.transpose(1, 2).flatten(0, 1)
-            mask = mask.transpose(1, 2).flatten(0, 1)
-        dlens = [len(tokens) for tokens in documents.tokens]
+        dlens = torch.LongTensor([len(tokens) for tokens in documents.tokens])
+
+        if value.similarity.ndim == 4:
+            # Transform into B... x Lq x Ld shape
+            similarity = value.similarity.transpose(1, 2)
+            mask = mask.transpose(1, 2)
+            query_idf = query_idf.unsqueeze(0)
+
         qterm_features = self.histogram_pool(similarity, dlens, mask)
-        BAT, QLEN, _ = qterm_features.shape
-        qterm_scores = self.hidden_2(torch.relu(self.hidden_1(qterm_features))).reshape(
-            BAT, QLEN
+        qterm_scores = self.hidden_2(torch.relu(self.hidden_1(qterm_features))).squeeze(
+            -1
         )
         return self.combine(qterm_scores, query_idf)
 
     def histogram_pool(self, simmat, dlens, mask):
         histogram = self.hist(simmat, dlens, mask)
-        BATCH, QLEN, BINS = histogram.shape
-        histogram = histogram.permute(0, 2, 3, 1)
-        histogram = histogram.reshape(BATCH, QLEN, BINS)
         return histogram

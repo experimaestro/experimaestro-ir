@@ -16,7 +16,6 @@ from xpmir.datasets.adapters import TextStore
 
 from xpmir.letor.samplers.hydrators import (
     SampleHydrator,
-    SampleTransformList,
     PairwiseTransformAdapter,
 )
 
@@ -47,15 +46,11 @@ class FakeDocumentStore(ir.DocumentStore):
 def test_pairwise_hydrator():
     sampler = TripletBasedSampler(source=TripletIterator(id="test-triplets"))
 
-    adapters = SampleTransformList(
-        adapters=[
-            SampleHydrator(
-                querystore=FakeTextStore(), documentstore=FakeDocumentStore()
-            )
-        ]
+    hydrator = SampleHydrator(
+        querystore=FakeTextStore(), documentstore=FakeDocumentStore()
     )
 
-    h_sampler = PairwiseTransformAdapter(sampler=sampler, adapter=adapters)
+    h_sampler = PairwiseTransformAdapter(sampler=sampler, adapter=hydrator)
     h_sampler.instance()
 
     for record, n in zip(h_sampler.pairwise_iter(), range(5)):

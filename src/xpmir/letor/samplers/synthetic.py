@@ -23,12 +23,13 @@ from xpmir.utils.utils import batchiter, easylog, foreach
 logger = easylog()
 
 
-class SynetheticQueryGeneration(Task):
+class SyntheticQueryGeneration(Task):
 
     model: Param[T5ConditionalGenerator]
     """The model we use to generate the queries"""
 
-    batchsize: Param[int] = 128
+    batchsize: Meta[int] = 128
+    """Batchsize when computing negatives"""
 
     num_qry_per_doc: Param[int] = 5
     """How many synthetic qry to generate per document"""
