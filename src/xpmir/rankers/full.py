@@ -1,12 +1,13 @@
 from typing import List, Optional, Tuple, Dict, Any
 from experimaestro import Param, Meta, tqdm
 import torch
-from . import Retriever, ScoredDocument
 from datamaestro_text.data.ir import Document, Documents
 from xpmir.neural.dual import DualRepresentationScorer
 from xpmir.learning.batchers import Batcher
 from xpmir.learning import ModuleInitMode
 from xpmir.letor import Device
+from xpmir.letor.records import DocumentRecord, TopicRecord
+from . import Retriever, ScoredDocument
 
 
 class FullRetriever(Retriever):
@@ -90,7 +91,7 @@ class FullRetrieverRescorer(Retriever):
             per query)
         """
         # Encode documents
-        encoded = self.scorer.encode_documents(d.get_text() for d in documents)
+        encoded = self.scorer.encode_documents(DocumentRecord(d) for d in documents)
 
         # Process query by query
         new_scores = [[] for _ in documents]
@@ -114,7 +115,9 @@ class FullRetrieverRescorer(Retriever):
         # Only use retrieve_all
         return self.retrieve_all({"_": query})["_"]
 
-    def retrieve_all(self, queries: Dict[str, str]) -> Dict[str, List[ScoredDocument]]:
+    def retrieve_all(
+        self, queries: Dict[str, TopicRecord]
+    ) -> Dict[str, List[ScoredDocument]]:
         """Input is a dictionary of query {id:text},
         return the a dictionary of {query_id: List of ScoredDocuments under the query}
         """

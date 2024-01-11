@@ -16,7 +16,6 @@ as contextual word embeddings and document embeddings.
 
 
 
-
 .. autoxpmconfig:: xpmir.text.encoders.TokensEncoder
    :members: forward
 
@@ -26,11 +25,7 @@ Tokenizers
 .. autoxpmconfig:: xpmir.text.tokenizers.Tokenizer
    :members: pad_sequences, batch_tokenize, pad_tokenid, tok2id, id2tok, lexicon_size
 
-.. autoxpmconfig:: xpmir.text.tokenizers.DualTokenizer
-.. autoxpmconfig:: xpmir.text.tokenizers.ListTokenizer
-.. autoxpmconfig:: xpmir.text.tokenizers.SimpleTokenizer
 .. autoxpmconfig:: xpmir.text.tokenizers.TokenizerBase
-.. autoxpmconfig:: xpmir.text.tokenizers.TripletTokenizer
 
 
 Text Encoders
@@ -46,16 +41,16 @@ Text Encoders
 
 .. autoxpmconfig:: xpmir.text.encoders.TripletTextEncoder
 
+.. autoxpmconfig:: xpmir.text.encoders.TokenizedTextEncoderBase
+   :members: forward
+
+.. autoxpmconfig:: xpmir.text.encoders.TokenizedEncoder
+   :members: forward
 
 Tokenizer-based encoders
 ************************
 
-.. autoxpmconfig:: xpmir.text.encoders.TokensEncoderBase
 .. autoxpmconfig:: xpmir.text.encoders.TokenizedTextEncoder
-.. autoxpmconfig:: xpmir.text.encoders.DualTokenizedTextEncoder
-.. autoxpmconfig:: xpmir.text.encoders.SimpleTokenizedTextEncoder
-.. autoxpmconfig:: xpmir.text.encoders.ListTokenizedTextEncoder
-.. autoxpmconfig:: xpmir.text.encoders.TripletTokenizedTextEncoder
 
 Adapters
 ********

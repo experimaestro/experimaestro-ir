@@ -1,13 +1,12 @@
-import torch
 from typing import List
 from experimaestro import Param
-from .encoders import TextEncoder, TokensEncoder
+from .encoders import TokenizedTextEncoderBase, InputType, EncoderOutput
 
 
-class MeanTextEncoder(TextEncoder):
+class MeanTextEncoder(TokenizedTextEncoderBase[InputType, EncoderOutput]):
     """Returns the mean of the word embeddings"""
 
-    encoder: Param[TokensEncoder]
+    encoder: Param[TokenizedTextEncoderBase[InputType, EncoderOutput]]
 
     def __initialize__(self, options):
         self.encoder.__initialize__(options)
@@ -17,10 +16,9 @@ class MeanTextEncoder(TextEncoder):
 
     @property
     def dimension(self):
-        return self.encoder.dim()
+        return self.encoder.dimension()
 
-    def forward(self, texts: List[str]) -> torch.Tensor:
-        tokenized = self.encoder.batch_tokenize(texts, True)
-        emb_texts = self.encoder(tokenized)
+    def forward(self, texts: List[InputType], options=None) -> EncoderOutput:
+        emb_texts = self.encoder(texts, options=options)
         # Computes the mean over the time dimension (vocab output is batch x time x dim)
-        return emb_texts.mean(1)
+        return emb_texts.value.mean(1)

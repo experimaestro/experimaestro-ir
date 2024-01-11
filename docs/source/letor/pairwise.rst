@@ -35,14 +35,31 @@ Pairwise
 
 .. currentmodule:: xpmir.letor.samplers
 
+
+Samplers
+********
+
 .. autoxpmconfig:: PairwiseSampler
 .. autoxpmconfig:: PairwiseModelBasedSampler
 
 .. autoxpmconfig:: TripletBasedSampler
 .. autoxpmconfig:: PairwiseDatasetTripletBasedSampler
 .. autoxpmconfig:: PairwiseInBatchNegativesSampler
-.. autoxpmconfig:: PairwiseSampleDatasetFromTSV
 .. autoxpmconfig:: PairwiseSamplerFromTSV
 .. autoxpmconfig:: ModelBasedHardNegativeSampler
+
+Dataset types
+*************
+
+.. autoxpmconfig:: xpmir.letor.samplers.JSONLPairwiseSampleDataset
+.. autoxpmconfig:: xpmir.letor.samplers.TSVPairwiseSampleDataset
+
+Dataset transforms
+******************
+
+.. autoxpmconfig:: xpmir.letor.samplers.synthetic.JSONLNegativeGeneration
+
+Adapters
+********
 
 .. autoxpmconfig:: xpmir.letor.samplers.hydrators.PairwiseTransformAdapter

@@ -15,14 +15,17 @@ Models
 
 Models follow the HuggingFace hierarchy
 
-.. autoxpmconfig:: xpmir.text.huggingface.base.HFBaseModel
 .. autoxpmconfig:: xpmir.text.huggingface.base.HFMaskedLanguageModel
+.. autoxpmconfig:: xpmir.text.huggingface.base.HFModel
 
 Tokenizers
 ----------
 
-.. autoxpmconfig:: xpmir.text.huggingface.base.HFTokenizer
+.. autoxpmconfig:: xpmir.text.huggingface.tokenizers.HFTokenizer
+.. autoxpmconfig:: xpmir.text.huggingface.tokenizers.HFTokenizerBase
+
 .. autoxpmconfig:: xpmir.text.huggingface.tokenizers.HFListTokenizer
+.. autoxpmconfig:: xpmir.text.huggingface.tokenizers.HFStringTokenizer
 
 Encoders
 --------
@@ -32,9 +35,7 @@ Encoders
     :members: from_pretrained_id
 
 .. autoxpmconfig:: xpmir.text.huggingface.encoders.HFTokensEncoder
-.. autoxpmconfig:: xpmir.text.huggingface.encoders.HFTextEncoder
-.. autoxpmconfig:: xpmir.text.huggingface.encoders.HFTextListTokensEncoder
-
+.. autoxpmconfig:: xpmir.text.huggingface.encoders.HFCLSEncoder
 
 Legacy
 ******
