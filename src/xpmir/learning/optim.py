@@ -18,7 +18,8 @@ from experimaestro import (
 from experimaestro.scheduler import Job, Listener
 from experimaestro.utils import cleanupdir
 from experimaestro.scheduler.services import WebService
-from xpmir.utils.utils import easylog, Initializable
+from xpmir.context import Hook
+from xpmir.utils.utils import easylog, Initializable, foreach
 from xpmir.learning.metrics import ScalarMetric
 from .schedulers import Scheduler
 
@@ -281,6 +282,31 @@ class DuplicateParameterFilter:
         return True
 
 
+class OptimizationHook(Hook):
+    """Base class for all optimization hooks"""
+
+    pass
+
+
+class GradientHook(OptimizationHook):
+    """Hooks that are called when the gradient is computed
+
+    The gradient is guaranteed to be unscaled in this case.
+    """
+
+    pass
+
+
+class GradientClippingHook(GradientHook):
+    """Gradient clipping"""
+
+    max_norm: Param[float]
+    """Maximum norm for gradient clipping"""
+
+    def __call__(self, main: "ScheduledOptimizer"):
+        torch.nn.utils.clip_grad_norm_(main.module.parameters(), self.max_norm)
+
+
 class ScheduledOptimizer:
     def initialize(
         self,
@@ -288,12 +314,14 @@ class ScheduledOptimizer:
         num_training_steps: int,
         module: Module,
         use_scaler: bool,
+        hooks: List[OptimizationHook] = [],
     ):
         self.schedulers = []
         self.scheduler_factories = []
         self.optimizers = []
         self.scheduler_steps = -1  # Number of scheduler steps
         self.num_training_steps = num_training_steps
+        self.hooks = hooks
 
         try:
             next(module.parameters())
@@ -365,6 +393,17 @@ class ScheduledOptimizer:
                 optimizer.step()
 
         else:
+            # Unscale first
+            for optimizer in self.optimizers:
+                self.scaler._unscale(optimizer)
+
+            # Apply gradient hooks
+            foreach(
+                self.context.hooks(GradientHook),
+                lambda hook: hook(self),
+            )
+
+            # Step
             for optimizer in self.optimizers:
                 self.scaler.step(optimizer)
             context.add_metric(

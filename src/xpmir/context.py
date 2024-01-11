@@ -1,6 +1,5 @@
 from typing import Callable, DefaultDict, Dict, List, Type, TypeVar
 from experimaestro import Config
-from xpmir.letor import DeviceInformation
 
 
 class Hook(Config):
@@ -30,8 +29,7 @@ class Context:
     hooksmap: Dict[Type, List[Hook]]
     """Map of hooks"""
 
-    def __init__(self, device_information: DeviceInformation, hooks: List[Hook] = []):
-        self.device_information = device_information
+    def __init__(self, hooks: List[Hook] = []):
         self.hooksmap = DefaultDict(lambda: [])
         for hook in hooks:
             self.add_hook(hook)
