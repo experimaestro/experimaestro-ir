@@ -25,7 +25,13 @@ from xpmir.learning.context import (
 )
 from xpmir.learning.metrics import Metrics
 
-from .optim import Module, ModuleLoader, ParameterOptimizer, ScheduledOptimizer
+from .optim import (
+    Module,
+    ModuleLoader,
+    ParameterOptimizer,
+    ScheduledOptimizer,
+    OptimizationHook,
+)
 from .batchers import RecoverableOOMError
 
 logger = easylog()
@@ -236,7 +242,11 @@ class Learner(Task, EasyLogger):
         self.trainer.to(device_information.device)
         num_training_steps = self.max_epochs * self.steps_per_epoch
         self.optimizer.initialize(
-            self.optimizers, num_training_steps, self.model, self.use_fp16
+            self.optimizers,
+            num_training_steps,
+            self.model,
+            self.use_fp16,
+            hooks=[hook for hook in self.hooks if isinstance(hook, OptimizationHook)],
         )
 
         foreach(
