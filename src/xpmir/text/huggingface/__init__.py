@@ -25,7 +25,11 @@ from .tokenizers import (  # noqa: F401
     HFStringTokenizer,
     HFListTokenizer,
 )
-from .encoders import HFModel, HFTokensEncoder  # noqa: F401
+from .encoders import (  # noqa: F401
+    HFModel,
+    HFTokensEncoder,
+    HFCLSEncoder,
+)
 
 
 try:

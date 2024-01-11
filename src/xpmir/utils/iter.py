@@ -268,7 +268,7 @@ class SkippingIterator(GenericSerializableIterator[T, SkippingIteratorState]):
         return iterator
 
 
-class SkippingInfiniteIterator(SkippingIterator[T, SkippingIteratorState]):
+class InfiniteSkippingIterator(SkippingIterator[T, SkippingIteratorState]):
     """Subclass of the SkippingIterator that loops an infinite number of times"""
 
     def __init__(self, iterable: Iterable[T]):

@@ -3,6 +3,7 @@ from .encoders import (  # noqa: F401
     TextEncoderBase,
     TokensEncoderOutput,
     TokenizedTextEncoderBase,
+    TokenizedTextEncoder,
 )
 
 from .tokenizers import (  # noqa: F401

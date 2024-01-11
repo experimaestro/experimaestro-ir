@@ -421,19 +421,17 @@ class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
             def __init__(
                 self,
                 iterator: SerializableIterator[PairwiseSample],
+                random: np.random.RandomState,
                 negative_algo: str,
                 documents: DocumentStore,
             ):
                 super().__init__(iterator)
+                self.random = random
                 self.negative_algo = negative_algo
                 self.documents = documents
 
-            def restore_state(self, state):
-                self.random.set_state(state["random"])
-                self.iter = super().restore_state(state)
-
-            def next(self):
-                sample = super().next()  # type: PairwiseSample
+            def __next__(self):
+                sample = next(self.iterator)  # type: PairwiseSample
                 possible_algos = sample.negatives.keys()
 
                 assert (
@@ -463,7 +461,7 @@ class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
 
         base = InfiniteSkippingIterator(iterable_of(lambda: self.dataset.iter()))
 
-        return _Iterator(base, self.negative_algo, self.documents)
+        return _Iterator(base, self.random, self.negative_algo, self.documents)
 
 
 # --- Dataloader
