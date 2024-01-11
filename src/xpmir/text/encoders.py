@@ -133,19 +133,30 @@ class TextEncoderBase(Encoder, Generic[InputType, EncoderOutput]):
 
 
 class TextEncoder(TextEncoderBase[str, torch.Tensor]):
-    """Encodes a text into a vector"""
+    """Encodes a text into a vector
+
+    .. deprecated:: 1.3
+        Use TextEncoderBase directly
+    """
 
     pass
 
 
 class DualTextEncoder(TextEncoderBase[Tuple[str, str], torch.Tensor]):
-    """Encodes a pair of text into a vector"""
+    """Encodes a pair of text into a vector
+
+    .. deprecated:: 1.3
+        Use TextEncoderBase directly
+    """
 
     pass
 
 
 class TripletTextEncoder(TextEncoderBase[Tuple[str, str, str], torch.Tensor]):
     """Encodes a triplet of text into a vector
+
+    .. deprecated:: 1.3
+        Use TextEncoderBase directly
 
     This is used in models such as DuoBERT where we encode (query, positive,
     negative) triplets.
@@ -158,21 +169,25 @@ class TripletTextEncoder(TextEncoderBase[Tuple[str, str, str], torch.Tensor]):
 
 
 @define
-class TokensRepresentationOutput:
-    tokenized: TokenizedTexts
-    """Tokenized texts"""
-
+class RepresentationOutput:
     value: torch.Tensor
-    """A 3D tensor (batch x tokens x dimension)"""
+    """An arbitrary representation"""
 
 
 @define
-class TextsRepresentationOutput:
+class TokensRepresentationOutput(RepresentationOutput):
+    """A 3D tensor (batch x tokens x dimension)"""
+
     tokenized: TokenizedTexts
     """Tokenized texts"""
 
-    value: torch.Tensor
-    """A 2D tensor representing full texts (batch x dimension)"""
+
+@define
+class TextsRepresentationOutput(RepresentationOutput):
+    """Value is atensor representing full texts (batch x dimension)"""
+
+    tokenized: TokenizedTexts
+    """Tokenized texts"""
 
 
 class TokenizedEncoder(Encoder, Generic[EncoderOutput, TokenizerOutput]):

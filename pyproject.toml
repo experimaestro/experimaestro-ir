@@ -1,6 +1,6 @@
 [project]
 name = "experimaestro-ir"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 keywords = ["neural information retrieval", "information retrieval", "experiments"]
 description = "Experimaestro common module for IR experiments"
 dynamic = ["version", "readme", "dependencies"]

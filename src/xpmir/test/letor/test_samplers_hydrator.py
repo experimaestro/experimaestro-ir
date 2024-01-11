@@ -14,7 +14,10 @@ from xpmir.letor.samplers import (
 )
 from xpmir.datasets.adapters import TextStore
 
-from xpmir.letor.samplers.hydrators import SampleHydrator, PairwiseTransformAdapter
+from xpmir.letor.samplers.hydrators import (
+    SampleHydrator,
+    PairwiseTransformAdapter,
+)
 
 
 class TripletIterator(TrainingTriplets):

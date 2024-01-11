@@ -96,6 +96,23 @@ class SamplePrefixAdding(SampleTransform):
             ]
 
 
+class SampleTransformList(SampleTransform):
+    """A class which group a list of sample transforms"""
+
+    adapters: Param[List[SampleTransform]]
+    """The list of sample transform to be applied"""
+
+    def transform_topics(self, topics: List[Topic]) -> List[Topic]:
+        for adapter in self.adapters:
+            topics = adapter.transform_topics(topics) or topics
+        return topics
+
+    def transform_documents(self, documents: List[Document]) -> List[Document]:
+        for adapter in self.adapters:
+            documents = adapter.transform_documents(documents) or documents
+        return documents
+
+
 class PairwiseTransformAdapter(PairwiseSampler):
     """Transforms pairwise samples using an adapter
 
