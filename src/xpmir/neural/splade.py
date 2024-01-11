@@ -1,4 +1,4 @@
-from typing import List, Optional, Any
+from typing import List, Optional, Generic
 from experimaestro import Config, Param
 import torch.nn as nn
 import torch
@@ -8,10 +8,16 @@ from xpmir.text.huggingface import (
     OneHotHuggingFaceEncoder,
     TransformerTokensEncoderWithMLMOutput,
 )
-from xpmir.text.encoders import TextEncoder
+from xpmir.text import TokenizerOptions
+from xpmir.text.huggingface import HFTokenizerBase
+from xpmir.text.encoders import (
+    TextEncoder,
+    TextEncoderBase,
+    InputType as EncoderInputType,
+    TextsRepresentationOutput,
+)
 from xpmir.neural.dual import DotDense, ScheduledFlopsRegularizer
 from xpmir.text.huggingface.base import HFMaskedLanguageModel
-from xpmir.text.huggingface.tokenizers import HFTokenizer
 from xpmir.utils.utils import easylog
 
 logger = easylog()
@@ -109,14 +115,18 @@ class SpladeTextEncoder(TextEncoder, DistributableModel):
         self.model = update(self.model)
 
 
-class SpladeTextEncoderV2(TextEncoder, DistributableModel):
-    """Splade model (V2)
+class SpladeTextEncoderV2(
+    TextEncoderBase[EncoderInputType, TextsRepresentationOutput],
+    DistributableModel,
+    Generic[EncoderInputType],
+):
+    """Splade model text encoder (V2)
 
     It is only a text encoder since the we use `xpmir.neural.dual.DotDense`
-    as the scorer class. Compared to V1, it uses the new HF classes.
+    as the scorer class. Compared to V1, it uses the new text HF encoder abstractions.
     """
 
-    tokenizer: Param[HFTokenizer]
+    tokenizer: Param[HFTokenizerBase[EncoderInputType]]
     """The tokenizer from Hugging Face"""
 
     encoder: Param[HFMaskedLanguageModel]
@@ -141,9 +151,11 @@ class SpladeTextEncoderV2(TextEncoder, DistributableModel):
             self.aggregation.get_output_module(output_embeddings)
         )
 
-    def forward(self, texts: List[Any]) -> torch.Tensor:
+    def forward(self, texts: EncoderInputType) -> torch.Tensor:
         """Returns a batch x vocab tensor"""
-        tokenized = self.tokenizer.batch_tokenize(texts, mask=True, maxlen=self.maxlen)
+        tokenized = self.tokenizer.tokenize(
+            texts, options=TokenizerOptions(self.maxlen)
+        )
         return self.encoder(tokenized)
 
     @property

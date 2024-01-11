@@ -30,10 +30,10 @@ class CoSPLADE(ConversationRepresentationEncoder):
     history_size: Param[int] = 0
     """Size of history to take into account"""
 
-    queries_encoder: Param[SpladeTextEncoderV2]
+    queries_encoder: Param[SpladeTextEncoderV2[List[List[str]]]]
     """Encoder for the query history (the first one being the current one)"""
 
-    history_encoder: Param[SpladeTextEncoderV2]
+    history_encoder: Param[SpladeTextEncoderV2[Tuple[str, str]]]
     """Encoder for (query, answer) pairs"""
 
     def forward(self, records: List[HistoryRecord]):

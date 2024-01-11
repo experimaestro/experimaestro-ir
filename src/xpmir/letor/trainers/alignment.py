@@ -5,7 +5,6 @@ from typing import Dict
 
 import numpy as np
 import torch
-from attr import define
 from experimaestro import Config, Param
 
 from xpmir.learning.context import Loss
@@ -13,11 +12,7 @@ from xpmir.learning.base import BaseSampler
 from xpmir.learning import Module
 from xpmir.letor.trainers import LossTrainer, TrainerContext
 from xpmir.utils.iter import MultiprocessSerializableIterator, SerializableIterator
-
-
-@define
-class RepresentationOutput:
-    value: torch.Tensor
+from xpmir.text.encoders import RepresentationOutput
 
 
 class AlignmentLoss(Config, ABC):

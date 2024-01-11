@@ -2,15 +2,17 @@ from abc import ABC, abstractmethod
 from typing import List
 from experimaestro import Config, Param
 from datamaestro_text.data.conversation import Conversation
-from xpmir.learning import Module
-from xpmir.text.encoders import TextEncoder
+from xpmir.text.encoders import TextEncoder, TextEncoderBase
 from xpmir.letor.trainers.alignment import RepresentationOutput
 
 
-class ConversationRepresentationEncoder(Module, ABC):
+class ConversationRepresentationEncoder(
+    TextEncoderBase[List[Conversation], RepresentationOutput], ABC
+):
     @abstractmethod
     def forward(self, conversations: List[Conversation]) -> RepresentationOutput:
-        pass
+        """Represents a list of conversations"""
+        ...
 
 
 class GoldQueryConversationRepresentationEncoder(ConversationRepresentationEncoder):
