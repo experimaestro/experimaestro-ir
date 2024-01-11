@@ -322,6 +322,7 @@ class ScheduledOptimizer:
         self.scheduler_steps = -1  # Number of scheduler steps
         self.num_training_steps = num_training_steps
         self.hooks = hooks
+        self.module = module
 
         try:
             next(module.parameters())
