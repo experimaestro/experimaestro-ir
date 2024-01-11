@@ -120,6 +120,10 @@ class SpladeTextEncoderV2(
     DistributableModel,
     Generic[EncoderInputType],
 ):
+    # TODO: use "SpladeTextEncoder" identifier until
+    # https://github.com/experimaestro/experimaestro-python/issues/56 is fixed
+    __xpmid__ = SpladeTextEncoder.__getxpmtype__().identifier
+
     """Splade model text encoder (V2)
 
     It is only a text encoder since the we use `xpmir.neural.dual.DotDense`

@@ -1,4 +1,6 @@
 from abc import ABC, abstractmethod
+from attrs import define
+import torch
 from typing import List
 from experimaestro import Config, Param
 from datamaestro_text.data.conversation import Conversation
@@ -26,3 +28,30 @@ class GoldQueryConversationRepresentationEncoder(ConversationRepresentationEncod
 class QueryRewritingSamplerLoss(Config):
     weight: Param[float] = 1.0
     """The weight for this loss"""
+
+
+@define
+class ConversationRepresentationOutput:
+    representation: torch.Tensor
+
+
+class ContextualizedRepresentationLoss(Config):
+    def __call__(
+        self,
+        input: ConversationRepresentationOutput,
+        target: ConversationRepresentationOutput,
+    ):
+        pass
+
+
+class MSEContextualizedRepresentationLoss(ContextualizedRepresentationLoss):
+    """Computes the asymetric loss for CoSPLADE"""
+
+    def __call__(
+        self,
+        input: ConversationRepresentationOutput,
+        target: ConversationRepresentationOutput,
+    ):
+        return torch.nn.functional.mse_loss(
+            target.representation, input.representation, 0
+        )
