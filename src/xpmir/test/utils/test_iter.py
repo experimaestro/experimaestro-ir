@@ -5,7 +5,7 @@ from decorator import decorator
 from xpmir.utils.iter import (
     RandomSerializableIterator,
     SkippingIterator,
-    SkippingInfiniteIterator,
+    InfiniteSkippingIterator,
     MultiprocessSerializableIterator,
     RandomizedSerializableIterator,
     SerializableIterator,
@@ -40,7 +40,7 @@ def test_iter_skipping_iterator():
 
 @iter_checker(steps=5)
 def test_iter_skipping_infinite_iterator():
-    return SkippingInfiniteIterator(list(range(3)))
+    return InfiniteSkippingIterator(list(range(3)))
 
 
 @iter_checker(steps=5)
@@ -51,9 +51,9 @@ def test_iter_mp_iterator():
 
 @iter_checker(steps=5)
 def test_iter_randomized_iterator():
-    class Iterator(RandomStateSerializableAdaptor[SkippingInfiniteIterator]):
+    class Iterator(RandomStateSerializableAdaptor[InfiniteSkippingIterator]):
         def __init__(self, n: int):
-            base = SkippingInfiniteIterator(list(range(n)))
+            base = InfiniteSkippingIterator(list(range(n)))
             super().__init__(base)
 
         def __next__(self):
