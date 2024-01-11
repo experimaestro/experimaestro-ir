@@ -2,6 +2,7 @@ import numpy as np
 from xpmir.utils.iter import (
     RandomSerializableIterator,
     SkippingIterator,
+    SkippingInfiniteIterator,
     MultiprocessSerializableIterator,
 )
 
@@ -10,6 +11,21 @@ def test_iter_skipping_iterator():
     a = list(range(10))
 
     iterator = SkippingIterator(iter(a))
+    for _ in range(5):
+        next(iterator)
+
+    state = iterator.state_dict()
+    x = next(iterator)
+
+    iterator = SkippingIterator(iter(a))
+    iterator.load_state_dict(state)
+    assert next(iterator) == x
+
+
+def test_iter_skipping_infinite_iterator():
+    a = list(range(3))
+
+    iterator = SkippingInfiniteIterator(a)
     for _ in range(5):
         next(iterator)
 

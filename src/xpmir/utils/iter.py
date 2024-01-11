@@ -5,6 +5,7 @@ from typing import (
     Callable,
     Dict,
     Tuple,
+    Iterable,
     Iterator,
     Protocol,
     TypeVar,
@@ -183,7 +184,7 @@ class SkippingIterator(GenericSerializableIterator[T, SkippingIteratorState]):
             next(self.iterator)
         self.position = count
 
-    def next(self):
+    def next(self) -> T:
         self.position += 1
         return next(self.iterator)
 
@@ -194,6 +195,22 @@ class SkippingIterator(GenericSerializableIterator[T, SkippingIteratorState]):
             return SkippingIterator(iterator)
 
         return iterator
+
+
+class SkippingInfiniteIterator(SkippingIterator[T, SkippingIteratorState]):
+    """Subclass of the SkippingIterator that loops an infinite number of times"""
+
+    def __init__(self, iterable: Iterable[T]):
+        super().__init__(iter(iterable))
+        self.iterable = iterable
+
+    def next(self) -> T:
+        try:
+            return super().next()
+        except StopIteration:
+            self.iterator = iter(self.iterable)
+            self.position = 1
+            return next(self.iterator)
 
 
 class StopIterationClass:
