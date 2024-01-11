@@ -1,4 +1,5 @@
 import torch
+from typing import Tuple
 from experimaestro import Param
 from xpmir.distributed import DistributableModel
 from xpmir.learning.batchers import Batcher
@@ -8,7 +9,7 @@ from xpmir.letor.records import (
     PairwiseRecords,
 )
 from xpmir.rankers import LearnableScorer
-from xpmir.text.encoders import DualTextEncoder, TripletTextEncoder
+from xpmir.text.encoders import TextEncoderBase, TripletTextEncoder
 from xpmir.rankers import (
     DuoLearnableScorer,
     DuoTwoStageRetriever,
@@ -26,7 +27,7 @@ class CrossScorer(LearnableScorer, DistributableModel):
     AKA Cross-Encoder
     """
 
-    encoder: Param[DualTextEncoder]
+    encoder: Param[TextEncoderBase[Tuple[str, str], torch.Tensor]]
     """an encoder for encoding the concatenated query-document tokens which
     doesn't contains the final linear layer"""
 
