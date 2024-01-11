@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from typing import Optional, Tuple, Iterator, Any
 from experimaestro import Param, Config
 import torch
@@ -5,22 +6,32 @@ import numpy as np
 from datamaestro_text.data.ir import DocumentStore
 from datamaestro_text.data.ir.base import TextTopic, TextDocument
 from xpmir.letor import Random
-from xpmir.letor.records import Document, PairwiseRecord, ProductRecords, Query
+from xpmir.letor.records import DocumentRecord, PairwiseRecord, ProductRecords, Query
 from xpmir.letor.samplers import BatchwiseSampler, PairwiseSampler
 from xpmir.utils.iter import RandomSerializableIterator, SerializableIterator
 
 
-class DocumentSampler(Config):
+class DocumentSampler(Config, ABC):
     """How to sample from a document store"""
 
     documents: Param[DocumentStore]
 
-    def __call__(self) -> Tuple[int, Iterator[str]]:
+    @abstractmethod
+    def __call__(self) -> Tuple[Optional[int], Iterator[DocumentRecord]]:
+        """Returns an indicative number of samples and an iterator"""
         raise NotImplementedError()
+
+    def __iter__(self) -> Iterator[DocumentRecord]:
+        """Shorthand method that directly returns an iterator"""
+        _, iter = self()
+        return iter
 
 
 class HeadDocumentSampler(DocumentSampler):
-    """A basic sampler that iterates over the first documents"""
+    """A basic sampler that iterates over the first documents
+
+    if max_count is 0, it iterates over all documents
+    """
 
     max_count: Param[int] = 0
     """Maximum number of documents (if 0, no limit)"""
@@ -28,7 +39,7 @@ class HeadDocumentSampler(DocumentSampler):
     max_ratio: Param[float] = 0
     """Maximum ratio of documents (if 0, no limit)"""
 
-    def __call__(self) -> Tuple[int, Iterator[str]]:
+    def __call__(self) -> Tuple[int, Iterator[DocumentRecord]]:
         count = (self.max_ratio or 1) * self.documents.documentcount
 
         if self.max_count > 0:
@@ -38,8 +49,8 @@ class HeadDocumentSampler(DocumentSampler):
         return count, self.iter(count)
 
     def iter(self, count):
-        for ix, document in zip(range(count), self.documents.iter_documents()):
-            yield document.text
+        for _, document in zip(range(count), self.documents.iter_documents()):
+            yield document
 
 
 class RandomDocumentSampler(DocumentSampler):
@@ -57,9 +68,6 @@ class RandomDocumentSampler(DocumentSampler):
     random: Param[Optional[Random]]
     """Random sampler"""
 
-    def __validate__(self):
-        assert self.max_count > 0 or self.max_ratio > 0
-
     def __call__(self) -> Tuple[int, Iterator[str]]:
         # Compute the number of documents to sample
         count = (self.max_ratio or 1) * self.documents.documentcount
@@ -76,10 +84,10 @@ class RandomDocumentSampler(DocumentSampler):
             np.arange(self.documents.documentcount), size=count, replace=False
         )
         for docid in docids:
-            yield self.documents.document(int(docid)).text
+            yield self.documents.document_int(int(docid))
 
 
-class RandomSpanSampler(DocumentSampler, BatchwiseSampler, PairwiseSampler):
+class RandomSpanSampler(BatchwiseSampler, PairwiseSampler):
     """This sampler uses positive samples coming from the same documents
     and negative ones coming from others
 
@@ -89,6 +97,9 @@ class RandomSpanSampler(DocumentSampler, BatchwiseSampler, PairwiseSampler):
         Aug. 2021, Accessed: Sep. 17, 2021. [Online].
         http://arxiv.org/abs/2108.05540
     """
+
+    documents: Param[DocumentStore]
+    """The document store to use"""
 
     max_spansize: Param[int] = 1000
     """Maximum span size in number of characters"""
@@ -137,8 +148,8 @@ class RandomSpanSampler(DocumentSampler, BatchwiseSampler, PairwiseSampler):
 
                 yield PairwiseRecord(
                     Query(TextTopic(spans_pos_qry[0])),
-                    Document(TextDocument(spans_pos_qry[1])),
-                    Document(TextDocument(spans_neg[random.randint(0, 2)])),
+                    DocumentRecord(TextDocument(spans_pos_qry[1])),
+                    DocumentRecord(TextDocument(spans_neg[random.randint(0, 2)])),
                 )
 
         return RandomSerializableIterator(self.random, iter)
@@ -161,7 +172,7 @@ class RandomSpanSampler(DocumentSampler, BatchwiseSampler, PairwiseSampler):
                     if not res:
                         continue
                     batch.add_topics(Query(None, res[0]))
-                    batch.add_documents(Document(None, res[1], 0))
+                    batch.add_documents(DocumentRecord(None, res[1], 0))
                 batch.set_relevances(relevances)
                 yield batch
 
