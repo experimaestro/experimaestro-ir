@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Generic, List, Tuple, TypeVar, Union
+from typing import Generic, List, Tuple, TypeVar, Union, Optional, Callable
 import sys
 
 from attrs import define
@@ -13,10 +13,9 @@ from xpmir.utils.utils import EasyLogger
 from .tokenizers import (
     Tokenizer,
     TokenizedTexts,
-    SimpleTokenizer,
-    DualTokenizer,
-    TripletTokenizer,
-    ListTokenizer,
+    TokenizerBase,
+    TokenizerOutput,
+    TokenizerOptions,
 )
 
 T = TypeVar("T")
@@ -50,8 +49,7 @@ class TokensEncoderOutput:
 
 
 class TokensEncoder(Tokenizer, Encoder):
-    """(deprecated, use TokensEncoderBase) Represent a text as a sequence of
-    token representations"""
+    """(deprecated) Represent a text as a sequence of token representations"""
 
     def enc_query_doc(
         self, queries: List[str], documents: List[str], d_maxlen=None, q_maxlen=None
@@ -107,45 +105,46 @@ class TokensEncoder(Tokenizer, Encoder):
         return sys.maxsize
 
 
-class TokensEncoderBase(Encoder, ABC):
-    """Represent a text as a sequence of token representations"""
-
-    def forward(self, texts: TokenizedTexts) -> TokensEncoderOutput:
-        ...
-
-
 LegacyEncoderInput = Union[List[str], List[Tuple[str, str]], List[Tuple[str, str, str]]]
 
 
 InputType = TypeVar("InputType")
+EncoderOutput = TypeVar("EncoderOutput")
 
 
-class TextEncoderBase(Encoder, Generic[InputType]):
-    """Base class for legacy text encoders"""
+class TextEncoderBase(Encoder, Generic[InputType, EncoderOutput]):
+    """Base class for all text encoders"""
+
+    __call__: Callable[Tuple["TextEncoderBase", List[InputType]], EncoderOutput]
+
+    @abstractmethod
+    def forward(self, texts: List[InputType]) -> EncoderOutput:
+        raise NotImplementedError()
 
     @property
+    @abstractmethod
     def dimension(self) -> int:
         """Returns the dimension of the output space"""
         raise NotImplementedError()
 
-    @abstractmethod
-    def forward(self, texts: InputType) -> torch.Tensor:
-        raise NotImplementedError()
+    def max_tokens(self):
+        """Returns the maximum number of tokens this encoder can process"""
+        return sys.maxsize
 
 
-class TextEncoder(TextEncoderBase[str]):
+class TextEncoder(TextEncoderBase[str, torch.Tensor]):
     """Encodes a text into a vector"""
 
     pass
 
 
-class DualTextEncoder(TextEncoderBase[Tuple[str, str]]):
+class DualTextEncoder(TextEncoderBase[Tuple[str, str], torch.Tensor]):
     """Encodes a pair of text into a vector"""
 
     pass
 
 
-class TripletTextEncoder(TextEncoderBase[Tuple[str, str, str]]):
+class TripletTextEncoder(TextEncoderBase[Tuple[str, str, str], torch.Tensor]):
     """Encodes a triplet of text into a vector
 
     This is used in models such as DuoBERT where we encode (query, positive,
@@ -155,66 +154,81 @@ class TripletTextEncoder(TextEncoderBase[Tuple[str, str, str]]):
     pass
 
 
-class ListTextEncoder(TextEncoderBase[List[str]]):
-    """Encodes a list of strings (variable length) into a vector"""
-
-    pass
+# --- Generic tokenized text encoders
 
 
-# --- Tokenized text encoders
+@define
+class TokensRepresentationOutput:
+    tokenized: TokenizedTexts
+    """Tokenized texts"""
+
+    value: torch.Tensor
+    """A 3D tensor (batch x tokens x dimension)"""
 
 
-class TokenizedTextEncoder(Encoder):
+@define
+class TextsRepresentationOutput:
+    tokenized: TokenizedTexts
+    """Tokenized texts"""
+
+    value: torch.Tensor
+    """A 2D tensor representing full texts (batch x dimension)"""
+
+
+class TokenizedEncoder(Encoder, Generic[EncoderOutput, TokenizerOutput]):
     """Encodes a tokenized text into a vector"""
 
     @abstractmethod
-    def forward(self, inputs: TokenizedTexts) -> torch.Tensor:
+    def forward(self, inputs: TokenizerOutput) -> EncoderOutput:
         pass
 
-
-class SimpleTokenizedTextEncoder(TextEncoderBase[str]):
-    """Encodes a text into a vector"""
-
-    tokenizer: Param[SimpleTokenizer]
-    encoder: Param[TokenizedTextEncoder]
-
-    def forward(self, inputs: List[str]):
-        tokenized = self.tokenizer(inputs)
-        return self.encoder(tokenized)
+    @property
+    def max_length(self):
+        """Returns the maximum length that the model can process"""
+        return sys.maxsize
 
 
-class DualTokenizedTextEncoder(TextEncoderBase[Tuple[str, str]]):
-    """Encodes a pair of text into a vector"""
-
-    tokenizer: Param[DualTokenizer]
-    encoder: Param[TokenizedTextEncoder]
-
-    def forward(self, inputs: List[Tuple[str, str]]):
-        tokenized = self.tokenizer(inputs)
-        return self.encoder(tokenized)
+class TokenizedTextEncoderBase(TextEncoderBase[InputType, EncoderOutput]):
+    @abstractmethod
+    def forward(
+        self, inputs: List[InputType], options: Optional[TokenizerOptions] = None
+    ) -> EncoderOutput:
+        ...
 
 
-class TripletTokenizedTextEncoder(TextEncoderBase[Tuple[str, str, str]]):
-    """Encodes a triplet of text into a vector
+class TokenizedTextEncoder(
+    TokenizedTextEncoderBase[InputType, EncoderOutput],
+    Generic[InputType, EncoderOutput, TokenizerOutput],
+):
+    """Encodes a tokenizer input into a vector
 
-    This is used in models such as DuoBERT where we encode (query, positive,
-    negative) triplets.
+    This pipelines two objects:
+
+    1. A tokenizer that segments the text;
+    2. An encoder that returns a representation of the tokens in a vector space
     """
 
-    tokenizer: Param[TripletTokenizer]
-    encoder: Param[TokenizedTextEncoder]
+    tokenizer: Param[TokenizerBase[InputType, TokenizerOutput]]
+    encoder: Param[TokenizedEncoder[TokenizerOutput, EncoderOutput]]
 
-    def forward(self, inputs: List[Tuple[str, str, str]]):
-        tokenized = self.tokenizer(inputs)
+    def __initialize__(self, options):
+        super().__initialize__(options)
+        self.tokenizer.initialize(options)
+        self.encoder.initialize(options)
+
+    def forward(
+        self, inputs: List[InputType], options: Optional[TokenizerOptions] = None
+    ) -> EncoderOutput:
+        options = options or TokenizerOptions()
+        options.max_length = min(
+            self.encoder.max_length, options.max_length or sys.maxsize
+        )
+        tokenized = self.tokenizer.tokenize(inputs, options)
         return self.encoder(tokenized)
 
+    def static(self):
+        """Whether embeddings parameters are learnable"""
+        return self.encoder.static()
 
-class ListTokenizedTextEncoder(TextEncoderBase[List[str]]):
-    """Encodes a list of strings (variable length) into a vector"""
-
-    tokenizer: Param[ListTokenizer]
-    encoder: Param[TokenizedTextEncoder]
-
-    def forward(self, inputs: List[List[str]]):
-        tokenized = self.tokenizer(inputs)
-        return self.encoder(tokenized)
+    def dimension(self):
+        return self.encoder.dimension()

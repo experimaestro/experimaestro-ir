@@ -1,15 +1,16 @@
 import logging
-from typing import List, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 from experimaestro import Config, Param
 
 from xpmir.learning.optim import ModuleInitOptions
+from xpmir.utils.utils import Initializable
 from xpmir.text.tokenizers import (
     TokenizerBase,
-    ListTokenizer,
     TokenizedTexts,
-    Tokenizer,
+    TokenizerInput,
+    TokenizerOptions,
 )
 
 try:
@@ -19,44 +20,54 @@ except Exception:
     raise
 
 
-class HFTokenizer(Tokenizer):
+HFTokenizerInput = Union[List[str], List[Tuple[str, str]]]
+
+
+class HFTokenizer(Config, Initializable):
+    """This is the main tokenizer class"""
+
     model_id: Param[str]
     """The tokenizer hugginface ID"""
 
+    max_length: Param[int] = 4096
+    """Maximum length for the tokenizer (can be overridden)"""
+
+    DEFAULT_OPTIONS = TokenizerOptions()
+
     def __initialize__(self, options: ModuleInitOptions):
         """Initialize the HuggingFace transformer"""
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            self.model_id, model_max_length=self.max_length
+        )
 
         self.cls = self.tokenizer.cls_token
         self.cls_id = self.tokenizer.cls_token_id
         self.sep_id = self.tokenizer.sep_token_id
 
-    def batch_tokenize(
+    def tokenize(
         self,
-        texts: Union[List[str], List[Tuple[str, str]]],
-        batch_first=True,
-        maxlen=None,
-        mask=False,
+        texts: HFTokenizerInput,
+        options: Optional[TokenizerOptions] = None,
     ) -> TokenizedTexts:
-        if maxlen is None:
-            maxlen = self.tokenizer.model_max_length
+        options = options or HFTokenizer.DEFAULT_OPTIONS
+        max_length = options.max_length
+        if max_length is None:
+            max_length = self.tokenizer.model_max_length
         else:
-            maxlen = min(maxlen, self.tokenizer.model_max_length)
-
-        assert batch_first, "Batch first is the only option"
+            max_length = min(max_length, self.tokenizer.model_max_length)
 
         r = self.tokenizer(
             list(texts),
-            max_length=maxlen,
+            max_length=max_length,
             truncation=True,
             padding=True,
             return_tensors="pt",
-            return_length=True,
-            return_attention_mask=mask,
+            return_length=options.return_length,
+            return_attention_mask=options.return_mask,
         )
         return TokenizedTexts(
             None,
-            r["input_ids"].to(self.device),
+            r["input_ids"],
             r["length"],
             r.get("attention_mask", None),
             r.get("token_type_ids", None),
@@ -77,7 +88,7 @@ class HFTokenizer(Tokenizer):
         return self.tokenizer.model_max_length
 
     def dim(self):
-        return self.model.config.hidden_size
+        return self.tokenizer.config.hidden_size
 
     @property
     def vocab_size(self) -> int:
@@ -85,16 +96,48 @@ class HFTokenizer(Tokenizer):
         return self.tokenizer.vocab_size
 
 
-class HFTokenizerBase(TokenizerBase):
+class HFTokenizerBase(TokenizerBase[TokenizerInput, TokenizedTexts]):
+    """Base class for all Hugging-Face tokenizers"""
+
     tokenizer: Param[HFTokenizer]
     """The HuggingFace tokenizer"""
 
+    def __initialize__(self, options: ModuleInitOptions):
+        super().__initialize__(options)
+        self.tokenizer.initialize(options)
 
-class HFListTokenizer(HFTokenizerBase, ListTokenizer):
+    @classmethod
+    def from_pretrained_id(cls, hf_id: str):
+        return cls(tokenizer=HFTokenizer(model_id=hf_id))
+
+    def vocabulary_size(self):
+        return self.tokenizer.vocab_size
+
+    def tok2id(self, tok: str) -> int:
+        return self.tokenizer.tok2id(tok)
+
+    def id2tok(self, idx: int) -> str:
+        return self.tokenizer.id2tok(idx)
+
+
+class HFStringTokenizer(HFTokenizerBase[HFTokenizerInput]):
+    """Process list of texts"""
+
+    def tokenize(
+        self, texts: List[str], options: Optional[TokenizerOptions] = None
+    ) -> TokenizedTexts:
+        return self.tokenizer.tokenize(texts, options=options)
+
+
+class HFListTokenizer(HFTokenizerBase[List[List[str]]]):
     """Process list of texts by separating them by a separator token"""
 
-    def tokenize(self, text_lists: List[List[str]]) -> TokenizedTexts:
+    def tokenize(
+        self, text_lists: List[List[str]], options: Optional[TokenizerOptions] = None
+    ) -> TokenizedTexts:
         assert self.tokenizer.sep_token is not None
         sep = f" {self.tokenizer.cls_token} "
 
-        self.tokenizer.batch_tokenize([sep.join(text_list) for text_list in text_lists])
+        return self.tokenizer.tokenize(
+            [sep.join(text_list) for text_list in text_lists], options=options
+        )

@@ -2,7 +2,7 @@
 
 experimaestro>=1.4.0
 datamaestro>=0.8.13
-datamaestro_text>=2023.11.22
+datamaestro_text>=2024.1.5
 ir_datasets
 docstring_parser
 xpmir_rust == 0.20.*

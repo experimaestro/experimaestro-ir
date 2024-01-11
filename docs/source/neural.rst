@@ -55,13 +55,12 @@ Interaction models
 
     xpmir.neural.interaction.InteractionScorer
     xpmir.neural.interaction.drmm.Drmm
-    xpmir.neural.colbert.Colbert
-
+    xpmir.neural.interaction.colbert.Colbert
 
 .. autoxpmconfig:: xpmir.neural.interaction.InteractionScorer
 .. autoxpmconfig:: xpmir.neural.interaction.drmm.Drmm
 
-.. autoxpmconfig:: xpmir.neural.colbert.Colbert
+.. autoxpmconfig:: xpmir.neural.interaction.colbert.Colbert
 
 DRMM
 ****
@@ -76,15 +75,19 @@ DRMM
 Similarity
 ==========
 
-.. autoxpmconfig:: xpmir.neural.common.Similarity
-.. autoxpmconfig:: xpmir.neural.common.L2Distance
-.. autoxpmconfig:: xpmir.neural.common.CosineSimilarity
+.. autoxpmconfig:: xpmir.neural.interaction.common.Similarity
+.. autoxpmconfig:: xpmir.neural.interaction.common.DotProductSimilarity
+.. autoxpmconfig:: xpmir.neural.interaction.common.CosineSimilarity
+
+.. autoclass:: xpmir.neural.interaction.common.SimilarityInput
+.. autoclass:: xpmir.neural.interaction.common.SimilarityOutput
 
 
 Sparse Models
 =============
 
 .. autoxpmconfig:: xpmir.neural.splade.SpladeTextEncoder
+.. autoxpmconfig:: xpmir.neural.splade.SpladeTextEncoderV2
 .. autoxpmconfig:: xpmir.neural.splade.Aggregation
 .. autoxpmconfig:: xpmir.neural.splade.MaxAggregation
 .. autoxpmconfig:: xpmir.neural.splade.SumAggregation
