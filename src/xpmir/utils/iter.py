@@ -1,4 +1,5 @@
 import numpy as np
+from abc import ABC, abstractmethod
 import torch.multiprocessing as mp
 from typing import (
     Generic,
@@ -13,7 +14,6 @@ from typing import (
     TypedDict,
 )
 from xpmir.utils.utils import easylog
-from abc import abstractmethod
 import logging
 import atexit
 
@@ -32,9 +32,11 @@ class SerializableIterator(Iterator[T], Generic[T, State]):
     This is used when saving the sampler state
     """
 
+    @abstractmethod
     def state_dict(self) -> State:
         ...
 
+    @abstractmethod
     def load_state_dict(self, state: State):
         ...
 
@@ -149,6 +151,67 @@ class RandomSerializableIterator(SerializableIterator[T, Any]):
 
     def __next__(self):
         return next(self.iter)
+
+
+class RandomizedSerializableIteratorState(TypedDict):
+    random: Dict[str, Any]
+    state: Any
+
+
+class RandomStateSerializableIterator(SerializableIterator[T, State], ABC):
+    @abstractmethod
+    def set_random(self, random: np.random.RandomState):
+        ...
+
+
+class RandomStateSerializableAdaptor(RandomStateSerializableIterator[T, State], ABC):
+    """Adapter for random state-biased iterator"""
+
+    def __init__(self, iterator: SerializableIterator[T, State]):
+        self.random = None
+        self.iterator = iterator
+
+    def set_random(self, random: np.random.RandomState):
+        self.random = random
+
+    def load_state_dict(self, state: State):
+        return self.iterator.load_state_dict(state)
+
+    def state_dict(self) -> State:
+        return self.iterator.state_dict()
+
+
+class RandomizedSerializableIterator(
+    RandomSerializableIterator[T, RandomizedSerializableIteratorState[State]],
+    Generic[T, State],
+):
+    """Serializable iterator with a random state"""
+
+    def __init__(
+        self, random: np.random.RandomState, iterator: RandomStateSerializableIterator
+    ):
+        """Creates a new iterator based on a random generator
+
+        Args:
+            random (np.random.RandomState): The initial random state
+
+            generator (Callable[[np.random.RandomState], Iterator[T]]): Generate
+            a new iterator from a random seed
+        """
+        self.random = random
+        self.iterator = iterator
+        iterator.set_random(self.random)
+
+    def load_state_dict(self, state: RandomizedSerializableIteratorState[State]):
+        self.random.set_state(state["random"])
+        self.iterator.set_random(self.random)
+        self.iterator.load_state_dict(state["state"])
+
+    def state_dict(self) -> RandomizedSerializableIteratorState[State]:
+        return {"random": self.random.get_state(), "state": self.iterator.state_dict()}
+
+    def __next__(self):
+        return next(self.iterator)
 
 
 class SkippingIteratorState(TypedDict):
