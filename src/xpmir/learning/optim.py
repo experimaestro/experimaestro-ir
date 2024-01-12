@@ -18,7 +18,7 @@ from experimaestro import (
 from experimaestro.scheduler import Job, Listener
 from experimaestro.utils import cleanupdir
 from experimaestro.scheduler.services import WebService
-from xpmir.context import Hook
+from xpmir.context import Hook, Context
 from xpmir.utils.utils import easylog, Initializable, foreach
 from xpmir.learning.metrics import ScalarMetric
 from .schedulers import Scheduler
@@ -321,8 +321,8 @@ class ScheduledOptimizer:
         self.optimizers = []
         self.scheduler_steps = -1  # Number of scheduler steps
         self.num_training_steps = num_training_steps
-        self.hooks = hooks
         self.module = module
+        self.context = Context(hooks)
 
         try:
             next(module.parameters())
@@ -396,7 +396,7 @@ class ScheduledOptimizer:
         else:
             # Unscale first
             for optimizer in self.optimizers:
-                self.scaler._unscale(optimizer)
+                self.scaler.unscale_(optimizer)
 
             # Apply gradient hooks
             foreach(

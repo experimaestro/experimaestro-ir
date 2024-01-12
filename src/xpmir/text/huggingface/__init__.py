@@ -44,7 +44,7 @@ except Exception:
     logging.error("Install huggingface transformers to use these configurations")
     raise
 
-from xpmir.text.encoders import TokenizedTexts
+from xpmir.text import TokenizedTexts
 
 logger = easylog()
 logger.setLevel(logging.INFO)

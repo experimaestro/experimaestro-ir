@@ -10,9 +10,9 @@ from typing import (
     TYPE_CHECKING,
 )
 from shutil import rmtree
-from xpmir.context import Context, InitializationHook, Hook
+from xpmir.context import InitializationHook, Hook
 from xpmir.utils.utils import easylog
-from xpmir.learning.devices import DeviceInformation
+from xpmir.learning.devices import DeviceInformation, ComputationContext
 from xpmir.learning.metrics import Metric, Metrics
 from experimaestro.utils import cleanupdir
 from contextlib import contextmanager
@@ -150,7 +150,7 @@ class InitializationTrainingHook(TrainingHook, InitializationHook):
         pass
 
 
-class TrainerContext(Context):
+class TrainerContext(ComputationContext):
     """Contains all the information about the training context
     for a spefic
 
