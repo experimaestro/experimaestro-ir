@@ -3,7 +3,7 @@ from experimaestro import Config, Param
 import torch.nn as nn
 import torch
 from xpmir.context import InitializationHook
-from xpmir.letor import ComputationContext, DistributedDeviceInformation
+from xpmir.learning.devices import ComputationContext, DistributedDeviceInformation
 from xpmir.utils.utils import easylog
 
 logger = easylog()
