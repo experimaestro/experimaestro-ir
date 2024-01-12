@@ -18,13 +18,13 @@ from experimaestro import (
 from experimaestro.scheduler import Job, Listener
 from experimaestro.utils import cleanupdir
 from experimaestro.scheduler.services import WebService
-from xpmir.context import Hook
+from xpmir.context import Hook, Context
 from xpmir.utils.utils import easylog, Initializable, foreach
 from xpmir.learning.metrics import ScalarMetric
 from .schedulers import Scheduler
 
 if TYPE_CHECKING:
-    from xpmir.learning.context import TrainerContext, Context
+    from xpmir.learning.context import TrainerContext
 
 logger = easylog()
 

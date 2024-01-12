@@ -6,6 +6,7 @@ from experimaestro.taskglobals import Env as TaskEnv
 import torch.distributed as dist
 import torch.multiprocessing as mp
 import tempfile
+from xpmir.context import Context
 from xpmir.utils.utils import easylog
 
 logger = easylog()
@@ -18,6 +19,10 @@ class DeviceInformation:
 
     main: bool
     """Flag for the main process (all other are slaves)"""
+
+
+class ComputationContext(Context):
+    device_information: DeviceInformation
 
 
 @dataclass
