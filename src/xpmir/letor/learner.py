@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Dict, Iterator, List
 from datamaestro_text.data.ir import Adhoc
 from experimaestro import Param, pathgenerator, Annotated
+from experimaestro.compat import cached_property
 import numpy as np
 from xpmir.utils.utils import easylog, foreach
 from xpmir.evaluation import evaluate
@@ -117,6 +118,9 @@ class ValidationListener(LearnerListener):
 
         return LearnerListenerStatus.DONT_STOP
 
+    def should_update_validation(self, state: TrainState) -> bool:
+        return state.epoch >= self.warmup
+
     def __call__(self, state: TrainState):
         # Check that we did not stop earlier (when loading from checkpoint / if other
         # listeners have not stopped yet)
@@ -173,3 +177,22 @@ class ValidationListener(LearnerListener):
 
         # Early stopping?
         return self.should_stop()
+
+
+class ReferentialValidationListener(ValidationListener):
+    """A validation listener specific for the referential model, which only
+    store the best checkpoints when the progressive training acheive the max
+    depth"""
+
+    update_interval: Param[int]
+    """the number of epochs where we update the max depth by 1"""
+
+    max_depth: Param[int]
+    """the maximum depth of the model"""
+
+    @cached_property
+    def begin_max_depth_epoch(self):
+        return self.update_interval * (self.max_depth - 1) + 1
+
+    def should_update_validation(self, state: TrainState) -> bool:
+        return state.epoch >= self.begin_max_depth_epoch

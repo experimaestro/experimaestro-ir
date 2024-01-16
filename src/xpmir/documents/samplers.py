@@ -6,7 +6,6 @@ import numpy as np
 from datamaestro_text.data.ir import DocumentStore
 from datamaestro_text.data.ir.base import (
     TextTopic,
-    TextDocument,
     GenericTopic,
     GenericDocument,
 )
@@ -153,8 +152,14 @@ class RandomSpanSampler(BatchwiseSampler, PairwiseSampler):
 
                 yield PairwiseRecord(
                     Query(TextTopic(spans_pos_qry[0])),
-                    DocumentRecord(TextDocument(spans_pos_qry[1])),
-                    DocumentRecord(TextDocument(spans_neg[random.randint(0, 2)])),
+                    DocumentRecord(
+                        GenericDocument(record_pos_qry.get_id(), spans_pos_qry[1])
+                    ),
+                    DocumentRecord(
+                        GenericDocument(
+                            record_neg.get_id(), spans_neg[random.randint(0, 2)]
+                        )
+                    ),
                 )
 
         return RandomSerializableIterator(self.random, iter)
@@ -184,6 +189,7 @@ class RandomSpanSampler(BatchwiseSampler, PairwiseSampler):
         return RandomSerializableIterator(self.random, iterator)
 
 
+# Deprecated
 class UpdatableRandomSpanSampler(RandomSpanSampler):
     """The random span sampler where the negatives are sampled in an
     hierarchical way, designed for REFERENTIAL pretraining.
