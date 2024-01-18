@@ -152,7 +152,7 @@ class ValidationListener(LearnerListener):
                 )
 
                 # Update the top validation
-                if state.epoch >= self.warmup:
+                if self.should_update_validation(state):
                     topstate = self.top.get(metric, None)
                     if topstate is None or value > topstate["value"]:
                         # Save the new top JSON
