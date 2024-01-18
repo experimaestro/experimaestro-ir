@@ -158,15 +158,21 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
     def initialize(self):
         self.kl_lossfn = nn.KLDivLoss(reduction="sum", log_target=True)
 
-    def prepare_sampling_target(self, p=0.5):
+    def prepare_sampling_target(self, bs):
         """The default sampling target: sampling from the conjoint of posdoc and
         query"""
-        return Triplet(pos_doc=0.5, neg_doc=0, query=0.5)
+        return Triplet(
+            pos_doc=torch.ones(bs).to(self.id_generator.device) * 0.5,
+            neg_doc=torch.full((bs,), float("inf")).to(self.id_generator.device),
+            query=torch.ones(bs).to(self.id_generator.device) * 0.5,
+        )
 
-    def log_p_next_token(self, log_probas: Triplet, sampling_target: Triplet[float]):
+    def log_p_next_token(
+        self, log_probas: Triplet, sampling_target: Triplet[torch.Tensor]
+    ):
         log_p_next_token = torch.stack(
             [
-                log_proba[:, :-1] * coeff
+                log_proba[:, :-1] * coeff.unsqueeze(-1)
                 for coeff, log_proba in zip(sampling_target, log_probas)
             ]
         ).logsumexp(
@@ -182,7 +188,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
         log_cur_node_proba: Triplet[torch.Tensor],  # shape [bs,3]
         depth: int,  # a value counting from 1
         stepwise_generators: Triplet[StepwiseGenerator],
-        sampling_target: Triplet[float],
+        sampling_target: Triplet[torch.Tensor],
     ) -> GenerativeLossOutput:
         """Return the recursive G and the kl_div loss at depth, also the
         pairwise accruracy for supervision"""
@@ -397,7 +403,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
         )
 
         # prepare the sampling target
-        sampling_target = self.prepare_sampling_target()
+        sampling_target = self.prepare_sampling_target(bs)
 
         # in fact, we need to minus something to get the pure gradient, but at
         # the level of the root, the additional terms always equals to 0
@@ -451,19 +457,32 @@ class BatchBasedSamplingPairwiseGenerativeRetrievalLoss(
     """In this loss, we sampling over query or positive documents.
     In one batch for different depth, the sampling target will not change"""
 
-    def prepare_sampling_target(self, p=0.5):
-        """p is the probabibility: by default we distribute equally"""
-        if float(torch.rand(1)) > p:
+    def prepare_sampling_target(self, bs):
+        if float(torch.rand(1)) > 0.5:
             logger.debug("sampling over the positive document")
             return Triplet(
-                pos_doc=1,
-                neg_doc=0,
-                query=0,
+                pos_doc=torch.ones(bs).to(self.id_generator.device),
+                neg_doc=torch.full((bs,), float("inf")).to(self.id_generator.device),
+                query=torch.full((bs,), float("inf")).to(self.id_generator.device),
             )
         else:
             logger.debug("sampling over the query")
             return Triplet(
-                pos_doc=0,
-                neg_doc=0,
-                query=1,
+                pos_doc=torch.full((bs,), float("inf")).to(self.id_generator.device),
+                neg_doc=torch.full((bs,), float("inf")).to(self.id_generator.device),
+                query=torch.ones(bs).to(self.id_generator.device),
             )
+
+
+class RandomSamplingPairwiseGenerativeRetrievalLoss(PairwiseGenerativeRetrievalLoss):
+    """In this loss, we sampling over a random coefficient between query and
+    document
+    In one batch for different depth, the sampling target will not change"""
+
+    def prepare_sampling_target(self, bs):
+        posdoc_sampling_target = torch.rand((bs,)).to(self.id_generator.device)
+        return Triplet(
+            pos_doc=posdoc_sampling_target,
+            neg_doc=torch.full((bs,), float("inf")).to(self.id_generator.device),
+            query=1 - posdoc_sampling_target,
+        )
