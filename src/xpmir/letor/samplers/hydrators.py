@@ -52,7 +52,15 @@ class SampleHydrator(SampleTransform):
     def transform_documents(self, documents: List[ir.Document]):
         if self.documentstore is None:
             return None
-        return self.documentstore.documents_ext([d.id for d in documents])
+        results = []
+        for document in documents:
+            if isinstance(document, ir.InternalIDDocument):
+                results.append(
+                    self.documentstore.document_int(document.get_internal_id())
+                )
+            else:
+                results.append(self.documentstore.document_ext(document.get_id()))
+        return results
 
 
 class SamplePrefixAdding(SampleTransform):

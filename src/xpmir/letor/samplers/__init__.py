@@ -11,6 +11,7 @@ from datamaestro_text.data.ir import (
 )
 from datamaestro_text.data.ir.base import (
     IDDocument,
+    InternalIDDocument,
     IDTopic,
     TextTopic,
 )
@@ -444,13 +445,9 @@ class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
 
                 if self.negative_algo == "random":
                     # choose the random negatives
-                    while True:
-                        neg_id = self.documents.docid_internal2external(
-                            self.random.randint(0, self.documents.documentcount)
-                        )
-                        if neg_id != pos.id:
-                            break
-                    neg = IDDocument(id=neg_id)
+                    neg = InternalIDDocument(
+                        internal_id=self.random.randint(0, self.documents.documentcount)
+                    )
                 else:
                     negatives = sample.negatives[self.negative_algo]
                     neg = negatives[self.random.randint(len(negatives))]
