@@ -56,7 +56,7 @@ class SampleHydrator(SampleTransform):
         for document in documents:
             if isinstance(document, ir.InternalIDDocument):
                 results.append(
-                    self.documentstore.document_ext(str(document.get_internal_id()))
+                    self.documentstore.document_int(document.get_internal_id())
                 )
             else:
                 results.append(self.documentstore.document_ext(document.get_id()))
