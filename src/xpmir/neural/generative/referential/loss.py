@@ -54,6 +54,9 @@ class GenerativeLossOutput(NamedTuple):
     log_current_node_proba: Optional[Triplet[torch.tensor]] = None
     """The probability of the current node, shape [bs]"""
 
+    sampled_tokens_proba: Optional[Triplet[torch.tensor]] = None
+    """The probability of the sampled tokens, shape [current_max_depth]"""
+
 
 # -- Hooks
 class LossProcessHook(Hook):
@@ -189,6 +192,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
         depth: int,  # a value counting from 1
         stepwise_generators: Triplet[StepwiseGenerator],
         sampling_target: Triplet[torch.Tensor],
+        previous_sampled_token_p: Optional[Triplet[torch.Tensor]],
     ) -> GenerativeLossOutput:
         """Return the recursive G and the kl_div loss at depth, also the
         pairwise accruracy for supervision"""
@@ -206,6 +210,9 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
         log_proba = Triplet(
             *(nn.functional.log_softmax(logit, dim=-1) for logit in logits)
         )
+
+        # clamp the log_probas to avoid nan in the loss
+        log_proba = Triplet(*(torch.clamp_min(log_p, -14) for log_p in log_proba))
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("\n")
@@ -320,6 +327,29 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
         )
         kl_loss = kl_loss.pos_doc + kl_loss.neg_doc + kl_loss.query
 
+        # prepare the sampled probability for logging
+        with torch.no_grad():
+            sampled_token_p = Triplet(
+                *(
+                    torch.mean(
+                        torch.exp(log_pro[batch_range, next_tokens]),
+                        dim=0,
+                        keepdim=True,
+                    )
+                    for log_pro in log_proba
+                )
+            )
+
+            if previous_sampled_token_p:
+                sampled_token_p = Triplet(
+                    *(
+                        torch.cat((previous, current))
+                        for previous, current in zip(
+                            previous_sampled_token_p, sampled_token_p
+                        )
+                    )
+                )
+
         # whether need to be end now?
         if new_unfinished_sequences.max() == 0 or depth == self.current_max_depth:
             return GenerativeLossOutput(
@@ -330,6 +360,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
                 * unfinished_sequences.detach(),
                 sampled_tokens=decoder_input_tokens,
                 log_current_node_proba=log_cur_node_proba,
+                sampled_tokens_proba=sampled_token_p,
             )
 
         # Computing the importance sampling coefficient
@@ -349,6 +380,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
             depth + 1,
             stepwise_generators,
             sampling_target,
+            sampled_token_p,
         )
 
         return GenerativeLossOutput(
@@ -366,6 +398,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
             ),
             sampled_tokens=next_layer_recursive.sampled_tokens,
             log_current_node_proba=next_layer_recursive.log_current_node_proba,
+            sampled_tokens_proba=next_layer_recursive.sampled_tokens_proba,
         )
 
     def compute(
@@ -398,6 +431,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
 
         # initialize the input for the decoder and the mask
         decoder_input_tokens = None
+        sampled_token_p = None  # the proba for the sampled tokens, for logging
         unfinished_sequences = torch.ones(bs, dtype=torch.long).to(
             self.id_generator.device
         )
@@ -414,6 +448,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
             1,
             stepwise_generators,
             sampling_target,
+            sampled_token_p,
         )
 
         return GenerativeLossOutput(
@@ -422,6 +457,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
             pairwise_accuracy=torch.mean(loss.pairwise_accuracy),
             sampled_tokens=loss.sampled_tokens,
             log_current_node_proba=loss.log_current_node_proba,
+            sampled_tokens_proba=loss.sampled_tokens_proba,
         )
 
     def process(self, records: BaseRecords, context: TrainerContext):
@@ -446,6 +482,29 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
                 len(records),
             )
         )
+
+        for depth in range(1, self.current_max_depth + 1):
+            context.add_metric(
+                ScalarMetric(
+                    f"Sampled proba for posdoc at depth {depth}",
+                    float(loss_output.sampled_tokens_proba.pos_doc[depth - 1]),
+                    len(records),
+                )
+            )
+            context.add_metric(
+                ScalarMetric(
+                    f"Sampled proba for negdoc at depth {depth}",
+                    float(loss_output.sampled_tokens_proba.neg_doc[depth - 1]),
+                    len(records),
+                )
+            )
+            context.add_metric(
+                ScalarMetric(
+                    f"Sampled proba for query at depth {depth}",
+                    float(loss_output.sampled_tokens_proba.query[depth - 1]),
+                    len(records),
+                )
+            )
 
         for hook in self.loss_hooks:
             hook.process(loss_output, records, self.current_max_depth)

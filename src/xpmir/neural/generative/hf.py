@@ -113,11 +113,11 @@ class T5ConditionalGenerator(ConditionalGenerator, DistributableModel):
             r.get("token_type_ids", None),  # if r["token_type_ids"] else None
         )
 
-    def encode(self, texts: List[str]):
+    def encode(self, texts: List[str], maxlen=200):
         """Returns the encoder_output and the input mask for the given text,
         which could accelerate the autoregressive generation procedure"""
 
-        tokenized = self.batch_tokenize(texts, maxlen=512, mask=True)
+        tokenized = self.batch_tokenize(texts, maxlen=maxlen, mask=True)
         encoder_output = self.encoder(
             tokenized.ids,
             attention_mask=tokenized.mask,
