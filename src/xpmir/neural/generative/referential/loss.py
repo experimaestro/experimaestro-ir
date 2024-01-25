@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from typing import List, Optional, NamedTuple, Generic, TypeVar
+from typing import List, Optional, NamedTuple, Generic, TypeVar, Callable
 
 import torch
 from experimaestro import Param
@@ -161,26 +161,21 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
     def initialize(self):
         self.kl_lossfn = nn.KLDivLoss(reduction="sum", log_target=True)
 
-    def prepare_sampling_target(self, bs):
-        """The default sampling target: sampling from the conjoint of posdoc and
-        query"""
-        return Triplet(
-            pos_doc=torch.ones(bs).to(self.id_generator.device) * 0.5,
-            neg_doc=torch.full((bs,), float("inf")).to(self.id_generator.device),
-            query=torch.ones(bs).to(self.id_generator.device) * 0.5,
-        )
+    def prepare_sampling_target(
+        self, bs
+    ) -> Callable[[Triplet[torch.Tensor]], torch.Tensor]:
+        """Return a function that take the log_proba triplets and return the
+        proba to be sampled"""
 
-    def log_p_next_token(
-        self, log_probas: Triplet, sampling_target: Triplet[torch.Tensor]
-    ):
-        log_p_next_token = torch.stack(
-            [
-                log_proba[:, :-1] * coeff.unsqueeze(-1)
-                for coeff, log_proba in zip(sampling_target, log_probas)
-            ]
-        ).logsumexp(
-            dim=0
-        )  # shape [bs, decoder_dim]
+        def log_p_next_token(log_proba: Triplet[torch.Tensor]):
+            return torch.stack(
+                [
+                    log_proba.query[:, :-1] * 0.5,
+                    log_proba.pos_doc[:, :-1] * 0.5,
+                ]
+            ).logsumexp(
+                dim=0
+            )  # shape [bs, decoder_dim]
 
         return log_p_next_token
 
@@ -191,7 +186,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
         log_cur_node_proba: Triplet[torch.Tensor],  # shape [bs,3]
         depth: int,  # a value counting from 1
         stepwise_generators: Triplet[StepwiseGenerator],
-        sampling_target: Triplet[torch.Tensor],
+        log_p_next_token_generator: Callable[[Triplet[torch.Tensor]], torch.Tensor],
         previous_sampled_token_p: Optional[Triplet[torch.Tensor]],
     ) -> GenerativeLossOutput:
         """Return the recursive G and the kl_div loss at depth, also the
@@ -276,7 +271,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
 
         # log-probability of the next token using a mixture
         with torch.no_grad():
-            log_p_next_token = self.log_p_next_token(log_proba, sampling_target)
+            log_p_next_token = log_p_next_token_generator(log_proba)
             next_tokens = torch.multinomial(
                 torch.exp(log_p_next_token), num_samples=1
             ).squeeze(
@@ -379,7 +374,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
             log_cur_node_proba,
             depth + 1,
             stepwise_generators,
-            sampling_target,
+            log_p_next_token_generator,
             sampled_token_p,
         )
 
@@ -437,7 +432,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
         )
 
         # prepare the sampling target
-        sampling_target = self.prepare_sampling_target(bs)
+        log_p_next_token_generator = self.prepare_sampling_target(bs)
 
         # in fact, we need to minus something to get the pure gradient, but at
         # the level of the root, the additional terms always equals to 0
@@ -447,7 +442,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
             log_cur_node_proba,
             1,
             stepwise_generators,
-            sampling_target,
+            log_p_next_token_generator,
             sampled_token_p,
         )
 
@@ -516,21 +511,19 @@ class BatchBasedSamplingPairwiseGenerativeRetrievalLoss(
     """In this loss, we sampling over query or positive documents.
     In one batch for different depth, the sampling target will not change"""
 
-    def prepare_sampling_target(self, bs):
-        if float(torch.rand(1)) > 0.5:
-            logger.debug("sampling over the positive document")
-            return Triplet(
-                pos_doc=torch.ones(bs).to(self.id_generator.device),
-                neg_doc=torch.full((bs,), float("inf")).to(self.id_generator.device),
-                query=torch.full((bs,), float("inf")).to(self.id_generator.device),
+    def prepare_sampling_target(
+        self, bs
+    ) -> Callable[[Triplet[torch.Tensor]], torch.Tensor]:
+        posdoc = torch.randint(2, (bs,)).unsqueeze(1).to(self.id_generator.device)
+        posdoc = posdoc.expand(bs, self.id_generator.decoder_outdim)
+
+        def log_p_next_token(log_proba: Triplet[torch.Tensor]):
+            nonlocal posdoc
+            return torch.where(
+                posdoc == 1, log_proba.pos_doc[:, :-1], log_proba.query[:, :-1]
             )
-        else:
-            logger.debug("sampling over the query")
-            return Triplet(
-                pos_doc=torch.full((bs,), float("inf")).to(self.id_generator.device),
-                neg_doc=torch.full((bs,), float("inf")).to(self.id_generator.device),
-                query=torch.ones(bs).to(self.id_generator.device),
-            )
+
+        return log_p_next_token
 
 
 class RandomSamplingPairwiseGenerativeRetrievalLoss(PairwiseGenerativeRetrievalLoss):
@@ -538,10 +531,21 @@ class RandomSamplingPairwiseGenerativeRetrievalLoss(PairwiseGenerativeRetrievalL
     document
     In one batch for different depth, the sampling target will not change"""
 
-    def prepare_sampling_target(self, bs):
-        posdoc_sampling_target = torch.rand((bs,)).to(self.id_generator.device)
-        return Triplet(
-            pos_doc=posdoc_sampling_target,
-            neg_doc=torch.full((bs,), float("inf")).to(self.id_generator.device),
-            query=1 - posdoc_sampling_target,
-        )
+    def prepare_sampling_target(
+        self, bs
+    ) -> Callable[[Triplet[torch.Tensor]], torch.Tensor]:
+        posdoc = torch.rand((bs,)).to(self.id_generator.device)
+
+        def log_p_next_token(log_proba: Triplet[torch.Tensor]):
+            nonlocal posdoc
+            query = 1 - posdoc
+            return torch.stack(
+                [
+                    log_proba.query[:, :-1] * posdoc.unsqueeze(-1),
+                    log_proba.pos_doc[:, :-1] * query.unsqueeze(-1),
+                ]
+            ).logsumexp(
+                dim=0
+            )  # shape [bs, decoder_dim]
+
+        return log_p_next_token
