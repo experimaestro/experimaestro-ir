@@ -73,9 +73,8 @@ class HFCLSEncoder(
     """Limit the text to be encoded"""
 
     def forward(self, tokenized: TokenizedTexts) -> TextsRepresentationOutput:
-        y = self.model.contextual_model(
-            tokenized.ids, attention_mask=tokenized.mask.to(self.device)
-        )
+        tokenized = tokenized.to(self.device)
+        y = self.model.contextual_model(tokenized.ids, attention_mask=tokenized.mask)
 
         # Assumes that [CLS] is the first token
         return TextsRepresentationOutput(

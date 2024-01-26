@@ -2,8 +2,8 @@ from typing import Callable, List
 from experimaestro import Config, Param
 import torch.nn as nn
 import torch
-from xpmir.context import Context, InitializationHook
-from xpmir.letor import DistributedDeviceInformation
+from xpmir.context import InitializationHook
+from xpmir.learning.devices import ComputationContext, DistributedDeviceInformation
 from xpmir.utils.utils import easylog
 
 logger = easylog()
@@ -33,11 +33,11 @@ class DistributedHook(InitializationHook):
     models: Param[List[DistributableModel]]
     """The model to distribute over GPUs"""
 
-    def after(self, state: Context):
+    def after(self, state: ComputationContext):
         for model in self.models:
             model.distribute_models(lambda model: self.update(state, model))
 
-    def update(self, state: Context, model: nn.Module) -> nn.Module:
+    def update(self, state: ComputationContext, model: nn.Module) -> nn.Module:
         info = state.device_information
         if isinstance(info, DistributedDeviceInformation):
             logger.info("Using a distributed model with rank=%d", info.rank)
