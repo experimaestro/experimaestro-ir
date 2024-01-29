@@ -196,3 +196,48 @@ class ReferentialValidationListener(ValidationListener):
 
     def should_update_validation(self, state: TrainState) -> bool:
         return state.epoch >= self.begin_max_depth_epoch
+
+
+class AdditionalCheckpointSavingListener(LearnerListener):
+    """A listener which saves some additional checkpoints in the learning
+    procedure"""
+
+    saving_cp: Param[List[int]] = []
+    """The list of the cps to be saved, stored at the number of epochs"""
+
+    store_path: Annotated[Path, pathgenerator("additional_cp")]
+    """The path which stores the checkpoints"""
+
+    def __validate__(self):
+        assert len(self.saving_cp) > 0, "At least provide one checkpoint to be saved"
+
+    def initialize(self, learner: Learner, context: TrainerContext):
+        super().initialize(learner, context)
+        self.store_path.mkdir(exist_ok=True, parents=True)
+
+    def task_outputs(self, learner: "Learner", dep):
+        res = {
+            str(epoch): ModuleLoader.construct(
+                learner.model, self.store_path / str(epoch) / TrainState.MODEL_PATH, dep
+            )
+            for epoch in self.saving_cp
+        }
+        return res
+
+    def init_task(self, learner: "Learner", dep):
+        return {
+            str(epoch): dep(
+                ModuleLoader(
+                    value=learner.model,
+                    path=self.store_path / str(epoch) / TrainState.MODEL_PATH,
+                )
+            )
+            for epoch in self.saving_cp
+        }
+
+    def __call__(self, state: TrainState):
+        if state.epoch in self.saving_cp:
+            # save the state
+            self.context.copy(self.store_path / str(state.epoch))
+
+        return LearnerListenerStatus.NO_DECISION
