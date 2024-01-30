@@ -293,7 +293,6 @@ class DynamicNegativesUpdatableSampler(NegativesUpdatableSampler):
                 self,
                 id_matrix: np.chararray,  # shape depends on the layer
                 target_id: str,  # the string id
-                random: np.random.RandomState,
             ):
                 """return the internal id of the negative, if not find, return None"""
                 indices = np.where(id_matrix == target_id)
@@ -302,7 +301,7 @@ class DynamicNegativesUpdatableSampler(NegativesUpdatableSampler):
 
                 # random choose one to as the target sequence
                 random_choosed = np.vstack(indices)[
-                    :, random.randint(indices[0].shape[0])
+                    :, self.random.randint(indices[0].shape[0])
                 ]
                 # build the hierarchical matrix to search
                 # e.g. the input is at [7,8,2,6], first we search from [7,8,2],
@@ -318,16 +317,14 @@ class DynamicNegativesUpdatableSampler(NegativesUpdatableSampler):
                     if (
                         hierarchical_targets[satisfied].shape[0] > 0
                     ):  # found at this level
-                        return random.choice(hierarchical_targets[satisfied])
+                        return self.random.choice(hierarchical_targets[satisfied])
 
                 return None  # not found over all the hierarchical matrix
 
             def __next__(self) -> SerializableIterator[PairwiseRecord, Any]:
                 original_pair = next(self.iterator)
                 id_pos_qry = original_pair.positive.document.get_id()
-                res = self.hierarchical_neg_mining(
-                    self.id_matrix, id_pos_qry, self.random
-                )
+                res = self.hierarchical_neg_mining(self.id_matrix, id_pos_qry)
                 if res:
                     record_neg = DocumentRecord(self.documents.document_ext(res))
                 else:
