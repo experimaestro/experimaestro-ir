@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import List, Optional, NamedTuple, Generic, TypeVar, Callable
 
 import torch
+import numpy as np
 from experimaestro import Param
 from experimaestro.compat import cached_property
 from torch import nn
@@ -42,19 +43,19 @@ class GenerativeLossOutput(NamedTuple):
     recursive_loss: torch.tensor
     """The recursive loss"""
 
-    kl_div_loss: torch.tensor
+    kl_div_loss: torch.Tensor
     """The kl_div_loss"""
 
-    pairwise_accuracy: torch.tensor
+    pairwise_accuracy: torch.Tensor
     """The pairwise accuracy"""
 
-    sampled_tokens: Optional[torch.tensor] = None
+    sampled_tokens: Optional[torch.Tensor] = None
     """The sampled_tokens if needed, of shape [depth, bs]"""
 
-    log_current_node_proba: Optional[Triplet[torch.tensor]] = None
+    log_current_node_proba: Optional[Triplet[torch.Tensor]] = None
     """The probability of the current node, shape [bs]"""
 
-    sampled_tokens_proba: Optional[Triplet[torch.tensor]] = None
+    sampled_tokens_proba: Optional[Triplet[torch.Tensor]] = None
     """The probability of the sampled tokens, shape [current_max_depth]"""
 
 
@@ -80,25 +81,16 @@ class NegativeUpdateHook(LossProcessHook):
         current_max_depth: int,
     ):
         ext_ids = [pdr.document.get_id() for pdr in records.positives]
-        # FIXME: Transform the external ids to internal ones
-        int_ids = [int(ext_id) for ext_id in ext_ids]
-        self.sampler.current_depth = current_max_depth
-        if current_max_depth < self.max_depth:
-            # we are not at the final depth, need to update matrix
-            # get the tokens
-            sampled_tokens = loss_output.sampled_tokens.cpu()  # shape [depth, bs]
+        # get the tokens
+        sampled_tokens = loss_output.sampled_tokens.cpu().numpy()  # shape [depth, bs]
+        # get the log_proba, shape [bs]
+        log_proba = loss_output.log_current_node_proba.pos_doc.cpu().numpy()
 
-            # get the log_probas, shape [bs]
-            log_proba = loss_output.log_current_node_proba
-            # we use a max pooling for the pos and qry as in the pretraining
-            # they belong to the same document
-            log_proba_pos = torch.max(log_proba.query, log_proba.pos_doc).cpu()
-
-            self.sampler.update_matrix(
-                sampled_tokens,  # shape [depth, bs]
-                torch.tensor(int_ids, dtype=torch.int32),  # shape [bs]
-                log_proba_pos,  # shape [bs]
-            )
+        self.sampler.update_matrix(
+            sampled_tokens,  # shape [depth, bs]
+            np.array(ext_ids, dtype="<U10"),  # shape [bs]
+            log_proba,  # shape [bs]
+        )
 
 
 # --- For training
