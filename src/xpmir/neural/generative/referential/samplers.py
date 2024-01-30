@@ -8,6 +8,7 @@ from xpmir.letor.samplers import PairwiseSampler
 from xpmir.utils.iter import (
     SerializableIterator,
     RandomSerializableIterator,
+    RandomStateSerializableAdaptor,
 )
 
 State = TypeVar("State")
@@ -256,48 +257,90 @@ class DynamicNegativesUpdatableSampler(NegativesUpdatableSampler):
             tuple(np.vstack((better_sampled_tokens, indices_doc_to_replace)))
         ] = better_ids
 
-    def hierarchical_neg_mining(
-        self,
-        id_matrix: np.chararray,  # shape depends on the layer
-        target_id: str,  # the string id
-        random: np.random.RandomState,
-    ):
-        """return the internal id of the negative, if not find, return None"""
-        indices = np.where(id_matrix == target_id)
-        if indices[0].shape[0] == 0:  # target id not found in matrix
-            return None
-
-        # random choose one to as the target sequence
-        random_choosed = np.vstack(indices)[:, random.randint(indices[0].shape[0])]
-        # build the hierarchical matrix to search
-        # e.g. the input is at [7,8,2,6], first we search from [7,8,2],
-        # if not found, we go to [7, 8], etc
-        for i in range(self.max_depth, 0, -1):
-            hierarchical_targets = id_matrix[tuple(random_choosed[:i])]
-            satisfied = np.where(
-                np.logical_and(
-                    hierarchical_targets != "", hierarchical_targets != target_id
-                )
-            )
-            if hierarchical_targets[satisfied].shape[0] > 0:  # found at this level
-                return random.choice(hierarchical_targets[satisfied])
-
-        return None  # not found over all the hierarchical matrix
-
     def pairwise_iter(self) -> SerializableIterator[PairwiseRecord, Any]:
-        def iter(random: np.random.RandomState):
-            original_iter = self.base_sampler.pairwise_iter()
-            while True:
-                original_record = next(original_iter)
-                id_pos_qry = original_record.positive.document.get_id()  # ext id
-                res = self.hierarchical_neg_mining(self.id_matrix, id_pos_qry, random)
+        class _Iterator(
+            RandomStateSerializableAdaptor[SerializableIterator[PairwiseRecord]]
+        ):
+            def __init__(
+                self,
+                iterator: SerializableIterator[PairwiseRecord],
+                id_matrix,
+                id_proba,
+                documents,
+                max_depth,
+            ):
+                super().__init__(iterator)
+                self.id_matrix = id_matrix
+                self.id_proba = id_proba
+                self.documents = documents
+                self.max_depth = max_depth
+
+            def load_state_dict(self, state: Any):
+                # state = iterator state + negative states.
+                self.id_matrix = state[0]["id_matrix"]
+                self.id_proba = state[0]["id_proba"]
+                self.iterator.load_state_dict(state[1])
+
+            def state_dict(self) -> Any:
+                iterator_state = self.iterator.state_dict()
+                negative_state = {
+                    "id_matrix": self.id_matrix,
+                    "id_proba": self.id_proba,
+                }
+                return (negative_state, iterator_state)
+
+            def hierarchical_neg_mining(
+                self,
+                id_matrix: np.chararray,  # shape depends on the layer
+                target_id: str,  # the string id
+                random: np.random.RandomState,
+            ):
+                """return the internal id of the negative, if not find, return None"""
+                indices = np.where(id_matrix == target_id)
+                if indices[0].shape[0] == 0:  # target id not found in matrix
+                    return None
+
+                # random choose one to as the target sequence
+                random_choosed = np.vstack(indices)[
+                    :, random.randint(indices[0].shape[0])
+                ]
+                # build the hierarchical matrix to search
+                # e.g. the input is at [7,8,2,6], first we search from [7,8,2],
+                # if not found, we go to [7, 8], etc
+                for i in range(self.max_depth, 0, -1):
+                    hierarchical_targets = id_matrix[tuple(random_choosed[:i])]
+                    satisfied = np.where(
+                        np.logical_and(
+                            hierarchical_targets != "",
+                            hierarchical_targets != target_id,
+                        )
+                    )
+                    if (
+                        hierarchical_targets[satisfied].shape[0] > 0
+                    ):  # found at this level
+                        return random.choice(hierarchical_targets[satisfied])
+
+                return None  # not found over all the hierarchical matrix
+
+            def __next__(self) -> SerializableIterator[PairwiseRecord, Any]:
+                original_pair = next(self.iterator)
+                id_pos_qry = original_pair.positive.document.get_id()
+                res = self.hierarchical_neg_mining(
+                    self.id_matrix, id_pos_qry, self.random
+                )
                 if res:
                     record_neg = DocumentRecord(self.documents.document_ext(res))
                 else:
-                    record_neg = original_record.negative
+                    record_neg = original_pair.negative
 
-                yield PairwiseRecord(
-                    original_record.query, original_record.positive, record_neg
+                return PairwiseRecord(
+                    original_pair.query, original_pair.positive, record_neg
                 )
 
-        return RandomSerializableIterator(self.random, iter)
+        return _Iterator(
+            self.base_sampler.pairwise_iter(),
+            self.id_matrix,
+            self.log_proba_mean_matrix,
+            self.documents,
+            self.max_depth,
+        )
