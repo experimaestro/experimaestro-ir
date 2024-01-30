@@ -82,9 +82,11 @@ class NegativeUpdateHook(LossProcessHook):
     ):
         ext_ids = [pdr.document.get_id() for pdr in records.positives]
         # get the tokens
-        sampled_tokens = loss_output.sampled_tokens.cpu().numpy()  # shape [depth, bs]
+        sampled_tokens = (
+            loss_output.sampled_tokens.cpu().detach().numpy()
+        )  # shape [depth, bs]
         # get the log_proba, shape [bs]
-        log_proba = loss_output.log_current_node_proba.pos_doc.cpu().numpy()
+        log_proba = loss_output.log_current_node_proba.pos_doc.cpu().detach().numpy()
 
         self.sampler.update_matrix(
             sampled_tokens,  # shape [depth, bs]

@@ -39,7 +39,7 @@ class NegativesUpdatableSampler(PairwiseSampler):
 
     def update_matrix(
         sampled_tokens: np.array,  # shape [depth, bs]
-        ids: np._CharArray,  # shape: bs
+        ids: np.chararray,  # shape: bs
         log_proba: np.array,  # shape: bs
     ):
         pass
@@ -59,7 +59,7 @@ class DepthUpdatableNegativesUpdatableSampler(NegativesUpdatableSampler):
     The training is based on the depth updable.
     """
 
-    id_matrix: list[np._CharArray]
+    id_matrix: list[np.chararray]
     """A list of length max_depth - 1(for the last layer this matrix is
     useless), where each element is of dimension depth+1, like
     ([dim, N_1], [dim, dim, N_2], etc) which contains the id of the documents"""
@@ -97,7 +97,7 @@ class DepthUpdatableNegativesUpdatableSampler(NegativesUpdatableSampler):
     def update_matrix(
         self,
         sampled_tokens: np.array,  # shape [depth, bs]
-        ids: np._CharArray,  # shape: bs
+        ids: np.chararray,  # shape: bs
         log_proba: np.array,  # shape: bs
     ):
         current_depth, _ = sampled_tokens.shape
@@ -133,7 +133,7 @@ class DepthUpdatableNegativesUpdatableSampler(NegativesUpdatableSampler):
 
     def hierarchical_neg_mining(
         self,
-        id_matrix: np._CharArray,  # shape depends on the layer
+        id_matrix: np.chararray,  # shape depends on the layer
         target_id: str,
         random: np.random.RandomState,
     ):
@@ -197,7 +197,7 @@ class DynamicNegativesUpdatableSampler(NegativesUpdatableSampler):
     Similar to the previous sampler, but only support for the full depth negative mining
     """
 
-    id_matrix: np._CharArray
+    id_matrix: np.chararray
     """A matrix of shape [dim, dim, ..., dim, N_2] of dim max_depth + 1, which
     contains the id of the documents"""
 
@@ -226,7 +226,7 @@ class DynamicNegativesUpdatableSampler(NegativesUpdatableSampler):
     def update_matrix(
         self,
         sampled_tokens: np.array,  # shape [max_depth, bs]
-        ids: np._CharArray,  # shape: bs
+        ids: np.chararray,  # shape: bs
         log_proba: np.array,  # shape: bs
     ):
         # the previous average probability for the current given ids
@@ -258,7 +258,7 @@ class DynamicNegativesUpdatableSampler(NegativesUpdatableSampler):
 
     def hierarchical_neg_mining(
         self,
-        id_matrix: np._CharArray,  # shape depends on the layer
+        id_matrix: np.chararray,  # shape depends on the layer
         target_id: str,  # the string id
         random: np.random.RandomState,
     ):

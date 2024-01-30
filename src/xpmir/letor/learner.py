@@ -239,5 +239,6 @@ class AdditionalCheckpointSavingListener(LearnerListener):
         if state.epoch in self.saving_cp:
             # save the state
             self.context.copy(self.store_path / str(state.epoch))
+            logging.info(f"Saving the checkpoint at the epoch {state.epoch}")
 
         return LearnerListenerStatus.NO_DECISION
