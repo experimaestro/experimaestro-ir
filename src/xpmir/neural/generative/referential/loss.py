@@ -20,7 +20,7 @@ from xpmir.neural.generative import (
 from xpmir.utils.utils import easylog
 from xpmir.context import Hook
 from xpmir.neural.generative.referential import DepthUpdatable
-from xpmir.neural.generative.referential.samplers import NegativesUpdatableSampler
+from xpmir.neural.generative.referential.samplers import DynamicNegativesSampler
 
 logger = easylog()
 T = TypeVar("T")
@@ -68,7 +68,7 @@ class LossProcessHook(Hook):
 
 class NegativeUpdateHook(LossProcessHook):
 
-    sampler: Param[NegativesUpdatableSampler]
+    sampler: Param[DynamicNegativesSampler]
     """The sampler which contains the hard negatives"""
 
     max_depth: Param[int]
@@ -88,7 +88,7 @@ class NegativeUpdateHook(LossProcessHook):
         # get the log_proba, shape [bs]
         log_proba = loss_output.log_current_node_proba.pos_doc.cpu().detach().numpy()
 
-        self.sampler.update_matrix(
+        self.sampler.pairwise_iter().update_matrix(
             sampled_tokens,  # shape [depth, bs]
             np.array(ext_ids, dtype="<U10"),  # shape [bs]
             log_proba,  # shape [bs]
