@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from typing import List, Optional, NamedTuple, Generic, TypeVar, Callable
+from typing import Optional, NamedTuple, Generic, TypeVar, Callable
 from datamaestro_text.data.ir import DocumentStore
 
 import torch
@@ -19,9 +19,7 @@ from xpmir.neural.generative import (
     StepwiseGenerator,
 )
 from xpmir.utils.utils import easylog
-from xpmir.context import Hook
 from xpmir.neural.generative.referential import DepthUpdatable
-from xpmir.neural.generative.referential.samplers import DynamicNegativesSampler
 
 logger = easylog()
 T = TypeVar("T")
@@ -79,42 +77,6 @@ class GenerativeQryDocPreparation(NamedTuple):
 
     log_proba: Optional[QryDocPair[torch.Tensor]] = None
     """The log_proba at each depth, of shape [depth, bs, dec_dim+1]"""
-
-
-# -- Hooks
-class LossProcessHook(Hook):
-    def process(self):
-        """Called after process"""
-        pass
-
-
-class NegativeUpdateHook(LossProcessHook):
-
-    sampler: Param[DynamicNegativesSampler]
-    """The sampler which contains the hard negatives"""
-
-    max_depth: Param[int]
-    """The max depth for the model"""
-
-    def process(
-        self,
-        loss_output: GenerativeLossOutput,
-        records: BaseRecords,
-        current_max_depth: int,
-    ):
-        ext_ids = [pdr.document.get_id() for pdr in records.positives]
-        # get the tokens
-        sampled_tokens = (
-            loss_output.sampled_tokens.cpu().detach().numpy()
-        )  # shape [depth, bs]
-        # get the log_proba, shape [bs]
-        log_proba = loss_output.log_current_node_proba.pos_doc.cpu().detach().numpy()
-
-        self.sampler.pairwise_iter().update_matrix(
-            sampled_tokens,  # shape [depth, bs]
-            np.array(ext_ids, dtype="<U10"),  # shape [bs]
-            log_proba,  # shape [bs]
-        )
 
 
 # Dynamic negative holder
@@ -211,14 +173,18 @@ class DynamicNegativeBuilder:
         for _ in range(self.max_depth - negative_level):
             fixed_prefix.append(np.random.randint(self.dimension, size=bs))
         fixed_prefix.append(np.random.randint(self.id_matrix.shape[-1], size=bs))
-
+        fixed_prefix = tuple(fixed_prefix)
         # get the corresponding ids
-        ids = self.id_matrix[fixed_prefix]
+        ids = self.id_matrix[fixed_prefix]  # shape [bs]
         # filter the ids to remove one with the same id as positive and ''
         filtered_indice = np.where(np.logical_and(ids != "", ids != positive_ids))
-        negative_texts = self.documents.documents_ext(list(ids[filtered_indice]))
+        negative_records = self.documents.documents_ext(list(ids[filtered_indice]))
+        negative_texts = [record.get_text() for record in negative_records]
+        if filtered_indice[0].shape[0] == 0:
+            return negative_text_list
 
-        for i, batch_indice in enumerate(filtered_indice):
+        logger.info(f"filtered_indice {filtered_indice}")
+        for i, batch_indice in enumerate(filtered_indice[0]):
             negative_text_list[batch_indice] = document_prefix + negative_texts[i]
         return negative_text_list
 
@@ -235,9 +201,6 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
 
     alpha: Param[float] = 0.0
     """The hyperparameter for the KL divergence"""
-
-    loss_hooks: Param[List[LossProcessHook]] = []
-    """The hook"""
 
     dynamic_negatives: Param[bool] = False
     """Whether build the dynamic negatives inside the loss part"""
@@ -319,51 +282,34 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
 
     def recursive(
         self,
-        decoder_input_tokens,  # None or [depth - 1, bs], or [current_max_depth, bs]
+        decoder_input_tokens: torch.Tensor,  # shape [current_max_depth, bs]
         unfinished_sequences: torch.Tensor,  # shape [bs]
         log_cur_node_proba: Triplet[torch.Tensor],  # shape [bs,3]
         depth: int,  # a value counting from 1
-        stepwise_generators: Triplet[StepwiseGenerator],
+        stepwise_generators: Triplet[StepwiseGenerator],  # only neg is useful
         log_p_next_token_generator: Callable[[Triplet[torch.Tensor]], torch.Tensor],
         previous_sampled_token_p: Triplet[torch.Tensor],
-        cached_log_proba: Optional[
-            QryDocPair[torch.Tensor]
-        ] = None,  # shape [depth, bs, dec_dim+1]
+        cached_log_proba: QryDocPair[torch.Tensor],  # [curr_max_depth,bs,dec_dim+1]
     ) -> GenerativeLossOutput:
         """Return the recursive G and the kl_div loss at depth, also the
         pairwise accruracy for supervision"""
         assert depth <= self.current_max_depth
-        if cached_log_proba is None:
-            # pass get the probas, each one of shape: [bs, dec_dim+1]
-            if decoder_input_tokens is None:
-                logits = Triplet(
-                    *(g.step(decoder_input_tokens) for g in stepwise_generators)
-                )
-            else:
-                logits = Triplet(
-                    *(g.step(decoder_input_tokens[-1]) for g in stepwise_generators)
-                )
-
-            log_proba = Triplet(
-                *(nn.functional.log_softmax(logit, dim=-1) for logit in logits)
-            )
-
-            # clamp the log_probas to avoid nan in the loss
-            log_proba = Triplet(*(torch.clamp_min(log_p, -14) for log_p in log_proba))
+        # get the log proba at the corresponding depth for negdoc and combine it
+        # with pre-calculated one for query and posdoc
+        if depth == 1:
+            neg_doc_logits = stepwise_generators.neg_doc.step(None)
         else:
-            # get the log proba at the corresponding depth
-            if depth == 1:
-                neg_doc_logits = stepwise_generators.neg_doc.step(None)
-            else:
-                # when depth = 2, we use the decoder input at depth 1 so indice 0
-                neg_doc_logits = decoder_input_tokens[depth - 2]
-            log_proba = Triplet(
-                pos_doc=cached_log_proba.pos_doc[depth - 1],
-                neg_doc=torch.clamp_min(
-                    nn.functional.log_softmax(neg_doc_logits, dim=-1), -14
-                ),
-                query=cached_log_proba.query[depth - 1],
+            # when depth = 2, we use the decoder input at depth 1 so indice 0
+            neg_doc_logits = stepwise_generators.neg_doc.step(
+                decoder_input_tokens[depth - 2]
             )
+        log_proba = Triplet(
+            pos_doc=cached_log_proba.pos_doc[depth - 1],
+            neg_doc=torch.clamp_min(
+                nn.functional.log_softmax(neg_doc_logits, dim=-1), -14
+            ),
+            query=cached_log_proba.query[depth - 1],
+        )
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("\n")
@@ -427,30 +373,8 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
 
         # log-probability of the next token using a mixture
         with torch.no_grad():
-            if (
-                decoder_input_tokens is None
-                or decoder_input_tokens.shape[0] != self.current_max_depth
-            ):
-                log_p_next_token = log_p_next_token_generator(log_proba)
-                next_tokens = torch.multinomial(
-                    torch.exp(log_p_next_token), num_samples=1
-                ).squeeze(
-                    1
-                )  # shape [bs]
-
-                if logger.isEnabledFor(logging.DEBUG):
-                    logger.debug(f"sampled token is {next_tokens} of depth {depth}")
-
-                # append the tokens to the next_step to make it to shape: [depth, bs]
-                if decoder_input_tokens is None:
-                    decoder_input_tokens = next_tokens.unsqueeze(0)
-                else:
-                    decoder_input_tokens = torch.vstack(
-                        (decoder_input_tokens, next_tokens)
-                    )
-            else:
-                log_p_next_token = log_p_next_token_generator(log_proba)
-                next_tokens = decoder_input_tokens[depth - 1]
+            log_p_next_token = log_p_next_token_generator(log_proba)
+            next_tokens = decoder_input_tokens[depth - 1]
 
         # --- Computes the log probability of sampled tokens
 
@@ -541,6 +465,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
             stepwise_generators,
             log_p_next_token_generator,
             sampled_token_p,
+            cached_log_proba,
         )
 
         return GenerativeLossOutput(
@@ -645,20 +570,19 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
         bs = len(posdocs_text)
         # prepare the sampling target
         log_p_next_token_generator = self.prepare_sampling_target(bs)
+        stepwise_generators = QryDocPair(
+            *(self.id_generator.stepwise_iterator() for _ in range(2))
+        )
+        stepwise_generators.pos_doc.init(posdocs_text)
+        stepwise_generators.query.init(queries_text)
+        preparation_output = self.query_document_pre_recursive(
+            depth=1,
+            stepwise_generators=stepwise_generators,
+            log_p_next_token_generator=log_p_next_token_generator,
+            log_proba=None,
+            decoder_input_tokens=None,
+        )
         if self.dynamic_negatives:
-            stepwise_generators = QryDocPair(
-                *(self.id_generator.stepwise_iterator() for _ in range(2))
-            )
-            stepwise_generators.pos_doc.init(posdocs_text)
-            stepwise_generators.query.init(queries_text)
-            preparation_output = self.query_document_pre_recursive(
-                depth=1,
-                stepwise_generators=stepwise_generators,
-                log_p_next_token_generator=log_p_next_token_generator,
-                log_proba=None,
-                decoder_input_tokens=None,
-            )
-
             # from the based on the sampled tokens to mine the negatives
             # get the positive document ids to
             # avoid sampling the same document as negatives
@@ -670,70 +594,32 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
                 positive_ids=np.array(posdocs_ids),
                 document_prefix=self.document_prefix,
             )
-
             for indice in range(bs):
-                if hard_negative_text[indice] == "":
-                    hard_negative_text[indice] = negdocs_text[indice]
+                if hard_negative_text[indice] != "":
+                    negdocs_text[indice] = hard_negative_text[indice]
 
-            # some initializations
-            sampled_token_p = None  # the proba for the sampled tokens, for logging
-            stepwise_generators = Triplet(  # not need for posdoc and query
-                neg_doc=self.id_generator.stepwise_iterator(), pos_doc=None, query=None
-            )
-
-            unfinished_sequences = torch.ones(bs, dtype=torch.long).to(
-                self.id_generator.device
-            )
-            log_cur_node_proba = Triplet(
-                *(torch.zeros(bs).to(self.id_generator.device) for _ in range(3))
-            )
-            loss = self.recursive(
-                preparation_output.sampled_tokens,  # shape [max_depth, bs]
-                unfinished_sequences,
-                log_cur_node_proba,  # Triplet[torch.Tensor], shape bs
-                1,
-                stepwise_generators,
-                log_p_next_token_generator,  # a callable
-                sampled_token_p,
-                preparation_output.log_proba,
-            )
-        else:
-            # create the generator for the given records,
-            # represent the posdoc, negdoc, query, respectively
-            stepwise_generators = Triplet(
-                *(self.id_generator.stepwise_iterator() for _ in range(3))
-            )
-            stepwise_generators.pos_doc.init(posdocs_text)
-            stepwise_generators.neg_doc.init(negdocs_text)
-            stepwise_generators.query.init(queries_text)
-
-            # initialize cumulate product of from the root to the current one
-            log_cur_node_proba = Triplet(
-                *(torch.zeros(bs).to(self.id_generator.device) for _ in range(3))
-            )
-
-            # initialize the input for the decoder and the mask
-            decoder_input_tokens = None
-            sampled_token_p = None  # the proba for the sampled tokens, for logging
-            unfinished_sequences = torch.ones(bs, dtype=torch.long).to(
-                self.id_generator.device
-            )
-
-            # prepare the sampling target
-            log_p_next_token_generator = self.prepare_sampling_target(bs)
-
-            # in fact, we need to minus something to get the pure gradient, but at
-            # the level of the root, the additional terms always equals to 0
-            loss = self.recursive(
-                decoder_input_tokens,
-                unfinished_sequences,
-                log_cur_node_proba,
-                1,
-                stepwise_generators,
-                log_p_next_token_generator,
-                sampled_token_p,
-            )
-
+        # some other initializations
+        sampled_token_p = None  # the proba for the sampled tokens, for logging
+        stepwise_generators = Triplet(  # not need for posdoc and query
+            neg_doc=self.id_generator.stepwise_iterator(), pos_doc=None, query=None
+        )
+        stepwise_generators.neg_doc.init(negdocs_text)
+        unfinished_sequences = torch.ones(bs, dtype=torch.long).to(
+            self.id_generator.device
+        )
+        log_cur_node_proba = Triplet(
+            *(torch.zeros(bs).to(self.id_generator.device) for _ in range(3))
+        )
+        loss = self.recursive(
+            preparation_output.sampled_tokens,  # shape [max_depth, bs]
+            unfinished_sequences,
+            log_cur_node_proba,  # Triplet[torch.Tensor], shape bs
+            1,
+            stepwise_generators,
+            log_p_next_token_generator,  # a callable
+            sampled_token_p,
+            preparation_output.log_proba,
+        )
         return GenerativeLossOutput(
             recursive_loss=-torch.mean(loss.recursive_loss),
             kl_div_loss=loss.kl_div_loss,
