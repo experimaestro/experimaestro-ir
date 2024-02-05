@@ -183,7 +183,7 @@ class DynamicNegativeBuilder:
         if filtered_indice[0].shape[0] == 0:
             return negative_text_list
 
-        logger.info(f"filtered_indice {filtered_indice}")
+        logger.debug(f"filtered_indice {filtered_indice}")
         for i, batch_indice in enumerate(filtered_indice[0]):
             negative_text_list[batch_indice] = document_prefix + negative_texts[i]
         return negative_text_list

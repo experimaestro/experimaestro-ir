@@ -7,7 +7,7 @@ from experimaestro import Task, Param, Meta, Annotated, pathgenerator, tqdm
 from experimaestro.core.objects import Config
 from datamaestro_text.data.ir import DocumentStore
 
-from xpmir.context import Context, Hook, InitializationHook
+from xpmir.context import Hook, InitializationHook
 from xpmir.documents.samplers import DocumentSampler
 from xpmir.neural.generative import BeamSearchGenerationOptions
 from xpmir.neural.generative.hf import T5ConditionalGenerator
@@ -17,7 +17,12 @@ from xpmir.rankers import Retriever
 
 from xpmir.learning import ModuleInitMode
 from xpmir.learning.batchers import Batcher
-from xpmir.learning.devices import DEFAULT_DEVICE, Device, DeviceInformation
+from xpmir.learning.devices import (
+    DEFAULT_DEVICE,
+    Device,
+    DeviceInformation,
+    ComputationContext,
+)
 from xpmir.utils.utils import batchiter, easylog, foreach
 
 logger = easylog()
@@ -70,7 +75,7 @@ class SyntheticQueryGeneration(Task):
 
     def generate(self, batch, fp):
         generate_output = self.model.generate(
-            [d.text for d in batch], self.generation_config
+            [d.get_text() for d in batch], self.generation_config
         )
         # length: bs*num_qry_per_doc
         queries = self.model.batch_decode(generate_output)
@@ -92,7 +97,7 @@ class SyntheticQueryGeneration(Task):
 
     def device_execute(self, device_information: DeviceInformation):
         # Initialization hooks
-        context = Context(device_information, hooks=self.hooks)
+        context = ComputationContext(device_information, hooks=self.hooks)
         foreach(context.hooks(InitializationHook), lambda hook: hook.before(context))
 
         count, iter = self.sampler()
