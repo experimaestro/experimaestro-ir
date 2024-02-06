@@ -127,6 +127,8 @@ class DynamicNegativeBuilder:
         log_proba: np.ndarray,  # shape: bs
     ):
         """Update the id_matrix and log_proba_matrix of the negatives"""
+        logger.debug(f"The sampled token is {sampled_tokens}")
+
         # the previous average probability for the current given ids
         log_proba_mean = self.log_proba_mean_matrix[tuple(sampled_tokens)]
         # update the means(using a fake average)
@@ -153,6 +155,8 @@ class DynamicNegativeBuilder:
         self.id_matrix[
             tuple(np.vstack((better_sampled_tokens, indices_doc_to_replace)))
         ] = better_ids
+
+        logger.debug(f"The new id_matrix {self.id_matrix}")
 
     def hard_negative_mining(
         self,
