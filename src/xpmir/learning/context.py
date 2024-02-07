@@ -190,6 +190,7 @@ class TrainerContext(Context):
         self._writer = None
         self._scope = []
         self._losses = None
+        self.optimizer.set_trainer_context(self)
 
         self.state = TrainState(model, trainer, optimizer)
 
