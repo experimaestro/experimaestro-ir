@@ -56,6 +56,9 @@ class GenerativeLossOutput(NamedTuple):
     kl_div_loss: torch.Tensor
     """The kl_div_loss"""
 
+    entropy_loss: torch.Tensor
+    """A regularization term which we want to optimize"""
+
     pairwise_accuracy: torch.Tensor
     """The pairwise accuracy"""
 
@@ -205,6 +208,9 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
 
     alpha: Param[float] = 0.0
     """The hyperparameter for the KL divergence"""
+
+    beta: Param[float] = 0.0
+    """The hyperparameter for the entropy regularization loss"""
 
     dynamic_negatives: Param[bool] = False
     """Whether build the dynamic negatives inside the loss part"""
@@ -415,6 +421,17 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
         )
         kl_loss = kl_loss.pos_doc + kl_loss.neg_doc + kl_loss.query
 
+        # the regularization entropy loss
+        # we want to maximize the entropy in order to make the it converge not that fast
+        entropy = Triplet(
+            *(
+                torch.mean(torch.sum(torch.exp(log_p) * log_p, dim=-1))
+                for log_p in log_proba
+            )
+        )
+
+        entropy_loss = entropy.pos_doc + entropy.neg_doc + entropy.query
+
         # prepare the sampled probability for logging
         with torch.no_grad():
             sampled_token_p = Triplet(
@@ -444,6 +461,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
                 recursive_loss=(middle_term + last_term)
                 * unfinished_sequences.detach(),
                 kl_div_loss=kl_loss,
+                entropy_loss=entropy_loss,
                 pairwise_accuracy=pairwise_accuracy_middle_term
                 * unfinished_sequences.detach(),
                 sampled_tokens=decoder_input_tokens,
@@ -480,6 +498,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
                 + last_term
             ),
             kl_div_loss=next_layer_recursive.kl_div_loss + kl_loss,
+            entropy_loss=next_layer_recursive.entropy_loss + entropy_loss,
             pairwise_accuracy=unfinished_sequences.detach()
             * (
                 next_layer_recursive.pairwise_accuracy * sampling_multiplier
@@ -627,6 +646,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
         return GenerativeLossOutput(
             recursive_loss=-torch.mean(loss.recursive_loss),
             kl_div_loss=loss.kl_div_loss,
+            entropy_loss=loss.entropy_loss,
             pairwise_accuracy=torch.mean(loss.pairwise_accuracy),
             sampled_tokens=loss.sampled_tokens,
             log_current_node_proba=loss.log_current_node_proba,
@@ -638,10 +658,14 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"Recursive Loss: {loss_output.recursive_loss}")
             logger.debug(f"KL_div regularization: {loss_output.kl_div_loss}")
+            logger.debug(f"Entropy regularization loss: {loss_output.entropy_loss}")
         context.add_loss(
             Loss("recursive-loss", loss_output.recursive_loss, self.weight)
         )
         context.add_loss(Loss("kl-div-loss", loss_output.kl_div_loss, self.alpha))
+        context.add_loss(
+            Loss("entropy-regularization-loss", loss_output.entropy_loss, self.beta)
+        )
         context.add_metric(
             ScalarMetric(
                 "Pairwise-accuracy", float(loss_output.pairwise_accuracy), len(records)
