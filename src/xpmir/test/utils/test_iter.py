@@ -1,26 +1,77 @@
 import numpy as np
+from typing import Callable
+import logging
+from decorator import decorator
 from xpmir.utils.iter import (
     RandomSerializableIterator,
     SkippingIterator,
+    SkippingInfiniteIterator,
     MultiprocessSerializableIterator,
+    RandomizedSerializableIterator,
+    SerializableIterator,
+    RandomStateSerializableAdaptor,
 )
 
 
-def test_iter_skipping_iterator():
-    a = list(range(10))
-
-    iterator = SkippingIterator(iter(a))
-    for _ in range(5):
+@decorator
+def iter_checker(
+    factory: Callable[..., SerializableIterator], steps: int = 5, *args, **kw
+):
+    # Iterate and get state
+    iterator = factory(*args, **kw)
+    for _ in range(steps):
         next(iterator)
 
     state = iterator.state_dict()
+
+    # Get the next value
     x = next(iterator)
 
-    iterator = SkippingIterator(iter(a))
+    # Re-create and test
+    iterator = factory()
     iterator.load_state_dict(state)
     assert next(iterator) == x
 
 
+@iter_checker(steps=5)
+def test_iter_skipping_iterator():
+    return SkippingIterator(iter(list(range(10))))
+
+
+@iter_checker(steps=5)
+def test_iter_skipping_infinite_iterator():
+    return SkippingInfiniteIterator(list(range(3)))
+
+
+@iter_checker(steps=5)
+def test_iter_mp_iterator():
+    """Test the multiprocess iterator"""
+    return MultiprocessSerializableIterator(SkippingIterator(iter(list(range(10)))))
+
+
+@iter_checker(steps=5)
+def test_iter_randomized_iterator():
+    class Iterator(RandomStateSerializableAdaptor[SkippingInfiniteIterator]):
+        def __init__(self, n: int):
+            base = SkippingInfiniteIterator(list(range(n)))
+            super().__init__(base)
+
+        def __next__(self):
+            element = next(self.iterator)
+            randint = self.random.randint(10)
+            logging.debug(
+                "---> [%s] %s + %s",
+                hash(str(self.random.get_state())),
+                element,
+                randint,
+            )
+            return element + randint
+
+    rs = np.random.RandomState()
+    return RandomizedSerializableIterator(rs, Iterator(3))
+
+
+@iter_checker(steps=5)
 def test_iter_random_iterator():
     a = list(range(10))
 
@@ -30,29 +81,4 @@ def test_iter_random_iterator():
             yield a[ix]
 
     rs = np.random.RandomState()
-    iterator = RandomSerializableIterator(rs, create_iter)
-    for _ in range(5):
-        next(iterator)
-
-    state = iterator.state_dict()
-    x = next(iterator)
-
-    iterator = RandomSerializableIterator(rs, create_iter)
-    iterator.load_state_dict(state)
-    assert next(iterator) == x
-
-
-def test_iter_mp_iterator():
-    """Test the multiprocess iterator"""
-    a = list(range(10))
-
-    iterator = MultiprocessSerializableIterator(SkippingIterator(iter(a)))
-    for _ in range(5):
-        next(iterator)
-
-    state = iterator.state_dict()
-    x = next(iterator)
-
-    iterator = MultiprocessSerializableIterator(SkippingIterator(iter(a)))
-    iterator.load_state_dict(state)
-    assert next(iterator) == x
+    return RandomSerializableIterator(rs, create_iter)

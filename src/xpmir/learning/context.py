@@ -181,7 +181,8 @@ class TrainerContext(Context):
         model: "Module",
         optimizer: "ScheduledOptimizer",
     ):
-        super().__init__(device_information)
+        super().__init__()
+        self.device_information = device_information
         self.path = path
         self.logpath = logpath
         self.max_epoch = max_epoch
@@ -189,6 +190,7 @@ class TrainerContext(Context):
         self._writer = None
         self._scope = []
         self._losses = None
+        self.optimizer.set_trainer_context(self)
 
         self.state = TrainState(model, trainer, optimizer)
 

@@ -18,12 +18,13 @@ from experimaestro import (
 from experimaestro.scheduler import Job, Listener
 from experimaestro.utils import cleanupdir
 from experimaestro.scheduler.services import WebService
-from xpmir.utils.utils import easylog, Initializable
+from xpmir.context import Hook
+from xpmir.utils.utils import easylog, Initializable, foreach
 from xpmir.learning.metrics import ScalarMetric
 from .schedulers import Scheduler
 
 if TYPE_CHECKING:
-    from xpmir.learning.context import TrainerContext
+    from xpmir.learning.context import TrainerContext, Context
 
 logger = easylog()
 
@@ -281,6 +282,48 @@ class DuplicateParameterFilter:
         return True
 
 
+class OptimizationHook(Hook):
+    """Base class for all optimization hooks"""
+
+    pass
+
+
+class GradientHook(OptimizationHook):
+    """Hooks that are called when the gradient is computed
+
+    The gradient is guaranteed to be unscaled in this case.
+    """
+
+    pass
+
+
+class GradientClippingHook(GradientHook):
+    """Gradient clipping"""
+
+    max_norm: Param[float]
+    """Maximum norm for gradient clipping"""
+
+    def __call__(self, main: "ScheduledOptimizer"):
+        torch.nn.utils.clip_grad_norm_(main.module.parameters(), self.max_norm)
+
+
+class GradientLogHook(GradientHook):
+    """ "Log the gradient norm"""
+
+    name: Param[str] = "gradient_norm"
+
+    def __call__(self, main: "ScheduledOptimizer"):
+        sum_norms = 0.0
+        n_params = 0
+        with torch.no_grad():
+            for param in main.module.parameters():
+                if param.grad is not None:
+                    n_params += param.grad.numel()
+                    sum_norms += param.grad.numel() * param.grad.norm() ** 2
+
+        main.trainer_context.writer.add_scalar(self.name, sum_norms / n_params)
+
+
 class ScheduledOptimizer:
     def initialize(
         self,
@@ -288,12 +331,16 @@ class ScheduledOptimizer:
         num_training_steps: int,
         module: Module,
         use_scaler: bool,
+        hooks: List[OptimizationHook] = [],
     ):
         self.schedulers = []
         self.scheduler_factories = []
         self.optimizers = []
         self.scheduler_steps = -1  # Number of scheduler steps
         self.num_training_steps = num_training_steps
+        self.module = module
+        self.context = Context(hooks)
+        self.trainer_context: "Optional[TrainerContext]" = None
 
         try:
             next(module.parameters())
@@ -313,6 +360,9 @@ class ScheduledOptimizer:
         if use_scaler:
             logger.info("Using GradScaler when optimizing")
         self.scaler = torch.cuda.amp.GradScaler() if use_scaler else None
+
+    def set_trainer_context(self, trainer_context: "TrainerContext"):
+        self.trainer_context = trainer_context
 
     def load_state_dict(self, state):
         for optimizer, optimizer_state in zip(self.optimizers, state["optimizers"]):
@@ -365,6 +415,17 @@ class ScheduledOptimizer:
                 optimizer.step()
 
         else:
+            # Unscale first
+            for optimizer in self.optimizers:
+                self.scaler.unscale_(optimizer)
+
+            # Apply gradient hooks
+            foreach(
+                self.context.hooks(GradientHook),
+                lambda hook: hook(self),
+            )
+
+            # Step
             for optimizer in self.optimizers:
                 self.scaler.step(optimizer)
             context.add_metric(
