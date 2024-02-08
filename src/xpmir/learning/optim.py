@@ -332,6 +332,7 @@ class ScheduledOptimizer:
         module: Module,
         use_scaler: bool,
         hooks: List[OptimizationHook] = [],
+        trainer_context: Optional["TrainerContext"] = None,
     ):
         self.schedulers = []
         self.scheduler_factories = []
@@ -340,7 +341,7 @@ class ScheduledOptimizer:
         self.num_training_steps = num_training_steps
         self.module = module
         self.context = Context(hooks)
-        self.trainer_context: "Optional[TrainerContext]" = None
+        self.trainer_context = trainer_context
 
         try:
             next(module.parameters())
@@ -360,9 +361,6 @@ class ScheduledOptimizer:
         if use_scaler:
             logger.info("Using GradScaler when optimizing")
         self.scaler = torch.cuda.amp.GradScaler() if use_scaler else None
-
-    def set_trainer_context(self, trainer_context: "TrainerContext"):
-        self.trainer_context = trainer_context
 
     def load_state_dict(self, state):
         for optimizer, optimizer_state in zip(self.optimizers, state["optimizers"]):
