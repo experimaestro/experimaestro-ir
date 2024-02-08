@@ -409,6 +409,12 @@ class ScheduledOptimizer:
     def optimizer_step(self, context: "TrainerContext"):
         """Performs an optimizer step (using the scaler if defined)"""
         if self.scaler is None:
+            # Apply gradient hooks
+            foreach(
+                self.context.hooks(GradientHook),
+                lambda hook: hook(self),
+            )
+
             for optimizer in self.optimizers:
                 optimizer.step()
 
