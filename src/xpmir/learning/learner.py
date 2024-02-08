@@ -247,6 +247,7 @@ class Learner(Task, EasyLogger):
             self.model,
             self.use_fp16,
             hooks=[hook for hook in self.hooks if isinstance(hook, OptimizationHook)],
+            trainer_context=self.context,
         )
 
         foreach(
