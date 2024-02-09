@@ -321,7 +321,9 @@ class GradientLogHook(GradientHook):
                     n_params += param.grad.numel()
                     sum_norms += param.grad.numel() * param.grad.norm() ** 2
 
-        main.trainer_context.writer.add_scalar(self.name, sum_norms / n_params)
+        main.trainer_context.writer.add_scalar(
+            self.name, sum_norms / n_params, main.trainer_context.state.step
+        )
 
 
 class ScheduledOptimizer:
