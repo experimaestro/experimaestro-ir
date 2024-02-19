@@ -1,5 +1,5 @@
 import dataclasses
-from typing import List
+from typing import List, Optional
 
 import torch
 from experimaestro import Config, Param
@@ -12,6 +12,7 @@ from xpmir.letor.trainers import TrainerContext
 from xpmir.neural.generative import (
     ConditionalGenerator,
     GenerateOptions,
+    SequenceGenerator,
     StepwiseGenerator,
     BeamSearchGenerationOptions,
 )
@@ -104,6 +105,27 @@ class GeneratorBiasStepwiseGenerator(StepwiseGenerator):
         return logits
 
 
+class GeneratorBiasSequenceGenerator(SequenceGenerator):
+    def __init__(
+        self,
+        id_generator: ConditionalGenerator,
+        sequence_generator: SequenceGenerator,
+    ):
+        super().__init__()
+        self.id_generator = id_generator
+        self.sequence_generator = sequence_generator
+
+    def init(self, texts: List[str]):
+        self.sequence_generator.init(texts)
+
+    def decode(
+        self,
+        labels: Optional[torch.LongTensor] = None,
+        decoder_input_ids: Optional[torch.LongTensor] = None,
+    ):
+        return self.sequence_generator.decode(labels, decoder_input_ids)
+
+
 # The model with addtional bias
 class GeneratorBiasAdapter(ConditionalGenerator):
     max_depth: Param[int] = 5
@@ -123,6 +145,11 @@ class GeneratorBiasAdapter(ConditionalGenerator):
     def stepwise_iterator(self) -> StepwiseGenerator:
         return GeneratorBiasStepwiseGenerator(
             self, self.vanilla_generator.stepwise_iterator()
+        )
+
+    def sequence_generator(self) -> SequenceGenerator:
+        return GeneratorBiasSequenceGenerator(
+            self, self.vanilla_generator.sequence_generator()
         )
 
     @property

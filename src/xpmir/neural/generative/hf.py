@@ -14,14 +14,22 @@ from . import (
     GenerateOptions,
     BeamSearchGenerationOptions,
     StepwiseGenerator,
+    SequenceGenerator,
 )
 
 
 class GeneratorForwardOutput(NamedTuple):
     """The forward output of the generative retrieval"""
 
-    logits: torch.tensor
-    past_key_values: Optional[torch.tensor] = None
+    logits: torch.Tensor
+    past_key_values: Optional[torch.Tensor] = None
+
+
+class SequenceGeneratorForwardOutput(NamedTuple):
+    """The sequence forward output of the generative retrieval"""
+
+    logits: torch.Tensor
+    loss: Optional[torch.Tensor] = None
 
 
 class FullSequenceGenerationOutput(NamedTuple):
@@ -55,6 +63,9 @@ class T5ConditionalGenerator(ConditionalGenerator, DistributableModel):
 
     def stepwise_iterator(self) -> StepwiseGenerator:
         return T5StepwiseGenerator(self)
+
+    def sequence_generator(self) -> SequenceGenerator:
+        return T5SequenceGenerator(self)
 
     def __initialize__(self, options: ModuleInitOptions):
         assert options.mode != ModuleInitMode.RANDOM, "Random mode not handled (yet)"
@@ -163,6 +174,28 @@ class T5ConditionalGenerator(ConditionalGenerator, DistributableModel):
             logits=logits, past_key_values=decoder_output.past_key_values
         )
 
+    def sequence_forward(
+        self,
+        encoder_attention_mask,  # shape [bs, seq] with 0 or 1
+        encoder_outputs,
+        decoder_input_ids: Optional[torch.LongTensor] = None,  # the decoder input ids
+        labels: Optional[torch.LongTensor] = None,  # the label of the forward target
+    ):
+        """Get the logits from the decoder with a sequence of decoder input
+        if it is the label is provided, we can also calculated the loss here"""
+        decoder_output = self.model(
+            decoder_input_ids=decoder_input_ids,
+            encoder_outputs=encoder_outputs,
+            attention_mask=encoder_attention_mask,
+            labels=labels,
+            return_dict=True,
+        )
+
+        return SequenceGeneratorForwardOutput(
+            logits=decoder_output.logits,  # shape [bs, dec_seq, decoder_outdim+1]
+            loss=decoder_output.loss,
+        )
+
     def generate(
         self, inputs: List[str], options: GenerateOptions = None
     ) -> FullSequenceGenerationOutput:
@@ -252,6 +285,27 @@ class T5StepwiseGenerator(StepwiseGenerator):
         )
         self.past_key_values = forward_output.past_key_values
         return forward_output.logits
+
+
+class T5SequenceGenerator(SequenceGenerator):
+    def __init__(self, id_generator: ConditionalGenerator):
+        super().__init__()
+        self.id_generator = id_generator
+
+    def init(self, texts: List[str]):
+        self.encoder_output, self.attention_mask = self.id_generator.encode(texts)
+
+    def decode(
+        self,
+        labels: Optional[torch.LongTensor] = None,
+        decoder_input_ids: Optional[torch.LongTensor] = None,
+    ) -> SequenceGeneratorForwardOutput:
+        return self.id_generator.sequence_forward(
+            encoder_attention_mask=self.attention_mask,
+            encoder_outputs=self.encoder_output,
+            labels=labels,
+            decoder_input_ids=decoder_input_ids,
+        )
 
 
 class T5ForIdentifierGeneration(T5ForConditionalGeneration):

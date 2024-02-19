@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 from abc import abstractmethod
 
 import torch
@@ -35,6 +35,27 @@ class StepwiseGenerator:
         ...
 
 
+class SequenceGenerator:
+    """Utility class for generating a full sequence at a time given the decoder
+    input"""
+
+    @abstractmethod
+    def init(self, texts: List[str]) -> torch.Tensor:
+        """Returns the distribution over the first generated tokens (BxV)
+        given the texts"""
+        pass
+
+    @abstractmethod
+    def decode(
+        self,
+        labels: Optional[torch.LongTensor] = None,
+        decoder_input_ids: Optional[torch.LongTensor] = None,
+    ):
+        """Returns the logits given the tokens ids and return the logits of
+        shape [bs, seq, dec_dim]"""
+        pass
+
+
 @dataclass
 class GenerateOptions:
     """Options used during sequence generation"""
@@ -60,6 +81,10 @@ class ConditionalGenerator(Module):
 
     @abstractmethod
     def stepwise_iterator(self) -> StepwiseGenerator:
+        pass
+
+    @abstractmethod
+    def sequence_generator(self) -> SequenceGenerator:
         pass
 
     @abstractmethod

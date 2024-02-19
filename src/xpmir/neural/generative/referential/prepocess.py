@@ -13,6 +13,9 @@ from xpmir.learning import ModuleInitMode
 from xpmir.text.encoders import TokenizedEncoder
 from xpmir.text.tokenizers import TokenizerBase
 from xpmir.documents.samplers import DocumentSampler
+from xpmir.neural.generative.referential.samplers import (
+    JSONLReferentialDocumentIdDataset,
+)
 
 from xpmir.utils.utils import batchiter, easylog
 
@@ -54,13 +57,20 @@ class ReferentialFixDocumentIdBuilder(Task):
     alpha: Param[int] = 39
     """The threshold for stopping the hierarchical clustering"""
 
+    beta: Param[int] = 8
+    """The threshold for the minimal number of documents for each sequence to
+    avoid overfitting."""
+
     def task_outputs(self, dep: Callable[[Config], None]) -> Any:
-        pass
+        return dep(
+            JSONLReferentialDocumentIdDataset(
+                path=self.target_path,
+            )
+        )
 
     def index_documents(self, batch: List[str], data):
         tokenized = self.tokenizer.tokenize(batch)
         x = self.encoder(tokenized).value
-        # FIXME: better not do it here
         mask = tokenized.mask.to(self.device.value)
         input_mask_expanded = mask.unsqueeze(-1).expand(x.size()).float()
         res = torch.sum(x * input_mask_expanded, 1) / torch.clamp(
@@ -114,17 +124,17 @@ class ReferentialFixDocumentIdBuilder(Task):
         max_depth,  # where to stop?
         prefix,  # a list, which signify the prefix
         fp,  # the file
-    ):
+    ) -> List[int]:
         data_to_kmeans = self.index[data_indice]
 
         # test end condition
-        # if the number of the number of tokens is smaller than k, no need to
+        # if the number of the number of tokens is smaller than a threshold, no need to
         # k-means clustering
         if depth == max_depth + 1 or data_indice.shape[0] < int(
             self.alpha * self.decoder_dim
         ):
             if data_indice.shape[0] == 0:
-                return
+                return []
             output = {}
             prefix_str = "\t".join(map(str, prefix))
             output[prefix_str] = [
@@ -133,7 +143,7 @@ class ReferentialFixDocumentIdBuilder(Task):
             ]
             json.dump(output, fp)
             fp.write("\n")
-            return
+            return []
 
         if len(prefix) == 0:
             logger.info("Start the hierarchical k-means clustering from the root")
@@ -146,11 +156,48 @@ class ReferentialFixDocumentIdBuilder(Task):
         kmeans.train(data_to_kmeans)
         _, INDICE = kmeans.index.search(data_to_kmeans, 1)
 
+        # the list of the documents for the current_cluster
+        current_cluster = []
         for i in range(self.decoder_dim):
             new_prefix = prefix.copy()
             new_prefix.append(i)
             # prepare the new indices.
             new_data_indice = data_indice[np.where(INDICE.reshape(-1) == i)[0]]
-            self.classify_recursion(
-                depth + 1, new_data_indice, max_depth, new_prefix, fp
-            )
+            # e.g. if the document belongs to 2.4.5.1 is smaller than a
+            # threshold, we consider them belongs to 2.4.5 to avoid overfitting,
+            # if still too small, consider it belongs to 2.4, etc.
+            if new_data_indice.shape[0] < self.beta:
+                current_cluster.extend(new_data_indice.tolist())
+                logger.info(
+                    f"The cluster {new_prefix} doesn't contains enough \
+                    documents(number: {new_data_indice.shape[0]}), trying \
+                    to store them inside the {prefix}"
+                )
+            else:
+                deeper_layer_not_classified = self.classify_recursion(
+                    depth + 1, new_data_indice, max_depth, new_prefix, fp
+                )
+                current_cluster.extend(deeper_layer_not_classified)
+
+        # check if the documents for the current cluster achieve the threshold
+        # if true store them, if not return to the previous layers
+        # Or if the depth == 1, we need to store them also because otherwise
+        # we will have no place to store them anymore
+        if len(current_cluster) >= self.beta or depth == 1:
+            output = {}
+            prefix_str = "\t".join(map(str, prefix))
+            output[prefix_str] = [
+                self.sampler.documents.docid_internal2external(i)
+                for i in current_cluster
+            ]
+            json.dump(output, fp)
+            fp.write("\n")
+            return []
+        else:
+            if len(current_cluster) != 0:
+                logger.info(
+                    f"No enough documents for {prefix}(number: \
+                    {len(current_cluster)}), trying to store them \
+                    in their father"
+                )
+            return current_cluster

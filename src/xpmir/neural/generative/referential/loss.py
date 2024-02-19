@@ -12,7 +12,7 @@ from torch import nn
 from xpmir.learning.context import Loss
 from xpmir.learning.metrics import ScalarMetric
 from xpmir.letor.records import BaseRecords, PairwiseRecords
-from xpmir.letor.trainers import TrainerContext
+from xpmir.letor.trainers import TrainerContext, LossTrainer
 from xpmir.letor.trainers.generative import PairwiseGenerativeLoss
 from xpmir.neural.generative import (
     ConditionalGenerator,
@@ -20,6 +20,10 @@ from xpmir.neural.generative import (
 )
 from xpmir.utils.utils import easylog
 from xpmir.neural.generative.referential import DepthUpdatable
+from xpmir.neural.generative.referential.samplers import (
+    ReferentialSampler,
+    ReferentialDocumentIDRecords,
+)
 
 logger = easylog()
 T = TypeVar("T")
@@ -763,3 +767,71 @@ class RandomSamplingPairwiseGenerativeRetrievalLoss(PairwiseGenerativeRetrievalL
             )  # shape [bs, decoder_dim]
 
         return log_p_next_token
+
+
+class ReferentialDocumentIdLoss(PairwiseGenerativeLoss):
+
+    id_generator: Param[ConditionalGenerator]
+    """The id generator"""
+
+    max_depth: Param[int] = 5
+    """The max_depth of the loss"""
+
+    def initialize(self):
+        pass
+
+    def compute(self, records, context):
+        sequence_generator = self.id_generator.sequence_generator()
+        eos_token_id = self.id_generator.eos_token_id
+        posdocs_text = [doc.document.get_text() for doc in records.documents]
+
+        # prepare the label, add and eos and then padding it with -100.
+        max_length = max(len(target) for target in records.targets)
+        if max_length < self.max_depth:
+            target_matrix_width = max_length + 1
+        else:
+            target_matrix_width = self.max_depth
+
+        padded_labels = []
+        for label in records.targets:
+            tmp_count = len(label)
+            if tmp_count < target_matrix_width:
+                # -100 is the sign for not treating this lable for CE loss
+                label = (
+                    label
+                    + [eos_token_id]
+                    + [-100] * (target_matrix_width - tmp_count - 1)
+                )
+            padded_labels.append(label)
+        padded_labels = torch.tensor(padded_labels).to(self.id_generator.device)
+        sequence_generator.init(posdocs_text)
+        return sequence_generator.decode(labels=padded_labels).loss
+
+    def process(self, records: ReferentialDocumentIDRecords, context: TrainerContext):
+        loss = self.compute(records, context)
+        context.add_loss(Loss("cross-entropy-loss", loss, self.weight))
+
+
+# TODO: Trainer for the CE entropy loss, could be generic
+class ReferentialDocumentIdTrainer(LossTrainer):
+    loss: Param[ReferentialDocumentIdLoss]
+
+    sampler: Param[ReferentialSampler]
+    """The pairwise sampler"""
+
+    def initialize(self, random: np.random.RandomState, context: TrainerContext):
+        super().initialize(random, context)
+        self.loss.initialize()
+        self.sampler.initialize(random)
+        self.sampler_iter = self.sampler.referential_iter()
+
+    def iter_batches(self):
+        while True:
+            batch = ReferentialDocumentIDRecords()
+            for _, record in zip(range(self.batch_size), self.sampler_iter):
+                batch.add(record)
+            yield batch
+
+    def train_batch(self, records: PairwiseRecords):
+        # do the forward pass to get the gradient value
+        self.loss.process(records, self.context)

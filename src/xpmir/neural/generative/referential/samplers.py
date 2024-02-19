@@ -1,19 +1,33 @@
-from typing import Any, Optional, TypeVar
-import numpy as np
-from experimaestro import Param
-from datamaestro_text.data.ir import DocumentStore
+from typing import Any, Optional, TypeVar, List, Iterator, Union
+from pathlib import Path
+from attrs import define
+import json
+from experimaestro.compat import cached_property
+import random
 
+import numpy as np
+from experimaestro import Param, Config
+from datamaestro_text.data.ir import DocumentStore
+from datamaestro_text.data.ir.base import Document, IDDocument
+from xpmir.learning import Sampler
 from xpmir.letor.records import PairwiseRecord, DocumentRecord
 from xpmir.letor.samplers import PairwiseSampler
+from xpmir.letor.samplers.hydrators import SampleTransform
 from xpmir.utils.iter import (
     SerializableIterator,
     RandomStateSerializableAdaptor,
+    SkippingIterator,
+    InfiniteSkippingIterator,
+    iterable_of,
+    SerializableIteratorTransform,
 )
 
 State = TypeVar("State")
 T = TypeVar("T")
+RT = TypeVar("RT")
 
 
+# deprecated
 class AbstractDynamicNegativesSampler(PairwiseSampler):
     """Specific for referential"""
 
@@ -38,6 +52,7 @@ class AbstractDynamicNegativesSampler(PairwiseSampler):
     fake_average_coeff * previous + (1 - fake_average_coeff) * new_input"""
 
 
+# deprecated
 class DynamicNegativesSampler(AbstractDynamicNegativesSampler):
     """The random span sampler where the negatives are sampled in an
     hierarchical way, designed for REFERENTIAL pretraining.
@@ -69,6 +84,7 @@ class DynamicNegativesSampler(AbstractDynamicNegativesSampler):
         return self.iterator
 
 
+# deprecated
 class ReferentialRandomStateSerializableAdapter(
     RandomStateSerializableAdaptor[SerializableIterator[PairwiseRecord]]
 ):
@@ -199,6 +215,7 @@ class ReferentialRandomStateSerializableAdapter(
         return PairwiseRecord(original_pair.query, original_pair.positive, record_neg)
 
 
+# deprecated
 # FIXME: Not working for the moment, need to treat the current depth
 class DepthUpdatableDynamicNegativesSampler(AbstractDynamicNegativesSampler):
     """The random span sampler where the negatives are sampled in an
@@ -230,6 +247,7 @@ class DepthUpdatableDynamicNegativesSampler(AbstractDynamicNegativesSampler):
         return self.iterator
 
 
+# deprecated
 class DepthUpdatableReferentialRandomStateSerializableAdapter(
     RandomStateSerializableAdaptor[SerializableIterator[PairwiseRecord]]
 ):
@@ -371,3 +389,151 @@ class DepthUpdatableReferentialRandomStateSerializableAdapter(
         else:
             record_neg = original_pair.negative
         return PairwiseRecord(original_pair.query, original_pair.positive, record_neg)
+
+
+# TODO: Put it to the record, and can make it more generic: list[int] ->
+# list[str] so we can tokenize them
+class ReferentialDocumentIDRecord:
+
+    document: DocumentRecord
+
+    target: List[int]
+
+    def __init__(self, document: DocumentRecord, target: List[int]):
+        self.document = document
+        self.target = target
+
+
+class ReferentialDocumentIDRecords(List[RT]):
+
+    documents: List[DocumentRecord]
+
+    targets: List[List[int]]
+
+    def __init__(self):
+        self.documents = []
+        self.targets = []
+
+    def add(self, record: ReferentialDocumentIDRecord):
+        self.documents.append(record.document)
+        self.targets.append(record.target)
+
+    def __len__(self):
+        return len(self.documents)
+
+    def __getitem__(self, ix: Union[slice, int]):
+        if isinstance(ix, slice):
+            records = ReferentialDocumentIDRecords()
+            for i in range(ix.start, min(ix.stop, len(self.documents)), ix.step or 1):
+                records.add(
+                    ReferentialDocumentIDRecord(self.documents[i], self.targets[i])
+                )
+            return records
+
+        return ReferentialDocumentIDRecord(self.documents[ix], self.targets[ix])
+
+
+@define(kw_only=True)
+class JSONLReferentialDocumentIdSample:
+
+    documents: List[Document]
+    """The list of document to given id"""
+
+    ids: List[int]
+    """The sequences"""
+
+
+class JSONLReferentialDocumentIdDataset(Config):
+
+    path: Param[Path]
+    """The path to the Jsonl file"""
+
+    def iter(self) -> Iterator[JSONLReferentialDocumentIdSample]:
+        with self.path.open("r") as fp:
+            for line in fp:
+                sample = json.loads(line)
+                documents = [
+                    IDDocument(id=document_id)
+                    for document_id in list(sample.values())[0]
+                ]
+                id_list = list(sample.keys())[0].split("\t")
+                if id_list == [""]:
+                    # if the id_list = [""] (correspond to eos directly)
+                    id_list = []
+                else:
+                    id_list = [int(id) for id in id_list]
+                yield JSONLReferentialDocumentIdSample(documents=documents, ids=id_list)
+
+
+class ReferentialSampler(Sampler):
+    def referential_iter(self) -> SkippingIterator[ReferentialDocumentIDRecord]:
+        pass
+
+
+class JSONLReferentialDocumentIdSampler(ReferentialSampler):
+
+    dataset: Param[JSONLReferentialDocumentIdDataset]
+    """The dataset store"""
+
+    @cached_property
+    def random_data_list(self) -> List[JSONLReferentialDocumentIdSample]:
+        dataset_list = list(self.dataset.iter())
+        random.shuffle(dataset_list)
+        return dataset_list
+
+    def referential_iter(self) -> SkippingIterator[ReferentialDocumentIDRecord]:
+        class _Iterator(
+            RandomStateSerializableAdaptor[
+                SerializableIterator[JSONLReferentialDocumentIdSample]
+            ]
+        ):
+            def __init__(
+                self,
+                iterator: SerializableIterator[JSONLReferentialDocumentIdSample],
+                random: np.random.RandomState,
+            ):
+                super().__init__(iterator)
+                self.random = random
+
+            def __next__(self):
+                sample = next(self.iterator)
+                doc = sample.documents[self.random.randint(len(sample.documents))]
+                return ReferentialDocumentIDRecord(
+                    document=DocumentRecord(doc), target=sample.ids
+                )
+
+        base = InfiniteSkippingIterator(
+            iterable_of(lambda: iter(self.random_data_list))
+        )
+        return _Iterator(base, self.random)
+
+
+# TODO: put it into the hydrator part when it is ok.
+class ReferentialDocumentIdSamplerTransformAdapter(ReferentialSampler):
+
+    sampler: Param[JSONLReferentialDocumentIdSampler]
+
+    adapter: Param[SampleTransform]
+    """The transformation"""
+
+    def initialize(self, random: Optional[np.random.RandomState] = None):
+        super().initialize(random)
+        self.sampler.initialize(random)
+
+    def transform_record(
+        self, record: ReferentialDocumentIDRecord
+    ) -> ReferentialDocumentIDRecord:
+        docs = [record.document.document]
+        docs = self.adapter.transform_documents(docs) or docs
+
+        return ReferentialDocumentIDRecord(
+            document=DocumentRecord(docs[0]),
+            target=record.target,
+        )
+
+    def referential_iter(self) -> Iterator[ReferentialDocumentIDRecord]:
+        iterator = self.sampler.referential_iter()
+
+        return SerializableIteratorTransform(
+            SkippingIterator.make_serializable(iterator), self.transform_record
+        )
