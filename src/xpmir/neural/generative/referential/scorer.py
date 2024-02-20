@@ -247,6 +247,10 @@ class BeamSearchRandomBasedGenerativeRetrievalScorer(
         query_generate_output: FullSequenceGenerationOutput,
     ):
         assert depth <= self.current_max_depth
+        # if all generated queries ends before reaching the max depth, we need
+        # to adapt it.
+        current_max_depth = query_generate_output.sequences.shape[-1] - 1
+
         decoder_input_tokens = (
             None if depth == 1 else query_generate_output.sequences[:, depth - 1]
         )
@@ -257,8 +261,6 @@ class BeamSearchRandomBasedGenerativeRetrievalScorer(
         )  # [bs*num_beam, vocab_size]
         log_proba_randdoc = self.random_distribution[depth - 1]
 
-        # print(document_log_proba.shape)
-
         # -- the exact term of the scorer
         exact_term = torch.sum(
             torch.exp(query_generate_output.all_scores[depth - 1] + document_log_proba)
@@ -268,11 +270,14 @@ class BeamSearchRandomBasedGenerativeRetrievalScorer(
 
         # get the tokens passed for the next layers --> predefined by query
         next_tokens = query_generate_output.sequences[:, depth]  # shape [bs*num_beam]
-        # print(next_tokens.shape)
-
+        # if encounter eos, need to replace by another token or we will
+        # encounter index out of range error, we can use whatever token id cause
+        # it will be masked later.
+        # Here it use the 0 as an example
+        next_tokens = torch.where(
+            next_tokens == self.id_generator.pad_token_id, 0, next_tokens
+        )
         batch_range = torch.arange(len(next_tokens))
-
-        # print(batch_range)
         log_proba_next_doc = document_log_proba[batch_range, next_tokens]
 
         log_proba_next_randdoc = torch.where(
@@ -281,8 +286,10 @@ class BeamSearchRandomBasedGenerativeRetrievalScorer(
             log_proba_randdoc[0],
         )
         unfinished_sequences = query_generate_output.output_mask[:, depth - 1]
-        new_unfinished_sequences = query_generate_output.output_mask[:, depth]
-        if new_unfinished_sequences.max() == 0 or depth == self.current_max_depth:
+        # here no need to set the new_unfinished_squeneces cause if all the
+        # sequences are finished, there are no tokens at that depth, which means
+        # reach the current_max_depth
+        if depth == current_max_depth:
             return unfinished_sequences * exact_term
 
         return unfinished_sequences * (
