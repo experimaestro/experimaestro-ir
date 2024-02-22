@@ -307,6 +307,25 @@ class GradientClippingHook(GradientHook):
         torch.nn.utils.clip_grad_norm_(main.module.parameters(), self.max_norm)
 
 
+class GradientLogHook(GradientHook):
+    """ "Log the gradient norm"""
+
+    name: Param[str] = "gradient_norm"
+
+    def __call__(self, main: "ScheduledOptimizer"):
+        sum_norms = 0.0
+        n_params = 0
+        with torch.no_grad():
+            for param in main.module.parameters():
+                if param.grad is not None:
+                    n_params += param.grad.numel()
+                    sum_norms += param.grad.numel() * param.grad.norm() ** 2
+
+        main.trainer_context.writer.add_scalar(
+            self.name, sum_norms / n_params, main.trainer_context.state.step
+        )
+
+
 class ScheduledOptimizer:
     def initialize(
         self,
@@ -315,6 +334,7 @@ class ScheduledOptimizer:
         module: Module,
         use_scaler: bool,
         hooks: List[OptimizationHook] = [],
+        trainer_context: Optional["TrainerContext"] = None,
     ):
         self.schedulers = []
         self.scheduler_factories = []
@@ -323,6 +343,7 @@ class ScheduledOptimizer:
         self.num_training_steps = num_training_steps
         self.module = module
         self.context = Context(hooks)
+        self.trainer_context = trainer_context
 
         try:
             next(module.parameters())
@@ -390,6 +411,12 @@ class ScheduledOptimizer:
     def optimizer_step(self, context: "TrainerContext"):
         """Performs an optimizer step (using the scaler if defined)"""
         if self.scaler is None:
+            # Apply gradient hooks
+            foreach(
+                self.context.hooks(GradientHook),
+                lambda hook: hook(self),
+            )
+
             for optimizer in self.optimizers:
                 optimizer.step()
 
