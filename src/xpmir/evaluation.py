@@ -67,7 +67,7 @@ class BaseEvaluation(Task):
 def get_run(retriever: Retriever, dataset: Adhoc):
     """Returns the scored documents for each topic in a dataset"""
     results = retriever.retrieve_all(
-        {topic.get_id(): topic.get_text() for topic in dataset.topics.iter()}
+        {record.topic.get_id(): record for record in dataset.topics.iter()}
     )
     return {
         qid: {sd.document.get_id(): sd.score for sd in scoredocs}

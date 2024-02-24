@@ -4,7 +4,7 @@ import torch
 import numpy as np
 import sys
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Generic
 from experimaestro import (
     Annotated,
     Config,
@@ -20,8 +20,8 @@ from xpmir.learning import ModuleInitMode
 from xpmir.learning.batchers import Batcher
 from xpmir.utils.utils import batchiter, easylog
 from xpmir.letor import Device, DEFAULT_DEVICE
-from xpmir.text.encoders import TextEncoder
-from xpmir.rankers import Retriever, ScoredDocument
+from xpmir.text.encoders import TextEncoderBase, InputType
+from xpmir.rankers import Retriever, TopicRecord, ScoredDocument
 from xpmir.utils.iter import MultiprocessIterator
 import xpmir_rust
 
@@ -55,9 +55,9 @@ class SparseRetrieverIndex(Config):
         return results
 
 
-class SparseRetriever(Retriever):
+class SparseRetriever(Retriever, Generic[InputType]):
     index: Param[SparseRetrieverIndex]
-    encoder: Param[TextEncoder]
+    encoder: Param[TextEncoderBase[InputType, torch.Tensor]]
     topk: Param[int]
 
     batcher: Meta[Batcher] = Batcher()
@@ -72,14 +72,16 @@ class SparseRetriever(Retriever):
 
     def initialize(self):
         super().initialize()
-        self.encoder.initialize(ModuleInitMode.RANDOM.to_options(None))
+        self.encoder.initialize(ModuleInitMode.DEFAULT.to_options(None))
         self.index.initialize(self.in_memory)
 
-    def retrieve_all(self, queries: Dict[str, str]) -> Dict[str, List[ScoredDocument]]:
+    def retrieve_all(
+        self, queries: Dict[str, InputType]
+    ) -> Dict[str, List[ScoredDocument]]:
         """Input queries: {id: text}"""
 
         def reducer(
-            batch: List[Tuple[str, str]],
+            batch: List[Tuple[str, InputType]],
             results: Dict[str, List[ScoredDocument]],
             progress,
         ):
@@ -105,7 +107,7 @@ class SparseRetriever(Retriever):
 
         return results
 
-    def retrieve(self, query: str, top_k=None) -> List[ScoredDocument]:
+    def retrieve(self, query: TopicRecord, top_k=None) -> List[ScoredDocument]:
         """Search with document-at-a-time (DAAT) strategy
 
         :param top_k: Overrides the default top-K value
@@ -120,7 +122,7 @@ class SparseRetriever(Retriever):
         return self.index.retrieve(query, top_k or self.topk)
 
 
-class SparseRetrieverIndexBuilder(Task):
+class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
     """Builds an index from a sparse representation
 
     Assumes that document and queries have the same dimension, and
@@ -130,7 +132,7 @@ class SparseRetrieverIndexBuilder(Task):
     documents: Param[DocumentStore]
     """Set of documents to index"""
 
-    encoder: Param[TextEncoder]
+    encoder: Param[TextEncoderBase[InputType, torch.Tensor]]
     """The encoder"""
 
     batcher: Meta[Batcher] = Batcher()
@@ -174,7 +176,7 @@ class SparseRetrieverIndexBuilder(Task):
             f"Load the encoder and transfer to the target device {self.device.value}"
         )
 
-        self.encoder.initialize(ModuleInitMode.RANDOM.to_options(None))
+        self.encoder.initialize(ModuleInitMode.DEFAULT.to_options(None))
         self.encoder.to(self.device.value).eval()
 
         batcher = self.batcher.initialize(self.batch_size)

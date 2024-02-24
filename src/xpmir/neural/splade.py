@@ -56,8 +56,12 @@ class SumAggregation(Aggregation):
 
 class AggregationModule(nn.Module):
     def __init__(self, linear: nn.Linear, aggregation: Aggregation):
+        super().__init__()
         self.linear = linear
         self.aggregation = aggregation
+
+    def forward(self, input: torch.Tensor, mask: torch.Tensor):
+        return self.aggregation(self.linear(input), mask)
 
 
 class SpladeTextEncoderModel(nn.Module):
@@ -122,7 +126,7 @@ class SpladeTextEncoderV2(
 ):
     # TODO: use "SpladeTextEncoder" identifier until
     # https://github.com/experimaestro/experimaestro-python/issues/56 is fixed
-    __xpmid__ = SpladeTextEncoder.__getxpmtype__().identifier
+    __xpmid__ = str(SpladeTextEncoder.__getxpmtype__().identifier)
 
     """Splade model text encoder (V2)
 
@@ -144,6 +148,7 @@ class SpladeTextEncoderV2(
 
     def __initialize__(self, options: ModuleInitOptions):
         self.encoder.initialize(options)
+        self.tokenizer.initialize(options)
 
         # Adds the aggregation head right away - this could allows
         # optimization e.g. for the Max aggregation method
@@ -151,16 +156,18 @@ class SpladeTextEncoderV2(
         assert isinstance(
             output_embeddings, nn.Linear
         ), f"Cannot handle output embeddings of class {output_embeddings.__cls__}"
-        self.encoder.model.set_output_embeddings(
-            self.aggregation.get_output_module(output_embeddings)
-        )
+        self.encoder.model.set_output_embeddings(nn.Identity())
 
-    def forward(self, texts: EncoderInputType) -> torch.Tensor:
+        self.aggregation = self.aggregation.get_output_module(output_embeddings)
+
+    def forward(self, texts: EncoderInputType) -> TextsRepresentationOutput:
         """Returns a batch x vocab tensor"""
         tokenized = self.tokenizer.tokenize(
             texts, options=TokenizerOptions(self.maxlen)
         )
-        return self.encoder(tokenized)
+
+        value = self.aggregation(self.encoder(tokenized).logits, tokenized.mask)
+        return TextsRepresentationOutput(value, tokenized)
 
     @property
     def dimension(self):

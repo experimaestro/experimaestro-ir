@@ -21,7 +21,9 @@ from xpmir.utils.utils import easylog
 from xpmir.learning.context import TrainerContext, TrainState
 from xpmir.learning.parameters import ParametersIterator
 from .tokenizers import (  # noqa: F401
+    HFTokenizer,
     HFTokenizerBase,
+    HFTokenizerAdapter,
     HFStringTokenizer,
     HFListTokenizer,
 )

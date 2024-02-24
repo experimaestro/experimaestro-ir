@@ -1,58 +1,37 @@
-from abc import ABC, abstractmethod
-from functools import cached_property
-from typing import Iterator
-
 import numpy as np
-from datamaestro_text.data.conversation import Conversation, ConversationDataset
+from datamaestro_text.data.ir import TopicRecord
+from datamaestro_text.data.conversation import (
+    ConversationDataset,
+    ConversationTopicRecord,
+)
 from experimaestro import Param
 
-from xpmir.conversation.records import HistoryRecord
-from xpmir.learning.base import BaseSampler, Sampler
-from xpmir.utils.iter import RandomSerializableIterator, SerializableIterator
-
-
-class ConversationSampler(Sampler, ABC):
-    @abstractmethod
-    def iter(self) -> SerializableIterator[Conversation]:
-        pass
-
-
-class DatasetConversationSampler(Sampler):
-    """Sampler for a contextualized query rewriting datasets"""
-
-    dataset: Param[ConversationDataset]
-    """The dataset used by the sampler"""
-
-    @cached_property
-    def data(self):
-        return [x for x in self.dataset.iter()]
-
-    def iter(self) -> RandomSerializableIterator[Conversation]:
-        def generator(random):
-            while True:
-                yield self.data[random.randint(0, len(self.data))]
-
-        return RandomSerializableIterator(self.random, generator)
+from xpmir.learning.base import BaseSampler
+from xpmir.utils.iter import RandomSerializableIterator
 
 
 class DatasetConversationEntrySampler(BaseSampler):
-    """Uses a conversation dataset and sample entries from them"""
+    """Uses a conversation dataset and topic records entries"""
 
     dataset: Param[ConversationDataset]
+    """The conversation dataset"""
 
-    @cached_property
-    def conversations(self):
-        return list(self.dataset.iter_conversations())
-
-    def __iter__(self) -> Iterator[HistoryRecord]:
+    def __iter__(self) -> RandomSerializableIterator[ConversationTopicRecord]:
         def generator(random: np.random.RandomState):
             while True:
-                conversation_ix = random.randint(0, len(self.conversations))
-                conversation = self.conversations[conversation_ix]
-                entry_ix = random.randint(len(conversation.history))
-                yield HistoryRecord(
-                    conversation.history[entry_ix].topic,
-                    conversation.history[:entry_ix],
-                )
+                # Pick a random conversation
+                conversation_ix = random.randint(0, len(self.dataset))
+                conversation = self.dataset[conversation_ix]
+
+                # Pick a random topic record entry
+                nodes = [
+                    node
+                    for node in conversation
+                    if isinstance(node.entry(), TopicRecord)
+                ]
+                node_ix = random.randint(len(nodes))
+                node = nodes[node_ix]
+
+                yield ConversationTopicRecord(node.entry(), node.history())
 
         return RandomSerializableIterator(self.random, generator)

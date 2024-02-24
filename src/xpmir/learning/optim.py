@@ -263,6 +263,9 @@ class ParameterOptimizer(Config):
             if (self.filter is None or self.filter(name, param)) and filter(name, param)
         ]
         if not params:
+            logging.warning(
+                "Parameter list: %s", [name for name, _ in module.named_parameters()]
+            )
             raise RuntimeError(f"Parameter list is empty with {self.filter}")
 
         optimizer = self.optimizer(params)

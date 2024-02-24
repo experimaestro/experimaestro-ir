@@ -7,6 +7,7 @@ from experimaestro import Config, Param
 
 from xpmir.learning import Module
 from xpmir.learning.optim import ModuleInitMode, ModuleInitOptions
+from xpmir.text import TokenizedTexts
 
 try:
     from transformers import AutoConfig, AutoModel, AutoModelForMaskedLM
@@ -32,6 +33,7 @@ class HFModelConfigFromId(HFModelConfig):
         config = AutoConfig.from_pretrained(self.model_id)
 
         if options.mode == ModuleInitMode.NONE or options.mode == ModuleInitMode.RANDOM:
+            logging.info("Random initialization of HF model")
             return config, automodel.from_config(config)
 
         logging.info("Loading model from HF (%s)", self.model_id)
@@ -75,6 +77,14 @@ class HFModel(Module):
         # This method needs to be updated to cater for various types of models,
         # i.e. MLM, classification, etc.
         return self.model
+
+    def forward(self, tokenized: TokenizedTexts):
+        tokenized = tokenized.to(self.model.device)
+        return self.model(
+            input_ids=tokenized.ids,
+            attention_mask=tokenized.mask,
+            token_type_ids=tokenized.token_type_ids,
+        )
 
 
 class HFMaskedLanguageModel(HFModel):

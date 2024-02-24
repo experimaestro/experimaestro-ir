@@ -10,7 +10,6 @@ from xpmir.letor.samplers import PairwiseSampler
 from xpmir.letor.records import (
     PairwiseRecords,
     PairwiseRecord,
-    TopicRecord,
     DocumentRecord,
 )
 from xpmir.utils.iter import (
@@ -140,7 +139,7 @@ class PairwiseTransformAdapter(PairwiseSampler):
         docs = self.adapter.transform_documents(docs) or docs
 
         return PairwiseRecord(
-            TopicRecord(topics[0]), DocumentRecord(docs[0]), DocumentRecord(docs[1])
+            topics[0].as_record(), DocumentRecord(docs[0]), DocumentRecord(docs[1])
         )
 
     def pairwise_iter(self) -> Iterator[PairwiseRecord]:
@@ -154,7 +153,7 @@ class PairwiseTransformAdapter(PairwiseSampler):
         if topics := self.adapter.transform_topics(
             [tr.topic for tr in records.unique_topics]
         ):
-            records.set_unique_topics([TopicRecord(topic) for topic in topics])
+            records.set_unique_topics([topic.as_record() for topic in topics])
 
         if documents := self.adapter.transform_documents(
             [dr.document for dr in records.unique_documents]

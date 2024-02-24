@@ -105,7 +105,7 @@ class Scorer(Config, Initializable, EasyLogger, ABC):
             ]
 
         if isinstance(topic, str):
-            topic = TopicRecord(TextTopic(topic))
+            topic = TextTopic.from_text(topic)
 
         return self.compute(topic, documents)
 
@@ -478,7 +478,7 @@ class DocumentsFunction(Protocol, Generic[KWARGS, ARGS, T]):
 def document_cache(fn: DocumentsFunction[KWARGS, ARGS, T]):
     """Decorator
 
-    Allows to cache the result of a function that should depend
+    Allows to cache the result of a function that depends
     on the document dataset ID
     """
     retrievers = {}

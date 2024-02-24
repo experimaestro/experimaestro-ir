@@ -6,6 +6,7 @@ from typing import (
     Callable,
     Dict,
     Tuple,
+    List,
     Iterable,
     Iterator,
     Protocol,
@@ -74,6 +75,29 @@ class SerializableIteratorAdapter(SerializableIterator[T, State], Generic[T, U, 
 
     def __next__(self):
         return next(self.iter)
+
+
+class BatchIteratorAdapter(SerializableIterator[List[T], State]):
+    """Adapts a serializable iterator into a batchwise serializable iterator"""
+
+    def __init__(self, iterator: SerializableIterator[T, State], size: int):
+        self.iterator = iterator
+        self.size = size
+
+    def state_dict(self):
+        return self.iterator.state_dict()
+
+    def load_state_dict(self, state):
+        self.iterator.load_state_dict(state)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self) -> List[T]:
+        batch = []
+        for _, record in zip(range(self.size), self.iterator):
+            batch.append(record)
+        return batch
 
 
 class SerializableIteratorTransform(
@@ -299,6 +323,7 @@ def mp_iterate(iterator, queue):
     except StopIteration:
         queue.put(STOP_ITERATION)
     except Exception as e:
+        logging.exception("Got an error in the iterator process")
         queue.put(e)
 
 
@@ -333,6 +358,7 @@ class MultiprocessIterator(Iterator[T]):
         # An exception occurred
         if isinstance(element, Exception):
             atexit.unregister(self.kill_subprocess)
+            logging.warning("Got an exception in the iteration process")
             raise RuntimeError("Error in iterator process") from element
 
         return element

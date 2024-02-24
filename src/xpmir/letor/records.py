@@ -1,10 +1,10 @@
 import torch
 import itertools
-from attrs import define
-from datamaestro_text.data.ir.base import (
-    Topic,
-    Document as BaseDocument,
+from datamaestro_text.data.ir.base import (  # noqa: F401
+    TopicRecord,
+    DocumentRecord,
     TextTopic,
+    ScoredDocumentRecord,
     TextDocument,
     GenericDocument,
 )
@@ -16,39 +16,6 @@ from typing import (
     TypeVar,
     Union,
 )
-
-
-@define()
-class TopicRecord:
-    """A query record when training models"""
-
-    topic: Topic
-
-    @staticmethod
-    def from_text(text: str):
-        return TopicRecord(TextTopic(text))
-
-
-@define()
-class DocumentRecord:
-    """A document record when training models"""
-
-    document: BaseDocument
-    """The document"""
-
-    @staticmethod
-    def from_text(text: str):
-        return DocumentRecord(TextDocument(text))
-
-
-@define()
-class ScoredDocumentRecord(DocumentRecord):
-    """A document record when training models"""
-
-    score: float
-    """A retrieval score associated with this record (e.g. of the first-stage
-    retriever)"""
-
 
 # Aliases for deprecated types
 Document = DocumentRecord
@@ -183,7 +150,7 @@ class PointwiseRecords(BaseRecords[PointwiseRecord]):
         relevances: Optional[List[float]] = None,
     ):
         records = PointwiseRecords()
-        records.topics = list(map(lambda t: TopicRecord(TextTopic(t)), topics))
+        records.topics = list(map(lambda t: TopicRecord.from_text(t), topics))
         records.documents = list(
             map(lambda t: DocumentRecord(TextDocument(t)), documents)
         )

@@ -272,7 +272,7 @@ class PointwiseModelBasedSampler(PointwiseSampler, ModelBasedSampler):
         document = self.document_text(sample[1])
 
         return PointwiseRecord(
-            topic=TopicRecord(TextTopic(sample[0])),
+            topic=TopicRecord.from_text(sample[0]),
             document=DocumentRecord(document=document),
             relevance=sample[3],
         )
@@ -340,7 +340,7 @@ class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
                     random.randint(0, len(self.topics))
                 ]
                 yield PairwiseRecord(
-                    TopicRecord(TextTopic(title)),
+                    TopicRecord.from_text(title),
                     self.sample(positives),
                     self.sample(negatives),
                 )
@@ -391,7 +391,7 @@ class TripletBasedSampler(PairwiseSampler):
 
     def pairwise_iter(self) -> SerializableIterator[PairwiseRecord, Any]:
         iterator = (
-            PairwiseRecord(TopicRecord(topic), DocumentRecord(pos), DocumentRecord(neg))
+            PairwiseRecord(topic.as_record(), DocumentRecord(pos), DocumentRecord(neg))
             for topic, pos, neg in self.source.iter()
         )
 
@@ -456,7 +456,7 @@ class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
                     neg = negatives[self.random.randint(len(negatives))]
 
                 return PairwiseRecord(
-                    TopicRecord(qry), DocumentRecord(pos), DocumentRecord(neg)
+                    qry.as_record(), DocumentRecord(pos), DocumentRecord(neg)
                 )
 
         base = InfiniteSkippingIterator(iterable_of(lambda: self.dataset.iter()))

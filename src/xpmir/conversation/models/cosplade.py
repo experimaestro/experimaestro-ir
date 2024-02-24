@@ -1,34 +1,64 @@
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from attr import define
 import torch
+import sys
 from experimaestro import Param
-from xpmir.conversation.records import HistoryRecord
+from datamaestro_text.data.ir import TopicRecord
+from datamaestro_text.data.conversation import ConversationTopicRecord, AnswerEntry
 from xpmir.conversation.learning.reformulation import (
-    ContextualizedRepresentationLoss,
     ConversationRepresentationEncoder,
-    ConversationRepresentationOutput,
 )
+from xpmir.text.encoders import (
+    RepresentationOutput,
+    TextsRepresentationOutput,
+)
+from xpmir.letor.trainers.alignment import AlignmentLoss
 from xpmir.neural.splade import SpladeTextEncoderV2
 
 
 @define
-class CoSPLADEOutput(ConversationRepresentationOutput):
-    q_queries: torch.tensor
+class CoSPLADEOutput(RepresentationOutput):
+    q_queries: torch.Tensor
     q_answers: torch.Tensor
 
 
-class AsymetricMSEContextualizedRepresentationLoss(ContextualizedRepresentationLoss):
+class AsymetricMSEContextualizedRepresentationLoss(
+    AlignmentLoss[CoSPLADEOutput, TextsRepresentationOutput]
+):
     """Computes the asymetric loss for CoSPLADE"""
 
-    def __call__(self, input: CoSPLADEOutput, target: ConversationRepresentationOutput):
-        return torch.maximum(target.representation - input.q_answers, 0).sum()
+    def __call__(self, input: CoSPLADEOutput, target: TextsRepresentationOutput):
+        # Builds up the list of tokens in the gold output
+        ids = target.tokenized.ids.cpu()
+        sources = []
+        tokens = []
+        for ix, (ids, length) in enumerate(
+            zip(target.tokenized.ids, target.tokenized.lens)
+        ):
+            for token_id in set(ids[:length]):
+                sources.append(ix)
+                tokens.append(token_id)
+
+        # Compute difference on selected tokens
+        difference = torch.nn.functional.mse_loss(
+            input.value[sources, tokens],
+            target.value[sources, tokens],
+            reduction="none",
+        )
+        loss = torch.zeros(
+            len(target.value), dtype=target.value.dtype, device=target.value.device
+        )
+
+        # Aggregate
+        sources_pt = torch.tensor(sources, device=target.value.device, dtype=torch.long)
+        return loss.scatter_add(0, sources_pt, difference).mean()
 
 
 class CoSPLADE(ConversationRepresentationEncoder):
     """CoSPLADE model"""
 
     history_size: Param[int] = 0
-    """Size of history to take into account"""
+    """Size of history to take into account (0 for infinite)"""
 
     queries_encoder: Param[SpladeTextEncoderV2[List[List[str]]]]
     """Encoder for the query history (the first one being the current one)"""
@@ -36,29 +66,55 @@ class CoSPLADE(ConversationRepresentationEncoder):
     history_encoder: Param[SpladeTextEncoderV2[Tuple[str, str]]]
     """Encoder for (query, answer) pairs"""
 
-    def forward(self, records: List[HistoryRecord]):
+    def __initialize__(self, options):
+        super().__initialize__(options)
+
+        self.queries_encoder.initialize(options)
+        self.history_encoder.initialize(options)
+
+    def dimension(self):
+        return self.queries_encoder.dimension
+
+    def forward(self, records: List[ConversationTopicRecord]):
         queries: List[List[str]] = []
         query_answer_pairs: List[Tuple[str, str]] = []
         pair_origins: List[int] = []
 
-        for ix, record in enumerate(records):
+        # Process each topic record
+        for ix, c_record in enumerate(records):
             # Adds q_n, q_1, ..., q_{n-1}
             queries.append(
-                [record.topic.get_text()]
-                + [topic.get_text() for topic in record.history]
+                [c_record.record.topic.get_text()]
+                + [
+                    entry.topic.get_text()
+                    for entry in c_record.history
+                    if isinstance(entry, TopicRecord)
+                ]
             )
 
             # List of query/answer couples
-            for item, _ in zip(reversed(record.history), range(self.history_size)):
-                query_answer_pairs.append((item.query, item.answer))
-                pair_origins.append(ix)
+            topic: Optional[TopicRecord] = None
+            for item, _ in zip(
+                c_record.history, range(self.history_size or sys.maxsize)
+            ):
+                if isinstance(item, TopicRecord):
+                    topic = item
+                elif isinstance(item, AnswerEntry) and topic is not None:
+                    query_answer_pairs.append((topic.topic.get_text(), item.answer))
+                    pair_origins.append(ix)
+                else:
+                    # Ignore anything which is not a pair topic-response
+                    topic = None
 
         # (1) encodes the queries
-        q_queries = self.queries_encoder(queries)
+        q_queries = self.queries_encoder(queries).value
 
-        # (2) encodes the past queries and answers
-        x_pairs = self.history_encoder(query_answer_pairs)
+        # (2) encodes the past queries and answers (if any)
         q_answers = torch.zeros_like(q_queries)
-        q_answers.scatter_add(0, torch.LongTensor(pair_origins), x_pairs)
+        if query_answer_pairs:
+            x_pairs = self.history_encoder(query_answer_pairs).value
+            q_ix = torch.tensor(pair_origins, dtype=torch.long, device=q_queries.device)
+            q_ix = q_ix.unsqueeze(-1).expand(x_pairs.shape)
+            q_answers.scatter_add_(0, q_ix, x_pairs)
 
         return CoSPLADEOutput(q_queries + q_answers, q_queries, q_answers)

@@ -1,57 +1,27 @@
 from abc import ABC, abstractmethod
-from attrs import define
-import torch
 from typing import List
-from experimaestro import Config, Param
-from datamaestro_text.data.conversation import Conversation
-from xpmir.text.encoders import TextEncoder, TextEncoderBase
+from datamaestro_text.data.conversation import (
+    ConversationTopicRecord,
+    DecontextualizedRecord,
+)
+from xpmir.text.encoders import TextEncoderBase
 from xpmir.letor.trainers.alignment import RepresentationOutput
+from xpmir.utils.convert import Converter
 
 
 class ConversationRepresentationEncoder(
-    TextEncoderBase[List[Conversation], RepresentationOutput], ABC
+    TextEncoderBase[List[ConversationTopicRecord], RepresentationOutput], ABC
 ):
     @abstractmethod
-    def forward(self, conversations: List[Conversation]) -> RepresentationOutput:
+    def forward(
+        self, conversations: List[ConversationTopicRecord]
+    ) -> RepresentationOutput:
         """Represents a list of conversations"""
         ...
 
 
-class GoldQueryConversationRepresentationEncoder(ConversationRepresentationEncoder):
-    encoder: Param[TextEncoder]
-
-    def forward(self, conversations: List[Conversation]) -> RepresentationOutput:
-        texts = [conversation.decontextualized_query for conversation in conversations]
-        return RepresentationOutput(self.encoder(texts))
-
-
-class QueryRewritingSamplerLoss(Config):
-    weight: Param[float] = 1.0
-    """The weight for this loss"""
-
-
-@define
-class ConversationRepresentationOutput:
-    representation: torch.Tensor
-
-
-class ContextualizedRepresentationLoss(Config):
-    def __call__(
-        self,
-        input: ConversationRepresentationOutput,
-        target: ConversationRepresentationOutput,
-    ):
-        pass
-
-
-class MSEContextualizedRepresentationLoss(ContextualizedRepresentationLoss):
-    """Computes the asymetric loss for CoSPLADE"""
-
-    def __call__(
-        self,
-        input: ConversationRepresentationOutput,
-        target: ConversationRepresentationOutput,
-    ):
-        return torch.nn.functional.mse_loss(
-            target.representation, input.representation, 0
-        )
+class DecontextualizedQueryConverter(Converter[DecontextualizedRecord, str]):
+    def __call__(self, input: DecontextualizedRecord) -> str:
+        if isinstance(input, ConversationTopicRecord):
+            input = input.record
+        return input.get_decontextualized_query()
