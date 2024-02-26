@@ -12,8 +12,7 @@ import sys
 from typing import List, Optional
 from experimaestro import tqdm as xpmtqdm, Task, Meta
 
-from datamaestro_text.data.ir import DocumentStore
-from datamaestro_text.data.ir.base import IDDocument
+from datamaestro_text.data.ir import DocumentStore, TextItem, IDItem
 import datamaestro_text.data.ir.csv as ir_csv
 from datamaestro_text.data.ir.trec import (
     Documents,
@@ -131,7 +130,11 @@ class IndexCollection(Index, Task):
                 ):
                     # Generate document
                     json.dump(
-                        {"id": document.get_id(), "contents": document.get_text()}, out
+                        {
+                            "id": document[IDItem].id,
+                            "contents": document[TextItem].get_text(),
+                        },
+                        out,
                     )
                     out.write("\n")
 
@@ -251,7 +254,7 @@ class SearchCollection(Task):
 
 
 @attrs.define()
-class AnseriniDocument(IDDocument):
+class AnseriniDocument:
     """The hit returned by Anserini"""
 
     lucene_docid: int

@@ -19,12 +19,8 @@ import torch
 import torch.nn as nn
 import attrs
 from experimaestro import Param, Config, Meta
-from datamaestro_text.data.ir import (
-    Document,
-    Documents,
-    DocumentStore,
-)
-from datamaestro_text.data.ir.base import TextDocument, TextTopic
+from datamaestro_text.data.ir import Documents, DocumentStore, SimpleTextTopicRecord
+from datamaestro_text.data.ir.base import DocumentRecord
 from xpmir.utils.utils import Initializable
 from xpmir.letor import Device, Random
 from xpmir.learning import ModuleInitMode, ModuleInitOptions
@@ -32,7 +28,6 @@ from xpmir.learning.batchers import Batcher
 from xpmir.learning.context import TrainerContext
 from xpmir.learning.optim import Module
 from xpmir.letor.records import (
-    ScoredDocumentRecord,
     TopicRecord,
     BaseRecords,
     PairwiseRecord,
@@ -51,7 +46,7 @@ logger = easylog()
 class ScoredDocument:
     """A data structure that associated a score with a document"""
 
-    document: Document
+    document: DocumentRecord
     """The document"""
 
     score: float
@@ -96,16 +91,18 @@ class Scorer(Config, Initializable, EasyLogger, ABC):
         topic: Union[str, TopicRecord],
         documents: Union[List[ScoredDocument], ScoredDocument, str, List[str]],
     ) -> List[ScoredDocument]:
+        # Convert into document records
         if isinstance(documents, str):
-            documents = [ScoredDocument(TextDocument(documents), None)]
+            documents = [ScoredDocument(DocumentRecord.from_text(documents), None)]
         elif isinstance(documents[0], str):
             documents = [
-                ScoredDocument(TextDocument(scored_document), None)
+                ScoredDocument(DocumentRecord.from_text(scored_document), None)
                 for scored_document in documents
             ]
 
+        # Convert into topic record
         if isinstance(topic, str):
-            topic = TopicRecord(TextTopic(topic))
+            topic = SimpleTextTopicRecord.from_text(topic)
 
         return self.compute(topic, documents)
 
@@ -238,9 +235,7 @@ class AbstractModuleScorer(Scorer, Module):
         inputs = ProductRecords()
         inputs.add_topics(topic)
 
-        inputs.add_documents(
-            *[ScoredDocumentRecord(sd.document, sd.score) for sd in scored_documents]
-        )
+        inputs.add_documents(*[sd.document for sd in scored_documents])
 
         with torch.no_grad():
             scores = self(inputs, None).cpu().numpy()
