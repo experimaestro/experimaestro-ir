@@ -2,7 +2,8 @@ import numpy as np
 from datamaestro_text.data.ir import TopicRecord
 from datamaestro_text.data.conversation import (
     ConversationDataset,
-    ConversationTopicRecord,
+    ConversationHistoryItem,
+    TopicConversationRecord,
 )
 from experimaestro import Param
 
@@ -16,7 +17,7 @@ class DatasetConversationEntrySampler(BaseSampler):
     dataset: Param[ConversationDataset]
     """The conversation dataset"""
 
-    def __iter__(self) -> RandomSerializableIterator[ConversationTopicRecord]:
+    def __iter__(self) -> RandomSerializableIterator[TopicConversationRecord]:
         def generator(random: np.random.RandomState):
             while True:
                 # Pick a random conversation
@@ -32,6 +33,8 @@ class DatasetConversationEntrySampler(BaseSampler):
                 node_ix = random.randint(len(nodes))
                 node = nodes[node_ix]
 
-                yield ConversationTopicRecord(node.entry(), node.history())
+                yield node.entry().add(
+                    ConversationHistoryItem(node.history()), no_check=True
+                )
 
         return RandomSerializableIterator(self.random, generator)

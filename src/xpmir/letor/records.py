@@ -1,6 +1,12 @@
 import torch
 import itertools
-from datamaestro_text.data.ir import TopicRecord, DocumentRecord, TextItem, SimpleTextTopicRecord, SimpleTextDocumentRecord
+from datamaestro_text.data.ir import (
+    TopicRecord,
+    DocumentRecord,
+    TextItem,
+    SimpleTextTopicRecord,
+    SimpleTextDocumentRecord,
+)
 from typing import (
     Iterable,
     List,
@@ -140,7 +146,9 @@ class PointwiseRecords(BaseRecords[PointwiseRecord]):
     ):
         records = PointwiseRecords()
         records.topics = list(map(lambda t: SimpleTextTopicRecord.from_text(t), topics))
-        records.documents = list(map(lambda t: SimpleTextDocumentRecord.from_text(t), documents))
+        records.documents = list(
+            map(lambda t: SimpleTextDocumentRecord.from_text(t), documents)
+        )
         records.relevances = relevances
         return records
 

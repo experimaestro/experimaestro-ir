@@ -15,12 +15,12 @@ from experimaestro import (
     tqdm,
     Constant,
 )
-from datamaestro_text.data.ir import Document, DocumentStore
+from datamaestro_text.data.ir import DocumentRecord, DocumentStore, TextItem
 from xpmir.learning import ModuleInitMode
 from xpmir.learning.batchers import Batcher
 from xpmir.utils.utils import batchiter, easylog
 from xpmir.letor import Device, DEFAULT_DEVICE
-from xpmir.text.encoders import TextEncoderBase, InputType
+from xpmir.text.encoders import TextEncoderBase, TextsRepresentationOutput, InputType
 from xpmir.rankers import Retriever, TopicRecord, ScoredDocument
 from xpmir.utils.iter import MultiprocessIterator
 import xpmir_rust
@@ -132,7 +132,7 @@ class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
     documents: Param[DocumentStore]
     """Set of documents to index"""
 
-    encoder: Param[TextEncoderBase[InputType, torch.Tensor]]
+    encoder: Param[TextEncoderBase[InputType, TextsRepresentationOutput]]
     """The encoder"""
 
     batcher: Meta[Batcher] = Batcher()
@@ -212,10 +212,10 @@ class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
         # Build the index
         self.indexer.build(self.in_memory)
 
-    def encode_documents(self, batch: List[Tuple[int, Document]]):
+    def encode_documents(self, batch: List[Tuple[int, DocumentRecord]]):
         # Assumes for now dense vectors
         vectors = (
-            self.encoder([d.get_text() for _, d in batch]).cpu().numpy()
+            self.encoder([d[TextItem].get_text() for _, d in batch]).value.cpu().numpy()
         )  # bs * vocab
         for vector, (docid, _) in zip(vectors, batch):
             (nonzero_ix,) = vector.nonzero()

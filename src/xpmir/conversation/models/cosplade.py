@@ -3,8 +3,13 @@ from attr import define
 import torch
 import sys
 from experimaestro import Param
-from datamaestro_text.data.ir import TopicRecord
-from datamaestro_text.data.conversation import ConversationTopicRecord, AnswerEntry
+from datamaestro_text.data.ir import TopicRecord, TextItem
+from datamaestro_text.data.conversation import (
+    TopicConversationRecord,
+    AnswerConversationRecord,
+    AnswerEntry,
+    ConversationHistoryItem,
+)
 from xpmir.conversation.learning.reformulation import (
     ConversationRepresentationEncoder,
 )
@@ -75,7 +80,7 @@ class CoSPLADE(ConversationRepresentationEncoder):
     def dimension(self):
         return self.queries_encoder.dimension
 
-    def forward(self, records: List[ConversationTopicRecord]):
+    def forward(self, records: List[TopicConversationRecord]):
         queries: List[List[str]] = []
         query_answer_pairs: List[Tuple[str, str]] = []
         pair_origins: List[int] = []
@@ -84,27 +89,30 @@ class CoSPLADE(ConversationRepresentationEncoder):
         for ix, c_record in enumerate(records):
             # Adds q_n, q_1, ..., q_{n-1}
             queries.append(
-                [c_record.record.topic.get_text()]
+                [c_record[TextItem].get_text()]
                 + [
-                    entry.topic.get_text()
-                    for entry in c_record.history
+                    entry[TextItem].get_text()
+                    for entry in c_record[ConversationHistoryItem].history
                     if isinstance(entry, TopicRecord)
                 ]
             )
 
             # List of query/answer couples
-            topic: Optional[TopicRecord] = None
+            answer: Optional[AnswerConversationRecord] = None
             for item, _ in zip(
-                c_record.history, range(self.history_size or sys.maxsize)
+                c_record[ConversationHistoryItem].history,
+                range(self.history_size or sys.maxsize),
             ):
-                if isinstance(item, TopicRecord):
-                    topic = item
-                elif isinstance(item, AnswerEntry) and topic is not None:
-                    query_answer_pairs.append((topic.topic.get_text(), item.answer))
+                if isinstance(item, TopicRecord) and answer is not None:
+                    query_answer_pairs.append(
+                        (item[TextItem].get_text(), answer[AnswerEntry].answer)
+                    )
                     pair_origins.append(ix)
+                elif isinstance(item, AnswerConversationRecord):
+                    answer = item
                 else:
                     # Ignore anything which is not a pair topic-response
-                    topic = None
+                    answer = None
 
         # (1) encodes the queries
         q_queries = self.queries_encoder(queries).value
