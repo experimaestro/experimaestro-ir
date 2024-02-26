@@ -5,8 +5,14 @@ from pathlib import Path
 from typing import DefaultDict, Dict, List, Protocol, Union, Tuple, Optional
 import ir_measures
 from experimaestro import Task, Param, pathgenerator, Annotated, tags, TagDict
-from datamaestro_text.data.ir import Adhoc, AdhocAssessments, Documents
-from datamaestro_text.data.ir import AdhocResults
+from datamaestro_text.data.ir import (
+    Adhoc,
+    AdhocAssessments,
+    Documents,
+    AdhocResults,
+    TextItem,
+    IDItem,
+)
 from datamaestro_text.data.ir.trec import TrecAdhocRun, TrecAdhocResults
 from datamaestro_text.transforms.ir import TopicWrapper
 from xpmir.measures import Measure
@@ -67,10 +73,13 @@ class BaseEvaluation(Task):
 def get_run(retriever: Retriever, dataset: Adhoc):
     """Returns the scored documents for each topic in a dataset"""
     results = retriever.retrieve_all(
-        {record.topic.get_id(): record for record in dataset.topics.iter()}
+        {
+            topic[IDItem].id: topic[TextItem].get_text()
+            for topic in dataset.topics.iter()
+        }
     )
     return {
-        qid: {sd.document.get_id(): sd.score for sd in scoredocs}
+        qid: {sd.document[IDItem].id: sd.score for sd in scoredocs}
         for qid, scoredocs in results.items()
     }
 

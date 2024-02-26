@@ -1,3 +1,15 @@
+from typing import (
+    BinaryIO,
+    Callable,
+    Iterator,
+    List,
+    TextIO,
+    TypeVar,
+    Union,
+    Iterable,
+    Tuple,
+    Type,
+)
 import inspect
 import logging
 from functools import cached_property
@@ -8,16 +20,6 @@ from subprocess import run
 import tempfile
 from experimaestro import SubmitHook, Job, Launcher
 from threading import Thread
-from typing import (
-    BinaryIO,
-    Callable,
-    Iterator,
-    List,
-    TextIO,
-    TypeVar,
-    Union,
-    Iterable,
-)
 from xpmir.utils.functools import cache
 
 T = TypeVar("T")
@@ -84,7 +86,7 @@ class Handler:
     """
 
     def __init__(self):
-        self.handlers = {}
+        self.handlers: List[Tuple[Type, Callable]] = []
         self.defaulthandler = None
 
     def default(self):
@@ -101,13 +103,18 @@ class Handler:
             spec = inspect.getfullargspec(method)
             assert len(spec.args) == 1 and spec.varargs is None
 
-            self.handlers[spec.annotations[spec.args[0]]] = method
+            self.handlers.append((spec.annotations[spec.args[0]], method))
 
         return annotate
 
     def __getitem__(self, key):
-        handler = self.handlers.get(key.__class__, None)
-        if handler is None:
+        try:
+            handler = next(
+                handler
+                for cls, handler in self.handlers
+                if issubclass(key.__class__, cls)
+            )
+        except StopIteration:
             if self.default is None:
                 raise RuntimeError(
                     f"No handler for {key.__class__} and no default handler"

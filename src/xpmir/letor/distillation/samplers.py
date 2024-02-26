@@ -10,14 +10,14 @@ from typing import (
 import numpy as np
 from datamaestro.data import File
 from datamaestro_text.data.ir.base import (
-    IDTopic,
-    TextTopic,
-    IDDocument,
-    TextDocument,
+    TopicRecord,
+    DocumentRecord,
+    ScoredItem,
+    SimpleTextItem,
+    IDItem,
 )
 from experimaestro import Config, Meta, Param
 from xpmir.learning import Sampler
-from xpmir.letor.records import TopicRecord
 from xpmir.letor.samplers.hydrators import SampleHydrator
 from xpmir.rankers import ScoredDocument
 from xpmir.utils.iter import (
@@ -31,7 +31,7 @@ class PairwiseDistillationSample(NamedTuple):
     query: TopicRecord
     """The query"""
 
-    documents: Tuple[ScoredDocument, ScoredDocument]
+    documents: Tuple[DocumentRecord, DocumentRecord]
     """Positive/negative document with teacher scores"""
 
 
@@ -85,19 +85,23 @@ class PairwiseDistillationSamplesTSV(PairwiseDistillationSamples, File):
             with self.path.open("rt") as fp:
                 for row in csv.reader(fp, delimiter="\t"):
                     if self.with_queryid:
-                        query = IDTopic(row[2])
+                        query = TopicRecord.from_id(row[2])
                     else:
-                        query = TextTopic(row[2])
+                        query = TopicRecord.from_text(row[2])
 
                     if self.with_docid:
                         documents = (
-                            ScoredDocument(IDDocument(row[3]), float(row[0])),
-                            ScoredDocument(IDDocument(row[4]), float(row[1])),
+                            DocumentRecord(IDItem(row[3]), ScoredItem(float(row[0]))),
+                            DocumentRecord(IDItem(row[4]), ScoredItem(float(row[1]))),
                         )
                     else:
                         documents = (
-                            ScoredDocument(TextDocument(row[3]), float(row[0])),
-                            ScoredDocument(TextDocument(row[4]), float(row[1])),
+                            DocumentRecord(
+                                SimpleTextItem(row[3]), ScoredItem(float(row[0]))
+                            ),
+                            DocumentRecord(
+                                SimpleTextItem(row[4]), ScoredItem(float(row[1]))
+                            ),
                         )
 
                     yield PairwiseDistillationSample(query, documents)

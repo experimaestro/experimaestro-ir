@@ -1,6 +1,7 @@
 import torch
 from typing import Tuple
 from experimaestro import Param
+from datamaestro_text.data.ir import TextItem
 from xpmir.distributed import DistributableModel
 from xpmir.learning.batchers import Batcher
 from xpmir.learning.context import TrainerContext
@@ -44,7 +45,7 @@ class CrossScorer(LearnableScorer, DistributableModel):
         # Encode queries and documents
         pairs = self.encoder(
             [
-                (tr.topic.get_text(), dr.document.get_text())
+                (tr[TextItem].get_text(), dr[TextItem].get_text())
                 for tr, dr in zip(inputs.topics, inputs.documents)
             ]
         )  # shape (batch_size * dimension)

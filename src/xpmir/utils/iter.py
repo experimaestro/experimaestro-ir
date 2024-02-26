@@ -323,7 +323,7 @@ def mp_iterate(iterator, queue):
     except StopIteration:
         queue.put(STOP_ITERATION)
     except Exception as e:
-        logging.exception("Got an error in the iterator process")
+        logger.exception("Exception while iterating")
         queue.put(e)
 
 

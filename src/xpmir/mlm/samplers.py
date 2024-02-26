@@ -4,7 +4,7 @@ import numpy as np
 
 from datamaestro_text.data.ir import DocumentStore
 
-from xpmir.letor.records import MaskedLanguageModelingRecord
+from xpmir.letor.records import DocumentRecord
 from xpmir.letor.samplers import Sampler
 from experimaestro import Param
 
@@ -33,7 +33,7 @@ class MLMSampler(Sampler):
     def initialize(self, random: Optional[np.random.RandomState]):
         super().initialize(random)
 
-    def record_iter(self) -> RandomSerializableIterator[MaskedLanguageModelingRecord]:
+    def record_iter(self) -> RandomSerializableIterator[DocumentRecord]:
         def iter(random: np.random.RandomState):
             while True:
                 # We could imagine setting weights here to give more importance
@@ -44,13 +44,11 @@ class MLMSampler(Sampler):
                     document = self.datasets[choice].document_int(
                         self.random.randint(0, self.datasets[choice].documentcount)
                     )
-                    yield MaskedLanguageModelingRecord(
-                        document.get_id(), document.get_text()
-                    )
+                    yield DocumentRecord(document.get_id(), document.get_text())
                 else:
-                    # FIXME: it makes the iter not fully serilizable
+                    # FIXME: it makes the iter not fully serializable
                     yield from (
-                        MaskedLanguageModelingRecord(doc.get_id(), doc.get_text())
+                        DocumentRecord(doc.get_id(), doc.get_text())
                         for doc in self.datasets[choice].iter()
                     )
 
