@@ -104,6 +104,15 @@ class GeneratorBiasStepwiseGenerator(StepwiseGenerator):
         self.current_depth += 1
         return logits
 
+    def state(self):
+        return (self.stepwise_iterator.state(), self.current_depth)
+
+    def load_state(
+        self, state
+    ):  # here the state is a tuple of (past_key_values, current_depth)
+        self.stepwise_iterator.load_state(state[0])
+        self.current_depth = state[1]
+
 
 class GeneratorBiasSequenceGenerator(SequenceGenerator):
     def __init__(
@@ -209,10 +218,20 @@ class GeneratorBiasAdapter(ConditionalGenerator):
             normalize_logits=False,  # for bs the logits are already normalized
         )
         full_score = torch.sum(transition_scores, dim=-1)
+
+        # calculate the all_score based on the beam_indices and scores
+        beam_indices_mask = res.beam_indices < 0
+        max_beam_length = (1 - beam_indices_mask.long()).sum(-1).max()
+        beam_indices = res.beam_indices.clone()[:, :max_beam_length]
+        # no need to apply the mask cause the all_score we use will be mask directly
+        all_scores = [
+            all_score[beam_indices[:, i]] for i, all_score in enumerate(res.scores)
+        ]
+
         return FullSequenceGenerationOutput(
             sequences=res.sequences,
             output_mask=output_mask,
             transition_scores=transition_scores,
-            all_scores=res.scores,
+            all_scores=all_scores,
             sequence_scores=full_score,
         )

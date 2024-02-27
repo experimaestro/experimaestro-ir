@@ -448,6 +448,12 @@ class JSONLReferentialDocumentIdDataset(Config):
     path: Param[Path]
     """The path to the Jsonl file"""
 
+    @cached_property
+    def count(self):
+        with self.path.open("r") as fp:
+            line_count = sum(1 for _ in fp)
+        return line_count
+
     def iter(self) -> Iterator[JSONLReferentialDocumentIdSample]:
         with self.path.open("r") as fp:
             for line in fp:
@@ -474,6 +480,9 @@ class JSONLReferentialDocumentIdSampler(ReferentialSampler):
 
     dataset: Param[JSONLReferentialDocumentIdDataset]
     """The dataset store"""
+
+    infinite: Param[bool] = True
+    """Iterate over the corpus infinitely"""
 
     @cached_property
     def random_data_list(self) -> List[JSONLReferentialDocumentIdSample]:
@@ -502,9 +511,12 @@ class JSONLReferentialDocumentIdSampler(ReferentialSampler):
                     document=DocumentRecord(doc), target=sample.ids
                 )
 
-        base = InfiniteSkippingIterator(
-            iterable_of(lambda: iter(self.random_data_list))
-        )
+        if self.infinite:
+            base = InfiniteSkippingIterator(
+                iterable_of(lambda: iter(self.random_data_list))
+            )
+        else:
+            base = SkippingIterator(iter(self.random_data_list))
         return _Iterator(base, self.random)
 
 

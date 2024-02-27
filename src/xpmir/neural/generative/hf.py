@@ -286,6 +286,12 @@ class T5StepwiseGenerator(StepwiseGenerator):
         self.past_key_values = forward_output.past_key_values
         return forward_output.logits
 
+    def state(self):
+        return self.past_key_values
+
+    def load_state(self, state):  # the state is the past_key_values
+        self.past_key_values = state
+
 
 class T5SequenceGenerator(SequenceGenerator):
     def __init__(self, id_generator: ConditionalGenerator):

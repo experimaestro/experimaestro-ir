@@ -201,3 +201,46 @@ class ReferentialFixDocumentIdBuilder(Task):
                     in their father"
                 )
             return current_cluster
+
+
+class RandomSplitReferentialFixDocumentID(Task):
+
+    dataset: Param[JSONLReferentialDocumentIdDataset]
+    """The original dataset"""
+
+    split_size: Param[int] = 1000
+    """The size for the splited dataset"""
+
+    big: Annotated[Path, pathgenerator("big.jsonl")]
+    """Path to the file contains the majarity of the """
+
+    small: Annotated[Path, pathgenerator("small.jsonl")]
+    """Path to the file contains the target"""
+
+    def task_outputs(self, dep: Callable[[Config], None]) -> Any:
+        return (
+            dep(JSONLReferentialDocumentIdDataset(path=self.big)),
+            dep(JSONLReferentialDocumentIdDataset(path=self.small)),
+        )
+
+    def execute(self) -> None:
+        # rows to select the for the small dataset
+        rows = np.random.choice(self.dataset.count, size=self.split_size, replace=False)
+        current_count = 0
+        with self.small.open("wt") as fp1, self.big.open("wt") as fp2:
+            for sample in tqdm(self.dataset.iter(), total=self.dataset.count):
+                dict_big = {}
+                id_str = "\t".join(map(str, sample.ids))
+                doc_id_list = [doc.get_id() for doc in sample.documents]
+                if current_count in rows:
+                    dict_small = {}
+                    sampled = doc_id_list[np.random.randint(len(doc_id_list))]
+                    doc_id_list = [x for x in doc_id_list if x != sampled]
+                    dict_small[id_str] = [sampled]
+                    json.dump(dict_small, fp1)
+                    fp1.write("\n")
+
+                dict_big[id_str] = doc_id_list
+                json.dump(dict_big, fp2)
+                fp2.write("\n")
+                current_count += 1
