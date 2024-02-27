@@ -8,15 +8,13 @@ from experimaestro import Constant
 from xpmir.index import Index
 from xpmir.learning import Random, ModuleInitMode
 from xpmir.neural.dual import CosineDense, DotDense
-from datamaestro_text.data.ir.base import GenericDocument
+from datamaestro_text.data.ir import GenericDocumentRecord, SimpleTextTopicRecord
 from xpmir.letor.records import (
-    DocumentRecord,
     PairwiseRecord,
     PairwiseRecords,
     PointwiseRecord,
     PointwiseRecords,
     ProductRecords,
-    TopicRecord,
 )
 from xpmir.text.tokenizers import Tokenizer
 from xpmir.text.encoders import (
@@ -167,12 +165,15 @@ def joint():
 # --- Input factory
 # ---
 
-QUERIES = [TopicRecord.from_text("purple cat"), TopicRecord.from_text("yellow house")]
+QUERIES = [
+    SimpleTextTopicRecord.from_text("purple cat"),
+    SimpleTextTopicRecord.from_text("yellow house"),
+]
 DOCUMENTS = [
-    DocumentRecord(GenericDocument("1", "the cat sat on the mat")),
-    DocumentRecord(GenericDocument("2", "the purple car")),
-    DocumentRecord(GenericDocument("3", "my little dog")),
-    DocumentRecord(GenericDocument("4", "the truck was on track")),
+    GenericDocumentRecord.create("1", "the cat sat on the mat"),
+    GenericDocumentRecord.create("2", "the purple car"),
+    GenericDocumentRecord.create("3", "my little dog"),
+    GenericDocumentRecord.create("4", "the truck was on track"),
 ]
 
 

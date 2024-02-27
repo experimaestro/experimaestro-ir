@@ -3,15 +3,20 @@ from typing import ClassVar, Dict, Iterator, List, Tuple
 import torch
 from attrs import define
 import numpy as np
-from datamaestro_text.data.ir import Document, DocumentStore
-from datamaestro_text.data.ir.base import GenericDocument
+from datamaestro_text.data.ir import (
+    DocumentStore,
+    GenericDocumentRecord,
+    IDItem,
+    SimpleTextItem,
+    InternalIDItem,
+)
 
 from experimaestro import Param
 from xpmir.text.encoders import TextEncoder
 
 
-@define(frozen=True)
-class GenericDocumentWithID(GenericDocument):
+@define
+class GenericDocumentWithIDRecord(GenericDocumentRecord):
     internal_docid: int
 
 
@@ -24,7 +29,11 @@ class SampleDocumentStore(DocumentStore):
         self.documents = OrderedDict(
             (
                 str(ix),
-                GenericDocumentWithID(str(ix), f"Document {ix}", internal_docid=ix),
+                GenericDocumentWithIDRecord(
+                    IDItem(str(ix)),
+                    SimpleTextItem(f"Document {ix}"),
+                    InternalIDItem(ix),
+                ),
             )
             for ix in range(self.num_docs)
         )
@@ -33,15 +42,19 @@ class SampleDocumentStore(DocumentStore):
     def documentcount(self):
         return len(self.documents)
 
-    def document_int(self, internal_docid: int) -> Document:
+    def document_int(self, internal_docid: int) -> GenericDocumentWithIDRecord:
         return self.documents[str(internal_docid)]
 
-    def document_ext(self, docid: str) -> Document:
+    def document_ext(self, docid: str) -> GenericDocumentWithIDRecord:
         """Returns the text of the document given its id"""
         return self.documents[docid]
 
-    def iter_documents(self) -> Iterator[Document]:
+    def iter_documents(self) -> Iterator[GenericDocumentWithIDRecord]:
         return iter(self.documents.values())
+
+    @property
+    def document_recordtype(self):
+        return GenericDocumentWithIDRecord
 
     def docid_internal2external(self, docid: int):
         """Converts an internal collection ID (integer) to an external ID"""

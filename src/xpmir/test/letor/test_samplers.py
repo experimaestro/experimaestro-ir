@@ -3,7 +3,6 @@ import numpy as np
 from typing import Iterator, Tuple
 from experimaestro import Param
 import datamaestro_text.data.ir as ir
-from datamaestro_text.data.ir.base import GenericTopic, GenericDocument, Document
 from xpmir.rankers import Retriever
 from xpmir.letor.samplers import (
     TrainingTriplets,
@@ -16,13 +15,23 @@ from xpmir.documents.samplers import RandomSpanSampler
 
 
 class MyTrainingTriplets(TrainingTriplets):
-    def iter(self) -> Iterator[Tuple[GenericTopic, GenericDocument, GenericDocument]]:
+    def iter(
+        self,
+    ) -> Iterator[
+        Tuple[
+            ir.SimpleTextTopicRecord, ir.GenericDocumentRecord, ir.GenericDocumentRecord
+        ]
+    ]:
         count = 0
 
         while True:
-            yield GenericTopic(0, f"q{count}"), GenericDocument(
+            yield ir.SimpleTextTopicRecord.from_text(
+                f"q{count}"
+            ), ir.GenericDocumentRecord.create(
                 1, f"doc+{count}"
-            ), GenericDocument(2, f"doc-{count}")
+            ), ir.GenericDocumentRecord.create(
+                2, f"doc-{count}"
+            )
 
 
 def test_serializing_tripletbasedsampler():
@@ -100,8 +109,10 @@ class FakeDocumentStore(ir.DocumentStore):
     def documentcount(self):
         return 10
 
-    def document_int(self, internal_docid: int) -> Document:
-        return GenericDocument(str(internal_docid), f"D{internal_docid} " * 10)
+    def document_int(self, internal_docid: int) -> ir.GenericDocumentRecord:
+        return ir.GenericDocumentRecord.create(
+            str(internal_docid), f"D{internal_docid} " * 10
+        )
 
 
 def test_pairwise_randomspansampler():

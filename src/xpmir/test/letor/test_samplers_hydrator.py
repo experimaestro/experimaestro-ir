@@ -2,12 +2,6 @@ import itertools
 from experimaestro import Param
 from typing import Iterator, Tuple
 import datamaestro_text.data.ir as ir
-from datamaestro_text.data.ir.base import (
-    Document,
-    IDTopic,
-    IDDocument,
-    GenericDocument,
-)
 from xpmir.letor.samplers import (
     TrainingTriplets,
     TripletBasedSampler,
@@ -21,13 +15,15 @@ from xpmir.letor.samplers.hydrators import (
 
 
 class TripletIterator(TrainingTriplets):
-    def iter(self) -> Iterator[Tuple[IDTopic, IDDocument, IDDocument]]:
+    def iter(
+        self,
+    ) -> Iterator[Tuple[ir.IDTopicRecord, ir.IDDocumentRecord, ir.IDDocumentRecord]]:
         count = 0
 
         while True:
-            yield IDTopic(str(count)), IDDocument(str(2 * count)), IDDocument(
-                str(2 * count + 1)
-            )
+            yield ir.IDTopicRecord.from_id(str(count)), ir.IDDocumentRecord.from_id(
+                str(2 * count)
+            ), ir.IDDocumentRecord.from_id(str(2 * count + 1))
             count += 1
 
 
@@ -39,8 +35,8 @@ class FakeTextStore(TextStore):
 class FakeDocumentStore(ir.DocumentStore):
     id: Param[str] = ""
 
-    def document_ext(self, docid: str) -> Document:
-        return GenericDocument(docid, f"D{docid}")
+    def document_ext(self, docid: str) -> ir.GenericDocumentRecord:
+        return ir.GenericDocumentRecord.create(docid, f"D{docid}")
 
 
 def test_pairwise_hydrator():
