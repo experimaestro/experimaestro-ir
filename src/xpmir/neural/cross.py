@@ -39,13 +39,13 @@ class CrossScorer(LearnableScorer, DistributableModel):
     def __initialize__(self, options):
         super().__initialize__(options)
         self.encoder.initialize(options)
-        self.classifier = torch.nn.Linear(self.encoder.dimension(), 1)
+        self.classifier = torch.nn.Linear(self.encoder.dimension, 1)
 
     def forward(self, inputs: BaseRecords, info: TrainerContext = None):
         # Encode queries and documents
         pairs = self.encoder(
             [
-                (tr[TextItem].get_text(), dr[TextItem].get_text())
+                (tr[TextItem].text, dr[TextItem].text)
                 for tr, dr in zip(inputs.topics, inputs.documents)
             ]
         )  # shape (batch_size * dimension)

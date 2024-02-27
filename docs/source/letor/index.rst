@@ -11,6 +11,7 @@ Learning to rank
    generative
    mlm
    generation
+   alignment
 
 
 Learning to rank is handled by various classes. Some are located
@@ -85,3 +86,4 @@ Adapters
 .. autoxpmconfig:: xpmir.letor.samplers.hydrators.SampleTransform
 .. autoxpmconfig:: xpmir.letor.samplers.hydrators.SampleHydrator
 .. autoxpmconfig:: xpmir.letor.samplers.hydrators.SamplePrefixAdding
+.. autoxpmconfig:: xpmir.letor.samplers.hydrators.SampleTransformList

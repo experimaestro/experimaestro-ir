@@ -89,9 +89,9 @@ class CoSPLADE(ConversationRepresentationEncoder):
         for ix, c_record in enumerate(records):
             # Adds q_n, q_1, ..., q_{n-1}
             queries.append(
-                [c_record[TextItem].get_text()]
+                [c_record[TextItem].text]
                 + [
-                    entry[TextItem].get_text()
+                    entry[TextItem].text
                     for entry in c_record[ConversationHistoryItem].history
                     if isinstance(entry, TopicRecord)
                 ]
@@ -105,7 +105,7 @@ class CoSPLADE(ConversationRepresentationEncoder):
             ):
                 if isinstance(item, TopicRecord) and answer is not None:
                     query_answer_pairs.append(
-                        (item[TextItem].get_text(), answer[AnswerEntry].answer)
+                        (item[TextItem].text, answer[AnswerEntry].answer)
                     )
                     pair_origins.append(ix)
                 elif isinstance(item, AnswerConversationRecord):

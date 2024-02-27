@@ -11,7 +11,7 @@ import torch
 import numpy as np
 from experimaestro import Annotated, Meta, Task, pathgenerator, Param, tqdm
 import logging
-from datamaestro_text.data.ir import DocumentStore
+from datamaestro_text.data.ir import DocumentStore, TextItem
 from xpmir.rankers import Retriever, ScoredDocument
 from xpmir.learning.batchers import Batcher
 from xpmir.learning import ModuleInitMode
@@ -175,7 +175,9 @@ class IndexBackedFaiss(FaissIndex, Task):
         with torch.no_grad():
             for batch in batchiter(self.batchsize, doc_iter):
                 batcher.process(
-                    [document.text for document in batch], self.index_documents, index
+                    [document[TextItem].text for document in batch],
+                    self.index_documents,
+                    index,
                 )
 
         logging.info("Writing FAISS index (%d documents)", index.ntotal)
@@ -192,7 +194,7 @@ class IndexBackedFaiss(FaissIndex, Task):
         data.append(x)
 
     def index_documents(self, batch: List[str], index):
-        x = self.encoder(batch)
+        x = self.encoder(batch).value
         if self.normalize:
             x /= x.norm(2, keepdim=True, dim=1)
         index.add(np.ascontiguousarray(x.cpu().numpy()))
@@ -222,7 +224,7 @@ class FaissRetriever(Retriever):
         """Retrieves a documents, returning a list sorted by decreasing score"""
         with torch.no_grad():
             self.encoder.eval()  # pass the model to the evaluation model
-            encoded_query = self.encoder([query])
+            encoded_query = self.encoder([query[TextItem].text]).value
             if self.index.normalize:
                 encoded_query /= encoded_query.norm(2)
 

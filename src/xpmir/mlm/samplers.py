@@ -44,12 +44,9 @@ class MLMSampler(Sampler):
                     document = self.datasets[choice].document_int(
                         self.random.randint(0, self.datasets[choice].documentcount)
                     )
-                    yield DocumentRecord(document.get_id(), document.get_text())
+                    yield document
                 else:
                     # FIXME: it makes the iter not fully serializable
-                    yield from (
-                        DocumentRecord(doc.get_id(), doc.get_text())
-                        for doc in self.datasets[choice].iter()
-                    )
+                    yield from self.datasets[choice].iter()
 
         return RandomSerializableIterator(self.random, iter)

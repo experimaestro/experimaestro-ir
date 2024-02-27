@@ -86,7 +86,8 @@ class SparseRetriever(Retriever, Generic[InputType]):
             progress,
         ):
             for (key, _), vector in zip(
-                batch, self.encoder([text for _, text in batch]).cpu().detach().numpy()
+                batch,
+                self.encoder([text for _, text in batch]).value.cpu().detach().numpy(),
             ):
                 (ix,) = vector.nonzero()
                 query = {ix: float(v) for ix, v in zip(ix, vector[ix])}
@@ -114,7 +115,7 @@ class SparseRetriever(Retriever, Generic[InputType]):
         """
 
         # Build up iterators
-        vector = self.encoder([query])[0].cpu().detach().numpy()
+        vector = self.encoder([query]).value[0].cpu().detach().numpy()
         (ix,) = vector.nonzero()  # ix represents the position without 0 in the vector
         query = {
             ix: float(v) for ix, v in zip(ix, vector[ix])
@@ -215,7 +216,7 @@ class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
     def encode_documents(self, batch: List[Tuple[int, DocumentRecord]]):
         # Assumes for now dense vectors
         vectors = (
-            self.encoder([d[TextItem].get_text() for _, d in batch]).value.cpu().numpy()
+            self.encoder([d[TextItem].text for _, d in batch]).value.cpu().numpy()
         )  # bs * vocab
         for vector, (docid, _) in zip(vectors, batch):
             (nonzero_ix,) = vector.nonzero()

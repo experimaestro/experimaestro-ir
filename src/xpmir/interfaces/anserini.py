@@ -132,7 +132,7 @@ class IndexCollection(Index, Task):
                     json.dump(
                         {
                             "id": document[IDItem].id,
-                            "contents": document[TextItem].get_text(),
+                            "contents": document[TextItem].text,
                         },
                         out,
                     )

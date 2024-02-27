@@ -426,6 +426,6 @@ class DocumentRecords(List[DocumentRecord]):
     def to_texts(self) -> List[str]:
         texts = []
         for doc in self.documents:
-            texts.append(doc.document[TextItem].get_text())
+            texts.append(doc.document[TextItem].text)
 
         return texts

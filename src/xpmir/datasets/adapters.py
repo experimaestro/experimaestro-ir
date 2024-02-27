@@ -229,7 +229,7 @@ class RandomFold(Task):
         with self.topics.open("wt") as fp:
             for topic in topics:
                 ids.add(topic[IDItem].id)
-                fp.write(f"""{topic[IDItem].id}\t{topic[TextItem].get_text()}\n""")
+                fp.write(f"""{topic[IDItem].id}\t{topic[TextItem].text}\n""")
 
         with self.assessments.open("wt") as fp:
             for qrels in self.dataset.assessments.iter():
@@ -367,7 +367,7 @@ class RetrieverBasedCollection(Task):
                 logger.warning(
                     "Skipping topic %s [%s], (no assessment)",
                     topic[IDItem].id,
-                    topic[TextItem].get_text(),
+                    topic[TextItem].text,
                 )
                 continue
 
@@ -391,7 +391,7 @@ class RetrieverBasedCollection(Task):
             # don't need to worry about the threshold here
             for retriever in self.retrievers:
                 docids.update(
-                    sd.document.get_id() for sd in retriever.retrieve(topic.text)
+                    sd.document[IDItem].id for sd in retriever.retrieve(topic.text)
                 )
 
         # Write the document IDs

@@ -2,6 +2,7 @@ from abc import abstractmethod
 import itertools
 from typing import Iterable, Union, List, Optional, TypeVar, Generic
 import torch
+from datamaestro_text.data.ir import TextItem
 from xpmir.learning.batchers import Sliceable
 from xpmir.learning.context import TrainerContext
 from xpmir.letor.records import BaseRecords, ProductRecords, TopicRecord, DocumentRecord
@@ -51,7 +52,7 @@ class DualRepresentationScorer(LearnableScorer, Generic[QueriesRep, DocsRep]):
         """Encode a list of texts (document or query)
 
         The return value is model dependent"""
-        return self.encode([record.document.get_text() for record in records])
+        return self.encode([record[TextItem].text for record in records])
 
     def encode_queries(self, records: Iterable[TopicRecord]) -> QueriesRep:
         """Encode a list of texts (document or query)
@@ -60,7 +61,7 @@ class DualRepresentationScorer(LearnableScorer, Generic[QueriesRep, DocsRep]):
 
         By default, uses `merge`
         """
-        return self.encode([record.topic.get_text() for record in records])
+        return self.encode([record[TextItem].text for record in records])
 
     def merge_queries(self, queries: QueriesRep):
         """Merge query batches encoded with `encode_queries`

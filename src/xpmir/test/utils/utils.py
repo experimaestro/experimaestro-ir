@@ -1,23 +1,21 @@
 from collections import OrderedDict, defaultdict
-from typing import ClassVar, Dict, Iterator, List, Tuple
+from typing import ClassVar, Dict, Iterator, List, Tuple, Any
 import torch
-from attrs import define
 import numpy as np
+from datamaestro.record import recordtypes
 from datamaestro_text.data.ir import (
     DocumentStore,
     GenericDocumentRecord,
-    IDItem,
-    SimpleTextItem,
     InternalIDItem,
 )
 
 from experimaestro import Param
-from xpmir.text.encoders import TextEncoder
+from xpmir.text.encoders import TextEncoder, RepresentationOutput
 
 
-@define
+@recordtypes(InternalIDItem)
 class GenericDocumentWithIDRecord(GenericDocumentRecord):
-    internal_docid: int
+    ...
 
 
 class SampleDocumentStore(DocumentStore):
@@ -29,9 +27,9 @@ class SampleDocumentStore(DocumentStore):
         self.documents = OrderedDict(
             (
                 str(ix),
-                GenericDocumentWithIDRecord(
-                    IDItem(str(ix)),
-                    SimpleTextItem(f"Document {ix}"),
+                GenericDocumentWithIDRecord.create(
+                    str(ix),
+                    f"Document {ix}",
                     InternalIDItem(ix),
                 ),
             )
@@ -80,6 +78,11 @@ class VectorGenerator:
         return x
 
 
+def check_str(x: Any):
+    assert isinstance(x, str)
+    return x
+
+
 class SparseRandomTextEncoder(TextEncoder):
     # A default dict to always return the same embeddings
     MAPS: ClassVar[Dict[Tuple[int, float], Dict[str, torch.Tensor]]] = {}
@@ -104,4 +107,6 @@ class SparseRandomTextEncoder(TextEncoder):
 
     def forward(self, texts: List[str]) -> torch.Tensor:
         """Returns a matrix encoding the provided texts"""
-        return torch.cat([self.map[text].unsqueeze(0) for text in texts])
+        return RepresentationOutput(
+            torch.cat([self.map[check_str(text)].unsqueeze(0) for text in texts])
+        )

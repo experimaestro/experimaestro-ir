@@ -91,7 +91,7 @@ class FullRetrieverRescorer(Retriever):
             per query)
         """
         # Encode documents
-        encoded = self.scorer.encode_documents(DocumentRecord(d) for d in documents)
+        encoded = self.scorer.encode_documents(documents)
 
         # Process query by query
         new_scores = [[] for _ in documents]

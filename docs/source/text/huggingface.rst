@@ -26,6 +26,7 @@ Tokenizers
 
 .. autoxpmconfig:: xpmir.text.huggingface.tokenizers.HFListTokenizer
 .. autoxpmconfig:: xpmir.text.huggingface.tokenizers.HFStringTokenizer
+.. autoxpmconfig:: xpmir.text.huggingface.tokenizers.HFTokenizerAdapter
 
 Encoders
 --------

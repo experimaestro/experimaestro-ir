@@ -33,8 +33,14 @@ Optimizers
 .. autoxpmconfig:: xpmir.learning.optim.RegexParameterFilter
 
 .. autoxpmconfig:: xpmir.learning.optim.OptimizationHook
+
+Hooks
+*****
+
 .. autoxpmconfig:: xpmir.learning.optim.GradientHook
 .. autoxpmconfig:: xpmir.learning.optim.GradientClippingHook
+.. autoxpmconfig:: xpmir.learning.optim.GradientLogHook
+
 
 Parameters
 ----------
@@ -94,4 +100,5 @@ Base classes
 
 .. autoxpmconfig:: xpmir.learning.base.Random
 .. autoxpmconfig:: xpmir.learning.base.Sampler
+.. autoxpmconfig:: xpmir.learning.base.BaseSampler
 .. autoxpmconfig:: xpmir.learning.trainers.Trainer

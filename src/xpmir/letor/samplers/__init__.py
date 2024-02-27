@@ -140,7 +140,7 @@ class ModelBasedSampler(Sampler):
         return self._store.document_ext(doc_id)
 
     def document_text(self, doc_id):
-        return self.document(doc_id).get_text()
+        return self.document(doc_id).text
 
     @cache("run")
     def _itertopics(
@@ -175,11 +175,11 @@ class ModelBasedSampler(Sampler):
                 # Retrieve documents
                 skipped = 0
                 for query in tqdm(queries):
-                    qassessments = assessments.get(query.get_id(), None)
+                    qassessments = assessments.get(query[IDItem].id, None)
                     if not qassessments:
                         skipped += 1
                         self.logger.warning(
-                            "Skipping topic %s (no assessments)", query.get_id()
+                            "Skipping topic %s (no assessments)", query[IDItem].id
                         )
                         continue
 
@@ -188,41 +188,43 @@ class ModelBasedSampler(Sampler):
                     for docno, rel in qassessments.items():
                         if rel > 0:
                             fp.write(
-                                f"{query.get_text() if not positives else ''}"
+                                f"{query.text if not positives else ''}"
                                 f"\t{docno}\t0.\t{rel}\n"
                             )
                             positives.append((docno, rel, 0))
 
                     if not positives:
                         self.logger.warning(
-                            "Skipping topic %s (no relevant documents)", query.get_id()
+                            "Skipping topic %s (no relevant documents)",
+                            query[IDItem].id,
                         )
                         skipped += 1
                         continue
 
                     scoreddocuments: List[ScoredDocument] = self.retriever.retrieve(
-                        query.get_text()
+                        query.text
                     )
 
                     negatives = []
                     for rank, sd in enumerate(scoreddocuments):
                         # Get the assessment (assumes not relevant)
-                        rel = qassessments.get(sd.document.get_id(), 0)
+                        rel = qassessments.get(sd.document[IDItem].id, 0)
                         if rel > 0:
                             continue
 
-                        negatives.append((sd.document.get_id(), rel, sd.score))
-                        fp.write(f"\t{sd.document.get_id()}\t{sd.score}\t{rel}\n")
+                        negatives.append((sd.document[IDItem].id, rel, sd.score))
+                        fp.write(f"\t{sd.document[IDItem].id}\t{sd.score}\t{rel}\n")
 
                     if not negatives:
                         self.logger.warning(
-                            "Skipping topic %s (no negatives documents)", query.get_id()
+                            "Skipping topic %s (no negatives documents)",
+                            query[IDItem].id,
                         )
                         skipped += 1
                         continue
 
                     assert len(positives) > 0 and len(negatives) > 0
-                    yield query.get_text(), positives, negatives
+                    yield query.text, positives, negatives
 
                 # Finally, move the cache file in place...
                 self.logger.info(
@@ -332,7 +334,7 @@ class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
         while text is None:
             docid, rel, score = samples[self.random.randint(0, len(samples))]
             document = self.document(docid).add(ScoredItem(score))
-            text = document[TextItem].get_text()
+            text = document[TextItem].text
         return document
 
     def pairwise_iter(self) -> SerializableIterator[PairwiseRecord, Any]:
@@ -616,7 +618,7 @@ class ModelBasedHardNegativeSampler(Task, Sampler):
                 positives = []
                 negatives = []
                 scoreddocuments: List[ScoredDocument] = self.retriever.retrieve(
-                    query.get_text()
+                    query.text
                 )
 
                 for rank, sd in enumerate(scoreddocuments):

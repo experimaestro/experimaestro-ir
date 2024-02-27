@@ -2,8 +2,8 @@ from abc import abstractmethod
 from typing import Iterable, Optional, List
 import torch
 from experimaestro import Param
+from datamaestro_text.data.ir import TextItem
 from xpmir.learning.context import TrainerContext
-
 from xpmir.neural.dual import (
     DualVectorScorer,
     TopicRecord,
@@ -62,7 +62,7 @@ class InteractionScorer(DualVectorScorer[SimilarityInput, SimilarityInput]):
     def encode_documents(self, records: Iterable[DocumentRecord]) -> SimilarityInput:
         return self.similarity.preprocess(
             self._encode(
-                [record.document.get_text() for record in records],
+                [record[TextItem].text for record in records],
                 self.encoder,
                 TokenizerOptions(self.dlen),
             )
@@ -71,7 +71,7 @@ class InteractionScorer(DualVectorScorer[SimilarityInput, SimilarityInput]):
     def encode_queries(self, records: Iterable[TopicRecord]) -> SimilarityInput:
         return self.similarity.preprocess(
             self._encode(
-                [record.topic.get_text() for record in records],
+                [record[TextItem].text for record in records],
                 self._query_encoder,
                 TokenizerOptions(self.qlen),
             )

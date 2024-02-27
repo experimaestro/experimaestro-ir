@@ -33,6 +33,9 @@ class MyTrainingTriplets(TrainingTriplets):
                 2, f"doc-{count}"
             )
 
+    topic_recordtype = ir.SimpleTextTopicRecord
+    document_recordtype = ir.GenericDocumentRecord
+
 
 def test_serializing_tripletbasedsampler():
     """Serialized samplers should start back from the saved state"""
@@ -57,13 +60,9 @@ def test_serializing_tripletbasedsampler():
     iter = sampler.pairwise_iter()
     iter.load_state_dict(data)
     for _, record, expected in zip(range(10), iter, samples):
-        assert expected.query.topic.get_text() == record.query.topic.get_text()
-        assert (
-            expected.positive.document.get_text() == record.positive.document.get_text()
-        )
-        assert (
-            expected.negative.document.get_text() == record.negative.document.get_text()
-        )
+        assert expected.query[ir.TextItem].text == record.query[ir.TextItem].text
+        assert expected.positive[ir.TextItem].text == record.positive[ir.TextItem].text
+        assert expected.negative[ir.TextItem].text == record.negative[ir.TextItem].text
 
 
 class GeneratedDocuments(ir.Documents):
@@ -131,6 +130,6 @@ def test_pairwise_randomspansampler():
 
     for s1, s2, _ in zip(iter1, iter2, range(10)):
         # check that they are the same with same random state
-        assert s1.query.topic.get_text() == s2.query.topic.get_text()
-        assert s1.positive.document.get_text() == s2.positive.document.get_text()
-        assert s1.negative.document.get_text() == s2.negative.document.get_text()
+        assert s1.query[ir.TextItem].text == s2.query[ir.TextItem].text
+        assert s1.positive[ir.TextItem].text == s2.positive[ir.TextItem].text
+        assert s1.negative[ir.TextItem].text == s2.negative[ir.TextItem].text

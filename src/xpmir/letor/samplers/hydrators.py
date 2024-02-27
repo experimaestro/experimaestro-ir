@@ -9,7 +9,6 @@ from xpmir.letor.samplers import PairwiseSampler
 from xpmir.letor.records import (
     PairwiseRecords,
     PairwiseRecord,
-    DocumentRecord,
 )
 from xpmir.utils.iter import (
     SerializableIterator,
@@ -45,7 +44,9 @@ class SampleHydrator(SampleTransform):
         if self.querystore is None:
             return None
         return [
-            ir.GenericTopic(topic.get_id(), self.querystore[topic.get_id()])
+            ir.GenericTopicRecord.create(
+                topic[IDItem].id, self.querystore[topic[IDItem].id]
+            )
             for topic in topics
         ]
 
@@ -72,13 +73,11 @@ class SamplePrefixAdding(SampleTransform):
 
         if isinstance(topics[0], ir.GenericTopic):
             return [
-                ir.GenericTopic(topic.get_id(), self.query_prefix + topic.get_text())
+                ir.GenericTopic(topic[IDItem].id, self.query_prefix + topic.text)
                 for topic in topics
             ]
         elif isinstance(topics[0], ir.TextTopic):
-            return [
-                ir.TextTopic(self.query_prefix + topic.get_text()) for topic in topics
-            ]
+            return [ir.TextTopic(self.query_prefix + topic.text) for topic in topics]
 
     def transform_documents(
         self, documents: List[ir.DocumentRecord]
@@ -89,13 +88,13 @@ class SamplePrefixAdding(SampleTransform):
         if isinstance(documents[0], ir.GenericDocument):
             return [
                 ir.GenericDocument(
-                    document.get_id(), self.document_prefix + document.get_text()
+                    document[IDItem].id, self.document_prefix + document.text
                 )
                 for document in documents
             ]
         elif isinstance(documents[0], ir.TextDocument):
             return [
-                ir.TextDocument(self.document_prefix + document.get_text())
+                ir.TextDocument(self.document_prefix + document.text)
                 for document in documents
             ]
 
@@ -139,15 +138,13 @@ class PairwiseTransformAdapter(PairwiseSampler):
         self.sampler.initialize(random)
 
     def transform_record(self, record: PairwiseRecord) -> PairwiseRecord:
-        topics = [record.query.topic]
-        docs = [record.positive.document, record.negative.document]
+        topics = [record.query]
+        docs = [record.positive, record.negative]
 
         topics = self.adapter.transform_topics(topics) or topics
         docs = self.adapter.transform_documents(docs) or docs
 
-        return PairwiseRecord(
-            topics[0].as_record(), DocumentRecord(docs[0]), DocumentRecord(docs[1])
-        )
+        return PairwiseRecord(topics[0], docs[0], docs[1])
 
     def pairwise_iter(self) -> Iterator[PairwiseRecord]:
         iterator = self.sampler.pairwise_iter()

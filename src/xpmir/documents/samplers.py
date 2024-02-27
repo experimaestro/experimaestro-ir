@@ -3,7 +3,7 @@ from typing import Optional, Tuple, Iterator, Any
 from experimaestro import Param, Config
 import torch
 import numpy as np
-from datamaestro_text.data.ir import DocumentStore
+from datamaestro_text.data.ir import DocumentStore, TextItem
 from datamaestro_text.data.ir.base import (
     SimpleTextTopicRecord,
     SimpleTextDocumentRecord,
@@ -139,11 +139,11 @@ class RandomSpanSampler(BatchwiseSampler, PairwiseSampler):
 
             while True:
                 record_pos_qry = next(iter)
-                text_pos_qry = record_pos_qry.text
+                text_pos_qry = record_pos_qry[TextItem].text
                 spans_pos_qry = self.get_text_span(text_pos_qry, random)
 
                 record_neg = next(iter)
-                text_neg = record_neg.text
+                text_neg = record_neg[TextItem].text
                 spans_neg = self.get_text_span(text_neg, random)
 
                 if not (spans_pos_qry and spans_neg):

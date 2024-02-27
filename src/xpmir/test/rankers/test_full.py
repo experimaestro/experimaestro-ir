@@ -6,6 +6,7 @@ from typing import List, Optional
 
 import torch
 from experimaestro.notifications import TaskEnv
+from datamaestro_text.data.ir import SimpleTextTopicRecord, TextItem, IDItem
 
 from xpmir.learning.context import TrainerContext
 from xpmir.letor.records import TopicRecord
@@ -65,7 +66,9 @@ class _FullRetrieverRescorer(FullRetrieverRescorer):
     def retrieve(self, record: TopicRecord):
         scored_documents = [
             # Randomly get a score (and cache it)
-            ScoredDocument(d, self.scorer.cache(record.topic.get_text(), d.get_text()))
+            ScoredDocument(
+                d, self.scorer.cache(record[TextItem].text, d[TextItem].text)
+            )
             for d in self.documents
         ]
         scored_documents.sort(reverse=True)
@@ -86,7 +89,10 @@ def test_fullretrieverescorer(tmp_path: Path):
 
     # Retrieve normally
     scoredDocuments = {}
-    queries = {qid: TopicRecord.from_text(f"Query {qid}") for qid in range(NUM_QUERIES)}
+    queries = {
+        qid: SimpleTextTopicRecord.from_text(f"Query {qid}")
+        for qid in range(NUM_QUERIES)
+    }
 
     # Retrieve query per query
     for qid, query in queries.items():
@@ -100,8 +106,8 @@ def test_fullretrieverescorer(tmp_path: Path):
         results.sort(reverse=True)
         expected.sort(reverse=True)
 
-        assert [d.document.get_id() for d in expected] == [
-            d.document.get_id() for d in results
+        assert [d.document[IDItem].id for d in expected] == [
+            d.document[IDItem].id for d in results
         ], "Document IDs do not match"
         assert [d.score for d in expected] == [
             d.score for d in results

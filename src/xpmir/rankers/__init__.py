@@ -19,7 +19,12 @@ import torch
 import torch.nn as nn
 import attrs
 from experimaestro import Param, Config, Meta
-from datamaestro_text.data.ir import Documents, DocumentStore, SimpleTextTopicRecord
+from datamaestro_text.data.ir import (
+    Documents,
+    DocumentStore,
+    SimpleTextTopicRecord,
+    IDItem,
+)
 from datamaestro_text.data.ir.base import DocumentRecord
 from xpmir.utils.utils import Initializable
 from xpmir.letor import Device, Random
@@ -506,6 +511,6 @@ class RetrieverHydrator(Retriever):
 
     def retrieve(self, record: TopicRecord) -> List[ScoredDocument]:
         return [
-            ScoredDocument(self.store.document_ext(sd.document.get_id()), sd.score)
+            ScoredDocument(self.store.document_ext(sd.document[IDItem].id), sd.score)
             for sd in self.retriever.retrieve(record)
         ]

@@ -26,6 +26,14 @@ class TripletIterator(TrainingTriplets):
             ), ir.IDDocumentRecord.from_id(str(2 * count + 1))
             count += 1
 
+    @property
+    def topic_recordtype(self):
+        return ir.IDTopicRecord
+
+    @property
+    def document_recordtype(self):
+        return ir.IDDocumentRecord
+
 
 class FakeTextStore(TextStore):
     def __getitem__(self, key: str) -> str:
@@ -50,12 +58,12 @@ def test_pairwise_hydrator():
     h_sampler.instance()
 
     for record, n in zip(h_sampler.pairwise_iter(), range(5)):
-        assert record.query.topic.get_text() == f"T{n}"
-        assert record.positive.document.get_text() == f"D{2*n}"
-        assert record.negative.document.get_text() == f"D{2*n+1}"
+        assert record.query[ir.TextItem].text == f"T{n}"
+        assert record.positive[ir.TextItem].text == f"D{2*n}"
+        assert record.negative[ir.TextItem].text == f"D{2*n+1}"
 
     batch_it = h_sampler.pairwise_batch_iter(3)
     for record, n in zip(itertools.chain(next(batch_it), next(batch_it)), range(5)):
-        assert record.query.topic.get_text() == f"T{n}"
-        assert record.positive.document.get_text() == f"D{2*n}"
-        assert record.negative.document.get_text() == f"D{2*n+1}"
+        assert record.query[ir.TextItem].text == f"T{n}"
+        assert record.positive[ir.TextItem].text == f"D{2*n}"
+        assert record.negative[ir.TextItem].text == f"D{2*n+1}"
