@@ -20,6 +20,12 @@ class DeviceInformation:
     main: bool
     """Flag for the main process (all other are slaves)"""
 
+    count: int = 1
+    """Number of processes"""
+
+    rank: int = 0
+    """Rank when using multiple processes"""
+
 
 class ComputationContext(Context):
     device_information: DeviceInformation
@@ -40,11 +46,14 @@ class Device(Config):
 
         return torch.device("cpu")
 
-    def execute(self, callback):
-        return callback(DeviceInformation(self.value, True))
+    n_processes = 1
+    """Number of processes"""
+
+    def execute(self, callback, *args, **kwargs):
+        callback(DeviceInformation(self.value, True), *args, **kwargs)
 
 
-def mp_launcher(rank, path, world_size, device, callback, taskenv):
+def mp_launcher(rank, path, world_size, callback, taskenv, args, kwargs):
     logger.warning("Launcher of rank %d [%s]", rank, path)
     TaskEnv._instance = taskenv
     taskenv.slave = rank == 0
@@ -52,7 +61,12 @@ def mp_launcher(rank, path, world_size, device, callback, taskenv):
     dist.init_process_group(
         "gloo", init_method=f"file://{path}", rank=rank, world_size=world_size
     )
-    callback(DistributedDeviceInformation(device, rank == 0, rank))
+    device = torch.device(f"cuda:{rank}")
+    callback(
+        DistributedDeviceInformation(device, rank == 0, rank, count=world_size),
+        *args,
+        **kwargs,
+    )
 
     # Cleanup
     dist.destroy_process_group()
@@ -94,12 +108,19 @@ class CudaDevice(Device):
 
         return torch.device("cuda")
 
-    def execute(self, callback):
+    @cached_property
+    def n_processes(self):
+        """Number of processes"""
+        if self.distributed:
+            return torch.cuda.device_count()
+        return 1
+
+    def execute(self, callback, *args, **kwargs):
         # Setup distributed computation
         # Seehttps://pytorch.org/tutorials/intermediate/ddp_tutorial.html
         n_gpus = torch.cuda.device_count()
         if n_gpus == 1 or not self.distributed:
-            callback(DeviceInformation(self.value, True))
+            callback(DeviceInformation(self.value, True), *args, **kwargs)
         else:
             with tempfile.NamedTemporaryFile() as temporary:
                 logger.info("Setting up distributed CUDA computing (%d GPUs)", n_gpus)
@@ -108,9 +129,10 @@ class CudaDevice(Device):
                     args=(
                         temporary.name,
                         n_gpus,
-                        self.value,
                         callback,
                         TaskEnv.instance(),
+                        args,
+                        kwargs,
                     ),
                     nprocs=n_gpus,
                     join=True,

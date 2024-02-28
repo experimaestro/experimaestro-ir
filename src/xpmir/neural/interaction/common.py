@@ -1,16 +1,14 @@
 from abc import ABC, abstractmethod
-from typing import List, Union
+from typing import List, Union, Sequence
 from attrs import evolve
 
 import torch
 from attrs import define
 from experimaestro import Config
 
-from xpmir.learning.batchers import Sliceable
-
 
 @define
-class SimilarityInput(Sliceable["SimilarityInput"]):
+class SimilarityInput(Sequence["SimilarityInput"]):
     value: torch.Tensor
     """A 3D tensor (batch x max_length x dim)"""
 
