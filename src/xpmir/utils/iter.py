@@ -333,8 +333,8 @@ class MultiprocessIterator(Iterator[T]):
         self.maxsize = maxsize
         self.iterator = iterator
 
-    def __next__(self):
-        # (1) Start a process if needed
+    def start(self):
+        """Start the iterator process"""
         if self.process is None:
             self.queue = mp.Queue(self.maxsize)
             self.process = mp.Process(
@@ -346,6 +346,11 @@ class MultiprocessIterator(Iterator[T]):
             # Start, and register a kill switch
             self.process.start()
             atexit.register(self.kill_subprocess)
+        return self
+
+    def __next__(self):
+        # Start a process if needed
+        self.start()
 
         # Get the next element
         element = self.queue.get()
