@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from pathlib import Path
 from experimaestro import Config, Param
 from experimaestro.compat import cached_property
 import torch
@@ -24,7 +25,7 @@ class DeviceInformation:
     """Number of processes"""
 
     rank: int = 0
-    """Rank when using multiple processes"""
+    """When using distributed processing, this is the rank of the process"""
 
 
 class ComputationContext(Context):
@@ -33,8 +34,7 @@ class ComputationContext(Context):
 
 @dataclass
 class DistributedDeviceInformation(DeviceInformation):
-    rank: int
-    """When using distributed processing, this is the rank of the process"""
+    pass
 
 
 class Device(Config):
@@ -54,16 +54,21 @@ class Device(Config):
 
 
 def mp_launcher(rank, path, world_size, callback, taskenv, args, kwargs):
-    logger.warning("Launcher of rank %d [%s]", rank, path)
+    logger.info("Started process for rank %d [%s]", rank, path)
     TaskEnv._instance = taskenv
     taskenv.slave = rank == 0
 
+    logger.info("Initializing process group [%d]", rank)
     dist.init_process_group(
         "gloo", init_method=f"file://{path}", rank=rank, world_size=world_size
     )
+
+    logger.info("Calling callback [%d]", rank)
     device = torch.device(f"cuda:{rank}")
     callback(
-        DistributedDeviceInformation(device, rank == 0, rank, count=world_size),
+        DistributedDeviceInformation(
+            device=device, main=rank == 0, rank=rank, count=world_size
+        ),
         *args,
         **kwargs,
     )
@@ -122,12 +127,12 @@ class CudaDevice(Device):
         if n_gpus == 1 or not self.distributed:
             callback(DeviceInformation(self.value, True), *args, **kwargs)
         else:
-            with tempfile.NamedTemporaryFile() as temporary:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
                 logger.info("Setting up distributed CUDA computing (%d GPUs)", n_gpus)
-                mp.spawn(
+                return mp.start_processes(
                     mp_launcher,
                     args=(
-                        temporary.name,
+                        str((Path(directory) / "link").absolute()),
                         n_gpus,
                         callback,
                         TaskEnv.instance(),
@@ -136,6 +141,7 @@ class CudaDevice(Device):
                     ),
                     nprocs=n_gpus,
                     join=True,
+                    start_method=mp.get_start_method(),
                 )
 
 

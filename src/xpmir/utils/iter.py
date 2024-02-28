@@ -1,5 +1,6 @@
 import numpy as np
 from abc import ABC, abstractmethod
+from queue import Full
 import torch.multiprocessing as mp
 from typing import (
     Generic,
@@ -315,11 +316,20 @@ class StopIterationClass:
 STOP_ITERATION = StopIterationClass()
 
 
-def mp_iterate(iterator, queue):
+def mp_iterate(iterator, queue: mp.Queue, event: mp.Event):
     try:
         while True:
             value = next(iterator)
-            queue.put(value)
+
+            while True:
+                try:
+                    queue.put(value, timeout=1)
+                    break
+                except Full:
+                    if event.is_set():
+                        logger.warning("Stopping as requested by the main process")
+                        break
+
     except StopIteration:
         queue.put(STOP_ITERATION)
     except Exception as e:
@@ -327,11 +337,36 @@ def mp_iterate(iterator, queue):
         queue.put(e)
 
 
+class QueueBasedMultiprocessIterator(Iterator[T]):
+    def __init__(self, queue: "mp.Queue[T]", stop_process: mp.Event):
+        self.queue = queue
+        self.stop_process = stop_process
+
+    def __next__(self):
+        # Get the next element
+        element = self.queue.get()
+
+        # Last element
+        if isinstance(element, StopIterationClass):
+            # Just in case
+            self.stop_process.set()
+            raise StopIteration()
+
+        # An exception occurred
+        elif isinstance(element, Exception):
+            self.stop_process.set()
+            raise RuntimeError("Error in iterator process") from element
+
+        return element
+
+
 class MultiprocessIterator(Iterator[T]):
     def __init__(self, iterator: Iterator[T], maxsize=100):
         self.process = None
         self.maxsize = maxsize
         self.iterator = iterator
+        self.stop_process = mp.Event()
+        self.mp_iterator = None
 
     def start(self):
         """Start the iterator process"""
@@ -339,14 +374,22 @@ class MultiprocessIterator(Iterator[T]):
             self.queue = mp.Queue(self.maxsize)
             self.process = mp.Process(
                 target=mp_iterate,
-                args=(self.iterator, self.queue),
+                args=(self.iterator, self.queue, self.stop_process),
                 daemon=True,
             )
 
             # Start, and register a kill switch
             self.process.start()
-            atexit.register(self.kill_subprocess)
+            self.mp_iterator = QueueBasedMultiprocessIterator(
+                self.queue, self.stop_process
+            )
         return self
+
+    def detach(self):
+        """Produces an iterator only based on the multiprocess queue (useful
+        when using torch mp.spawn)"""
+        self.start()
+        return self.mp_iterator
 
     def __next__(self):
         # Start a process if needed
@@ -367,13 +410,6 @@ class MultiprocessIterator(Iterator[T]):
             raise RuntimeError("Error in iterator process") from element
 
         return element
-
-    def kill_subprocess(self):
-        # Kills the iterator process
-        if self.process and self.process.is_alive():
-            logging.debug("Killing iterator process")
-            self.process.kill()
-            atexit.unregister(self.kill_subprocess)
 
 
 class StatefullIterator(Iterator[Tuple[T, State]], Protocol[State]):

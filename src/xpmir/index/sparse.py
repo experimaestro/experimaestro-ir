@@ -1,5 +1,7 @@
 """Index for sparse models"""
 
+from functools import cached_property
+import threading
 import heapq
 import torch
 from queue import Empty
@@ -144,6 +146,26 @@ class DocumentRange:
         return self.start < other.start
 
 
+class DocumentIterator:
+    def __init__(self, documents, max_docs, batch_size):
+        self.documents = documents
+        self.max_docs = max_docs
+        self.batch_size = batch_size
+
+    @cached_property
+    def iterator(self):
+        return batchiter(
+            self.batch_size,
+            zip(
+                range(sys.maxsize if self.max_docs == 0 else self.max_docs),
+                self.documents.iter_documents(),
+            ),
+        )
+
+    def __next__(self):
+        return next(self.iterator)
+
+
 class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
     """Builds an index from a sparse representation
 
@@ -194,27 +216,16 @@ class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
         )
 
     def execute(self):
+        mp.set_start_method("spawn")
+
         max_docs = (
             self.documents.documentcount
             if self.max_docs == 0
             else min(self.max_docs, self.documents.documentcount)
         )
-
-        iter_batches = tqdm(
-            MultiprocessIterator(
-                batchiter(
-                    self.batch_size,
-                    zip(
-                        range(sys.maxsize if self.max_docs == 0 else self.max_docs),
-                        MultiprocessIterator(self.documents.iter_documents()).start(),
-                    ),
-                )
-            ),
-            total=max_docs // self.batch_size,
-            unit_scale=self.batch_size,
-            unit="documents",
-            desc="Building the index",
-        )
+        iter_batches = MultiprocessIterator(
+            DocumentIterator(self.documents, max_docs, self.batch_size)
+        ).detach()
 
         self.encoder.initialize(ModuleInitMode.DEFAULT.to_options(None))
 
@@ -231,100 +242,116 @@ class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
             rmtree(self.index_path)
         self.index_path.mkdir(parents=True)
 
-        # Start the index process
-        index_process = mp.Process(
+        # Start the index process (thread)
+        index_thread = threading.Thread(
             target=self.index,
-            args=(queues,),
-            daemon=True,
+            name="index",
+            args=(queues, max_docs),
         )
-        index_process.start()
+        index_thread.start()
 
         # Waiting for the encoder process to end
         logger.info(f"Starting to index {max_docs} documents")
 
         try:
-            self.device.execute(self.device_execute, iter_batches, queues)
+            self.device.execute(
+                self.device_execute,
+                iter_batches,
+                self.encoder,
+                self.batcher,
+                self.batch_size,
+                queues,
+            )
+        except Exception:
+            logger.exception("Got an exception while running encoders")
         finally:
             logger.info("Waiting for the index process to stop")
-            index_process.join()
-            if index_process.exitcode != 0:
-                logger.warning(
-                    "Indexer process has finished with exit code %d",
-                    index_process.exitcode,
-                )
-                raise RuntimeError("Failure")
+            index_thread.join()
 
     def index(
-        self, queues: List[StoppableQueue[Union[DocumentRange, EncodedDocument]]]
+        self,
+        queues: List[StoppableQueue[Union[DocumentRange, EncodedDocument]]],
+        max_docs: int,
     ):
         """Index encoded documents
 
         :param queues: Queues are used to send tensors
         """
-        try:
-            # Get ranges
-            logger.info(
-                "Starting the indexing process (%d queues) in %s",
-                len(queues),
-                self.index_path,
-            )
-            indexer = xpmir_rust.index.SparseIndexer(str(self.index_path))
-            heap = [queue.get() for queue in queues]
-            heapq.heapify(queues)
+        with tqdm(
+            total=max_docs,
+            unit="documents",
+            desc="Building the index",
+        ) as pb:
+            try:
+                # Get ranges
+                logger.info(
+                    "Starting the indexing process (%d queues) in %s",
+                    len(queues),
+                    self.index_path,
+                )
+                indexer = xpmir_rust.index.SparseIndexer(str(self.index_path))
+                heap = [queue.get() for queue in queues]
+                heapq.heapify(heap)
 
-            # Loop over them
-            while heap:
-                # Process current range
-                current = heap[0]
-                logger.debug("Handling range: %s", current)
-                for docid in range(current.start, current.end + 1):
-                    encoded = queues[current.rank].get()
-                    assert (
-                        encoded.docid == docid
-                    ), f"Mismatch in document IDs ({encoded.docid} vs {docid})"
+                # Loop over them
+                while heap:
+                    # Process current range
+                    current = heap[0]
+                    logger.debug("Handling range: %s", current)
+                    for docid in range(current.start, current.end + 1):
+                        encoded = queues[current.rank].get()
+                        assert (
+                            encoded.docid == docid
+                        ), f"Mismatch in document IDs ({encoded.docid} vs {docid})"
 
-                    (nonzero_ix,) = encoded.value.nonzero()
-                    indexer.add(
-                        docid, nonzero_ix.astype(np.uint64), encoded.value[nonzero_ix]
-                    )
+                        (nonzero_ix,) = encoded.value.nonzero()
+                        indexer.add(
+                            docid,
+                            nonzero_ix.astype(np.uint64),
+                            encoded.value[nonzero_ix],
+                        )
+                        pb.update()
 
-                # Get next range
-                next_range = queues[current.rank].get()  # type: DocumentRange
-                if next_range:
-                    heapq.heappushpop(heap, next_range)
-                else:
-                    logger.info("Iterator %d is over", current.rank)
-                    heapq.heappop(heap)
+                    # Get next range
+                    next_range = queues[current.rank].get()  # type: DocumentRange
+                    if next_range:
+                        heapq.heappushpop(heap, next_range)
+                    else:
+                        logger.info("Iterator %d is over", current.rank)
+                        heapq.heappop(heap)
 
-            logger.info("Building the index")
-            indexer.build(self.in_memory)
-        except Empty:
-            logger.warning("One encoder got a problem... stopping")
-            raise
-        except Exception:
-            # Close all the queues
-            logger.exception(
-                "Got an exception in the indexing process, closing the queues"
-            )
-            queues[0].stop()
-            raise
+                logger.info("Building the index")
+                indexer.build(self.in_memory)
+            except Empty:
+                logger.warning("One encoder got a problem... stopping")
+                raise
+            except Exception:
+                # Close all the queues
+                logger.exception(
+                    "Got an exception in the indexing process, closing the queues"
+                )
+                queues[0].stop()
+                raise
 
+    @staticmethod
     def device_execute(
-        self,
         device_information: DeviceInformation,
         iter_batches: Iterator[List[Tuple[int, DocumentRecord]]],
+        encoder,
+        batcher,
+        batch_size,
         queues: List[StoppableQueue],
     ):
         try:
             # Encode all documents
             logger.info(
                 "Load the encoder and "
-                f"transfer to the target device {self.device.value}"
+                f"transfer to the target device {device_information.device}"
             )
 
-            encoder = self.encoder.to(self.device.value).eval()
+            encoder = encoder.to(device_information.device).eval()
             queue = queues[device_information.rank]
-            batcher = self.batcher.initialize(self.batch_size)
+            batcher = batcher.initialize(batch_size)
 
             # Index
             with torch.no_grad():
@@ -336,7 +363,12 @@ class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
                         )
                     )
                     # Outputs the documents
-                    batcher.process(batch, self.encode_documents, encoder, queue)
+                    batcher.process(
+                        batch,
+                        SparseRetrieverIndexBuilder.encode_documents,
+                        encoder,
+                        queue,
+                    )
 
             # Build the index
             logger.info("Closing queue %d", device_information.rank)
@@ -345,8 +377,8 @@ class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
             queue.stop()
             raise
 
+    @staticmethod
     def encode_documents(
-        self,
         batch: List[Tuple[int, DocumentRecord]],
         encoder: TextEncoderBase[InputType, TextsRepresentationOutput],
         queue: "mp.Queue[EncodedDocument]",
