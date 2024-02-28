@@ -6,7 +6,7 @@ from typing import (
     Iterator,
     TypeVar,
     Union,
-    overload,
+    Sequence,
 )
 from experimaestro import Config
 from pytorch_lightning.utilities.memory import garbage_collection_cuda
@@ -30,34 +30,25 @@ class RecoverableOOMError(Exception):
     pass
 
 
-class Sliceable(Protocol, Generic[T]):
-    @overload
-    def __getitem__(self, slice: slice) -> "Sliceable[T]":
-        ...
-
-    @overload
-    def __getitem__(self, slice: int) -> "T":
-        ...
-
-    def __len__(self) -> int:
-        ...
-
-
 class IterativeProcessor(Protocol, Generic[T, RT, ARGS, KWARGS]):
     def __call__(
-        self, batch: Iterator[Sliceable[T]], length: int, *args: ARGS, **kwargs: KWARGS
+        self, batch: Iterator[Sequence[T]], length: int, *args: ARGS, **kwargs: KWARGS
     ) -> RT:
+        """Process a series of batches
+
+        :argument length: The number of batches
+        """
         ...
 
 
 class Processor(Protocol, Generic[T, ARGS, KWARGS]):
-    def __call__(self, batch: Sliceable[T], *args: ARGS, **kwargs: KWARGS) -> None:
+    def __call__(self, batch: Sequence[T], *args: ARGS, **kwargs: KWARGS) -> None:
         ...
 
 
 class Reducer(Protocol, Generic[T, RT, ARGS, KWARGS]):
     def __call__(
-        self, batch: Sliceable[T], value: RT, *args: ARGS, **kwargs: KWARGS
+        self, batch: Sequence[T], value: RT, *args: ARGS, **kwargs: KWARGS
     ) -> RT:
         ...
 
@@ -68,7 +59,7 @@ class BatcherWorker:
 
     def process_withreplay(
         self,
-        batch: Sliceable[T],
+        batch: Sequence[T],
         process: IterativeProcessor[T, RT, ARGS, KWARGS],
         *args: ARGS,
         **kwargs: KWARGS,
@@ -81,7 +72,7 @@ class BatcherWorker:
 
     def process(
         self,
-        batch: Sliceable[T],
+        batch: Sequence[T],
         process: Processor[T, ARGS, KWARGS],
         *args: ARGS,
         raise_oom=False,
@@ -100,7 +91,7 @@ class BatcherWorker:
 
     def reduce(
         self,
-        batch: Sliceable[T],
+        batch: Sequence[T],
         reducer: Reducer[T, RT, ARGS, KWARGS],
         initialvalue: RT,
         *args: ARGS,
@@ -165,13 +156,13 @@ class PowerAdaptativeBatcherWorker(BatcherWorker):
             ix += self.batch_size
         return ranges
 
-    def iter(self, batch: Sliceable[T], ranges: List[slice]) -> Iterator[Sliceable[T]]:
+    def iter(self, batch: Sequence[T], ranges: List[slice]) -> Iterator[Sequence[T]]:
         for range in ranges:
             yield batch[range]
 
     def process_withreplay(
         self,
-        batch: Sliceable[T],
+        batch: Sequence[T],
         process: IterativeProcessor[T, RT, ARGS, KWARGS],
         *args: ARGS,
         **kwargs: KWARGS,
@@ -186,7 +177,7 @@ class PowerAdaptativeBatcherWorker(BatcherWorker):
 
     def process(
         self,
-        batch: Sliceable[T],
+        batch: Sequence[T],
         process: Processor[T, ARGS, KWARGS],
         *args: ARGS,
         raise_oom=False,
@@ -203,7 +194,7 @@ class PowerAdaptativeBatcherWorker(BatcherWorker):
 
     def reduce(
         self,
-        batch: Sliceable[T],
+        batch: Sequence[T],
         reducer: Reducer[T, RT, ARGS, KWARGS],
         value: RT,
         *args: ARGS,
