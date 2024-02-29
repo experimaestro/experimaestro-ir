@@ -10,7 +10,6 @@ from datamaestro_text.data.ir import (
     AdhocAssessments,
     Documents,
     AdhocResults,
-    TextItem,
     IDItem,
 )
 from datamaestro_text.data.ir.trec import TrecAdhocRun, TrecAdhocResults
@@ -73,7 +72,7 @@ class BaseEvaluation(Task):
 def get_run(retriever: Retriever, dataset: Adhoc):
     """Returns the scored documents for each topic in a dataset"""
     results = retriever.retrieve_all(
-        {topic[IDItem].id: topic[TextItem].text for topic in dataset.topics.iter()}
+        {topic[IDItem].id: topic for topic in dataset.topics.iter()}
     )
     return {
         qid: {sd.document[IDItem].id: sd.score for sd in scoredocs}

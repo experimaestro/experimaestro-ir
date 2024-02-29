@@ -19,6 +19,9 @@ from xpmir.text.encoders import (
 )
 from xpmir.letor.trainers.alignment import AlignmentLoss
 from xpmir.neural.splade import SpladeTextEncoderV2
+from xpmir.utils.logging import easylog
+
+logger = easylog()
 
 
 @define
@@ -109,7 +112,8 @@ class CoSPLADE(ConversationRepresentationEncoder):
                     )
                     pair_origins.append(ix)
                 elif isinstance(item, AnswerConversationRecord):
-                    answer = item
+                    if (answer := item.get(AnswerEntry)) is None:
+                        logger.warning("Answer record has no answer entry")
                 else:
                     # Ignore anything which is not a pair topic-response
                     answer = None

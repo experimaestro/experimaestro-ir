@@ -1,3 +1,4 @@
+from functools import cached_property
 import numpy as np
 from datamaestro_text.data.ir import TopicRecord
 from datamaestro_text.data.conversation import (
@@ -17,12 +18,16 @@ class DatasetConversationEntrySampler(BaseSampler):
     dataset: Param[ConversationDataset]
     """The conversation dataset"""
 
+    @cached_property
+    def conversations(self):
+        return list(self.dataset.__iter__())
+
     def __iter__(self) -> RandomSerializableIterator[TopicConversationRecord]:
         def generator(random: np.random.RandomState):
             while True:
                 # Pick a random conversation
-                conversation_ix = random.randint(0, len(self.dataset))
-                conversation = self.dataset[conversation_ix]
+                conversation_ix = random.randint(0, len(self.conversations))
+                conversation = self.conversations[conversation_ix]
 
                 # Pick a random topic record entry
                 nodes = [
@@ -33,8 +38,10 @@ class DatasetConversationEntrySampler(BaseSampler):
                 node_ix = random.randint(len(nodes))
                 node = nodes[node_ix]
 
-                yield node.entry().add(
+                node = node.entry().add(
                     ConversationHistoryItem(node.history()), no_check=True
                 )
+
+                yield node
 
         return RandomSerializableIterator(self.random, generator)

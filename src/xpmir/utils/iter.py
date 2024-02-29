@@ -17,7 +17,6 @@ from typing import (
 )
 from xpmir.utils.utils import easylog
 import logging
-import atexit
 
 logger = easylog()
 
@@ -394,22 +393,7 @@ class MultiprocessIterator(Iterator[T]):
     def __next__(self):
         # Start a process if needed
         self.start()
-
-        # Get the next element
-        element = self.queue.get()
-
-        # Last element
-        if isinstance(element, StopIterationClass):
-            atexit.unregister(self.kill_subprocess)
-            raise StopIteration()
-
-        # An exception occurred
-        if isinstance(element, Exception):
-            atexit.unregister(self.kill_subprocess)
-            logging.warning("Got an exception in the iteration process")
-            raise RuntimeError("Error in iterator process") from element
-
-        return element
+        return next(self.mp_iterator)
 
 
 class StatefullIterator(Iterator[Tuple[T, State]], Protocol[State]):
