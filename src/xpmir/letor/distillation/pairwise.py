@@ -6,7 +6,6 @@ from torch.functional import Tensor
 from experimaestro import Config, Param
 from xpmir.letor.records import (
     DocumentRecord,
-    TopicRecord,
     PairwiseRecord,
     PairwiseRecords,
 )
@@ -132,7 +131,7 @@ class DistillationPairwiseTrainer(LossTrainer):
         for ix, sample in enumerate(samples):
             records.add(
                 PairwiseRecord(
-                    TopicRecord(sample.query),
+                    sample.query.as_record(),
                     DocumentRecord(sample.documents[0].document),
                     DocumentRecord(sample.documents[1].document),
                 )

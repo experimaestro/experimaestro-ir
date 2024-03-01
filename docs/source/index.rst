@@ -50,9 +50,11 @@ Table of Contents
    evaluation
    learning/index
    letor/index
+   conversation/index
    neural
    hooks
    text/index
+   misc
    experiments
    papers/index
    pretrained

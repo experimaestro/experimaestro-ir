@@ -34,12 +34,11 @@ class ScorerTransformAdapter(Scorer):
         topics = self.adapter.transform_topics(topics) or topics
         docs = self.adapter.transform_documents(docs) or docs
 
-        topic_record = TopicRecord(topics[0])
         sd_list = [
             ScoredDocument(doc, sd.score) for (doc, sd) in zip(docs, scored_documents)
         ]
 
-        return (topic_record, sd_list)
+        return (topics[0].as_record(), sd_list)
 
     def compute(
         self, topic: TopicRecord, documents: Iterable[ScoredDocument]

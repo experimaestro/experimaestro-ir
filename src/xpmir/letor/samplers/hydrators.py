@@ -1,17 +1,14 @@
 from abc import ABC, abstractmethod
 from typing import Iterator, Optional, List, Any
-from datamaestro_text.data.ir.base import Document, Topic
 from experimaestro import Config, Param
 import numpy as np
 import datamaestro_text.data.ir.base as ir
-from datamaestro_text.data.ir import DocumentStore
+from datamaestro_text.data.ir import DocumentStore, IDItem
 from xpmir.datasets.adapters import TextStore
 from xpmir.letor.samplers import PairwiseSampler
 from xpmir.letor.records import (
     PairwiseRecords,
     PairwiseRecord,
-    TopicRecord,
-    DocumentRecord,
 )
 from xpmir.utils.iter import (
     SerializableIterator,
@@ -22,13 +19,15 @@ from xpmir.utils.iter import (
 
 class SampleTransform(Config, ABC):
     @abstractmethod
-    def transform_topics(self, topics: List[ir.Topic]) -> Optional[List[ir.Topic]]:
+    def transform_topics(
+        self, topics: Iterator[ir.TopicRecord]
+    ) -> Optional[List[ir.TopicRecord]]:
         ...
 
     @abstractmethod
     def transform_documents(
-        self, documents: List[ir.Document]
-    ) -> Optional[List[ir.Document]]:
+        self, documents: Iterator[ir.DocumentRecord]
+    ) -> Optional[List[ir.DocumentRecord]]:
         ...
 
 
@@ -41,25 +40,31 @@ class SampleHydrator(SampleTransform):
     querystore: Param[Optional[TextStore]]
     """The store for query texts if needed"""
 
-    def transform_topics(self, topics: List[ir.Topic]):
+    def transform_topics(self, topics: List[ir.TopicRecord]):
         if self.querystore is None:
             return None
         return [
-            ir.GenericTopic(topic.get_id(), self.querystore[topic.get_id()])
+            ir.GenericTopicRecord.create(
+                topic[IDItem].id, self.querystore[topic[IDItem].id]
+            )
             for topic in topics
         ]
 
-    def transform_documents(self, documents: List[ir.Document]):
+    def transform_documents(self, documents: List[ir.DocumentRecord]):
         if self.documentstore is None:
             return None
         results = []
         for document in documents:
-            if isinstance(document, ir.InternalIDDocument):
+            if document.has(ir.TextItem):
+                results.append(document)
+            elif document.has(ir.InternalIDItem):
                 results.append(
-                    self.documentstore.document_int(document.get_internal_id())
+                    self.documentstore.document_int(document[ir.InternalIDDocument])
                 )
-            else:
+            elif document.has(ir.IDItem):
                 results.append(self.documentstore.document_ext(document.get_id()))
+            else:
+                raise RuntimeError("Cannot handle this")
         return results
 
 
@@ -72,34 +77,36 @@ class SamplePrefixAdding(SampleTransform):
     document_prefix: Param[str] = ""
     """The prefix for the document"""
 
-    def transform_topics(self, topics: List[Topic]) -> List[Topic] | None:
+    def transform_topics(
+        self, topics: List[ir.TopicRecord]
+    ) -> Optional[List[ir.TopicRecord]]:
         if self.query_prefix == "" or len(topics) == 0:
             return None
 
         if isinstance(topics[0], ir.GenericTopic):
             return [
-                ir.GenericTopic(topic.get_id(), self.query_prefix + topic.get_text())
+                ir.GenericTopic(topic[IDItem].id, self.query_prefix + topic.text)
                 for topic in topics
             ]
         elif isinstance(topics[0], ir.TextTopic):
-            return [
-                ir.TextTopic(self.query_prefix + topic.get_text()) for topic in topics
-            ]
+            return [ir.TextTopic(self.query_prefix + topic.text) for topic in topics]
 
-    def transform_documents(self, documents: List[Document]) -> List[Document] | None:
+    def transform_documents(
+        self, documents: List[ir.DocumentRecord]
+    ) -> Optional[List[ir.DocumentRecord]]:
         if self.document_prefix == "" or len(documents) == 0:
             return None
 
         if isinstance(documents[0], ir.GenericDocument):
             return [
                 ir.GenericDocument(
-                    document.get_id(), self.document_prefix + document.get_text()
+                    document[IDItem].id, self.document_prefix + document.text
                 )
                 for document in documents
             ]
         elif isinstance(documents[0], ir.TextDocument):
             return [
-                ir.TextDocument(self.document_prefix + document.get_text())
+                ir.TextDocument(self.document_prefix + document.text)
                 for document in documents
             ]
 
@@ -110,12 +117,14 @@ class SampleTransformList(SampleTransform):
     adapters: Param[List[SampleTransform]]
     """The list of sample transform to be applied"""
 
-    def transform_topics(self, topics: List[Topic]) -> List[Topic]:
+    def transform_topics(self, topics: List[ir.TopicRecord]) -> List[ir.TopicRecord]:
         for adapter in self.adapters:
             topics = adapter.transform_topics(topics) or topics
         return topics
 
-    def transform_documents(self, documents: List[Document]) -> List[Document]:
+    def transform_documents(
+        self, documents: List[ir.DocumentRecord]
+    ) -> List[ir.DocumentRecord]:
         for adapter in self.adapters:
             documents = adapter.transform_documents(documents) or documents
         return documents
@@ -141,15 +150,13 @@ class PairwiseTransformAdapter(PairwiseSampler):
         self.sampler.initialize(random)
 
     def transform_record(self, record: PairwiseRecord) -> PairwiseRecord:
-        topics = [record.query.topic]
-        docs = [record.positive.document, record.negative.document]
+        topics = [record.query]
+        docs = [record.positive, record.negative]
 
         topics = self.adapter.transform_topics(topics) or topics
         docs = self.adapter.transform_documents(docs) or docs
 
-        return PairwiseRecord(
-            TopicRecord(topics[0]), DocumentRecord(docs[0]), DocumentRecord(docs[1])
-        )
+        return PairwiseRecord(topics[0], docs[0], docs[1])
 
     def pairwise_iter(self) -> Iterator[PairwiseRecord]:
         iterator = self.sampler.pairwise_iter()
@@ -160,16 +167,14 @@ class PairwiseTransformAdapter(PairwiseSampler):
 
     def transform_records(self, records: PairwiseRecords) -> PairwiseRecords:
         if topics := self.adapter.transform_topics(
-            [tr.topic for tr in records.unique_topics]
+            topic for topic in records.unique_topics
         ):
-            records.set_unique_topics([TopicRecord(topic) for topic in topics])
+            records.set_unique_topics(topics)
 
         if documents := self.adapter.transform_documents(
-            [dr.document for dr in records.unique_documents]
+            document for document in records.unique_documents
         ):
-            records.set_unique_documents(
-                [DocumentRecord(document) for document in documents]
-            )
+            records.set_unique_documents(documents)
         return records
 
     def pairwise_batch_iter(self, size) -> SerializableIterator[PairwiseRecords, Any]:

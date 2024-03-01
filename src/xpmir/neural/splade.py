@@ -1,4 +1,4 @@
-from typing import List, Optional, Any
+from typing import List, Optional, Generic
 from experimaestro import Config, Param
 import torch.nn as nn
 import torch
@@ -8,10 +8,16 @@ from xpmir.text.huggingface import (
     OneHotHuggingFaceEncoder,
     TransformerTokensEncoderWithMLMOutput,
 )
-from xpmir.text.encoders import TextEncoder
+from xpmir.text import TokenizerOptions
+from xpmir.text.huggingface import HFTokenizerBase
+from xpmir.text.encoders import (
+    TextEncoder,
+    TextEncoderBase,
+    InputType as EncoderInputType,
+    TextsRepresentationOutput,
+)
 from xpmir.neural.dual import DotDense, ScheduledFlopsRegularizer
 from xpmir.text.huggingface.base import HFMaskedLanguageModel
-from xpmir.text.huggingface.tokenizers import HFTokenizer
 from xpmir.utils.utils import easylog
 
 logger = easylog()
@@ -50,8 +56,12 @@ class SumAggregation(Aggregation):
 
 class AggregationModule(nn.Module):
     def __init__(self, linear: nn.Linear, aggregation: Aggregation):
+        super().__init__()
         self.linear = linear
         self.aggregation = aggregation
+
+    def forward(self, input: torch.Tensor, mask: torch.Tensor):
+        return self.aggregation(self.linear(input), mask)
 
 
 class SpladeTextEncoderModel(nn.Module):
@@ -109,14 +119,22 @@ class SpladeTextEncoder(TextEncoder, DistributableModel):
         self.model = update(self.model)
 
 
-class SpladeTextEncoderV2(TextEncoder, DistributableModel):
-    """Splade model (V2)
+class SpladeTextEncoderV2(
+    TextEncoderBase[EncoderInputType, TextsRepresentationOutput],
+    DistributableModel,
+    Generic[EncoderInputType],
+):
+    # TODO: use "SpladeTextEncoder" identifier until
+    # https://github.com/experimaestro/experimaestro-python/issues/56 is fixed
+    __xpmid__ = str(SpladeTextEncoder.__getxpmtype__().identifier)
+
+    """Splade model text encoder (V2)
 
     It is only a text encoder since the we use `xpmir.neural.dual.DotDense`
-    as the scorer class. Compared to V1, it uses the new HF classes.
+    as the scorer class. Compared to V1, it uses the new text HF encoder abstractions.
     """
 
-    tokenizer: Param[HFTokenizer]
+    tokenizer: Param[HFTokenizerBase[EncoderInputType]]
     """The tokenizer from Hugging Face"""
 
     encoder: Param[HFMaskedLanguageModel]
@@ -130,6 +148,7 @@ class SpladeTextEncoderV2(TextEncoder, DistributableModel):
 
     def __initialize__(self, options: ModuleInitOptions):
         self.encoder.initialize(options)
+        self.tokenizer.initialize(options)
 
         # Adds the aggregation head right away - this could allows
         # optimization e.g. for the Max aggregation method
@@ -137,14 +156,18 @@ class SpladeTextEncoderV2(TextEncoder, DistributableModel):
         assert isinstance(
             output_embeddings, nn.Linear
         ), f"Cannot handle output embeddings of class {output_embeddings.__cls__}"
-        self.encoder.model.set_output_embeddings(
-            self.aggregation.get_output_module(output_embeddings)
+        self.encoder.model.set_output_embeddings(nn.Identity())
+
+        self.aggregation = self.aggregation.get_output_module(output_embeddings)
+
+    def forward(self, texts: EncoderInputType) -> TextsRepresentationOutput:
+        """Returns a batch x vocab tensor"""
+        tokenized = self.tokenizer.tokenize(
+            texts, options=TokenizerOptions(self.maxlen)
         )
 
-    def forward(self, texts: List[Any]) -> torch.Tensor:
-        """Returns a batch x vocab tensor"""
-        tokenized = self.tokenizer.batch_tokenize(texts, mask=True, maxlen=self.maxlen)
-        return self.encoder(tokenized)
+        value = self.aggregation(self.encoder(tokenized).logits, tokenized.mask)
+        return TextsRepresentationOutput(value, tokenized)
 
     @property
     def dimension(self):

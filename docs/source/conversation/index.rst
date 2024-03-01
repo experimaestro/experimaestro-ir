@@ -1,0 +1,19 @@
+Conversation
+============
+
+
+Learning
+--------
+
+.. autoxpmconfig:: xpmir.conversation.learning.DatasetConversationEntrySampler
+.. autoxpmconfig:: xpmir.conversation.learning.reformulation.ConversationRepresentationEncoder
+.. autoxpmconfig:: xpmir.conversation.learning.reformulation.DecontextualizedQueryConverter
+
+
+
+
+CoSPLADE
+--------
+
+.. autoxpmconfig:: xpmir.conversation.models.cosplade.AsymetricMSEContextualizedRepresentationLoss
+.. autoxpmconfig:: xpmir.conversation.models.cosplade.CoSPLADE

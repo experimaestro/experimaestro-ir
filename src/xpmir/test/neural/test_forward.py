@@ -5,18 +5,17 @@ import pytest
 import torch
 from collections import defaultdict
 from experimaestro import Constant
+from datamaestro_text.data.ir import TextItem
 from xpmir.index import Index
 from xpmir.learning import Random, ModuleInitMode
 from xpmir.neural.dual import CosineDense, DotDense
-from datamaestro_text.data.ir.base import GenericDocument
+from datamaestro_text.data.ir import GenericDocumentRecord, SimpleTextTopicRecord
 from xpmir.letor.records import (
-    DocumentRecord,
     PairwiseRecord,
     PairwiseRecords,
     PointwiseRecord,
     PointwiseRecords,
     ProductRecords,
-    TopicRecord,
 )
 from xpmir.text.tokenizers import Tokenizer
 from xpmir.text.encoders import (
@@ -24,6 +23,7 @@ from xpmir.text.encoders import (
     DualTextEncoder,
     TokensRepresentationOutput,
     TokenizerOptions,
+    RepresentationOutput,
 )
 from xpmir.text.adapters import MeanTextEncoder
 
@@ -65,7 +65,7 @@ class RandomTokensEncoder(TokenizedTextEncoderBase[str, TokensRepresentationOutp
         tok_texts = self.tokenizer.batch_tokenize(
             texts, maxlen=options.max_length, mask=True
         )
-        return TokensRepresentationOutput(tok_texts, self.embed(tok_texts.ids))
+        return TokensRepresentationOutput(self.embed(tok_texts.ids), tok_texts)
 
     def static(self) -> bool:
         return False
@@ -152,12 +152,12 @@ class DummyDualTextEncoder(DualTextEncoder):
         return False
 
     def forward(self, texts: List[Tuple[str, str]]):
-        return torch.cat([self.cache[text] for text in texts])
+        return RepresentationOutput(torch.cat([self.cache[text] for text in texts]))
 
 
 @registermodel
-def joint():
-    """Joint classifier factory"""
+def cross_scorer():
+    """Cross-scorer classifier factory"""
     from xpmir.neural.cross import CrossScorer
 
     return CrossScorer(encoder=DummyDualTextEncoder()).instance()
@@ -167,12 +167,15 @@ def joint():
 # --- Input factory
 # ---
 
-QUERIES = [TopicRecord.from_text("purple cat"), TopicRecord.from_text("yellow house")]
+QUERIES = [
+    SimpleTextTopicRecord.from_text("purple cat"),
+    SimpleTextTopicRecord.from_text("yellow house"),
+]
 DOCUMENTS = [
-    DocumentRecord(GenericDocument("1", "the cat sat on the mat")),
-    DocumentRecord(GenericDocument("2", "the purple car")),
-    DocumentRecord(GenericDocument("3", "my little dog")),
-    DocumentRecord(GenericDocument("4", "the truck was on track")),
+    GenericDocumentRecord.create("1", "the cat sat on the mat"),
+    GenericDocumentRecord.create("2", "the purple car"),
+    GenericDocumentRecord.create("3", "my little dog"),
+    GenericDocumentRecord.create("4", "the truck was on track"),
 ]
 
 
@@ -244,7 +247,7 @@ def test_forward_consistency(modelfactory, inputfactoriescouple):
             outputs.append(model(input, None))
             maps.append(
                 {
-                    (qr.topic.get_text(), dr.document.get_text()): ix
+                    (qr[TextItem].text, dr[TextItem].text): ix
                     for ix, (qr, dr) in enumerate(zip(input.queries, input.documents))
                 }
             )

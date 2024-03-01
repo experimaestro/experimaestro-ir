@@ -7,6 +7,7 @@ from functools import cached_property
 
 import docstring_parser
 from experimaestro import RunMode, Config
+from experimaestro.exceptions import HandledException
 from xpmir.evaluation import EvaluationsCollection
 from xpmir.models import XPMIRHFHub
 from xpmir.papers.results import PaperResults
@@ -98,7 +99,11 @@ class IRExperimentHelper(LearningExperimentHelper):
         @click.option("--upload-to-hub", type=str)
         @click.command()
         def cli(upload_to_hub: str):
-            results = self.callable(self, configuration)
+            try:
+                results = self.callable(self, configuration)
+            except Exception as e:
+                logging.exception("Error while running the experiment")
+                raise HandledException(e)
             self.xp.wait()
 
             if isinstance(results, PaperResults) and self.xp.run_mode == RunMode.NORMAL:

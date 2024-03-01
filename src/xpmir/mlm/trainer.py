@@ -6,10 +6,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from xpmir.learning.context import Loss, TrainerContext
-from xpmir.letor.records import (
-    MaskedLanguageModelingRecords,
-    MaskedLanguageModelingRecord,
-)
+from xpmir.letor.records import DocumentRecords, DocumentRecord
 from xpmir.letor.trainers import LossTrainer
 
 from experimaestro import Param, Config
@@ -54,7 +51,7 @@ class MLMTrainer(LossTrainer):
 
     sampler: Param[Sampler]
 
-    sampler_iter: InitVar[RandomSerializableIterator[MaskedLanguageModelingRecord]]
+    sampler_iter: InitVar[RandomSerializableIterator[DocumentRecord]]
 
     def initialize(
         self,
@@ -70,15 +67,15 @@ class MLMTrainer(LossTrainer):
         # assert self.grad_acc_batch >= 0, "Adaptative batch size not implemented"
         pass
 
-    def iter_batches(self) -> Iterator[MaskedLanguageModelingRecords]:
+    def iter_batches(self) -> Iterator[DocumentRecords]:
         while True:
-            batch = MaskedLanguageModelingRecords()
+            batch = DocumentRecords()
             for _, record in zip(range(self.batch_size), self.sampler_iter):
                 batch.add(record)
 
             yield batch
 
-    def train_batch(self, records: MaskedLanguageModelingRecords):
+    def train_batch(self, records: DocumentRecords):
         mlm_output = self.model(records.to_texts(), self.context)
 
         if torch.isnan(mlm_output.logits).any() or torch.isinf(mlm_output.logits).any():

@@ -1,7 +1,7 @@
 from typing import List, Optional, Tuple, Dict, Any
 from experimaestro import Param, Meta, tqdm
 import torch
-from datamaestro_text.data.ir import Document, Documents
+from datamaestro_text.data.ir import Documents
 from xpmir.neural.dual import DualRepresentationScorer
 from xpmir.learning.batchers import Batcher
 from xpmir.learning import ModuleInitMode
@@ -69,7 +69,7 @@ class FullRetrieverRescorer(Retriever):
 
     def score(
         self,
-        documents: List[Document],
+        documents: List[DocumentRecord],
         queries: List,
         scored_documents: List[List[ScoredDocument]],
         pbar,
@@ -91,7 +91,7 @@ class FullRetrieverRescorer(Retriever):
             per query)
         """
         # Encode documents
-        encoded = self.scorer.encode_documents(DocumentRecord(d) for d in documents)
+        encoded = self.scorer.encode_documents(documents)
 
         # Process query by query
         new_scores = [[] for _ in documents]

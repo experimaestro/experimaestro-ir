@@ -2,12 +2,13 @@ from abc import ABC, abstractmethod
 from typing import Generic, List, Tuple, TypeVar, Union, Optional, Callable
 import sys
 
-from experimaestro import Param
 from attrs import define
+from experimaestro import Param
 import torch
 import torch.nn as nn
 
 from xpmir.learning.optim import Module
+
 from xpmir.utils.utils import EasyLogger
 from .tokenizers import (
     Tokenizer,
@@ -16,6 +17,8 @@ from .tokenizers import (
     TokenizerOutput,
     TokenizerOptions,
 )
+
+T = TypeVar("T")
 
 
 class Encoder(Module, EasyLogger, ABC):
@@ -68,11 +71,11 @@ class TokensEncoder(Tokenizer, Encoder):
             self(tokenized_documents),
         )
 
-    def forward(self, tok_texts: TokenizedTexts):
+    def forward(self, tokenized: TokenizedTexts):
         """
         Returns embeddings for the tokenized texts.
 
-        tok_texts: tokenized texts
+        tokenized: tokenized texts
         """
         raise NotImplementedError()
 

@@ -1,14 +1,14 @@
 from abc import abstractmethod
 import itertools
-from typing import Iterable, Union, List, Optional, TypeVar, Generic
+from typing import Iterable, Union, List, Optional, TypeVar, Generic, Sequence
 import torch
-from xpmir.learning.batchers import Sliceable
+from datamaestro_text.data.ir import TextItem
 from xpmir.learning.context import TrainerContext
 from xpmir.letor.records import BaseRecords, ProductRecords, TopicRecord, DocumentRecord
 from xpmir.rankers import LearnableScorer
 
-QueriesRep = TypeVar("QueriesRep", bound=Sliceable["QueriesRep"])
-DocsRep = TypeVar("DocsRep", bound=Sliceable["DocsRep"])
+QueriesRep = TypeVar("QueriesRep", bound=Sequence)
+DocsRep = TypeVar("DocsRep", bound=Sequence)
 
 
 class DualRepresentationScorer(LearnableScorer, Generic[QueriesRep, DocsRep]):
@@ -51,16 +51,16 @@ class DualRepresentationScorer(LearnableScorer, Generic[QueriesRep, DocsRep]):
         """Encode a list of texts (document or query)
 
         The return value is model dependent"""
-        return self.encode([record.document.get_text() for record in records])
+        return self.encode([record[TextItem].text for record in records])
 
     def encode_queries(self, records: Iterable[TopicRecord]) -> QueriesRep:
         """Encode a list of texts (document or query)
 
-        The return value is model dependent, but should be sliceable
+        The return value is model dependent, but should be sequence
 
         By default, uses `merge`
         """
-        return self.encode([record.topic.get_text() for record in records])
+        return self.encode([record[TextItem].text for record in records])
 
     def merge_queries(self, queries: QueriesRep):
         """Merge query batches encoded with `encode_queries`

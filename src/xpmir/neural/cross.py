@@ -1,6 +1,7 @@
 import torch
 from typing import Tuple
 from experimaestro import Param
+from datamaestro_text.data.ir import TextItem
 from xpmir.distributed import DistributableModel
 from xpmir.learning.batchers import Batcher
 from xpmir.learning.context import TrainerContext
@@ -38,13 +39,13 @@ class CrossScorer(LearnableScorer, DistributableModel):
     def __initialize__(self, options):
         super().__initialize__(options)
         self.encoder.initialize(options)
-        self.classifier = torch.nn.Linear(self.encoder.dimension(), 1)
+        self.classifier = torch.nn.Linear(self.encoder.dimension, 1)
 
     def forward(self, inputs: BaseRecords, info: TrainerContext = None):
         # Encode queries and documents
         pairs = self.encoder(
             [
-                (tr.topic.get_text(), dr.document.get_text())
+                (tr[TextItem].text, dr[TextItem].text)
                 for tr, dr in zip(inputs.topics, inputs.documents)
             ]
         )  # shape (batch_size * dimension)

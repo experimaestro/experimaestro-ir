@@ -3,7 +3,6 @@ import numpy as np
 from typing import Iterator, Tuple
 from experimaestro import Param
 import datamaestro_text.data.ir as ir
-from datamaestro_text.data.ir.base import GenericTopic, GenericDocument, Document
 from xpmir.rankers import Retriever
 from xpmir.letor.samplers import (
     TrainingTriplets,
@@ -16,13 +15,26 @@ from xpmir.documents.samplers import RandomSpanSampler
 
 
 class MyTrainingTriplets(TrainingTriplets):
-    def iter(self) -> Iterator[Tuple[GenericTopic, GenericDocument, GenericDocument]]:
+    def iter(
+        self,
+    ) -> Iterator[
+        Tuple[
+            ir.SimpleTextTopicRecord, ir.GenericDocumentRecord, ir.GenericDocumentRecord
+        ]
+    ]:
         count = 0
 
         while True:
-            yield GenericTopic(0, f"q{count}"), GenericDocument(
+            yield ir.SimpleTextTopicRecord.from_text(
+                f"q{count}"
+            ), ir.GenericDocumentRecord.create(
                 1, f"doc+{count}"
-            ), GenericDocument(2, f"doc-{count}")
+            ), ir.GenericDocumentRecord.create(
+                2, f"doc-{count}"
+            )
+
+    topic_recordtype = ir.SimpleTextTopicRecord
+    document_recordtype = ir.GenericDocumentRecord
 
 
 def test_serializing_tripletbasedsampler():
@@ -48,13 +60,9 @@ def test_serializing_tripletbasedsampler():
     iter = sampler.pairwise_iter()
     iter.load_state_dict(data)
     for _, record, expected in zip(range(10), iter, samples):
-        assert expected.query.topic.get_text() == record.query.topic.get_text()
-        assert (
-            expected.positive.document.get_text() == record.positive.document.get_text()
-        )
-        assert (
-            expected.negative.document.get_text() == record.negative.document.get_text()
-        )
+        assert expected.query[ir.TextItem].text == record.query[ir.TextItem].text
+        assert expected.positive[ir.TextItem].text == record.positive[ir.TextItem].text
+        assert expected.negative[ir.TextItem].text == record.negative[ir.TextItem].text
 
 
 class GeneratedDocuments(ir.Documents):
@@ -100,8 +108,10 @@ class FakeDocumentStore(ir.DocumentStore):
     def documentcount(self):
         return 10
 
-    def document_int(self, internal_docid: int) -> Document:
-        return GenericDocument(str(internal_docid), f"D{internal_docid} " * 10)
+    def document_int(self, internal_docid: int) -> ir.GenericDocumentRecord:
+        return ir.GenericDocumentRecord.create(
+            str(internal_docid), f"D{internal_docid} " * 10
+        )
 
 
 def test_pairwise_randomspansampler():
@@ -120,6 +130,6 @@ def test_pairwise_randomspansampler():
 
     for s1, s2, _ in zip(iter1, iter2, range(10)):
         # check that they are the same with same random state
-        assert s1.query.topic.get_text() == s2.query.topic.get_text()
-        assert s1.positive.document.get_text() == s2.positive.document.get_text()
-        assert s1.negative.document.get_text() == s2.negative.document.get_text()
+        assert s1.query[ir.TextItem].text == s2.query[ir.TextItem].text
+        assert s1.positive[ir.TextItem].text == s2.positive[ir.TextItem].text
+        assert s1.negative[ir.TextItem].text == s2.negative[ir.TextItem].text

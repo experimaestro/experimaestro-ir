@@ -1,8 +1,10 @@
+from abc import ABC, abstractmethod
+from typing import Optional, Generic, TypeVar
 import numpy as np
-from typing import Optional
 from functools import cached_property
 from experimaestro import Config, Param
 from xpmir.utils.utils import EasyLogger
+from xpmir.utils.iter import SerializableIterator, BatchIteratorAdapter
 
 
 class Random(Config):
@@ -24,3 +26,15 @@ class Sampler(Config, EasyLogger):
 
     def initialize(self, random: Optional[np.random.RandomState]):
         self.random = random or np.random.RandomState(random.randint(0, 2**31))
+
+
+T = TypeVar("T")
+
+
+class BaseSampler(Sampler, Generic[T], ABC):
+    @abstractmethod
+    def __iter__() -> SerializableIterator[T]:
+        pass
+
+    def __batch_iter__(self, batch_size: int) -> BatchIteratorAdapter:
+        return BatchIteratorAdapter(self.__iter__(), batch_size)

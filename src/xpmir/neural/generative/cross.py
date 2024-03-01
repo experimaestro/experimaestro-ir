@@ -1,4 +1,5 @@
 from experimaestro import Param, Constant
+from datamaestro_text.data.ir import TextItem
 from xpmir.neural.generative import ConditionalGenerator
 from xpmir.letor.records import (
     BaseRecords,
@@ -37,9 +38,7 @@ class GenerativeCrossScorer(LearnableScorer):
     def forward(self, inputs: BaseRecords, info: TrainerContext = None):
         # Encode queries and documents
         inputs = [
-            self.pattern.format(
-                query=tr.topic.get_text(), document=dr.document.get_text()
-            )
+            self.pattern.format(query=tr[TextItem].text, document=dr[TextItem].text)
             for tr, dr in zip(inputs.topics, inputs.documents)
         ]
 

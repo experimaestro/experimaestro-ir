@@ -1,11 +1,12 @@
 import logging
 from typing import List, Optional, Tuple, Union
-
+from functools import cached_property
 import torch
 from experimaestro import Config, Param
 
 from xpmir.learning.optim import ModuleInitOptions
 from xpmir.utils.utils import Initializable
+from xpmir.utils.convert import Converter
 from xpmir.text.tokenizers import (
     TokenizerBase,
     TokenizedTexts,
@@ -129,15 +130,32 @@ class HFStringTokenizer(HFTokenizerBase[HFTokenizerInput]):
         return self.tokenizer.tokenize(texts, options=options)
 
 
+class HFTokenizerAdapter(HFTokenizerBase[TokenizerInput]):
+    """Process list of texts"""
+
+    converter: Param[Converter[TokenizerInput, HFTokenizerInput]]
+
+    def tokenize(
+        self, inputs: List[TokenizerInput], options: Optional[TokenizerOptions] = None
+    ) -> TokenizedTexts:
+        return self.tokenizer.tokenize(
+            [self.converter(input) for input in inputs], options=options
+        )
+
+
 class HFListTokenizer(HFTokenizerBase[List[List[str]]]):
     """Process list of texts by separating them by a separator token"""
+
+    @cached_property
+    def sep_string(self):
+        token = self.tokenizer.tokenizer.sep_token
+        assert token is not None
+        return token
 
     def tokenize(
         self, text_lists: List[List[str]], options: Optional[TokenizerOptions] = None
     ) -> TokenizedTexts:
-        assert self.tokenizer.sep_token is not None
-        sep = f" {self.tokenizer.cls_token} "
-
         return self.tokenizer.tokenize(
-            [sep.join(text_list) for text_list in text_lists], options=options
+            [self.sep_string.join(text_list) for text_list in text_lists],
+            options=options,
         )

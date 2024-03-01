@@ -1,18 +1,21 @@
 from collections import OrderedDict, defaultdict
-from typing import ClassVar, Dict, Iterator, List, Tuple
+from typing import ClassVar, Dict, Iterator, List, Tuple, Any
 import torch
-from attrs import define
 import numpy as np
-from datamaestro_text.data.ir import Document, DocumentStore
-from datamaestro_text.data.ir.base import GenericDocument
+from datamaestro.record import recordtypes
+from datamaestro_text.data.ir import (
+    DocumentStore,
+    GenericDocumentRecord,
+    InternalIDItem,
+)
 
 from experimaestro import Param
-from xpmir.text.encoders import TextEncoder
+from xpmir.text.encoders import TextEncoder, RepresentationOutput
 
 
-@define(frozen=True)
-class GenericDocumentWithID(GenericDocument):
-    internal_docid: int
+@recordtypes(InternalIDItem)
+class GenericDocumentWithIDRecord(GenericDocumentRecord):
+    ...
 
 
 class SampleDocumentStore(DocumentStore):
@@ -24,7 +27,11 @@ class SampleDocumentStore(DocumentStore):
         self.documents = OrderedDict(
             (
                 str(ix),
-                GenericDocumentWithID(str(ix), f"Document {ix}", internal_docid=ix),
+                GenericDocumentWithIDRecord.create(
+                    str(ix),
+                    f"Document {ix}",
+                    InternalIDItem(ix),
+                ),
             )
             for ix in range(self.num_docs)
         )
@@ -33,15 +40,19 @@ class SampleDocumentStore(DocumentStore):
     def documentcount(self):
         return len(self.documents)
 
-    def document_int(self, internal_docid: int) -> Document:
+    def document_int(self, internal_docid: int) -> GenericDocumentWithIDRecord:
         return self.documents[str(internal_docid)]
 
-    def document_ext(self, docid: str) -> Document:
+    def document_ext(self, docid: str) -> GenericDocumentWithIDRecord:
         """Returns the text of the document given its id"""
         return self.documents[docid]
 
-    def iter_documents(self) -> Iterator[Document]:
+    def iter_documents(self) -> Iterator[GenericDocumentWithIDRecord]:
         return iter(self.documents.values())
+
+    @property
+    def document_recordtype(self):
+        return GenericDocumentWithIDRecord
 
     def docid_internal2external(self, docid: int):
         """Converts an internal collection ID (integer) to an external ID"""
@@ -65,6 +76,11 @@ class VectorGenerator:
         x[np.random.choice(np.arange(self.dimension), zeros)] = 0
         x = x.abs()
         return x
+
+
+def check_str(x: Any):
+    assert isinstance(x, str)
+    return x
 
 
 class SparseRandomTextEncoder(TextEncoder):
@@ -91,4 +107,6 @@ class SparseRandomTextEncoder(TextEncoder):
 
     def forward(self, texts: List[str]) -> torch.Tensor:
         """Returns a matrix encoding the provided texts"""
-        return torch.cat([self.map[text].unsqueeze(0) for text in texts])
+        return RepresentationOutput(
+            torch.cat([self.map[check_str(text)].unsqueeze(0) for text in texts])
+        )
