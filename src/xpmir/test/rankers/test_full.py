@@ -1,15 +1,18 @@
-from collections import defaultdict
 import itertools
+import random
+from collections import defaultdict
 from pathlib import Path
 from typing import List, Optional
-import random
-from datamaestro_text.data.ir.base import GenericTopic, GenericDocument
-from experimaestro.notifications import TaskEnv
+
 import torch
+from experimaestro.notifications import TaskEnv
+from datamaestro_text.data.ir import SimpleTextTopicRecord, TextItem, IDItem
+
 from xpmir.learning.context import TrainerContext
+from xpmir.letor.records import TopicRecord
+from xpmir.neural.dual import DualRepresentationScorer
 from xpmir.rankers import ScoredDocument
 from xpmir.rankers.full import FullRetrieverRescorer
-from xpmir.neural.dual import DualRepresentationScorer
 from xpmir.test.utils.utils import SampleDocumentStore
 
 
@@ -23,34 +26,35 @@ class ListWrapper(list):
         return ListWrapper(list.__getitem__(self, item))
 
 
-class CachedRandomScorer(DualRepresentationScorer):
+class CachedRandomScorer(DualRepresentationScorer[ListWrapper[str], ListWrapper[str]]):
     def __initialize__(self, options):
         super().__initialize__(options)
         self._cache = defaultdict(lambda: random.uniform(0, 1))
 
-    def cache(self, query: GenericTopic, document: GenericDocument):
-        return self._cache[(query.get_text(), document.get_text())]
+    def cache(self, query: str, document: str):
+        return self._cache[(query, document)]
 
     def encode(self, texts: List[str]):
         return ListWrapper(texts)
 
     def score_pairs(
-        self, queries, documents, info: Optional[TrainerContext]
+        self,
+        queries: ListWrapper[str],
+        documents: ListWrapper[str],
+        info: Optional[TrainerContext],
     ) -> torch.Tensor:
         scores = [self.cache(q, d) for q, d in zip(queries, documents)]
         return torch.DoubleTensor(scores)
 
     def score_product(
-        self, queries, documents, info: Optional[TrainerContext]
+        self,
+        queries: ListWrapper[str],
+        documents: ListWrapper[str],
+        info: Optional[TrainerContext],
     ) -> torch.Tensor:
         scores = []
         for q in queries:
-            scores.append(
-                [
-                    self.cache(GenericTopic(0, q), GenericDocument(0, d))
-                    for d in documents
-                ]
-            )
+            scores.append([self.cache(q, d) for d in documents])
 
         return torch.DoubleTensor(scores)
 
@@ -59,11 +63,12 @@ class CachedRandomScorer(DualRepresentationScorer):
 
 
 class _FullRetrieverRescorer(FullRetrieverRescorer):
-    def retrieve(self, query: str):
-        topic = GenericTopic(0, query)
+    def retrieve(self, record: TopicRecord):
         scored_documents = [
             # Randomly get a score (and cache it)
-            ScoredDocument(d, self.scorer.cache(topic, d))
+            ScoredDocument(
+                d, self.scorer.cache(record[TextItem].text, d[TextItem].text)
+            )
             for d in self.documents
         ]
         scored_documents.sort(reverse=True)
@@ -84,7 +89,10 @@ def test_fullretrieverescorer(tmp_path: Path):
 
     # Retrieve normally
     scoredDocuments = {}
-    queries = {i: f"Query {i}" for i in range(NUM_QUERIES)}
+    queries = {
+        qid: SimpleTextTopicRecord.from_text(f"Query {qid}")
+        for qid in range(NUM_QUERIES)
+    }
 
     # Retrieve query per query
     for qid, query in queries.items():
@@ -98,8 +106,8 @@ def test_fullretrieverescorer(tmp_path: Path):
         results.sort(reverse=True)
         expected.sort(reverse=True)
 
-        assert [d.document.get_id() for d in expected] == [
-            d.document.get_id() for d in results
+        assert [d.document[IDItem].id for d in expected] == [
+            d.document[IDItem].id for d in results
         ], "Document IDs do not match"
         assert [d.score for d in expected] == [
             d.score for d in results

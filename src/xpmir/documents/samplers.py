@@ -3,10 +3,13 @@ from typing import Optional, Tuple, Iterator, Any
 from experimaestro import Param, Config
 import torch
 import numpy as np
-from datamaestro_text.data.ir import DocumentStore
-from datamaestro_text.data.ir.base import TextTopic, TextDocument
+from datamaestro_text.data.ir import DocumentStore, TextItem
+from datamaestro_text.data.ir.base import (
+    SimpleTextTopicRecord,
+    SimpleTextDocumentRecord,
+)
 from xpmir.letor import Random
-from xpmir.letor.records import DocumentRecord, PairwiseRecord, ProductRecords, Query
+from xpmir.letor.records import DocumentRecord, PairwiseRecord, ProductRecords
 from xpmir.letor.samplers import BatchwiseSampler, PairwiseSampler
 from xpmir.utils.iter import RandomSerializableIterator, SerializableIterator
 
@@ -68,9 +71,6 @@ class RandomDocumentSampler(DocumentSampler):
     random: Param[Optional[Random]]
     """Random sampler"""
 
-    def __validate__(self):
-        assert self.max_count > 0 or self.max_ratio > 0
-
     def __call__(self) -> Tuple[int, Iterator[str]]:
         # Compute the number of documents to sample
         count = (self.max_ratio or 1) * self.documents.documentcount
@@ -87,7 +87,7 @@ class RandomDocumentSampler(DocumentSampler):
             np.arange(self.documents.documentcount), size=count, replace=False
         )
         for docid in docids:
-            yield self.documents.document(int(docid))
+            yield self.documents.document_int(int(docid))
 
 
 class RandomSpanSampler(BatchwiseSampler, PairwiseSampler):
@@ -139,20 +139,20 @@ class RandomSpanSampler(BatchwiseSampler, PairwiseSampler):
 
             while True:
                 record_pos_qry = next(iter)
-                text_pos_qry = record_pos_qry.text
+                text_pos_qry = record_pos_qry[TextItem].text
                 spans_pos_qry = self.get_text_span(text_pos_qry, random)
 
                 record_neg = next(iter)
-                text_neg = record_neg.text
+                text_neg = record_neg[TextItem].text
                 spans_neg = self.get_text_span(text_neg, random)
 
                 if not (spans_pos_qry and spans_neg):
                     continue
 
                 yield PairwiseRecord(
-                    Query(TextTopic(spans_pos_qry[0])),
-                    DocumentRecord(TextDocument(spans_pos_qry[1])),
-                    DocumentRecord(TextDocument(spans_neg[random.randint(0, 2)])),
+                    SimpleTextTopicRecord.from_text(spans_pos_qry[0]),
+                    SimpleTextDocumentRecord.from_text(spans_pos_qry[1]),
+                    SimpleTextDocumentRecord.from_text(spans_neg[random.randint(0, 2)]),
                 )
 
         return RandomSerializableIterator(self.random, iter)
@@ -174,8 +174,8 @@ class RandomSpanSampler(BatchwiseSampler, PairwiseSampler):
                     res = self.get_text_span(text, random)
                     if not res:
                         continue
-                    batch.add_topics(Query(None, res[0]))
-                    batch.add_documents(DocumentRecord(None, res[1], 0))
+                    batch.add_topics(SimpleTextTopicRecord.from_text(res[0]))
+                    batch.add_documents(SimpleTextDocumentRecord.from_text(res[1]))
                 batch.set_relevances(relevances)
                 yield batch
 

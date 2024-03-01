@@ -1,36 +1,16 @@
-from experimaestro.experiments.configuration import configuration
+from experimaestro.experiments import configuration, ConfigurationBase
 from experimaestro.launcherfinder import find_launcher
-from omegaconf import MISSING
 
 from functools import cached_property as attrs_cached_property
 from xpmir.learning.devices import CudaDevice, Device
 from xpmir.letor import Random
 
 
-@configuration()
-class PaperExperiment:
-    id: str = MISSING
-    """The experiment ID
-
-    The ID should be unique, and might be used when exporting the model e.g. to
-    HuggingFace
-    """
-
-    title: str = ""
-    """The model title
-
-    The title is used to generate report
-    """
-
-    description: str = ""
-    """A description of the model
-
-    This description is used to generate reports
-    """
+PaperExperiment = ConfigurationBase
 
 
 @configuration()
-class NeuralIRExperiment(PaperExperiment):
+class NeuralIRExperiment(ConfigurationBase):
     """Settings most neural IR experiments"""
 
     gpu: bool = True

@@ -20,6 +20,19 @@ from xpmir.text.encoders import (
 from xpmir.utils.utils import easylog
 from xpmir.learning.context import TrainerContext, TrainState
 from xpmir.learning.parameters import ParametersIterator
+from .tokenizers import (  # noqa: F401
+    HFTokenizer,
+    HFTokenizerBase,
+    HFTokenizerAdapter,
+    HFStringTokenizer,
+    HFListTokenizer,
+)
+from .encoders import (  # noqa: F401
+    HFModel,
+    HFTokensEncoder,
+    HFCLSEncoder,
+)
+
 
 try:
     from transformers import (
@@ -33,7 +46,7 @@ except Exception:
     logging.error("Install huggingface transformers to use these configurations")
     raise
 
-from xpmir.letor.records import TokenizedTexts
+from xpmir.text import TokenizedTexts
 
 logger = easylog()
 logger.setLevel(logging.INFO)
@@ -51,7 +64,6 @@ class BaseTransformer(Encoder):
     layer: Param[int] = 0
     """Layer to use (0 is the last, -1 to use them all)"""
 
-    # TODO: move this into a hook
     dropout: Param[Optional[float]] = 0
     """(deprecated) Define a dropout for all the layers"""
 

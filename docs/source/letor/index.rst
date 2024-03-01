@@ -10,6 +10,8 @@ Learning to rank
    distillation
    generative
    mlm
+   generation
+   alignment
 
 
 Learning to rank is handled by various classes. Some are located
@@ -32,7 +34,16 @@ scorers, some are have learnable parameters.
 .. autoxpmconfig:: xpmir.rankers.AbstractModuleScorer
 .. autoxpmconfig:: xpmir.rankers.LearnableScorer
 
+Adapters
+********
+
+.. autoxpmconfig:: xpmir.rankers.adapters.ScorerTransformAdapter
+
+Utility functions
+*****************
+
 .. autofunction:: xpmir.rankers.scorer_retriever
+
 
 Retrievers
 ==========
@@ -74,3 +85,5 @@ Adapters
 
 .. autoxpmconfig:: xpmir.letor.samplers.hydrators.SampleTransform
 .. autoxpmconfig:: xpmir.letor.samplers.hydrators.SampleHydrator
+.. autoxpmconfig:: xpmir.letor.samplers.hydrators.SamplePrefixAdding
+.. autoxpmconfig:: xpmir.letor.samplers.hydrators.SampleTransformList

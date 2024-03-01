@@ -1,7 +1,5 @@
 import torch
 from torch import nn
-from xpmir.letor.records import BaseRecords
-from xpmir.text import TokensEncoder
 
 
 # The code below is heavily borrowed from OpenNIR
@@ -60,15 +58,3 @@ class InteractionMatrix(nn.Module):
                 b_mask = (b_tok.reshape(BAT, 1, B) != self.padding).float()
                 simmats.append(cos_simmat(a_emb, b_emb, a_mask, b_mask))
         return torch.stack(simmats, dim=1)
-
-    def encode_query_doc(
-        self, encoder: TokensEncoder, inputs: BaseRecords, d_maxlen=None, q_maxlen=None
-    ):
-        """Returns a (batch x ... x #q x #d) tensor"""
-        tokq, q, tokd, d = encoder.enc_query_doc(
-            [q.topic.get_text() for q in inputs.queries],
-            [d.document.get_text() for d in inputs.documents],
-            d_maxlen=d_maxlen,
-            q_maxlen=q_maxlen,
-        )
-        return self(q, d, tokq.ids, tokd.ids), tokq, tokd

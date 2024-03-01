@@ -7,7 +7,7 @@ from typing import Optional, List, NamedTuple, Tuple
 import torch
 from torch import nn
 from xpmir.learning import ModuleInitOptions, ModuleInitMode
-from xpmir.letor.records import TokenizedTexts
+from xpmir.text.encoders import TokenizedTexts
 from xpmir.distributed import DistributableModel
 from . import (
     ConditionalGenerator,
@@ -217,6 +217,12 @@ class T5ConditionalGenerator(ConditionalGenerator, DistributableModel):
                 sequences=res,
                 output_mask=output_mask,
             )
+
+    def batch_decode(self, generate_output: FullSequenceGenerationOutput) -> List[str]:
+        """Decode the sequences to meaningful texts"""
+        return self.tokenizer.batch_decode(
+            generate_output.sequences, skip_special_tokens=True
+        )
 
     def distribute_models(self, update):
         self.encoder = update(self.model.get_encoder())

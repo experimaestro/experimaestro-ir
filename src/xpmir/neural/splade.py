@@ -1,6 +1,5 @@
-from typing import List, Optional
+from typing import List, Optional, Generic
 from experimaestro import Config, Param
-import torch.nn.functional as F
 import torch.nn as nn
 import torch
 from xpmir.learning import ModuleInitOptions
@@ -9,8 +8,16 @@ from xpmir.text.huggingface import (
     OneHotHuggingFaceEncoder,
     TransformerTokensEncoderWithMLMOutput,
 )
-from xpmir.text.encoders import TextEncoder
+from xpmir.text import TokenizerOptions
+from xpmir.text.huggingface import HFTokenizerBase
+from xpmir.text.encoders import (
+    TextEncoder,
+    TextEncoderBase,
+    InputType as EncoderInputType,
+    TextsRepresentationOutput,
+)
 from xpmir.neural.dual import DotDense, ScheduledFlopsRegularizer
+from xpmir.text.huggingface.base import HFMaskedLanguageModel
 from xpmir.utils.utils import easylog
 
 logger = easylog()
@@ -19,19 +26,8 @@ logger = easylog()
 class Aggregation(Config):
     """The aggregation function for Splade"""
 
-    def with_linear(self, logits, mask, weight, bias=None):
-        """Project before aggregating using a linear transformation
-
-        Can be optimized by further operators
-
-        :param logits: The logits output by the sequence representation model (B
-            x L x D)
-        :param mask: The mask (B x L) where 0 when the element should be masked
-            out
-        :param weight: The linear transformation (D' x D)
-        """
-        projection = F.linear(logits, weight, bias)
-        return self(projection, mask)
+    def get_output_module(self, linear: nn.Module):
+        return AggregationModule(linear, self)
 
 
 class MaxAggregation(Aggregation):
@@ -58,8 +54,20 @@ class SumAggregation(Aggregation):
         )
 
 
+class AggregationModule(nn.Module):
+    def __init__(self, linear: nn.Linear, aggregation: Aggregation):
+        super().__init__()
+        self.linear = linear
+        self.aggregation = aggregation
+
+    def forward(self, input: torch.Tensor, mask: torch.Tensor):
+        return self.aggregation(self.linear(input), mask)
+
+
 class SpladeTextEncoderModel(nn.Module):
-    def __init__(self, encoder, aggregation):
+    def __init__(
+        self, encoder: TransformerTokensEncoderWithMLMOutput, aggregation: Aggregation
+    ):
         super().__init__()
         self.encoder = encoder
         self.aggregation = aggregation
@@ -96,7 +104,7 @@ class SpladeTextEncoder(TextEncoder, DistributableModel):
 
     def forward(self, texts: List[str]) -> torch.Tensor:
         """Returns a batch x vocab tensor"""
-        tokenized = self.encoder.batch_tokenize(texts, mask=True, maxlen=self.maxlen)
+        tokenized = self.tokenizer.batch_tokenize(texts, mask=True, maxlen=self.maxlen)
         out = self.model(tokenized)
         return out
 
@@ -109,6 +117,67 @@ class SpladeTextEncoder(TextEncoder, DistributableModel):
 
     def distribute_models(self, update):
         self.model = update(self.model)
+
+
+class SpladeTextEncoderV2(
+    TextEncoderBase[EncoderInputType, TextsRepresentationOutput],
+    DistributableModel,
+    Generic[EncoderInputType],
+):
+    # TODO: use "SpladeTextEncoder" identifier until
+    # https://github.com/experimaestro/experimaestro-python/issues/56 is fixed
+    __xpmid__ = str(SpladeTextEncoder.__getxpmtype__().identifier)
+
+    """Splade model text encoder (V2)
+
+    It is only a text encoder since the we use `xpmir.neural.dual.DotDense`
+    as the scorer class. Compared to V1, it uses the new text HF encoder abstractions.
+    """
+
+    tokenizer: Param[HFTokenizerBase[EncoderInputType]]
+    """The tokenizer from Hugging Face"""
+
+    encoder: Param[HFMaskedLanguageModel]
+    """The encoder from Hugging Face"""
+
+    aggregation: Param[Aggregation]
+    """How to aggregate the vectors"""
+
+    maxlen: Param[Optional[int]] = None
+    """Max length for texts"""
+
+    def __initialize__(self, options: ModuleInitOptions):
+        self.encoder.initialize(options)
+        self.tokenizer.initialize(options)
+
+        # Adds the aggregation head right away - this could allows
+        # optimization e.g. for the Max aggregation method
+        output_embeddings = self.encoder.model.get_output_embeddings()
+        assert isinstance(
+            output_embeddings, nn.Linear
+        ), f"Cannot handle output embeddings of class {output_embeddings.__cls__}"
+        self.encoder.model.set_output_embeddings(nn.Identity())
+
+        self.aggregation = self.aggregation.get_output_module(output_embeddings)
+
+    def forward(self, texts: EncoderInputType) -> TextsRepresentationOutput:
+        """Returns a batch x vocab tensor"""
+        tokenized = self.tokenizer.tokenize(
+            texts, options=TokenizerOptions(self.maxlen)
+        )
+
+        value = self.aggregation(self.encoder(tokenized).logits, tokenized.mask)
+        return TextsRepresentationOutput(value, tokenized)
+
+    @property
+    def dimension(self):
+        return self.encoder.model.config.vocab_size
+
+    def static(self):
+        return False
+
+    def distribute_models(self, update):
+        self.encoder = update(self.encoder)
 
 
 def _splade(

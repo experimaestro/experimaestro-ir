@@ -12,9 +12,11 @@ from experimaestro import (
 )
 from experimaestro.compat import cached_property
 from datamaestro_text.data.ir import (
+    IDItem,
+    TextItem,
     Adhoc,
     AdhocAssessments,
-    Document,
+    DocumentRecord,
     DocumentStore,
     Documents,
     Topics,
@@ -197,14 +199,14 @@ class RandomFold(Task):
 
         # Get topics
         badids = (
-            set(topic.get_id() for topic in self.exclude.iter())
+            set(topic[IDItem].id for topic in self.exclude.iter())
             if self.exclude
             else set()
         )
         topics = [
             topic
             for topic in self.dataset.topics.iter()
-            if topic.get_id() not in badids
+            if topic[IDItem].id not in badids
         ]
         random = np.random.RandomState(self.seed)
         random.shuffle(topics)
@@ -226,8 +228,8 @@ class RandomFold(Task):
         self.topics.parent.mkdir(parents=True, exist_ok=True)
         with self.topics.open("wt") as fp:
             for topic in topics:
-                ids.add(topic.get_id())
-                fp.write(f"""{topic.get_id()}\t{topic.get_text()}\n""")
+                ids.add(topic[IDItem].id)
+                fp.write(f"""{topic[IDItem].id}\t{topic[TextItem].text}\n""")
 
         with self.assessments.open("wt") as fp:
             for qrels in self.dataset.assessments.iter():
@@ -285,10 +287,9 @@ class DocumentSubset(Documents):
     def iter_ids(self):
         yield from self.docids
 
-    def iter(self) -> Iterator[Document]:
+    def iter(self) -> Iterator[DocumentRecord]:
         for docid in self.iter_ids():
-            content = self.base.document_text(docid)
-            yield Document(docid, content)
+            return self.base.document_ext(docid)
 
 
 class DocumentSubsetSlice:
@@ -361,12 +362,12 @@ class RetrieverBasedCollection(Task):
         for topic in tqdm(
             self.dataset.topics.iter(), total=self.dataset.topics.count()
         ):
-            qrels = topics.get(topic.get_id())
+            qrels = topics.get(topic[IDItem].id)
             if qrels is None:
                 logger.warning(
                     "Skipping topic %s [%s], (no assessment)",
-                    topic.get_id(),
-                    topic.get_text(),
+                    topic[IDItem].id,
+                    topic[TextItem].text,
                 )
                 continue
 
@@ -390,7 +391,7 @@ class RetrieverBasedCollection(Task):
             # don't need to worry about the threshold here
             for retriever in self.retrievers:
                 docids.update(
-                    sd.document.get_id() for sd in retriever.retrieve(topic.text)
+                    sd.document[IDItem].id for sd in retriever.retrieve(topic.text)
                 )
 
         # Write the document IDs
@@ -413,7 +414,7 @@ class MemoryTopicStore(TextStore):
 
     @cached_property
     def store(self):
-        return {topic.get_id(): topic.text for topic in self.topics.iter()}
+        return {topic[IDItem].id: topic.text for topic in self.topics.iter()}
 
     def __getitem__(self, key: str) -> str:
         return self.store[key]

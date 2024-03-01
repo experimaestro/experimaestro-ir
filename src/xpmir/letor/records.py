@@ -1,59 +1,20 @@
 import torch
 import itertools
-from attrs import define
-from datamaestro_text.data.ir.base import (
-    Topic,
-    Document as BaseDocument,
-    TextTopic,
-    TextDocument,
-    GenericDocument,
+from datamaestro_text.data.ir import (
+    TopicRecord,
+    DocumentRecord,
+    TextItem,
+    SimpleTextTopicRecord,
+    SimpleTextDocumentRecord,
 )
 from typing import (
     Iterable,
     List,
-    NamedTuple,
     Optional,
     Tuple,
     TypeVar,
     Union,
 )
-
-
-@define()
-class TopicRecord:
-    """A query record when training models"""
-
-    topic: Topic
-
-    @staticmethod
-    def from_text(text: str):
-        return TopicRecord(TextTopic(text))
-
-
-@define()
-class DocumentRecord:
-    """A document record when training models"""
-
-    document: BaseDocument
-    """The document"""
-
-    @staticmethod
-    def from_text(text: str):
-        return DocumentRecord(TextDocument(text))
-
-
-@define()
-class ScoredDocumentRecord(DocumentRecord):
-    """A document record when training models"""
-
-    score: float
-    """A retrieval score associated with this record (e.g. of the first-stage
-    retriever)"""
-
-
-# Aliases for deprecated types
-Document = DocumentRecord
-Query = TopicRecord
 
 
 class PointwiseRecord:
@@ -81,22 +42,6 @@ class PointwiseRecord:
     @property
     def query(self):
         return self.topic
-
-
-class TokenizedTexts(NamedTuple):
-    tokens: List[List[str]]
-    """The list of tokens"""
-
-    ids: torch.LongTensor
-    """A matrix containing the ids"""
-
-    lens: List[int]
-    """the lengths of each text (in tokens)"""
-
-    mask: torch.LongTensor
-    """The mask for the ids matrix"""
-
-    token_type_ids: torch.LongTensor = None
 
 
 RT = TypeVar("RT")
@@ -200,9 +145,9 @@ class PointwiseRecords(BaseRecords[PointwiseRecord]):
         relevances: Optional[List[float]] = None,
     ):
         records = PointwiseRecords()
-        records.topics = list(map(lambda t: TopicRecord(TextTopic(t)), topics))
+        records.topics = list(map(lambda t: SimpleTextTopicRecord.from_text(t), topics))
         records.documents = list(
-            map(lambda t: DocumentRecord(TextDocument(t)), documents)
+            map(lambda t: SimpleTextDocumentRecord.from_text(t), documents)
         )
         records.relevances = relevances
         return records
@@ -215,7 +160,9 @@ class PairwiseRecord:
     positive: DocumentRecord
     negative: DocumentRecord
 
-    def __init__(self, query: TopicRecord, positive: Document, negative: Document):
+    def __init__(
+        self, query: TopicRecord, positive: DocumentRecord, negative: DocumentRecord
+    ):
         self.query = query
         self.positive = positive
         self.negative = negative
@@ -229,7 +176,11 @@ class PairwiseRecordWithTarget(PairwiseRecord):
     target: int
 
     def __init__(
-        self, query: TopicRecord, positive: Document, negative: Document, target: int
+        self,
+        query: TopicRecord,
+        positive: DocumentRecord,
+        negative: DocumentRecord,
+        target: int,
     ):
         super().__init__(query, positive, negative)
         self.target = target
@@ -388,7 +339,7 @@ class ProductRecords(BatchwiseRecords):
     def add_topics(self, *topics: TopicRecord):
         self._topics.extend(topics)
 
-    def add_documents(self, *documents: Document):
+    def add_documents(self, *documents: DocumentRecord):
         self._documents.extend(documents)
 
     def set_relevances(self, relevances: torch.Tensor):
@@ -439,21 +390,7 @@ class ProductRecords(BatchwiseRecords):
         return topics, documents
 
 
-class MaskedLanguageModelingRecord:
-    """A record from a masked language modeling sampler"""
-
-    # The document
-    document: DocumentRecord
-
-    def __init__(
-        self,
-        docid: str,
-        content: str,
-    ):
-        self.document = DocumentRecord(GenericDocument(id=docid, text=content))
-
-
-class MaskedLanguageModelingRecords(List[MaskedLanguageModelingRecord]):
+class DocumentRecords(List[DocumentRecord]):
     """Masked Language Modeling Records are a set of documents"""
 
     # Text of the documents
@@ -463,36 +400,32 @@ class MaskedLanguageModelingRecords(List[MaskedLanguageModelingRecord]):
         super().__init__()
         self.documents = []
 
-    def add(self, record: MaskedLanguageModelingRecord):
-        self.documents.append(record.document)
+    def add(self, record: DocumentRecord):
+        self.documents.append(record)
 
     def __len__(self):
         return len(self.documents)
 
     def __getitem__(self, ix: Union[slice, int]):
         if isinstance(ix, slice):
-            records = MaskedLanguageModelingRecords()
+            records = DocumentRecord()
             for i in range(ix.start, min(ix.stop, len(self)), ix.step or 1):
-                records.add(
-                    MaskedLanguageModelingRecord(
-                        self.documents[i].document.id, self.documents[i].document.text
-                    )
-                )
+                records.add(self.documents[i])
             return records
 
-        return MaskedLanguageModelingRecords(self.documents[ix])
+        return DocumentRecords(self.documents[ix])
 
     @staticmethod
     def from_texts(
         documents: List[str],
     ):
-        records = MaskedLanguageModelingRecords()
+        records = DocumentRecords()
         records.documents = list(documents)
         return records
 
     def to_texts(self) -> List[str]:
         texts = []
         for doc in self.documents:
-            texts.append(doc.document.text)
+            texts.append(doc.document[TextItem].text)
 
         return texts

@@ -90,7 +90,7 @@ class LearnerOutput(NamedTuple):
 
     listeners: Dict[str, Any]
 
-    learned_model: Module
+    learned_model: ModuleLoader
 
 
 class Learner(Task, EasyLogger):

@@ -1,10 +1,16 @@
 """Index for sparse models"""
 
+from functools import cached_property
+import threading
+import heapq
 import torch
+from queue import Empty
+import torch.multiprocessing as mp
 import numpy as np
 import sys
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Generic, Iterator, Union
+from attrs import define
 from experimaestro import (
     Annotated,
     Config,
@@ -15,14 +21,15 @@ from experimaestro import (
     tqdm,
     Constant,
 )
-from datamaestro_text.data.ir import Document, DocumentStore
+from datamaestro_text.data.ir import DocumentRecord, DocumentStore, TextItem
 from xpmir.learning import ModuleInitMode
 from xpmir.learning.batchers import Batcher
 from xpmir.utils.utils import batchiter, easylog
-from xpmir.letor import Device, DEFAULT_DEVICE
-from xpmir.text.encoders import TextEncoder
-from xpmir.rankers import Retriever, ScoredDocument
+from xpmir.letor import Device, DeviceInformation, DEFAULT_DEVICE
+from xpmir.text.encoders import TextEncoderBase, TextsRepresentationOutput, InputType
+from xpmir.rankers import Retriever, TopicRecord, ScoredDocument
 from xpmir.utils.iter import MultiprocessIterator
+from xpmir.utils.multiprocessing import StoppableQueue
 import xpmir_rust
 
 logger = easylog()
@@ -55,9 +62,9 @@ class SparseRetrieverIndex(Config):
         return results
 
 
-class SparseRetriever(Retriever):
+class SparseRetriever(Retriever, Generic[InputType]):
     index: Param[SparseRetrieverIndex]
-    encoder: Param[TextEncoder]
+    encoder: Param[TextEncoderBase[InputType, torch.Tensor]]
     topk: Param[int]
 
     batcher: Meta[Batcher] = Batcher()
@@ -72,19 +79,22 @@ class SparseRetriever(Retriever):
 
     def initialize(self):
         super().initialize()
-        self.encoder.initialize(ModuleInitMode.RANDOM.to_options(None))
+        self.encoder.initialize(ModuleInitMode.DEFAULT.to_options(None))
         self.index.initialize(self.in_memory)
 
-    def retrieve_all(self, queries: Dict[str, str]) -> Dict[str, List[ScoredDocument]]:
+    def retrieve_all(
+        self, queries: Dict[str, InputType]
+    ) -> Dict[str, List[ScoredDocument]]:
         """Input queries: {id: text}"""
 
         def reducer(
-            batch: List[Tuple[str, str]],
+            batch: List[Tuple[str, InputType]],
             results: Dict[str, List[ScoredDocument]],
             progress,
         ):
             for (key, _), vector in zip(
-                batch, self.encoder([text for _, text in batch]).cpu().detach().numpy()
+                batch,
+                self.encoder([text for _, text in batch]).value.cpu().detach().numpy(),
             ):
                 (ix,) = vector.nonzero()
                 query = {ix: float(v) for ix, v in zip(ix, vector[ix])}
@@ -105,14 +115,14 @@ class SparseRetriever(Retriever):
 
         return results
 
-    def retrieve(self, query: str, top_k=None) -> List[ScoredDocument]:
+    def retrieve(self, query: TopicRecord, top_k=None) -> List[ScoredDocument]:
         """Search with document-at-a-time (DAAT) strategy
 
         :param top_k: Overrides the default top-K value
         """
 
         # Build up iterators
-        vector = self.encoder([query])[0].cpu().detach().numpy()
+        vector = self.encoder([query]).value[0].cpu().detach().numpy()
         (ix,) = vector.nonzero()  # ix represents the position without 0 in the vector
         query = {
             ix: float(v) for ix, v in zip(ix, vector[ix])
@@ -120,7 +130,43 @@ class SparseRetriever(Retriever):
         return self.index.retrieve(query, top_k or self.topk)
 
 
-class SparseRetrieverIndexBuilder(Task):
+@define(frozen=True)
+class EncodedDocument:
+    docid: int
+    value: torch.Tensor
+
+
+@define(frozen=True)
+class DocumentRange:
+    rank: int
+    start: int
+    end: int
+
+    def __lt__(self, other: "DocumentRange"):
+        return self.start < other.start
+
+
+class DocumentIterator:
+    def __init__(self, documents, max_docs, batch_size):
+        self.documents = documents
+        self.max_docs = max_docs
+        self.batch_size = batch_size
+
+    @cached_property
+    def iterator(self):
+        return batchiter(
+            self.batch_size,
+            zip(
+                range(sys.maxsize if self.max_docs == 0 else self.max_docs),
+                self.documents.iter_documents(),
+            ),
+        )
+
+    def __next__(self):
+        return next(self.iterator)
+
+
+class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
     """Builds an index from a sparse representation
 
     Assumes that document and queries have the same dimension, and
@@ -130,7 +176,7 @@ class SparseRetrieverIndexBuilder(Task):
     documents: Param[DocumentStore]
     """Set of documents to index"""
 
-    encoder: Param[TextEncoder]
+    encoder: Param[TextEncoderBase[InputType, TextsRepresentationOutput]]
     """The encoder"""
 
     batcher: Meta[Batcher] = Batcher()
@@ -144,6 +190,7 @@ class SparseRetrieverIndexBuilder(Task):
     fast top-k strategies"""
 
     device: Meta[Device] = DEFAULT_DEVICE
+    """The device for building the index"""
 
     max_postings: Meta[int] = 16384
     """Maximum number of postings (per term) before flushing to disk"""
@@ -169,52 +216,176 @@ class SparseRetrieverIndexBuilder(Task):
         )
 
     def execute(self):
-        # Encode all documents
-        logger.info(
-            f"Load the encoder and transfer to the target device {self.device.value}"
-        )
+        mp.set_start_method("spawn")
 
-        self.encoder.initialize(ModuleInitMode.RANDOM.to_options(None))
-        self.encoder.to(self.device.value).eval()
-
-        batcher = self.batcher.initialize(self.batch_size)
-
-        doc_iter = tqdm(
-            zip(
-                range(sys.maxsize if self.max_docs == 0 else self.max_docs),
-                MultiprocessIterator(self.documents.iter_documents()),
-            ),
-            total=self.documents.documentcount
+        max_docs = (
+            self.documents.documentcount
             if self.max_docs == 0
-            else min(self.max_docs, self.documents.documentcount),
-            desc="Building the index",
+            else min(self.max_docs, self.documents.documentcount)
         )
+        iter_batches = MultiprocessIterator(
+            DocumentIterator(self.documents, max_docs, self.batch_size)
+        ).detach()
 
-        # Create the index builder
+        self.encoder.initialize(ModuleInitMode.DEFAULT.to_options(None))
+
+        closed = mp.Event()
+        queues = [
+            StoppableQueue(2 * self.batch_size + 1, closed)
+            for _ in range(self.device.n_processes)
+        ]
+
+        # Cleanup the index before starting
         from shutil import rmtree
-        import xpmir_rust
 
         if self.index_path.is_dir():
             rmtree(self.index_path)
         self.index_path.mkdir(parents=True)
 
-        self.indexer = xpmir_rust.index.SparseIndexer(str(self.index_path))
+        # Start the index process (thread)
+        index_thread = threading.Thread(
+            target=self.index,
+            name="index",
+            args=(queues, max_docs),
+        )
+        index_thread.start()
 
-        # Index
-        logger.info(f"Starting to index {self.documents.documentcount} documents")
+        # Waiting for the encoder process to end
+        logger.info(f"Starting to index {max_docs} documents")
 
-        with torch.no_grad():
-            for batch in batchiter(self.batch_size, doc_iter):
-                batcher.process(batch, self.encode_documents)
+        try:
+            self.device.execute(
+                self.device_execute,
+                iter_batches,
+                self.encoder,
+                self.batcher,
+                self.batch_size,
+                queues,
+            )
+        except Exception:
+            logger.exception("Got an exception while running encoders")
+        finally:
+            logger.info("Waiting for the index process to stop")
+            index_thread.join()
 
-        # Build the index
-        self.indexer.build(self.in_memory)
+    def index(
+        self,
+        queues: List[StoppableQueue[Union[DocumentRange, EncodedDocument]]],
+        max_docs: int,
+    ):
+        """Index encoded documents
 
-    def encode_documents(self, batch: List[Tuple[int, Document]]):
+        :param queues: Queues are used to send tensors
+        """
+        with tqdm(
+            total=max_docs,
+            unit="documents",
+            desc="Building the index",
+        ) as pb:
+            try:
+                # Get ranges
+                logger.info(
+                    "Starting the indexing process (%d queues) in %s",
+                    len(queues),
+                    self.index_path,
+                )
+                indexer = xpmir_rust.index.SparseIndexer(str(self.index_path))
+                heap = [queue.get() for queue in queues]
+                heapq.heapify(heap)
+
+                # Loop over them
+                while heap:
+                    # Process current range
+                    current = heap[0]
+                    logger.debug("Handling range: %s", current)
+                    for docid in range(current.start, current.end + 1):
+                        encoded = queues[current.rank].get()
+                        assert (
+                            encoded.docid == docid
+                        ), f"Mismatch in document IDs ({encoded.docid} vs {docid})"
+
+                        (nonzero_ix,) = encoded.value.nonzero()
+                        indexer.add(
+                            docid,
+                            nonzero_ix.astype(np.uint64),
+                            encoded.value[nonzero_ix],
+                        )
+                        pb.update()
+
+                    # Get next range
+                    next_range = queues[current.rank].get()  # type: DocumentRange
+                    if next_range:
+                        heapq.heappushpop(heap, next_range)
+                    else:
+                        logger.info("Iterator %d is over", current.rank)
+                        heapq.heappop(heap)
+
+                logger.info("Building the index")
+                indexer.build(self.in_memory)
+            except Empty:
+                logger.warning("One encoder got a problem... stopping")
+                raise
+            except Exception:
+                # Close all the queues
+                logger.exception(
+                    "Got an exception in the indexing process, closing the queues"
+                )
+                queues[0].stop()
+                raise
+
+    @staticmethod
+    def device_execute(
+        device_information: DeviceInformation,
+        iter_batches: Iterator[List[Tuple[int, DocumentRecord]]],
+        encoder,
+        batcher,
+        batch_size,
+        queues: List[StoppableQueue],
+    ):
+        try:
+            # Encode all documents
+            logger.info(
+                "Load the encoder and "
+                f"transfer to the target device {device_information.device}"
+            )
+
+            encoder = encoder.to(device_information.device).eval()
+            queue = queues[device_information.rank]
+            batcher = batcher.initialize(batch_size)
+
+            # Index
+            with torch.no_grad():
+                for batch in iter_batches:
+                    # Signals the output range
+                    queue.put(
+                        DocumentRange(
+                            device_information.rank, batch[0][0], batch[-1][0]
+                        )
+                    )
+                    # Outputs the documents
+                    batcher.process(
+                        batch,
+                        SparseRetrieverIndexBuilder.encode_documents,
+                        encoder,
+                        queue,
+                    )
+
+            # Build the index
+            logger.info("Closing queue %d", device_information.rank)
+            queue.put(None)
+        except Exception:
+            queue.stop()
+            raise
+
+    @staticmethod
+    def encode_documents(
+        batch: List[Tuple[int, DocumentRecord]],
+        encoder: TextEncoderBase[InputType, TextsRepresentationOutput],
+        queue: "mp.Queue[EncodedDocument]",
+    ):
         # Assumes for now dense vectors
         vectors = (
-            self.encoder([d.get_text() for _, d in batch]).cpu().numpy()
+            encoder([d[TextItem].text for _, d in batch]).value.cpu().numpy()
         )  # bs * vocab
         for vector, (docid, _) in zip(vectors, batch):
-            (nonzero_ix,) = vector.nonzero()
-            self.indexer.add(docid, nonzero_ix.astype(np.uint64), vector[nonzero_ix])
+            queue.put(EncodedDocument(docid, vector))
