@@ -234,10 +234,21 @@ class T5ConditionalGenerator(ConditionalGenerator, DistributableModel):
                     normalize_logits=False,  # for bs the logits are already normalized
                 )
                 sequence_scores = torch.sum(transition_scores, dim=-1)
+                # calculate the all_score based on the beam_indices and scores
+                beam_indices_mask = res.beam_indices < 0
+                max_beam_length = (1 - beam_indices_mask.long()).sum(-1).max()
+                beam_indices = res.beam_indices.clone()[:, :max_beam_length]
+                # no need to apply the mask cause the all_score we use will be
+                # mask directly
+                all_scores = [
+                    all_score[beam_indices[:, i]]
+                    for i, all_score in enumerate(res.scores)
+                ]
                 return FullSequenceGenerationOutput(
                     sequences=res.sequences,
                     output_mask=output_mask,
                     transition_scores=transition_scores,
+                    all_scores=all_scores,
                     sequence_scores=sequence_scores,
                 )
         else:
