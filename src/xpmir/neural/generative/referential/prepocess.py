@@ -6,6 +6,7 @@ import numpy as np
 import json
 import faiss
 
+from datamaestro_text.data.ir import TextItem, IDItem
 
 from xpmir.learning.devices import DEFAULT_DEVICE, Device, DeviceInformation
 from xpmir.learning.batchers import Batcher
@@ -96,7 +97,7 @@ class ReferentialFixDocumentIdBuilder(Task):
                 index = []
                 for batch in batchiter(self.batchsize, doc_iter):
                     batcher.process(
-                        [document.get_text() for document in batch],
+                        [document[TextItem].text for document in batch],
                         self.index_documents,
                         index,
                     )
@@ -231,7 +232,7 @@ class RandomSplitReferentialFixDocumentID(Task):
             for sample in tqdm(self.dataset.iter(), total=self.dataset.count):
                 dict_big = {}
                 id_str = "\t".join(map(str, sample.ids))
-                doc_id_list = [doc.get_id() for doc in sample.documents]
+                doc_id_list = [doc[IDItem].id for doc in sample.documents]
                 if current_count in rows:
                     dict_small = {}
                     sampled = doc_id_list[np.random.randint(len(doc_id_list))]

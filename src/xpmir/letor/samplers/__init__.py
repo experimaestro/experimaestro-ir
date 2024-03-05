@@ -17,6 +17,7 @@ from datamaestro_text.data.ir import (
     DocumentRecord,
     IDTopicRecord,
     IDItem,
+    InternalIDItem,
 )
 from experimaestro import Param, tqdm, Task, Annotated, pathgenerator
 from experimaestro.annotations import cache
@@ -401,6 +402,11 @@ class TripletBasedSampler(PairwiseSampler):
         return SkippingIterator(iterator)
 
 
+@recordtypes(InternalIDItem)
+class InternalIDDocumentRecord(DocumentRecord):
+    pass
+
+
 class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
     """Sampler based on a dataset where each query is associated
     with (1) a set of relevant documents (2) negative documents,
@@ -447,8 +453,10 @@ class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
 
                 if self.negative_algo == "random":
                     # choose the random negatives
-                    neg = InternalIDDocument(
-                        internal_id=self.random.randint(0, self.documents.documentcount)
+                    neg = InternalIDDocumentRecord(
+                        InternalIDItem(
+                            self.random.randint(0, self.documents.documentcount)
+                        )
                     )
                 else:
                     negatives = sample.negatives[self.negative_algo]

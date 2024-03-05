@@ -1,7 +1,7 @@
 import logging
 from dataclasses import dataclass
 from typing import Optional, NamedTuple, Generic, TypeVar, Callable
-from datamaestro_text.data.ir import DocumentStore
+from datamaestro_text.data.ir import DocumentStore, TextItem, IDItem
 
 import torch
 import numpy as np
@@ -190,7 +190,7 @@ class DynamicNegativeBuilder:
         # filter the ids to remove one with the same id as positive and ''
         filtered_indice = np.where(np.logical_and(ids != "", ids != positive_ids))
         negative_records = self.documents.documents_ext(list(ids[filtered_indice]))
-        negative_texts = [record.get_text() for record in negative_records]
+        negative_texts = [record[TextItem].text for record in negative_records]
         if filtered_indice[0].shape[0] == 0:
             return negative_text_list
 
@@ -591,9 +591,9 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
     def compute(
         self, records: PairwiseRecords, context: TrainerContext
     ) -> GenerativeLossOutput:
-        posdocs_text = [pdr.document.get_text() for pdr in records.positives]
-        queries_text = [qr.topic.get_text() for qr in records.unique_queries]
-        negdocs_text = [ndr.document.get_text() for ndr in records.negatives]
+        posdocs_text = [pdr[TextItem].text for pdr in records.positives]
+        queries_text = [qr[TextItem].text for qr in records.unique_queries]
+        negdocs_text = [ndr[TextItem].text for ndr in records.negatives]
         bs = len(posdocs_text)
         # prepare the sampling target
         log_p_next_token_generator = self.prepare_sampling_target(bs)
@@ -613,7 +613,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
             # from the based on the sampled tokens to mine the negatives
             # get the positive document ids to
             # avoid sampling the same document as negatives
-            posdocs_ids = [pdr.document.get_id() for pdr in records.positives]
+            posdocs_ids = [pdr[IDItem].id for pdr in records.positives]
             negative_level = np.random.randint(self.current_max_depth + 1)
             hard_negative_text = self.dynamic_negatives_builder.hard_negative_mining(
                 sampled_tokens=preparation_output.sampled_tokens.cpu().detach().numpy(),
@@ -708,7 +708,7 @@ class PairwiseGenerativeRetrievalLoss(PairwiseGenerativeLoss, DepthUpdatable):
             )
 
         if self.dynamic_negatives:
-            ext_ids = [pdr.document.get_id() for pdr in records.positives]
+            ext_ids = [pdr[IDItem].id for pdr in records.positives]
             # get the tokens
             sampled_tokens = (
                 loss_output.sampled_tokens.cpu().detach().numpy()
@@ -783,7 +783,7 @@ class ReferentialDocumentIdLoss(PairwiseGenerativeLoss):
     def compute(self, records, context):
         sequence_generator = self.id_generator.sequence_generator()
         eos_token_id = self.id_generator.eos_token_id
-        posdocs_text = [doc.document.get_text() for doc in records.documents]
+        posdocs_text = [doc[TextItem].text for doc in records.documents]
 
         # prepare the label, add and eos and then padding it with -100.
         max_length = max(len(target) for target in records.targets)

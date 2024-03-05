@@ -3,6 +3,7 @@ import json
 import torch
 
 from experimaestro import Param, Annotated, pathgenerator, Meta, tqdm
+from datamaestro_text.data.ir import TextItem
 
 from xpmir.neural.generative import ConditionalGenerator
 from xpmir.learning.batchers import Batcher
@@ -98,7 +99,7 @@ class ReferentialCrossEntropyLossListener(LearnerListener):
     def compute(self, records, loss):
         sequence_generator = self.model.sequence_generator()
         eos_token_id = self.model.eos_token_id
-        posdocs_text = [doc.document.get_text() for doc in records.documents]
+        posdocs_text = [doc.document[TextItem].text for doc in records.documents]
 
         # prepare the label, add and eos and then padding it with -100.
         max_length = max(len(target) for target in records.targets)

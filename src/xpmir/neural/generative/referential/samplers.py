@@ -8,9 +8,9 @@ import random
 import numpy as np
 from experimaestro import Param, Config
 from datamaestro_text.data.ir import DocumentStore
-from datamaestro_text.data.ir.base import Document, IDDocument
+from datamaestro_text.data.ir.base import DocumentRecord, IDDocumentRecord
 from xpmir.learning import Sampler
-from xpmir.letor.records import PairwiseRecord, DocumentRecord
+from xpmir.letor.records import PairwiseRecord
 from xpmir.letor.samplers import PairwiseSampler
 from xpmir.letor.samplers.hydrators import SampleTransform
 from xpmir.utils.iter import (
@@ -435,8 +435,9 @@ class ReferentialDocumentIDRecords(List[RT]):
 
 @define(kw_only=True)
 class JSONLReferentialDocumentIdSample:
+    """One id with all the documents belong to this id"""
 
-    documents: List[Document]
+    documents: List[DocumentRecord]
     """The list of document to given id"""
 
     ids: List[int]
@@ -459,7 +460,7 @@ class JSONLReferentialDocumentIdDataset(Config):
             for line in fp:
                 sample = json.loads(line)
                 documents = [
-                    IDDocument(id=document_id)
+                    IDDocumentRecord.from_id(document_id)
                     for document_id in list(sample.values())[0]
                 ]
                 id_list = list(sample.keys())[0].split("\t")
@@ -535,7 +536,7 @@ class ReferentialDocumentIdSamplerTransformAdapter(ReferentialSampler):
     def transform_record(
         self, record: ReferentialDocumentIDRecord
     ) -> ReferentialDocumentIDRecord:
-        docs = [record.document.document]
+        docs = [record.document]
         docs = self.adapter.transform_documents(docs) or docs
 
         return ReferentialDocumentIDRecord(

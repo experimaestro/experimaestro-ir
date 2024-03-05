@@ -5,7 +5,7 @@ from experimaestro import Param
 from experimaestro.compat import cached_property
 from torch import nn
 
-from xpmir.letor.records import BaseRecords
+from xpmir.letor.records import BaseRecords, TextItem
 from xpmir.letor.trainers import TrainerContext
 from xpmir.neural.generative import (
     ConditionalGenerator,
@@ -101,8 +101,8 @@ class NaiveGenerativeRetrievalScorer(GenerativeRetrievalScorer):
     ):  # try to return tensor [bs, ] which contains the scores
         # also implemented in a recursive way
         self.id_generator.eval()
-        queries_text = [pdr.topic.get_text() for pdr in inputs.topics]
-        documents_text = [ndr.document.get_text() for ndr in inputs.documents]
+        queries_text = [pdr[TextItem].text for pdr in inputs.topics]
+        documents_text = [ndr[TextItem].text for ndr in inputs.documents]
 
         bs = len(queries_text)
 
@@ -211,8 +211,8 @@ class RandomBasedGenerativeRetrievalScorer(GenerativeRetrievalScorer):
     ):  # try to return tensor [bs, ] which contains the scores
         # also implemented in a recursive way
         self.id_generator.eval()
-        queries_text = [pdr.topic.get_text() for pdr in inputs.topics]
-        documents_text = [ndr.document.get_text() for ndr in inputs.documents]
+        queries_text = [pdr[TextItem].text for pdr in inputs.topics]
+        documents_text = [ndr[TextItem].text for ndr in inputs.documents]
 
         bs = len(queries_text)
 
@@ -494,7 +494,7 @@ class StateBasedBeamSearchGenerativeRetrievalScorer(
 
     def forward(self, inputs: BaseRecords, info: TrainerContext = None):
         self.id_generator.eval()
-        queries_text = [pdr.topic.get_text() for pdr in inputs.unique_topics]
+        queries_text = [pdr[TextItem].text for pdr in inputs.unique_topics]
         assert len(queries_text) == 1, "Should contains only one query for one batch"
         query_generate_options = BeamSearchGenerationOptions(
             max_new_tokens=self.current_max_depth,
@@ -512,7 +512,7 @@ class StateBasedBeamSearchGenerativeRetrievalScorer(
             self.sort_query_output(query_generate_output)
         )
 
-        documents_text = [ndr.document.get_text() for ndr in inputs.documents]
+        documents_text = [ndr[TextItem].text for ndr in inputs.documents]
 
         document_stepwise_generator = self.id_generator.stepwise_iterator()
         document_stepwise_generator.init(documents_text)

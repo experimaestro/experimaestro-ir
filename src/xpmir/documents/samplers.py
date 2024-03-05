@@ -7,9 +7,13 @@ from datamaestro_text.data.ir import DocumentStore, TextItem
 from datamaestro_text.data.ir.base import (
     SimpleTextTopicRecord,
     SimpleTextDocumentRecord,
+    TopicRecord,
+    DocumentRecord,
+    GenericTopicRecord,
+    GenericDocumentRecord,
 )
 from xpmir.letor import Random
-from xpmir.letor.records import DocumentRecord, PairwiseRecord, ProductRecords
+from xpmir.letor.records import PairwiseRecord, ProductRecords
 from xpmir.letor.samplers import BatchwiseSampler, PairwiseSampler
 from xpmir.utils.iter import RandomSerializableIterator, SerializableIterator
 
@@ -343,12 +347,16 @@ class UpdatableRandomSpanSampler(RandomSpanSampler):
                     continue
 
                 yield PairwiseRecord(
-                    Query(GenericTopic(id=id_pos_qry, text=spans_pos_qry[0])),
-                    DocumentRecord(
-                        GenericDocument(id=id_pos_qry, text=spans_pos_qry[1])
+                    TopicRecord(
+                        GenericTopicRecord(id=id_pos_qry, text=spans_pos_qry[0])
                     ),
                     DocumentRecord(
-                        GenericDocument(id=id_neg, text=spans_neg[random.randint(0, 2)])
+                        GenericDocumentRecord(id=id_pos_qry, text=spans_pos_qry[1])
+                    ),
+                    DocumentRecord(
+                        GenericDocumentRecord(
+                            id=id_neg, text=spans_neg[random.randint(0, 2)]
+                        )
                     ),
                 )
 
