@@ -20,7 +20,7 @@ class FullRetriever(Retriever):
 
     documents: Param[Documents]
 
-    def retrieve(self, query: str) -> List[ScoredDocument]:
+    def retrieve(self, record: TopicRecord) -> List[ScoredDocument]:
         return [ScoredDocument(doc, 0.0) for doc in self.documents]
 
 
@@ -111,9 +111,9 @@ class FullRetrieverRescorer(Retriever):
         # Add each result to the full document list
         scored_documents.extend(new_scores)
 
-    def retrieve(self, query: str):
+    def retrieve(self, record: TopicRecord) -> List[ScoredDocument]:
         # Only use retrieve_all
-        return self.retrieve_all({"_": query})["_"]
+        return self.retrieve_all({"_": record})["_"]
 
     def retrieve_all(
         self, queries: Dict[str, TopicRecord]

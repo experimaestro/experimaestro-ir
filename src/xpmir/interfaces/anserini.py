@@ -12,7 +12,7 @@ import sys
 from typing import List, Optional
 from experimaestro import tqdm as xpmtqdm, Task, Meta
 
-from datamaestro_text.data.ir import DocumentStore, TextItem, IDItem
+from datamaestro_text.data.ir import DocumentStore, TextItem, IDItem, TopicRecord
 import datamaestro_text.data.ir.csv as ir_csv
 from datamaestro_text.data.ir.trec import (
     Documents,
@@ -273,7 +273,7 @@ class AnseriniRetriever(Retriever):
 
     Attributes:
         index: The Anserini index
-        model: the model used to search. Only suupports BM25 so far.
+        model: the model used to search. Only supports BM25 so far.
         k: Number of results to retrieve
     """
 
@@ -306,10 +306,10 @@ class AnseriniRetriever(Retriever):
         if self.index.storeContents:
             return self.index
 
-    def retrieve(self, query: str) -> List[ScoredDocument]:
+    def retrieve(self, record: TopicRecord) -> List[ScoredDocument]:
         # see
         # https://github.com/castorini/anserini/blob/master/src/main/java/io/anserini/search/SimpleSearcher.java
-        hits = self.searcher.search(query, k=self.k)
+        hits = self.searcher.search(record[TextItem].text, k=self.k)
         store = self.get_store()
 
         # Batch retrieve documents
