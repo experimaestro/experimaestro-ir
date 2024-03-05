@@ -43,7 +43,7 @@ class Colbert(InteractionScorer):
 
     def __initialize__(self, options):
         super().__initialize__(options)
-        self.linear = nn.Linear(self.encoder.dimension(), self.linear_dim, bias=False)
+        self.linear = nn.Linear(self.encoder.dimension, self.linear_dim, bias=False)
 
     def _encode(
         self,
