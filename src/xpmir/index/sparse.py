@@ -236,6 +236,7 @@ class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
         ]
 
         # Cleanup the index before starting
+        # ENHANCE: recover index build when possible
         from shutil import rmtree
 
         if self.index_path.is_dir():
