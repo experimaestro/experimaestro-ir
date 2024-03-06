@@ -1,12 +1,12 @@
 from typing import List, Tuple, Optional
 from attr import define
+from datamaestro_text.data.conversation.base import EntryType
 import torch
 import sys
 from experimaestro import Param
-from datamaestro_text.data.ir import TopicRecord, TextItem
+from datamaestro.record import Record
+from datamaestro_text.data.ir import TextItem
 from datamaestro_text.data.conversation import (
-    TopicConversationRecord,
-    AnswerConversationRecord,
     AnswerEntry,
     ConversationHistoryItem,
 )
@@ -84,10 +84,11 @@ class CoSPLADE(ConversationRepresentationEncoder):
     def dimension(self):
         return self.queries_encoder.dimension
 
-    def forward(self, records: List[TopicConversationRecord]):
+    def forward(self, records: List[Record]):
         queries: List[List[str]] = []
         query_answer_pairs: List[Tuple[str, str]] = []
         pair_origins: List[int] = []
+        history_size = self.history_size or sys.maxsize
 
         # Process each topic record
         for ix, c_record in enumerate(records):
@@ -97,20 +98,20 @@ class CoSPLADE(ConversationRepresentationEncoder):
                 + [
                     entry[TextItem].text
                     for entry in c_record[ConversationHistoryItem].history
-                    if isinstance(entry, TopicRecord)
+                    if entry[EntryType] == EntryType.USER_QUERY
                 ]
             )
 
             # List of query/answer couples
             answer: Optional[AnswerEntry] = None
-            for item, _ in zip(
-                c_record[ConversationHistoryItem].history,
-                range(self.history_size or sys.maxsize),
-            ):
-                if isinstance(item, TopicRecord) and answer is not None:
+            for item in c_record[ConversationHistoryItem].history:
+                entry_type = item[EntryType]
+                if entry_type == EntryType.USER_QUERY and answer is not None:
                     query_answer_pairs.append((item[TextItem].text, answer.answer))
                     pair_origins.append(ix)
-                elif isinstance(item, AnswerConversationRecord):
+                    if len(pair_origins) >= history_size:
+                        break
+                elif entry_type == EntryType.SYSTEM_ANSWER:
                     if (answer := item.get(AnswerEntry)) is None:
                         logger.warning("Answer record has no answer entry")
                 else:
