@@ -7,8 +7,8 @@ import random
 
 import numpy as np
 from experimaestro import Param, Config
-from datamaestro_text.data.ir import DocumentStore
-from datamaestro_text.data.ir.base import DocumentRecord, IDDocumentRecord
+from datamaestro_text.data.ir import DocumentStore, create_record
+from datamaestro_text.data.ir.base import DocumentRecord
 from xpmir.learning import Sampler
 from xpmir.letor.records import PairwiseRecord
 from xpmir.letor.samplers import PairwiseSampler
@@ -460,7 +460,7 @@ class JSONLReferentialDocumentIdDataset(Config):
             for line in fp:
                 sample = json.loads(line)
                 documents = [
-                    IDDocumentRecord.from_id(document_id)
+                    create_record(id=document_id)
                     for document_id in list(sample.values())[0]
                 ]
                 id_list = list(sample.keys())[0].split("\t")

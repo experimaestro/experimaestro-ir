@@ -4,7 +4,6 @@ from experimaestro import Config, Param
 import numpy as np
 import datamaestro_text.data.ir.base as ir
 from datamaestro_text.data.ir import DocumentStore, IDItem
-from datamaestro.record import RecordTypesCache
 from xpmir.datasets.adapters import TextStore
 from xpmir.letor.samplers import PairwiseSampler
 from xpmir.letor.records import (
@@ -78,34 +77,28 @@ class SamplePrefixAdding(SampleTransform):
     document_prefix: Param[str] = ""
     """The prefix for the document"""
 
-    def __post_init__(self) -> None:
-        self._recordtypes = RecordTypesCache(
-            "WithText", ir.SimpleTextItem, module=__name__
-        )
-
     def transform_topics(
         self, topics: List[ir.TopicRecord]
     ) -> Optional[List[ir.TopicRecord]]:
         if self.query_prefix == "" or len(topics) == 0:
             return None
-        for topic in topics:
-            self._recordtypes.update(
-                topic, ir.SimpleTextItem(self.query_prefix + topic[ir.TextItem].text)
-            )
-
-        return topics
+        return [
+            topic.update(ir.SimpleTextItem(self.query_prefix + topic[ir.TextItem].text))
+            for topic in topics
+        ]
 
     def transform_documents(
         self, documents: List[ir.DocumentRecord]
     ) -> Optional[List[ir.DocumentRecord]]:
         if self.document_prefix == "" or len(documents) == 0:
             return None
-        for document in documents:
-            self._recordtypes.update(
-                document,
+
+        return [
+            document.update(
                 ir.SimpleTextItem(self.document_prefix + document[ir.TextItem].text),
             )
-        return documents
+            for document in documents
+        ]
 
 
 class SampleTransformList(SampleTransform):
