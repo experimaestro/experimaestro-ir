@@ -26,7 +26,7 @@ class DatasetConversationEntrySampler(BaseSampler):
     def __post_init__(self):
         super().__post_init__()
 
-        self._recordtypes = RecordTypesCache()
+        self._recordtypes = RecordTypesCache("Conversation", ConversationHistoryItem)
 
     def __iter__(self) -> RandomSerializableIterator[TopicConversationRecord]:
         def generator(random: np.random.RandomState):
