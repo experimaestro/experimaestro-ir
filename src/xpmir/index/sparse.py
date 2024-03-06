@@ -216,7 +216,8 @@ class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
         )
 
     def execute(self):
-        mp.set_start_method("spawn")
+        if mp.get_start_method(allow_none=True) is None:
+            mp.set_start_method("spawn")
 
         max_docs = (
             self.documents.documentcount
@@ -316,6 +317,7 @@ class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
                     # Get next range
                     next_range = queues[current.rank].get()  # type: DocumentRange
                     if next_range:
+                        logger.debug("Got next range: %s", next_range)
                         heapq.heappushpop(heap, next_range)
                     else:
                         logger.info("Iterator %d is over", current.rank)
@@ -358,11 +360,16 @@ class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
             with torch.no_grad():
                 for batch in iter_batches:
                     # Signals the output range
-                    queue.put(
-                        DocumentRange(
-                            device_information.rank, batch[0][0], batch[-1][0]
-                        )
+                    document_range = DocumentRange(
+                        device_information.rank, batch[0][0], batch[-1][0]
                     )
+                    logger.debug(
+                        "Starting range [%d] %s",
+                        device_information.rank,
+                        document_range,
+                    )
+                    queue.put(document_range)
+
                     # Outputs the documents
                     batcher.process(
                         batch,

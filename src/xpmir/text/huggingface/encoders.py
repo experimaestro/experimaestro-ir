@@ -37,6 +37,7 @@ class HFEncoderBase(Module):
         """Embeddings from transformers are learnable"""
         return False
 
+    @property
     def dimension(self):
         return self.model.hf_config.hidden_size
 

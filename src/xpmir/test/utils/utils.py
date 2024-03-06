@@ -1,21 +1,18 @@
+from functools import cached_property
 from collections import OrderedDict, defaultdict
 from typing import ClassVar, Dict, Iterator, List, Tuple, Any
 import torch
 import numpy as np
-from datamaestro.record import recordtypes
+from datamaestro.record import Record, record_type
 from datamaestro_text.data.ir import (
+    create_record,
     DocumentStore,
-    GenericDocumentRecord,
     InternalIDItem,
+    SimpleTextItem,
 )
 
 from experimaestro import Param
 from xpmir.text.encoders import TextEncoder, RepresentationOutput
-
-
-@recordtypes(InternalIDItem)
-class GenericDocumentWithIDRecord(GenericDocumentRecord):
-    ...
 
 
 class SampleDocumentStore(DocumentStore):
@@ -27,10 +24,10 @@ class SampleDocumentStore(DocumentStore):
         self.documents = OrderedDict(
             (
                 str(ix),
-                GenericDocumentWithIDRecord.create(
-                    str(ix),
-                    f"Document {ix}",
+                create_record(
                     InternalIDItem(ix),
+                    id=str(ix),
+                    text=f"Document {ix}",
                 ),
             )
             for ix in range(self.num_docs)
@@ -40,19 +37,19 @@ class SampleDocumentStore(DocumentStore):
     def documentcount(self):
         return len(self.documents)
 
-    def document_int(self, internal_docid: int) -> GenericDocumentWithIDRecord:
+    def document_int(self, internal_docid: int) -> Record:
         return self.documents[str(internal_docid)]
 
-    def document_ext(self, docid: str) -> GenericDocumentWithIDRecord:
+    def document_ext(self, docid: str) -> Record:
         """Returns the text of the document given its id"""
         return self.documents[docid]
 
-    def iter_documents(self) -> Iterator[GenericDocumentWithIDRecord]:
+    def iter_documents(self) -> Iterator[Record]:
         return iter(self.documents.values())
 
-    @property
+    @cached_property
     def document_recordtype(self):
-        return GenericDocumentWithIDRecord
+        return record_type(InternalIDItem, SimpleTextItem)
 
     def docid_internal2external(self, docid: int):
         """Converts an internal collection ID (integer) to an external ID"""

@@ -15,6 +15,7 @@ from datamaestro_text.data.ir.base import (
     ScoredItem,
     SimpleTextItem,
     IDItem,
+    create_record,
 )
 from experimaestro import Config, Meta, Param
 from xpmir.learning import Sampler
@@ -85,9 +86,9 @@ class PairwiseDistillationSamplesTSV(PairwiseDistillationSamples, File):
             with self.path.open("rt") as fp:
                 for row in csv.reader(fp, delimiter="\t"):
                     if self.with_queryid:
-                        query = TopicRecord.from_id(row[2])
+                        query = create_record(id=row[2])
                     else:
-                        query = TopicRecord.from_text(row[2])
+                        query = create_record(text=row[2])
 
                     if self.with_docid:
                         documents = (

@@ -6,10 +6,9 @@ from typing import List, Optional
 
 import torch
 from experimaestro.notifications import TaskEnv
-from datamaestro_text.data.ir import SimpleTextTopicRecord, TextItem, IDItem
+from datamaestro_text.data.ir import TextItem, IDItem, create_record, TopicRecord
 
 from xpmir.learning.context import TrainerContext
-from xpmir.letor.records import TopicRecord
 from xpmir.neural.dual import DualRepresentationScorer
 from xpmir.rankers import ScoredDocument
 from xpmir.rankers.full import FullRetrieverRescorer
@@ -89,10 +88,7 @@ def test_fullretrieverescorer(tmp_path: Path):
 
     # Retrieve normally
     scoredDocuments = {}
-    queries = {
-        qid: SimpleTextTopicRecord.from_text(f"Query {qid}")
-        for qid in range(NUM_QUERIES)
-    }
+    queries = {qid: create_record(text=f"Query {qid}") for qid in range(NUM_QUERIES)}
 
     # Retrieve query per query
     for qid, query in queries.items():

@@ -1,5 +1,4 @@
 from functools import cached_property
-from datamaestro.record import RecordTypesCache
 import numpy as np
 from datamaestro_text.data.ir import TopicRecord
 from datamaestro_text.data.conversation import (
@@ -26,8 +25,6 @@ class DatasetConversationEntrySampler(BaseSampler):
     def __post_init__(self):
         super().__post_init__()
 
-        self._recordtypes = RecordTypesCache()
-
     def __iter__(self) -> RandomSerializableIterator[TopicConversationRecord]:
         def generator(random: np.random.RandomState):
             while True:
@@ -44,9 +41,7 @@ class DatasetConversationEntrySampler(BaseSampler):
                 node_ix = random.randint(len(nodes))
                 node = nodes[node_ix]
 
-                node = self._recordtypes.update(
-                    node.entry(), ConversationHistoryItem(node.history())
-                )
+                node = node.entry().update(ConversationHistoryItem(node.history()))
 
                 yield node
 

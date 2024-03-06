@@ -245,5 +245,6 @@ class TokenizedTextEncoder(
         """Whether embeddings parameters are learnable"""
         return self.encoder.static()
 
+    @property
     def dimension(self):
-        return self.encoder.dimension()
+        return self.encoder.dimension

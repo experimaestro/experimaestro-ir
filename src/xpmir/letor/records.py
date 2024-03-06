@@ -4,8 +4,7 @@ from datamaestro_text.data.ir import (
     TopicRecord,
     DocumentRecord,
     TextItem,
-    SimpleTextTopicRecord,
-    SimpleTextDocumentRecord,
+    create_record,
 )
 from typing import (
     Iterable,
@@ -145,10 +144,8 @@ class PointwiseRecords(BaseRecords[PointwiseRecord]):
         relevances: Optional[List[float]] = None,
     ):
         records = PointwiseRecords()
-        records.topics = list(map(lambda t: SimpleTextTopicRecord.from_text(t), topics))
-        records.documents = list(
-            map(lambda t: SimpleTextDocumentRecord.from_text(t), documents)
-        )
+        records.topics = list(map(lambda t: create_record(text=t), topics))
+        records.documents = list(map(lambda t: create_record(text=t), documents))
         records.relevances = relevances
         return records
 
