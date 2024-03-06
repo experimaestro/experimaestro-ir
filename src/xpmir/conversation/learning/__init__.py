@@ -1,10 +1,10 @@
 from functools import cached_property
+from datamaestro.record import Record
 import numpy as np
-from datamaestro_text.data.ir import TopicRecord
 from datamaestro_text.data.conversation import (
     ConversationDataset,
     ConversationHistoryItem,
-    TopicConversationRecord,
+    EntryType,
 )
 from experimaestro import Param
 
@@ -25,7 +25,7 @@ class DatasetConversationEntrySampler(BaseSampler):
     def __post_init__(self):
         super().__post_init__()
 
-    def __iter__(self) -> RandomSerializableIterator[TopicConversationRecord]:
+    def __iter__(self) -> RandomSerializableIterator[Record]:
         def generator(random: np.random.RandomState):
             while True:
                 # Pick a random conversation
@@ -36,7 +36,7 @@ class DatasetConversationEntrySampler(BaseSampler):
                 nodes = [
                     node
                     for node in conversation
-                    if isinstance(node.entry(), TopicRecord)
+                    if node.entry()[EntryType] == EntryType.USER_QUERY
                 ]
                 node_ix = random.randint(len(nodes))
                 node = nodes[node_ix]
