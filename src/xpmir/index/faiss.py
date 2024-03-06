@@ -122,7 +122,7 @@ class IndexBackedFaiss(FaissIndex, Task):
         index.train(sample)
 
     def execute(self):
-        self.device.execute(self._execute, None)
+        self.device.execute(self._execute)
 
     def _execute(self, device_information: DeviceInformation):
         # Initialization hooks

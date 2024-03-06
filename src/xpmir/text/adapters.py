@@ -16,7 +16,7 @@ class MeanTextEncoder(TokenizedTextEncoderBase[InputType, RepresentationOutput])
 
     @property
     def dimension(self):
-        return self.encoder.dimension()
+        return self.encoder.dimension
 
     def forward(self, texts: List[InputType], options=None) -> RepresentationOutput:
         emb_texts = self.encoder(texts, options=options)

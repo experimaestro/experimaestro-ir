@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from typing import Iterator, List, Tuple, Dict, Any
 import numpy as np
-from datamaestro.record import recordtypes
+from datamaestro.record import Record
 from datamaestro_text.data.ir import (
     Adhoc,
     TrainingTriplets,
@@ -12,10 +12,8 @@ from datamaestro_text.data.ir import (
     DocumentStore,
     TextItem,
     SimpleTextItem,
-    IDDocumentRecord,
-    SimpleTextTopicRecord,
+    create_record,
     DocumentRecord,
-    IDTopicRecord,
     IDItem,
     InternalIDItem,
 )
@@ -345,7 +343,7 @@ class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
                     random.randint(0, len(self.topics))
                 ]
                 yield PairwiseRecord(
-                    SimpleTextTopicRecord.from_text(title),
+                    create_record(text=title),
                     self.sample(positives),
                     self.sample(negatives),
                 )
@@ -402,11 +400,6 @@ class TripletBasedSampler(PairwiseSampler):
         return SkippingIterator(iterator)
 
 
-@recordtypes(InternalIDItem)
-class InternalIDDocumentRecord(DocumentRecord):
-    pass
-
-
 class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
     """Sampler based on a dataset where each query is associated
     with (1) a set of relevant documents (2) negative documents,
@@ -453,7 +446,7 @@ class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
 
                 if self.negative_algo == "random":
                     # choose the random negatives
-                    neg = InternalIDDocumentRecord(
+                    neg = Record(
                         InternalIDItem(
                             self.random.randint(0, self.documents.documentcount)
                         )
@@ -471,7 +464,7 @@ class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
 
 # --- Dataloader
 
-# FIXME: need to fix the change where there is a list of queries and type of return
+
 class TSVPairwiseSampleDataset(PairwiseSampleDataset):
     """Read the pairwise sample dataset from a tsv file"""
 
@@ -518,21 +511,16 @@ class JSONLPairwiseSampleDataset(PairwiseSampleDataset):
                 positives = []
                 negatives = {}
                 for topic_text in sample["queries"]:
-                    topics.append(SimpleTextTopicRecord.from_text(topic_text))
+                    topics.append(create_record(text=topic_text))
                 for pos_id in sample["pos_ids"]:
-                    positives.append(IDDocumentRecord.from_id(pos_id))
+                    positives.append(create_record(id=pos_id))
                 for algo in sample["neg_ids"].keys():
                     negatives[algo] = []
                     for neg_id in sample["neg_ids"][algo]:
-                        negatives[algo].append(IDDocumentRecord.from_id(neg_id))
+                        negatives[algo].append(create_record(id=neg_id))
                 yield PairwiseSample(
                     topics=topics, positives=positives, negatives=negatives
                 )
-
-
-@recordtypes(ScoredItem)
-class ScoredIDDocumentRecord(IDDocumentRecord):
-    pass
 
 
 # A class for loading the data, need to move the other places.
@@ -546,9 +534,9 @@ class PairwiseSamplerFromTSV(PairwiseSampler):
             for triplet in read_tsv(self.pairwise_samples_path):
                 q_id, pos_id, pos_score, neg_id, neg_score = triplet
                 yield PairwiseRecord(
-                    IDTopicRecord.from_id(q_id),
-                    ScoredIDDocumentRecord(IDItem(pos_id), ScoredItem(pos_score)),
-                    ScoredIDDocumentRecord(IDItem(neg_id), ScoredItem(neg_score)),
+                    Record(IDItem(q_id)),
+                    Record(IDItem(pos_id), ScoredItem(pos_score)),
+                    Record(IDItem(neg_id), ScoredItem(neg_score)),
                 )
 
         return SkippingIterator(iter)

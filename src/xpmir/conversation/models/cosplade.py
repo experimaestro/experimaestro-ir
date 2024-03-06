@@ -80,6 +80,7 @@ class CoSPLADE(ConversationRepresentationEncoder):
         self.queries_encoder.initialize(options)
         self.history_encoder.initialize(options)
 
+    @property
     def dimension(self):
         return self.queries_encoder.dimension
 
@@ -101,15 +102,13 @@ class CoSPLADE(ConversationRepresentationEncoder):
             )
 
             # List of query/answer couples
-            answer: Optional[AnswerConversationRecord] = None
+            answer: Optional[AnswerEntry] = None
             for item, _ in zip(
                 c_record[ConversationHistoryItem].history,
                 range(self.history_size or sys.maxsize),
             ):
                 if isinstance(item, TopicRecord) and answer is not None:
-                    query_answer_pairs.append(
-                        (item[TextItem].text, answer[AnswerEntry].answer)
-                    )
+                    query_answer_pairs.append((item[TextItem].text, answer.answer))
                     pair_origins.append(ix)
                 elif isinstance(item, AnswerConversationRecord):
                     if (answer := item.get(AnswerEntry)) is None:

@@ -1,6 +1,6 @@
 import numpy as np
 from abc import ABC, abstractmethod
-from queue import Full
+from queue import Full, Empty
 import torch.multiprocessing as mp
 from typing import (
     Generic,
@@ -330,6 +330,7 @@ def mp_iterate(iterator, queue: mp.Queue, event: mp.Event):
                         break
 
     except StopIteration:
+        logger.info("End of multi-process iterator")
         queue.put(STOP_ITERATION)
     except Exception as e:
         logger.exception("Exception while iterating")
@@ -340,19 +341,29 @@ class QueueBasedMultiprocessIterator(Iterator[T]):
     def __init__(self, queue: "mp.Queue[T]", stop_process: mp.Event):
         self.queue = queue
         self.stop_process = stop_process
+        self.stop_iteration = mp.Event()
 
     def __next__(self):
         # Get the next element
-        element = self.queue.get()
+        while True:
+            try:
+                element = self.queue.get(timeout=1)
+                break
+            except Empty:
+                if self.stop_iteration.is_set():
+                    self.stop_process.set()
+                    raise StopIteration()
 
         # Last element
         if isinstance(element, StopIterationClass):
             # Just in case
             self.stop_process.set()
+            self.stop_iteration.set()
             raise StopIteration()
 
         # An exception occurred
         elif isinstance(element, Exception):
+            self.stop_iteration.set()
             self.stop_process.set()
             raise RuntimeError("Error in iterator process") from element
 

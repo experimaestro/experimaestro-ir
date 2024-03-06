@@ -5,11 +5,10 @@ import pytest
 import torch
 from collections import defaultdict
 from experimaestro import Constant
-from datamaestro_text.data.ir import TextItem
+from datamaestro_text.data.ir import TextItem, create_record
 from xpmir.index import Index
 from xpmir.learning import Random, ModuleInitMode
 from xpmir.neural.dual import CosineDense, DotDense
-from datamaestro_text.data.ir import GenericDocumentRecord, SimpleTextTopicRecord
 from xpmir.letor.records import (
     PairwiseRecord,
     PairwiseRecords,
@@ -53,6 +52,7 @@ class RandomTokensEncoder(TokenizedTextEncoderBase[str, TokensRepresentationOutp
         )
         self.tokenizer = TestTokenizer().instance()
 
+    @property
     def dimension(self) -> int:
         return RandomTokensEncoder.DIMENSION
 
@@ -168,14 +168,14 @@ def cross_scorer():
 # ---
 
 QUERIES = [
-    SimpleTextTopicRecord.from_text("purple cat"),
-    SimpleTextTopicRecord.from_text("yellow house"),
+    create_record(text="purple cat"),
+    create_record(text="yellow house"),
 ]
 DOCUMENTS = [
-    GenericDocumentRecord.create("1", "the cat sat on the mat"),
-    GenericDocumentRecord.create("2", "the purple car"),
-    GenericDocumentRecord.create("3", "my little dog"),
-    GenericDocumentRecord.create("4", "the truck was on track"),
+    create_record(id="1", text="the cat sat on the mat"),
+    create_record(id="2", text="the purple car"),
+    create_record(id="3", text="my little dog"),
+    create_record(id="4", text="the truck was on track"),
 ]
 
 
