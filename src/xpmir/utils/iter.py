@@ -1,4 +1,5 @@
 import numpy as np
+import atexit
 from abc import ABC, abstractmethod
 from queue import Full, Empty
 import torch.multiprocessing as mp
@@ -317,7 +318,7 @@ STOP_ITERATION = StopIterationClass()
 
 def mp_iterate(iterator, queue: mp.Queue, event: mp.Event):
     try:
-        while True:
+        while not event.is_set():
             value = next(iterator)
 
             while True:
@@ -327,17 +328,23 @@ def mp_iterate(iterator, queue: mp.Queue, event: mp.Event):
                 except Full:
                     if event.is_set():
                         logger.warning("Stopping as requested by the main process")
+                        queue.close()
                         break
 
     except StopIteration:
-        logger.info("End of multi-process iterator")
+        logger.info("Signaling that the iterator has finished")
         queue.put(STOP_ITERATION)
     except Exception as e:
         logger.exception("Exception while iterating")
         queue.put(e)
 
+    logger.info("End of multi-process iterator")
+    queue.close()
+
 
 class QueueBasedMultiprocessIterator(Iterator[T]):
+    """This Queue-based iterator can be pickled when a new process is spawn"""
+
     def __init__(self, queue: "mp.Queue[T]", stop_process: mp.Event):
         self.queue = queue
         self.stop_process = stop_process
@@ -388,12 +395,24 @@ class MultiprocessIterator(Iterator[T]):
                 daemon=True,
             )
 
-            # Start, and register a kill switch
+            # Start the process
             self.process.start()
             self.mp_iterator = QueueBasedMultiprocessIterator(
                 self.queue, self.stop_process
             )
+
+            atexit.register(self.close)
         return self
+
+    def close(self):
+        if self.mp_iterator:
+            self.stop_process.set()
+            try:
+                # Try to remove an item from the queue just in case
+                next(self.mp_iterator)
+            finally:
+                logging.info("Signaled the mp_iterator to quit")
+        atexit.unregister(self.close)
 
     def detach(self):
         """Produces an iterator only based on the multiprocess queue (useful
@@ -404,7 +423,10 @@ class MultiprocessIterator(Iterator[T]):
     def __next__(self):
         # Start a process if needed
         self.start()
-        return next(self.mp_iterator)
+        try:
+            return next(self.mp_iterator)
+        except StopIteration:
+            atexit.unregister(self.close)
 
 
 class StatefullIterator(Iterator[Tuple[T, State]], Protocol[State]):
