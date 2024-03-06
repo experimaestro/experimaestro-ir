@@ -22,6 +22,7 @@ from xpmir.learning.context import (
     StepTrainingHook,
     TrainState,
     TrainerContext,
+    TrainerContextHook,
 )
 from xpmir.learning.metrics import Metrics
 
@@ -211,6 +212,7 @@ class Learner(Task, EasyLogger):
             self.trainer,
             self.model,
             self.optimizer,
+            [hook for hook in self.hooks if isinstance(hook, TrainerContextHook)],
         )
 
         for hook in self.hooks:

@@ -9,7 +9,7 @@ from experimaestro import Param
 from experimaestro.compat import cached_property
 from torch import nn
 
-from xpmir.learning.context import Loss
+from xpmir.learning.context import Loss, TrainerContextSerializationHook
 from xpmir.learning.metrics import ScalarMetric
 from xpmir.letor.records import BaseRecords, PairwiseRecords
 from xpmir.letor.trainers import TrainerContext, LossTrainer
@@ -767,6 +767,45 @@ class RandomSamplingPairwiseGenerativeRetrievalLoss(PairwiseGenerativeRetrievalL
             )  # shape [bs, decoder_dim]
 
         return log_p_next_token
+
+
+class ReferentialDynaNegSavingHook(TrainerContextSerializationHook):
+    """A hook to save the dynamic negative matrix for referential"""
+
+    name_ids = "ids.npy"
+    """The name of the file storing the ids"""
+
+    name_proba = "proba.npy"
+    """The name of the file storing the ids"""
+
+    loss: Param[PairwiseGenerativeRetrievalLoss]
+    """The referential loss which contains the dynamic negative loss"""
+
+    def __validate__(self) -> None:
+        assert (
+            self.loss.dynamic_negatives
+        ), "We can store the dynamic negatives matrix only if this strategy is used"
+
+    def save(self, base_path):
+        np.save(
+            base_path / self.name_ids, self.loss.dynamic_negatives_builder.id_matrix
+        )
+        np.save(
+            base_path / self.name_proba,
+            self.loss.dynamic_negatives_builder.log_proba_mean_matrix,
+        )
+
+    def load(self, base_path, onlyinfo=False):
+        if not onlyinfo:
+            self.loss.dynamic_negatives_builder.id_matrix = np.load(
+                base_path / self.name_ids
+            )
+            self.loss.dynamic_negatives_builder.log_proba_mean_matrix = np.load(
+                base_path / self.name_proba
+            )
+            logger.info(
+                "Load successfully the dynamic negatives from the last checkpoint"
+            )
 
 
 class ReferentialDocumentIdLoss(PairwiseGenerativeLoss):

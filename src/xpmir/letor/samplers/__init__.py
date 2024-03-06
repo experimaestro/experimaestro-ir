@@ -462,9 +462,7 @@ class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
                     negatives = sample.negatives[self.negative_algo]
                     neg = negatives[self.random.randint(len(negatives))]
 
-                return PairwiseRecord(
-                    qry.as_record(), DocumentRecord(pos), DocumentRecord(neg)
-                )
+                return PairwiseRecord(qry, pos, neg)
 
         base = InfiniteSkippingIterator(iterable_of(lambda: self.dataset.iter()))
 

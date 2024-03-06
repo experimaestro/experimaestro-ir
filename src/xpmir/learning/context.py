@@ -14,6 +14,7 @@ from xpmir.context import InitializationHook, Hook
 from xpmir.utils.utils import easylog
 from xpmir.learning.devices import DeviceInformation, ComputationContext
 from xpmir.learning.metrics import Metric, Metrics
+from experimaestro import Meta
 from experimaestro.utils import cleanupdir
 from contextlib import contextmanager
 
@@ -83,7 +84,7 @@ class TrainState:
         self.epoch = state.get("epoch", 0)
         self.steps = state.get("steps", 0)
 
-    def save(self, path):
+    def save(self, path, context: "TrainerContext"):
         """Save the state"""
         cleanupdir(path)
 
@@ -94,14 +95,25 @@ class TrainState:
         torch.save(self.trainer.state_dict(), path / "trainer.pth")
         torch.save(self.optimizer.state_dict(), path / "optimizer.pth")
 
+        for hook in context.trainer_context_hooks:
+            if isinstance(hook, TrainerContextSerializationHook):
+                hook_path = path / hook.id
+                hook_path.mkdir(parents=True, exist_ok=True)
+                hook.save(hook_path)
+
         self.path = path
 
-    def load(self, path, onlyinfo=False):
+    def load(self, path, context: "TrainerContext", onlyinfo=False):
         """Loads the state from disk"""
         if not onlyinfo:
             self.model.load_state_dict(torch.load(path / TrainState.MODEL_PATH))
             self.trainer.load_state_dict(torch.load(path / "trainer.pth"))
             self.optimizer.load_state_dict(torch.load(path / "optimizer.pth"))
+
+        for hook in context.trainer_context_hooks:
+            if isinstance(hook, TrainerContextSerializationHook):
+                hook_path = path / hook.id
+                hook.load(hook_path, onlyinfo=onlyinfo)
 
         with (path / "info.json").open("rt") as fp:
             self.load_state_dict(json.load(fp))
@@ -118,6 +130,21 @@ class TrainingHook(Hook):
     """Base class for all training hooks"""
 
     pass
+
+
+class TrainerContextHook(Hook):
+    """Base class for the serilizing other information"""
+
+    id: Meta[str]
+    """Unique serializable hook identifier (avoids name clashes)"""
+
+
+class TrainerContextSerializationHook(TrainerContextHook):
+    def save(self, base_path):
+        pass
+
+    def load(self, base_path, onlyinfo=False):
+        pass
 
 
 class ValidationHook(Hook):
@@ -180,6 +207,7 @@ class TrainerContext(ComputationContext):
         trainer,
         model: "Module",
         optimizer: "ScheduledOptimizer",
+        hooks: List[TrainerContextHook],
     ):
         super().__init__()
         self.device_information = device_information
@@ -190,6 +218,7 @@ class TrainerContext(ComputationContext):
         self._writer = None
         self._scope = []
         self._losses = None
+        self.trainer_context_hooks = hooks
 
         self.state = TrainState(model, trainer, optimizer)
 
@@ -236,7 +265,7 @@ class TrainerContext(ComputationContext):
             path = self.path / f"{TrainerContext.PREFIX}{epoch:08d}"
 
             try:
-                self.state.load(path)
+                self.state.load(path, self)
                 return True
             except NotImplementedError:
                 logger.error("Not removing checkpoint")
@@ -255,7 +284,7 @@ class TrainerContext(ComputationContext):
             return
 
         # Save
-        self.state.save(path)
+        self.state.save(path, self)
 
         # Cleanup if needed
         if self.oldstate and self.oldstate.path:
