@@ -3,11 +3,7 @@ from typing import Optional, Tuple, Iterator, Any
 from experimaestro import Param, Config
 import torch
 import numpy as np
-from datamaestro_text.data.ir import DocumentStore, TextItem
-from datamaestro_text.data.ir.base import (
-    SimpleTextTopicRecord,
-    SimpleTextDocumentRecord,
-)
+from datamaestro_text.data.ir import DocumentStore, TextItem, create_record
 from xpmir.letor import Random
 from xpmir.letor.records import DocumentRecord, PairwiseRecord, ProductRecords
 from xpmir.letor.samplers import BatchwiseSampler, PairwiseSampler
@@ -150,9 +146,9 @@ class RandomSpanSampler(BatchwiseSampler, PairwiseSampler):
                     continue
 
                 yield PairwiseRecord(
-                    SimpleTextTopicRecord.from_text(spans_pos_qry[0]),
-                    SimpleTextDocumentRecord.from_text(spans_pos_qry[1]),
-                    SimpleTextDocumentRecord.from_text(spans_neg[random.randint(0, 2)]),
+                    create_record(text=spans_pos_qry[0]),
+                    create_record(text=spans_pos_qry[1]),
+                    create_record(text=spans_neg[random.randint(0, 2)]),
                 )
 
         return RandomSerializableIterator(self.random, iter)
@@ -174,8 +170,8 @@ class RandomSpanSampler(BatchwiseSampler, PairwiseSampler):
                     res = self.get_text_span(text, random)
                     if not res:
                         continue
-                    batch.add_topics(SimpleTextTopicRecord.from_text(res[0]))
-                    batch.add_documents(SimpleTextDocumentRecord.from_text(res[1]))
+                    batch.add_topics(create_record(text=res[0]))
+                    batch.add_documents(create_record(text=res[1]))
                 batch.set_relevances(relevances)
                 yield batch
 

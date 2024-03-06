@@ -80,6 +80,7 @@ class CoSPLADE(ConversationRepresentationEncoder):
         self.queries_encoder.initialize(options)
         self.history_encoder.initialize(options)
 
+    @property
     def dimension(self):
         return self.queries_encoder.dimension
 

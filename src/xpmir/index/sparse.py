@@ -216,7 +216,8 @@ class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
         )
 
     def execute(self):
-        mp.set_start_method("spawn")
+        if mp.get_start_method(allow_none=True) is None:
+            mp.set_start_method("spawn")
 
         max_docs = (
             self.documents.documentcount

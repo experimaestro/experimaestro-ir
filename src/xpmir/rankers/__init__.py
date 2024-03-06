@@ -22,7 +22,7 @@ from experimaestro import Param, Config, Meta
 from datamaestro_text.data.ir import (
     Documents,
     DocumentStore,
-    SimpleTextTopicRecord,
+    create_record,
     IDItem,
 )
 from datamaestro_text.data.ir.base import DocumentRecord
@@ -98,16 +98,16 @@ class Scorer(Config, Initializable, EasyLogger, ABC):
     ) -> List[ScoredDocument]:
         # Convert into document records
         if isinstance(documents, str):
-            documents = [ScoredDocument(DocumentRecord.from_text(documents), None)]
+            documents = [ScoredDocument(create_record(text=documents), None)]
         elif isinstance(documents[0], str):
             documents = [
-                ScoredDocument(DocumentRecord.from_text(scored_document), None)
+                ScoredDocument(create_record(text=scored_document), None)
                 for scored_document in documents
             ]
 
         # Convert into topic record
         if isinstance(topic, str):
-            topic = SimpleTextTopicRecord.from_text(topic)
+            topic = create_record(text=topic)
 
         return self.compute(topic, documents)
 

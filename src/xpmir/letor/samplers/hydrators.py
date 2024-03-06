@@ -44,8 +44,8 @@ class SampleHydrator(SampleTransform):
         if self.querystore is None:
             return None
         return [
-            ir.GenericTopicRecord.create(
-                topic[IDItem].id, self.querystore[topic[IDItem].id]
+            ir.create_record(
+                id=topic[IDItem].id, text=self.querystore[topic[IDItem].id]
             )
             for topic in topics
         ]

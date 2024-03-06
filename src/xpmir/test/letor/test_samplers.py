@@ -1,3 +1,4 @@
+from datamaestro.record import record_type
 import pytest
 import numpy as np
 from typing import Iterator, Tuple
@@ -17,24 +18,16 @@ from xpmir.documents.samplers import RandomSpanSampler
 class MyTrainingTriplets(TrainingTriplets):
     def iter(
         self,
-    ) -> Iterator[
-        Tuple[
-            ir.SimpleTextTopicRecord, ir.GenericDocumentRecord, ir.GenericDocumentRecord
-        ]
-    ]:
+    ) -> Iterator[Tuple[ir.TopicRecord, ir.DocumentRecord, ir.DocumentRecord]]:
         count = 0
 
         while True:
-            yield ir.SimpleTextTopicRecord.from_text(
-                f"q{count}"
-            ), ir.GenericDocumentRecord.create(
-                1, f"doc+{count}"
-            ), ir.GenericDocumentRecord.create(
-                2, f"doc-{count}"
-            )
+            yield ir.create_record(text=f"q{count}"), ir.create_record(
+                id=1, text=f"doc+{count}"
+            ), ir.create_record(id=2, text=f"doc-{count}")
 
-    topic_recordtype = ir.SimpleTextTopicRecord
-    document_recordtype = ir.GenericDocumentRecord
+    topic_recordtype = record_type(ir.IDItem, ir.SimpleTextItem)
+    document_recordtype = record_type(ir.SimpleTextItem)
 
 
 def test_serializing_tripletbasedsampler():
@@ -108,10 +101,8 @@ class FakeDocumentStore(ir.DocumentStore):
     def documentcount(self):
         return 10
 
-    def document_int(self, internal_docid: int) -> ir.GenericDocumentRecord:
-        return ir.GenericDocumentRecord.create(
-            str(internal_docid), f"D{internal_docid} " * 10
-        )
+    def document_int(self, internal_docid: int) -> ir.DocumentRecord:
+        return ir.create_record(id=str(internal_docid), text=f"D{internal_docid} " * 10)
 
 
 def test_pairwise_randomspansampler():

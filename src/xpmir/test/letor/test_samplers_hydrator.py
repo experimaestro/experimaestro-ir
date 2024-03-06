@@ -1,6 +1,8 @@
+from functools import cached_property
 import itertools
 from experimaestro import Param
 from typing import Iterator, Tuple
+from datamaestro.record import record_type
 import datamaestro_text.data.ir as ir
 from xpmir.letor.samplers import (
     TrainingTriplets,
@@ -17,22 +19,22 @@ from xpmir.letor.samplers.hydrators import (
 class TripletIterator(TrainingTriplets):
     def iter(
         self,
-    ) -> Iterator[Tuple[ir.IDTopicRecord, ir.IDDocumentRecord, ir.IDDocumentRecord]]:
+    ) -> Iterator[Tuple[ir.TopicRecord, ir.DocumentRecord, ir.DocumentRecord]]:
         count = 0
 
         while True:
-            yield ir.IDTopicRecord.from_id(str(count)), ir.IDDocumentRecord.from_id(
-                str(2 * count)
-            ), ir.IDDocumentRecord.from_id(str(2 * count + 1))
+            yield ir.create_record(id=str(count)), ir.create_record(
+                id=str(2 * count)
+            ), ir.create_record(id=str(2 * count + 1))
             count += 1
 
-    @property
+    @cached_property
     def topic_recordtype(self):
-        return ir.IDTopicRecord
+        return record_type(ir.IDItem)
 
-    @property
+    @cached_property
     def document_recordtype(self):
-        return ir.IDDocumentRecord
+        return record_type(ir.IDItem)
 
 
 class FakeTextStore(TextStore):
@@ -43,8 +45,8 @@ class FakeTextStore(TextStore):
 class FakeDocumentStore(ir.DocumentStore):
     id: Param[str] = ""
 
-    def document_ext(self, docid: str) -> ir.GenericDocumentRecord:
-        return ir.GenericDocumentRecord.create(docid, f"D{docid}")
+    def document_ext(self, docid: str) -> ir.DocumentRecord:
+        return ir.create_record(id=docid, text=f"D{docid}")
 
 
 def test_pairwise_hydrator():
