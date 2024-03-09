@@ -1,5 +1,6 @@
 """Index for sparse models"""
 
+import os
 from queue import Full, Empty
 import torch.multiprocessing as mp
 from typing import Any, Generic, TypeVar
@@ -8,6 +9,11 @@ from xpmir.utils.logging import easylog
 logger = easylog()
 
 T = TypeVar("T")
+
+
+def available_cpus():
+    """Returns the number of available CPU cores"""
+    return len(os.sched_getaffinity(0))
 
 
 class StoppableQueue(Generic[T]):

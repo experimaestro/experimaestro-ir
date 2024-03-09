@@ -1,6 +1,8 @@
 """Index for sparse models"""
 
+import asyncio
 from functools import cached_property
+import logging
 import threading
 import heapq
 import torch
@@ -29,7 +31,7 @@ from xpmir.letor import Device, DeviceInformation, DEFAULT_DEVICE
 from xpmir.text.encoders import TextEncoderBase, TextsRepresentationOutput, InputType
 from xpmir.rankers import Retriever, TopicRecord, ScoredDocument
 from xpmir.utils.iter import MultiprocessIterator
-from xpmir.utils.multiprocessing import StoppableQueue
+from xpmir.utils.multiprocessing import StoppableQueue, available_cpus
 import xpmir_rust
 
 logger = easylog()
@@ -61,11 +63,28 @@ class SparseRetrieverIndex(Config):
 
         return results
 
+    async def aio_retrieve(
+        self, query: Dict[int, float], top_k: int
+    ) -> List[ScoredDocument]:
+        results = []
+        for sd in await self.index.aio_search_maxscore(query, top_k):
+            results.append(
+                ScoredDocument(
+                    self.documents.document_int(sd.docid),
+                    sd.score,
+                )
+            )
+
+        return results
+
 
 class SparseRetriever(Retriever, Generic[InputType]):
     index: Param[SparseRetrieverIndex]
     encoder: Param[TextEncoderBase[InputType, torch.Tensor]]
     topk: Param[int]
+
+    device: Meta[Device] = DEFAULT_DEVICE
+    """The device for building the index"""
 
     batcher: Meta[Batcher] = Batcher()
     """The way to prepare batches of queries (when using retrieve_all)"""
@@ -79,7 +98,10 @@ class SparseRetriever(Retriever, Generic[InputType]):
 
     def initialize(self):
         super().initialize()
+        logging.info("Initializing the encoder")
         self.encoder.initialize(ModuleInitMode.DEFAULT.to_options(None))
+        self.encoder.to(self.device.value)
+        logging.info("Initializing the index")
         self.index.initialize(self.in_memory)
 
     def retrieve_all(
@@ -87,10 +109,22 @@ class SparseRetriever(Retriever, Generic[InputType]):
     ) -> Dict[str, List[ScoredDocument]]:
         """Input queries: {id: text}"""
 
-        def reducer(
+        async def aio_search_worker(progress, results: Dict, queue: asyncio.Queue):
+            try:
+                while True:
+                    key, query, topk = await queue.get()
+                    results[key] = await self.index.aio_retrieve(query, topk)
+                    progress.update(1)
+                    queue.task_done()
+            except asyncio.exceptions.CancelledError:
+                # Just stopped
+                pass
+            except Exception:
+                logging.exception("Error in worker thread")
+
+        async def reducer(
             batch: List[Tuple[str, InputType]],
-            results: Dict[str, List[ScoredDocument]],
-            progress,
+            queue: asyncio.Queue,
         ):
             for (key, _), vector in zip(
                 batch,
@@ -98,21 +132,39 @@ class SparseRetriever(Retriever, Generic[InputType]):
             ):
                 (ix,) = vector.nonzero()
                 query = {ix: float(v) for ix, v in zip(ix, vector[ix])}
-                results[key] = self.index.retrieve(query, self.topk)
-                progress.update(1)
+                logging.debug("Adding topic %s to the queue", key)
+                await queue.put((key, query, self.topk))
+                logging.debug("[done] Adding topic %s to the queue", key)
+
+        async def aio_process():
+            workers = []
+            results = {}
+            try:
+                queue = asyncio.Queue(available_cpus())
+                items = list(queries.items())
+
+                with tqdm(
+                    desc="Retrieve documents", total=len(items), unit="queries"
+                ) as progress:
+                    for _ in range(available_cpus()):
+                        worker = asyncio.create_task(
+                            aio_search_worker(progress, results, queue)
+                        )
+                        workers.append(worker)
+
+                    self.encoder.eval()
+                    batcher = self.batcher.initialize(self.batchsize)
+                    with torch.no_grad():
+                        for batch in batchiter(self.batchsize, items):
+                            await batcher.aio_reduce(batch, reducer, queue)
+                await queue.join()
+
+            finally:
+                for worker in workers:
+                    worker.cancel()
             return results
 
-        self.encoder.eval()
-        batcher = self.batcher.initialize(self.batchsize)
-        results = {}
-        items = list(queries.items())
-        with tqdm(
-            desc="Retrieve documents", total=len(items), unit="queries"
-        ) as progress:
-            with torch.no_grad():
-                for batch in batchiter(self.batchsize, items):
-                    results = batcher.reduce(batch, reducer, results, progress)
-
+        results = asyncio.run(aio_process())
         return results
 
     def retrieve(self, query: TopicRecord, top_k=None) -> List[ScoredDocument]:

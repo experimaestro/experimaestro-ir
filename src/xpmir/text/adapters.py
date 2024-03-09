@@ -1,6 +1,11 @@
 from typing import List
+
+from datamaestro.record import Record
 from experimaestro import Param
-from .encoders import TokenizedTextEncoderBase, InputType, RepresentationOutput
+from datamaestro_text.data.ir import TextItem
+from xpmir.utils.convert import Converter
+
+from .encoders import InputType, RepresentationOutput, TokenizedTextEncoderBase
 
 
 class MeanTextEncoder(TokenizedTextEncoderBase[InputType, RepresentationOutput]):
@@ -22,3 +27,10 @@ class MeanTextEncoder(TokenizedTextEncoderBase[InputType, RepresentationOutput])
         emb_texts = self.encoder(texts, options=options)
         # Computes the mean over the time dimension (vocab output is batch x time x dim)
         return emb_texts.value.mean(1)
+
+
+class TopicTextConverter(Converter[Record, str]):
+    """Extracts the text from a topic"""
+
+    def __call__(self, input: Record) -> str:
+        return input[TextItem].text

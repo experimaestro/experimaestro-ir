@@ -111,6 +111,28 @@ class BatcherWorker:
         """
         return reducer(batch, initialvalue, *args, **kwargs)
 
+    async def aio_reduce(
+        self,
+        batch: Sequence[T],
+        reducer: Reducer[T, RT, ARGS, KWARGS],
+        initialvalue: RT,
+        *args: ARGS,
+        raise_oom=False,
+        **kwargs: KWARGS,
+    ) -> RT:
+        """Attributes:
+
+        Arguments:
+            batch: The data to process
+
+            reducer: The reducer function, whose two first arguments are a slice
+            of T and the reduced value, and that returns a new value
+
+            raise_oom: Raise an OOM exception when an OOM is recoverable instead
+            of continuing
+        """
+        return await reducer(batch, initialvalue, *args, **kwargs)
+
 
 def is_cublas_alloc_failed(exception):
     return (
