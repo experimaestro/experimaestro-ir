@@ -18,6 +18,7 @@ from typing import (
 )
 from xpmir.utils.utils import easylog
 import logging
+from tqdm import tqdm
 
 logger = easylog()
 
@@ -276,7 +277,7 @@ class SkippingIterator(GenericSerializableIterator[T, SkippingIteratorState]):
         logger.info("Skipping %d records to match state (sampler)", count)
 
         assert count >= self.position, "Cannot iterate backwards"
-        for _ in range(count - self.position):
+        for _ in tqdm(range(count - self.position)):
             next(self.iterator)
         self.position = count
 
