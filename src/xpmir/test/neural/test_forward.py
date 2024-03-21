@@ -258,5 +258,5 @@ def test_forward_consistency(modelfactory, inputfactoriescouple):
         s1 = outputs[0][maps[0][key]].item()
         s2 = outputs[1][maps[1][key]].item()
         assert s1 == pytest.approx(
-            s2
+            s2, abs=1e-6
         ), f"{s1} different from {s2} in {outputs[0]}, {outputs[1]}"

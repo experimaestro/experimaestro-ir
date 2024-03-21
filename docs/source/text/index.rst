@@ -56,3 +56,4 @@ Adapters
 ********
 
 .. autoxpmconfig:: xpmir.text.adapters.MeanTextEncoder
+.. autoxpmconfig:: xpmir.text.adapters.TopicTextConverter

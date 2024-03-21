@@ -104,7 +104,7 @@ class SpladeTextEncoder(TextEncoder, DistributableModel):
 
     def forward(self, texts: List[str]) -> torch.Tensor:
         """Returns a batch x vocab tensor"""
-        tokenized = self.tokenizer.batch_tokenize(texts, mask=True, maxlen=self.maxlen)
+        tokenized = self.encoder.batch_tokenize(texts, mask=True, maxlen=self.maxlen)
         out = self.model(tokenized)
         return out
 

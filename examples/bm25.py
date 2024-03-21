@@ -3,7 +3,6 @@ from pathlib import Path
 import os
 from datamaestro import prepare_dataset
 import logging
-import multiprocessing
 
 from experimaestro import experiment
 from xpmir.evaluation import Evaluate
@@ -12,7 +11,7 @@ from xpmir.interfaces.anserini import AnseriniRetriever, IndexCollection
 
 
 logging.basicConfig(level=logging.INFO)
-CPU_COUNT = multiprocessing.cpu_count()
+CPU_COUNT = len(os.sched_getaffinity(0))
 
 # --- Defines the experiment
 
