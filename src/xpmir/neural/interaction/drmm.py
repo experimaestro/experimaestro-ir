@@ -122,11 +122,17 @@ class Drmm(InteractionScorer):
         options: TokenizerOptions,
     ) -> SimilarityInputWithTokens:
         encoded = encoder(texts, options=options)
+
+        max_len = max(encoded.tokenized.lens)
+        padded_tokens = [
+            (t + [""] * (max_len - len(t))) for t in encoded.tokenized.tokens
+        ]
+
         return self.similarity.preprocess(
             SimilarityInputWithTokens(
                 encoded.value,
                 encoded.tokenized.mask,
-                np.array(encoded.tokenized.tokens),
+                np.array(padded_tokens, dtype=str),
             )
         )
 

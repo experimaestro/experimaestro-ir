@@ -406,13 +406,14 @@ class MultiprocessIterator(Iterator[T]):
 
     def close(self):
         if self.mp_iterator:
+            atexit.unregister(self.close)
             self.stop_process.set()
             try:
                 # Try to remove an item from the queue just in case
                 next(self.mp_iterator)
             finally:
+                self.mp_iterator = None
                 logging.info("Signaled the mp_iterator to quit")
-        atexit.unregister(self.close)
 
     def detach(self):
         """Produces an iterator only based on the multiprocess queue (useful

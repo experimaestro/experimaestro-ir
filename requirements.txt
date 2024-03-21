@@ -5,7 +5,7 @@ datamaestro>=1.0.1
 datamaestro_text>=2024.2.29
 ir_datasets
 docstring_parser
-xpmir_rust == 0.20.*
+xpmir_rust == 0.21.*
 omegaconf>=2.2
 attrs
 
