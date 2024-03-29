@@ -508,9 +508,7 @@ class JSONLReferentialDocumentIdSampler(ReferentialSampler):
             def __next__(self):
                 sample = next(self.iterator)
                 doc = sample.documents[self.random.randint(len(sample.documents))]
-                return ReferentialDocumentIDRecord(
-                    document=DocumentRecord(doc), target=sample.ids
-                )
+                return ReferentialDocumentIDRecord(document=doc, target=sample.ids)
 
         if self.infinite:
             base = InfiniteSkippingIterator(
@@ -540,7 +538,7 @@ class ReferentialDocumentIdSamplerTransformAdapter(ReferentialSampler):
         docs = self.adapter.transform_documents(docs) or docs
 
         return ReferentialDocumentIDRecord(
-            document=DocumentRecord(docs[0]),
+            document=docs[0],
             target=record.target,
         )
 

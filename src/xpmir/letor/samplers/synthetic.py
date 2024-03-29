@@ -5,7 +5,7 @@ from typing import Any, Callable, List, Optional, Dict
 import numpy as np
 from experimaestro import Task, Param, Meta, Annotated, pathgenerator, tqdm
 from experimaestro.core.objects import Config
-from datamaestro_text.data.ir import DocumentStore
+from datamaestro_text.data.ir import DocumentStore, TextItem, IDItem
 
 from xpmir.context import Hook, InitializationHook
 from xpmir.documents.samplers import DocumentSampler
@@ -60,6 +60,7 @@ class SyntheticQueryGeneration(Task):
             num_return_sequences=self.num_qry_per_doc,
             num_beams=self.num_qry_per_doc,
             max_new_tokens=64,
+            output_scores=False,
         )
 
     def task_outputs(self, dep: Callable[[Config], None]) -> Any:
@@ -75,7 +76,7 @@ class SyntheticQueryGeneration(Task):
 
     def generate(self, batch, fp):
         generate_output = self.model.generate(
-            [d.get_text() for d in batch], self.generation_config
+            [d[TextItem].text for d in batch], self.generation_config
         )
         # length: bs*num_qry_per_doc
         queries = self.model.batch_decode(generate_output)
@@ -85,7 +86,7 @@ class SyntheticQueryGeneration(Task):
             queries[i : i + self.num_qry_per_doc]
             for i in range(0, len(queries), self.num_qry_per_doc)
         ]
-        doc_ids = [d.id for d in batch]
+        doc_ids = [d[IDItem].id for d in batch]
 
         for qry, doc_id in zip(grouped_queries, doc_ids):
             dict_query_doc = dict()

@@ -99,7 +99,7 @@ class ReferentialCrossEntropyLossListener(LearnerListener):
     def compute(self, records, loss):
         sequence_generator = self.model.sequence_generator()
         eos_token_id = self.model.eos_token_id
-        posdocs_text = [doc.document[TextItem].text for doc in records.documents]
+        posdocs_text = [doc[TextItem].text for doc in records.documents]
 
         # prepare the label, add and eos and then padding it with -100.
         max_length = max(len(target) for target in records.targets)

@@ -24,7 +24,7 @@ from xpmir.letor.distillation.samplers import (
 )
 from xpmir.letor.samplers.hydrators import SampleHydrator, PairwiseTransformAdapter
 
-from xpmir.measures import AP, RR, P, nDCG, Success
+from xpmir.measures import AP, RR, P, R, nDCG, Success
 from xpmir.papers import configuration
 
 
@@ -183,3 +183,48 @@ def finetuning_validation_dataset(
         fold=0,
         sizes=[cfg.size],
     ).submit(launcher=launcher)
+
+
+# --- Natural Questions
+NQ_MEASURES = [R @ 1, R @ 10, R @ 100, RR @ 100]
+
+
+def nq_test_set(dev_test_size: int = 0):
+    """MS-Marco default test collections: DL TREC 2019 & 2020 + devsmall
+
+    devsmall can be restricted to a smaller dataset for debugging using dev_test_size
+    """
+    nq_dev_full = prepare_collection("irds.natural-questions-simplified.dev")
+    nq_dev_seen = prepare_collection("irds.natural-questions-simplified.dev.seen")
+    nq_dev_unseen = prepare_collection("irds.natural-questions-simplified.dev.unseen")
+
+    if dev_test_size > 0:
+        (nq_dev_full,) = RandomFold.folds(
+            seed=0, sizes=[dev_test_size], dataset=nq_dev_full
+        )
+
+        (nq_dev_seen,) = RandomFold.folds(
+            seed=0, sizes=[dev_test_size], dataset=nq_dev_seen
+        )
+
+        (nq_dev_unseen,) = RandomFold.folds(
+            seed=0, sizes=[dev_test_size], dataset=nq_dev_unseen
+        )
+
+    return EvaluationsCollection(
+        nq_dev_full=Evaluations(nq_dev_full, NQ_MEASURES),
+        nq_dev_seen=Evaluations(nq_dev_seen, MEASURES),
+        nq_dev_unseen=Evaluations(nq_dev_unseen, MEASURES),
+    )
+
+
+def nq_training_validation_split(cfg: ValidationSample):
+    """Preparing spliting the training set of nq to the true training set and
+    the validation set"""
+
+    nq_full_train = prepare_collection("irds.natural-questions-simplified.train")
+    return RandomFold.folds(
+        seed=cfg.seed,
+        sizes=[nq_full_train.count() - cfg.size, cfg.size],
+        dataset=nq_full_train,
+    )
