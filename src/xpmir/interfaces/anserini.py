@@ -1,7 +1,6 @@
 import asyncio
 from functools import cached_property
 from pathlib import Path
-import attrs
 import contextlib
 import json
 import logging
@@ -12,7 +11,14 @@ import sys
 from typing import List, Optional
 from experimaestro import tqdm as xpmtqdm, Task, Meta
 
-from datamaestro_text.data.ir import DocumentStore, TextItem, IDItem, TopicRecord
+from datamaestro_text.data.ir import (
+    DocumentStore,
+    TextItem,
+    IDItem,
+    TopicRecord,
+    create_record,
+    InternalIDItem,
+)
 import datamaestro_text.data.ir.csv as ir_csv
 from datamaestro_text.data.ir.trec import (
     Documents,
@@ -253,20 +259,6 @@ class SearchCollection(Task):
         sys.exit(p.returncode)
 
 
-@attrs.define()
-class AnseriniDocument:
-    """The hit returned by Anserini"""
-
-    lucene_docid: int
-    """Internal document ID"""
-
-    contents: Optional[str] = None
-    """Processed content"""
-
-    raw: Optional[str] = None
-    """Raw document"""
-
-
 @pyserini_java
 class AnseriniRetriever(Retriever):
     """An Anserini-based retriever
@@ -323,9 +315,9 @@ class AnseriniRetriever(Retriever):
 
         return [
             ScoredDocument(
-                AnseriniDocument(hit.docid, hit.lucene_docid, hit.contents, hit.raw)
-                if store is None
-                else store.document_ext(hit.docid),
+                create_record(
+                    InternalIDItem(hit.lucene_docid), id=hit.docid, text=hit.contents
+                ),
                 hit.score,
             )
             for hit in hits
