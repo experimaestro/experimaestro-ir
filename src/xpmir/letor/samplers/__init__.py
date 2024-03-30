@@ -139,7 +139,7 @@ class ModelBasedSampler(Sampler):
         return self._store.document_ext(doc_id)
 
     def document_text(self, doc_id):
-        return self.document(doc_id).text
+        return self.document(doc_id)[TextItem].text
 
     @cache("run")
     def _itertopics(
@@ -187,7 +187,7 @@ class ModelBasedSampler(Sampler):
                     for docno, rel in qassessments.items():
                         if rel > 0:
                             fp.write(
-                                f"{query.text if not positives else ''}"
+                                f"{query[TextItem].text if not positives else ''}"
                                 f"\t{docno}\t0.\t{rel}\n"
                             )
                             positives.append((docno, rel, 0))
@@ -201,7 +201,7 @@ class ModelBasedSampler(Sampler):
                         continue
 
                     scoreddocuments: List[ScoredDocument] = self.retriever.retrieve(
-                        query.text
+                        query
                     )
 
                     negatives = []
@@ -223,7 +223,7 @@ class ModelBasedSampler(Sampler):
                         continue
 
                     assert len(positives) > 0 and len(negatives) > 0
-                    yield query.text, positives, negatives
+                    yield query[TextItem].text, positives, negatives
 
                 # Finally, move the cache file in place...
                 self.logger.info(
@@ -332,7 +332,7 @@ class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
         text = None
         while text is None:
             docid, rel, score = samples[self.random.randint(0, len(samples))]
-            document = self.document(docid).add(ScoredItem(score))
+            document = self.document(docid).update(ScoredItem(score))
             text = document[TextItem].text
         return document
 

@@ -213,8 +213,8 @@ def nq_test_set(dev_test_size: int = 0):
 
     return EvaluationsCollection(
         nq_dev_full=Evaluations(nq_dev_full, NQ_MEASURES),
-        nq_dev_seen=Evaluations(nq_dev_seen, MEASURES),
-        nq_dev_unseen=Evaluations(nq_dev_unseen, MEASURES),
+        nq_dev_seen=Evaluations(nq_dev_seen, NQ_MEASURES),
+        nq_dev_unseen=Evaluations(nq_dev_unseen, NQ_MEASURES),
     )
 
 

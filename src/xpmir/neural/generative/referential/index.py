@@ -47,13 +47,13 @@ class ReferentialEncoder(TextEncoderBase[InputType, EncoderOutput]):
         self.id_generator.to(*args, **kwargs)
         super().to(*args, **kwargs)
 
-    def train(self):
-        self.id_generator.train()
-        super().train()
+    def train(self, *args, **kwargs):
+        self.id_generator.train(*args, **kwargs)
+        super().train(*args, **kwargs)
 
-    def eval(self):
-        self.id_generator.eval()
-        super().eval()
+    def eval(self, *args, **kwargs):
+        self.id_generator.eval(*args, **kwargs)
+        super().eval(*args, **kwargs)
 
     def mapping_builder(
         self,
