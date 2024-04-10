@@ -855,13 +855,14 @@ class ReferentialDocumentIdLoss(PairwiseGenerativeLoss):
 class ReferentialDocumentIdTrainer(LossTrainer):
     loss: Param[ReferentialDocumentIdLoss]
 
+    # FIXME: this param needs to be removed because already exist in the
+    # LossTrainer
     sampler: Param[ReferentialSampler]
     """The pairwise sampler"""
 
     def initialize(self, random: np.random.RandomState, context: TrainerContext):
         super().initialize(random, context)
         self.loss.initialize()
-        self.sampler.initialize(random)
         self.sampler_iter = self.sampler.referential_iter()
 
     def iter_batches(self):

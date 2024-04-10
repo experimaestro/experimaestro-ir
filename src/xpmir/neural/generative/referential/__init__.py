@@ -190,7 +190,9 @@ class GeneratorBiasAdapter(ConditionalGenerator):
         logit_processor_list = LogitsProcessorList(
             [DepthBasedSequenceBiasLogitsProcessor(self.bias_terms)]
         )
-        inputs = self.vanilla_generator.batch_tokenize(inputs, mask=True)
+        inputs = self.vanilla_generator.batch_tokenize(
+            inputs, maxlen=self.vanilla_generator.max_input_tokens, mask=True
+        )
         generate_options_kwargs = dataclasses.asdict(options)
         if isinstance(options, BeamSearchGenerationOptions):
             res = self.vanilla_generator.model.generate(

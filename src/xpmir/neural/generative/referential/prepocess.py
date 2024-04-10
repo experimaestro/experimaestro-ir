@@ -152,7 +152,7 @@ class ReferentialFixDocumentIdBuilder(Task):
             logger.info(f"Start the hierarchical k-means clustering for {prefix}")
 
         kmeans = faiss.Kmeans(
-            self.index.shape[1], self.decoder_dim, niter=300, gpu=True
+            self.index.shape[1], self.decoder_dim, niter=300, gpu=False
         )
         kmeans.train(data_to_kmeans)
         _, INDICE = kmeans.index.search(data_to_kmeans, 1)
@@ -226,7 +226,11 @@ class RandomSplitReferentialFixDocumentID(Task):
 
     def execute(self) -> None:
         # rows to select the for the small dataset
-        rows = np.random.choice(self.dataset.count, size=self.split_size, replace=False)
+        rows = np.random.choice(
+            self.dataset.count,
+            size=min(self.split_size, self.dataset.count),
+            replace=False,
+        )
         current_count = 0
         with self.small.open("wt") as fp1, self.big.open("wt") as fp2:
             for sample in tqdm(self.dataset.iter(), total=self.dataset.count):

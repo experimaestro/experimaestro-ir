@@ -61,6 +61,9 @@ class T5ConditionalGenerator(ConditionalGenerator, DistributableModel):
     hf_id: Param[str]
     """The HuggingFace identifier (to configure the model)"""
 
+    max_input_tokens: Param[int] = 64
+    """The maximum input token numbers"""
+
     def stepwise_iterator(self) -> StepwiseGenerator:
         return T5StepwiseGenerator(self)
 
@@ -124,11 +127,11 @@ class T5ConditionalGenerator(ConditionalGenerator, DistributableModel):
             r.get("token_type_ids", None),  # if r["token_type_ids"] else None
         )
 
-    def encode(self, texts: List[str], maxlen=512):
+    def encode(self, texts: List[str]):
         """Returns the encoder_output and the input mask for the given text,
         which could accelerate the autoregressive generation procedure"""
 
-        tokenized = self.batch_tokenize(texts, maxlen=maxlen, mask=True)
+        tokenized = self.batch_tokenize(texts, maxlen=self.max_input_tokens, mask=True)
         encoder_output = self.encoder(
             tokenized.ids,
             attention_mask=tokenized.mask,
@@ -199,7 +202,7 @@ class T5ConditionalGenerator(ConditionalGenerator, DistributableModel):
     def generate(
         self, inputs: List[str], options: GenerateOptions = None
     ) -> FullSequenceGenerationOutput:
-        inputs = self.batch_tokenize(inputs, mask=True)
+        inputs = self.batch_tokenize(inputs, maxlen=self.max_input_tokens, mask=True)
         generate_options_kwargs = dataclasses.asdict(options)
         if isinstance(options, BeamSearchGenerationOptions):
             res = self.model.generate(

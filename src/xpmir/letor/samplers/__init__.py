@@ -316,6 +316,9 @@ class PointwiseModelBasedSampler(PointwiseSampler, ModelBasedSampler):
 class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
     """A pairwise sampler based on a retrieval model"""
 
+    random_ratio: Param[float] = 0.5
+    """The ratio of the random negatives in the pairwise_sampler"""
+
     def initialize(self, random: np.random.RandomState):
         super().initialize(random)
 
@@ -342,11 +345,23 @@ class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
                 title, positives, negatives = self.topics[
                     random.randint(0, len(self.topics))
                 ]
-                yield PairwiseRecord(
-                    create_record(text=title),
-                    self.sample(positives),
-                    self.sample(negatives),
-                )
+                if self.random.random() < self.random_ratio:
+                    # yield random negative
+                    positive = self.sample(positives)
+                    neg_id = positive[IDItem].id
+                    while neg_id == positive[IDItem].id:
+                        int_neg_id = self.random.randint(self._store.documentcount)
+                        neg_id = self._store.docid_internal2external(int_neg_id)
+
+                    yield PairwiseRecord(
+                        create_record(text=title), positive, self.document(neg_id)
+                    )
+                else:
+                    yield PairwiseRecord(
+                        create_record(text=title),
+                        self.sample(positives),
+                        self.sample(negatives),
+                    )
 
         return RandomSerializableIterator(self.random, iter)
 

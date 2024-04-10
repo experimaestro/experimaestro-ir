@@ -140,7 +140,7 @@ class ReferentialCrossEntropyLossListener(LearnerListener):
                     records.add(record)
                 with torch.no_grad():
                     batcher.process(records, self.compute, loss)
-            value = float(torch.sum(torch.stack(loss, dim=0), dim=0))
+            value = float(torch.mean(torch.stack(loss, dim=0), dim=0))
 
             self.context.writer.add_scalar(f"{self.id}/CE/mean", value, state.step)
 

@@ -26,9 +26,9 @@ class ReferentialEncoder(TextEncoderBase[InputType, EncoderOutput]):
     """The maximum depth of the model"""
 
     num_sequences: Param[int]
-    """The number """
+    """The number number of sequences generated for each document"""
 
-    def __initalize__(self, options):
+    def __initialize__(self, options):
         super().__initialize__(options)
         self.id_generator.initialize(options)
         # list all the possible sequences
@@ -65,7 +65,7 @@ class ReferentialEncoder(TextEncoderBase[InputType, EncoderOutput]):
             self.all_sequences.append(prefix_str)
             return
 
-        for i in range(self.id_generator.decoder_dim):
+        for i in range(self.id_generator.decoder_outdim):
             new_prefix = prefix.copy()
             new_prefix.append(i)
             self.mapping_builder(new_prefix, depth + 1)
@@ -99,11 +99,13 @@ class ReferentialEncoder(TextEncoderBase[InputType, EncoderOutput]):
             for raw_sequence, num_keep in zip(raw_sequences_list, mask_list)
         ]
         # get the correponding indice
-        indices = torch.tensor(
-            [self.docid_to_indice[key] for key in sequences_str]
-        ).reshape(bs, self.num_sequences)
+        indices = (
+            torch.tensor([self.docid_to_indice[key] for key in sequences_str])
+            .reshape(bs, self.num_sequences)
+            .to(self._dummy_params.device)
+        )
         values = document_output.sequence_scores.reshape(-1, self.num_sequences)
-        results = torch.zeros(bs, self.dimension)
+        results = torch.zeros(bs, self.dimension).to(self._dummy_params.device)
         return RepresentationOutput(value=results.scatter_add_(1, indices, values))
 
 
@@ -126,9 +128,13 @@ class ReferentialValidationRescorer(Retriever):
         if self.device is not None:
             self.encoder.to(self.device.value)
 
-    def encode_query(self, queries: List[Tuple[str, str]], encoded: List[Any], pbar):
-        """Encode the queries and documents"""
-        encoded.append(self.encoder([text for _, text in queries]).value)
+    def encode_query(
+        self, queries: List[Tuple[str, TopicRecord]], encoded: List[Any], pbar
+    ):
+        """Encode the queries"""
+        encoded.append(
+            self.encoder([record[TextItem].text for _, record in queries]).value
+        )
         pbar.update(len(queries))
         return encoded
 
@@ -148,7 +154,9 @@ class ReferentialValidationRescorer(Retriever):
             query = queries[ix : (ix + 1)]
 
             # Returns a query x document matrix
-            scores = query.to(encoded.device) @ encoded.T  # shape [1, document_bs]
+            scores = (
+                query.to(self.device.value) @ encoded.value.T
+            )  # shape [1, document_bs]
 
             # Adds up to the lists
             scores = scores.flatten().detach()  # shape [document_bs]

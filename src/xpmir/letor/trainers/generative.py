@@ -35,6 +35,8 @@ class PairwiseGenerativeLoss(Config, nn.Module):
 class GenerativeTrainer(LossTrainer):
     loss: Param[PairwiseGenerativeLoss]
 
+    # FIXME: this param needs to be removed because already exist in the
+    # LossTrainer
     sampler: Param[PairwiseSampler]
     """The pairwise sampler"""
 
@@ -45,7 +47,6 @@ class GenerativeTrainer(LossTrainer):
             context.hooks(PairwiseGenerativeLoss), lambda loss: loss.initialize()
         )  # maybe later we need to change the sampling target, we can use this hook
 
-        self.sampler.initialize(random)
         self.sampler_iter = MultiprocessSerializableIterator(
             self.sampler.pairwise_batch_iter(self.batch_size)
         )
