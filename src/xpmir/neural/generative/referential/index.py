@@ -1,6 +1,12 @@
 from typing import List, Optional, Tuple, Any
 from experimaestro import Param, Meta, tqdm
-from datamaestro_text.data.ir import Documents, DocumentRecord, TextItem
+from datamaestro_text.data.ir import (
+    Documents,
+    DocumentRecord,
+    TextItem,
+    create_record,
+    IDItem,
+)
 import torch
 
 from xpmir.learning.batchers import Batcher
@@ -161,7 +167,9 @@ class ReferentialValidationRescorer(Retriever):
             # Adds up to the lists
             scores = scores.flatten().detach()  # shape [document_bs]
             for ix, (document, score) in enumerate(zip(documents, scores)):
-                new_scores[ix].append(ScoredDocument(document, float(score)))
+                # create a new document with only id to save memory
+                new_document = create_record(id=document[IDItem].id)
+                new_scores[ix].append(ScoredDocument(new_document, float(score)))
                 pbar.update(1)
 
         # Add each result to the full document list
