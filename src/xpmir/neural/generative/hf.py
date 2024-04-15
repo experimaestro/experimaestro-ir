@@ -1,6 +1,13 @@
 import logging
 import dataclasses
-from transformers import AutoConfig, AutoTokenizer, T5ForConditionalGeneration, T5Config
+from transformers import (
+    AutoConfig,
+    AutoTokenizer,
+    T5ForConditionalGeneration,
+    T5Config,
+    BartForConditionalGeneration,
+    BartConfig,
+)
 from experimaestro import Param, LightweightTask
 from typing import Optional, List, NamedTuple, Tuple
 
@@ -56,6 +63,7 @@ class FullSequenceGenerationOutput(NamedTuple):
     shape: [bs * num_sequence]"""
 
 
+# FIXME: Maybe this need to be renamed to HFConditionalGenerator
 class T5ConditionalGenerator(ConditionalGenerator, DistributableModel):
 
     hf_id: Param[str]
@@ -276,6 +284,7 @@ class T5ConditionalGenerator(ConditionalGenerator, DistributableModel):
         self.model = update(self.model)
 
 
+# FIXME: Maybe this need to be rename to HFStepwiseGenerator
 class T5StepwiseGenerator(StepwiseGenerator):
     def __init__(self, id_generator: ConditionalGenerator):
         super().__init__()
@@ -307,6 +316,7 @@ class T5StepwiseGenerator(StepwiseGenerator):
         self.past_key_values = state
 
 
+# FIXME: Maybe this need to be rename to HFSequenceGenerator
 class T5SequenceGenerator(SequenceGenerator):
     def __init__(self, id_generator: ConditionalGenerator):
         super().__init__()
@@ -328,6 +338,7 @@ class T5SequenceGenerator(SequenceGenerator):
         )
 
 
+# custom classes for huggingface t5 models
 class T5ForIdentifierGeneration(T5ForConditionalGeneration):
     """T5-based identifier generation
 
@@ -466,3 +477,102 @@ class LoadFromT5(LightweightTask):
 
         logging.info("Loading state dict into the custom T5")
         self.t5_model.model.load_state_dict(state_dict, strict=False)
+
+
+# custom classes for huggingface bart models
+class BartForIdentifierGeneration(BartForConditionalGeneration):
+    """Bart-based identifier generation
+
+    The class modifies Bart to use a custom vocabulary in the decoder
+    """
+
+    def __init__(self, config: BartConfig, decoder_outdim: int):
+        # not including the eos and pad
+        self.decoder_outdim = decoder_outdim
+
+        # modification of the config according to our needs
+        config.pad_token_id = self.decoder_outdim + 1
+        config.decoder_start_token_id = self.decoder_outdim + 1
+        config.eos_token_id = self.decoder_outdim
+
+        # Keep config at hand
+        self.config = config
+
+        super().__init__(self.config)
+
+        # Modify LM head
+        self.lm_head = nn.Linear(
+            self.lm_head.in_features, self.decoder_outdim + 1, bias=False
+        )
+
+        # We have one more token (PAD when )
+        encoder_embeddings = nn.Embedding(self.config.vocab_size, self.config.d_model)
+        self.config.vocab_size = self.decoder_outdim + 1
+        self.get_encoder().set_input_embeddings(encoder_embeddings)
+
+        # Modify the decoder vocabulary
+        decoder_embeddings = nn.Embedding(
+            self.decoder_outdim + 2, self.config.d_model, padding_idx=decoder_outdim + 1
+        )
+        self.get_decoder().set_input_embeddings(decoder_embeddings)
+
+        # bart has a final_logtis_bias terms which of original embedding dim
+        self._resize_final_logits_bias(self.decoder_outdim + 1)
+
+    def forward(self, **kwargs):
+        return super().forward(**kwargs)
+
+
+class BartIdentifierGenerator(T5ConditionalGenerator):
+    """generate the id of the token based on t5-based models"""
+
+    decoder_outdim: Param[int] = 10
+    """The decoder output dimension for the t5 model, use it to
+    rebuild the lm_head and the decoder embedding, this number
+    doesn't include the pad token and the eos token
+    """
+
+    def initialize_model(self, options: ModuleInitOptions):
+        return BartForIdentifierGeneration(self.config, self.decoder_outdim)
+
+
+class LoadFromBart(LightweightTask):
+    """Load parameters from a T5 model"""
+
+    bart_model: Param[T5ConditionalGenerator]
+    """the target"""
+
+    random_decoder_init: Param[bool] = True
+    """Whether use the random decoder initialization"""
+
+    def execute(self):
+        self.bart_model.initialize(ModuleInitMode.DEFAULT.to_options())
+
+        # Load from checkpoint
+        logging.info(
+            "Loading hugginface Bart from checkpoint %s", self.bart_model.hf_id
+        )
+
+        # Load the BART pre-trained model
+        bart_model = BartForConditionalGeneration.from_pretrained(self.bart_model.hf_id)
+
+        # Change the state_dict for the lm_head the decoder embedding
+        state_dict = bart_model.state_dict()
+
+        # Just forget about the final projection weights, and its bias
+        del state_dict["lm_head.weight"]
+        del state_dict["final_logits_bias"]
+
+        # use random initialized bart decoder
+        if self.random_decoder_init:
+            decoder_key_names = [
+                name for name in state_dict.keys() if "decoder" in name
+            ]
+            for name in decoder_key_names:
+                del state_dict[name]
+        else:
+            # delete the decoder embedding only
+            del state_dict["model.decoder.embed_tokens.weight"]
+
+        logging.info("Loading state dict into the custom bart")
+        self.bart_model.model.load_state_dict(state_dict, strict=False)
