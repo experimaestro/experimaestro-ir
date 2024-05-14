@@ -1,3 +1,4 @@
+import io
 import json
 from pathlib import Path
 from typing import Iterator, List, Tuple, Dict, Any
@@ -173,6 +174,7 @@ class ModelBasedSampler(Sampler):
                 # Retrieve documents
                 skipped = 0
                 for query in tqdm(queries):
+                    q_fp = io.StringIO()
                     qassessments = assessments.get(query[IDItem].id, None)
                     if not qassessments:
                         skipped += 1
@@ -185,7 +187,7 @@ class ModelBasedSampler(Sampler):
                     positives = []
                     for docno, rel in qassessments.items():
                         if rel > 0:
-                            fp.write(
+                            q_fp.write(
                                 f"{query.text if not positives else ''}"
                                 f"\t{docno}\t0.\t{rel}\n"
                             )
@@ -211,7 +213,7 @@ class ModelBasedSampler(Sampler):
                             continue
 
                         negatives.append((sd.document[IDItem].id, rel, sd.score))
-                        fp.write(f"\t{sd.document[IDItem].id}\t{sd.score}\t{rel}\n")
+                        q_fp.write(f"\t{sd.document[IDItem].id}\t{sd.score}\t{rel}\n")
 
                     if not negatives:
                         self.logger.warning(
@@ -222,6 +224,10 @@ class ModelBasedSampler(Sampler):
                         continue
 
                     assert len(positives) > 0 and len(negatives) > 0
+
+                    # Write in cache, and yield
+                    fp.write(q_fp.getvalue())
+                    q_fp.close()
                     yield query.text, positives, negatives
 
                 # Finally, move the cache file in place...
