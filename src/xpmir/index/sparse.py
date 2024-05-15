@@ -271,11 +271,11 @@ class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
         if mp.get_start_method(allow_none=True) is None:
             mp.set_start_method("spawn")
 
-        max_docs = (
-            self.documents.documentcount
-            if self.max_docs == 0
-            else min(self.max_docs, self.documents.documentcount)
-        )
+        max_docs = 0
+        if self.max_docs:
+            max_docs = min(self.max_docs, self.documents.documentcount or sys.maxsize)
+            logger.warning("Limited indexing to %d documents", max_docs)
+
         iter_batches = MultiprocessIterator(
             DocumentIterator(self.documents, max_docs, self.batch_size)
         ).detach()
@@ -321,6 +321,8 @@ class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
         finally:
             logger.info("Waiting for the index process to stop")
             index_thread.join()
+            if not self.index_done:
+                raise RuntimeError("Indexing thread did not complete")
 
     def index(
         self,
@@ -331,6 +333,7 @@ class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
 
         :param queues: Queues are used to send tensors
         """
+        self.index_done = False
         with tqdm(
             total=max_docs,
             unit="documents",
@@ -377,6 +380,9 @@ class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
 
                 logger.info("Building the index")
                 indexer.build(self.in_memory)
+
+                logger.info("Index built")
+                self.index_done = True
             except Empty:
                 logger.warning("One encoder got a problem... stopping")
                 raise

@@ -40,6 +40,9 @@ class ScalarMetric(Metric):
         self.sum += other.sum
         self.count += other.count
 
+    def compute(self):
+        return self.sum / self.count
+
     def report(self, step: int, writer: SummaryWriter, prefix: str):
         if self.count == 0:
             logging.warning("Count is 0 when reporting metrics")
