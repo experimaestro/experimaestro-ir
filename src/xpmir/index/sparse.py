@@ -125,10 +125,12 @@ class SparseRetriever(Retriever, Generic[InputType]):
             batch: List[Tuple[str, InputType]],
             queue: asyncio.Queue,
         ):
-            for (key, _), vector in zip(
-                batch,
-                self.encoder([text for _, text in batch]).value.cpu().detach().numpy(),
-            ):
+            x = self.encoder([text for _, text in batch]).value.cpu().detach().numpy()
+            assert len(x) == len(batch), (
+                f"Discrepancy between counts of vectors ({len(x)})"
+                f" and number queries ({len(batch)})"
+            )
+            for (key, _), vector in zip(batch, x):
                 (ix,) = vector.nonzero()
                 query = {ix: float(v) for ix, v in zip(ix, vector[ix])}
                 logger.debug("Adding topic %s to the queue", key)
@@ -145,20 +147,23 @@ class SparseRetriever(Retriever, Generic[InputType]):
                 with tqdm(
                     desc="Retrieve documents", total=len(items), unit="queries"
                 ) as progress:
+                    self.encoder.eval()
                     for _ in range(available_cpus()):
                         worker = asyncio.create_task(
                             aio_search_worker(progress, results, queue)
                         )
                         workers.append(worker)
 
-                    self.encoder.eval()
                     batcher = self.batcher.initialize(self.batchsize)
                     with torch.no_grad():
                         for batch in batchiter(self.batchsize, items):
                             await batcher.aio_reduce(batch, reducer, queue)
-                await queue.join()
+
+                    # Just wait for this to end
+                    await queue.join()
 
             finally:
+                # Stop all retriever workers
                 for worker in workers:
                     worker.cancel()
             return results
