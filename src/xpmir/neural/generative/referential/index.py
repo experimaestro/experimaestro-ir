@@ -1,5 +1,6 @@
 from typing import List, Optional, Tuple, Any
 from experimaestro import Param, Meta, tqdm
+from datamaestro.record import Record
 from datamaestro_text.data.ir import (
     Documents,
     DocumentRecord,
@@ -34,6 +35,9 @@ class ReferentialEncoder(TextEncoderBase[InputType, EncoderOutput]):
     num_sequences: Param[int]
     """The number number of sequences generated for each document"""
 
+    fp16: Param[bool] = False
+    """Convert to fp16 to store and index"""
+
     def __initialize__(self, options):
         super().__initialize__(options)
         self.id_generator.initialize(options)
@@ -51,15 +55,15 @@ class ReferentialEncoder(TextEncoderBase[InputType, EncoderOutput]):
 
     def to(self, *args, **kwargs):
         self.id_generator.to(*args, **kwargs)
-        super().to(*args, **kwargs)
+        return super().to(*args, **kwargs)
 
     def train(self, *args, **kwargs):
         self.id_generator.train(*args, **kwargs)
-        super().train(*args, **kwargs)
+        return super().train(*args, **kwargs)
 
     def eval(self, *args, **kwargs):
         self.id_generator.eval(*args, **kwargs)
-        super().eval(*args, **kwargs)
+        return super().eval(*args, **kwargs)
 
     def mapping_builder(
         self,
@@ -80,7 +84,12 @@ class ReferentialEncoder(TextEncoderBase[InputType, EncoderOutput]):
         return
 
     def forward(self, texts: List[InputType]) -> EncoderOutput:
-        """encoder the texts to a vector"""
+        """encoder the texts / record to a vector"""
+
+        # treat the input type if the input is a record
+        if isinstance(texts[0], Record):
+            texts = [record[TextItem].text for record in texts]
+
         bs = len(texts)
         generate_options = BeamSearchGenerationOptions(
             max_new_tokens=self.max_depth,
@@ -88,7 +97,7 @@ class ReferentialEncoder(TextEncoderBase[InputType, EncoderOutput]):
             num_beams=self.num_sequences,
         )
         document_output = self.id_generator.generate(texts, generate_options)
-        # transform the output matrix to
+        # transform the output matrix
         raw_sequences = document_output.sequences[:, 1:]
         raw_sequences_list = document_output.sequences[:, 1:].tolist()
         mask_list = torch.sum(
@@ -110,8 +119,13 @@ class ReferentialEncoder(TextEncoderBase[InputType, EncoderOutput]):
             .reshape(bs, self.num_sequences)
             .to(self._dummy_params.device)
         )
-        values = document_output.sequence_scores.reshape(-1, self.num_sequences)
+        values = torch.exp(
+            document_output.sequence_scores.reshape(-1, self.num_sequences)
+        )
         results = torch.zeros(bs, self.dimension).to(self._dummy_params.device)
+        if self.fp16:
+            values = values.half()
+            results = results.half()
         return RepresentationOutput(value=results.scatter_add_(1, indices, values))
 
 

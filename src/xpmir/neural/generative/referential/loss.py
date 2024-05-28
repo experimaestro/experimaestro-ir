@@ -116,8 +116,10 @@ class DynamicNegativeBuilder:
         self.fake_average_coeff = fake_average_coeff
         self.dimension = dimension
         sequence_num = self.dimension**self.max_depth
-        nb_docs = int(
-            self.documents.documentcount / sequence_num * max_docs_per_seq_coeff
+
+        # at least provide 5 document slot for each sequence
+        nb_docs = max(
+            int(self.documents.documentcount / sequence_num * max_docs_per_seq_coeff), 5
         )
 
         shape_proba = [self.dimension for _ in range(self.max_depth)]

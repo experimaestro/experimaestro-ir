@@ -436,6 +436,9 @@ class LoadFromT5(LightweightTask):
     t5_model: Param[T5ConditionalGenerator]
     """the target"""
 
+    random_decoder_init: Param[bool] = False
+    """whether initialize the decoder randomly"""
+
     def execute(self):
         self.t5_model.initialize(ModuleInitMode.DEFAULT.to_options())
 
@@ -453,11 +456,15 @@ class LoadFromT5(LightweightTask):
             del state_dict["lm_head.weight"]
 
             # use random initialized t5 decoder
-            decoder_key_names = [
-                name for name in state_dict.keys() if "decoder" in name
-            ]
-            for name in decoder_key_names:
-                del state_dict[name]
+            if self.random_decoder_init:
+                decoder_key_names = [
+                    name for name in state_dict.keys() if "decoder" in name
+                ]
+                for name in decoder_key_names:
+                    del state_dict[name]
+            else:
+                del state_dict["decoder.embed_tokens.weight"]
+
         elif isinstance(self.t5_model, T5CustomOutputGenerator):
             # Get the token embeddings from the tokenizer
             token_ids = []
@@ -542,7 +549,7 @@ class LoadFromBart(LightweightTask):
     bart_model: Param[T5ConditionalGenerator]
     """the target"""
 
-    random_decoder_init: Param[bool] = True
+    random_decoder_init: Param[bool] = False
     """Whether use the random decoder initialization"""
 
     def execute(self):
