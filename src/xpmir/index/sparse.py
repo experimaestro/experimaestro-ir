@@ -2,7 +2,6 @@
 
 import asyncio
 from functools import cached_property
-import logging
 import threading
 import heapq
 import torch
@@ -98,10 +97,10 @@ class SparseRetriever(Retriever, Generic[InputType]):
 
     def initialize(self):
         super().initialize()
-        logging.info("Initializing the encoder")
+        logger.info("Initializing the encoder")
         self.encoder.initialize(ModuleInitMode.DEFAULT.to_options(None))
         self.encoder.to(self.device.value)
-        logging.info("Initializing the index")
+        logger.info("Initializing the index")
         self.index.initialize(self.in_memory)
 
     def retrieve_all(
@@ -120,7 +119,7 @@ class SparseRetriever(Retriever, Generic[InputType]):
                 # Just stopped
                 pass
             except Exception:
-                logging.exception("Error in worker thread")
+                logger.exception("Error in worker thread")
 
         async def reducer(
             batch: List[Tuple[str, InputType]],
@@ -132,9 +131,9 @@ class SparseRetriever(Retriever, Generic[InputType]):
             ):
                 (ix,) = vector.nonzero()
                 query = {ix: float(v) for ix, v in zip(ix, vector[ix])}
-                logging.debug("Adding topic %s to the queue", key)
+                logger.debug("Adding topic %s to the queue", key)
                 await queue.put((key, query, self.topk))
-                logging.debug("[done] Adding topic %s to the queue", key)
+                logger.debug("[done] Adding topic %s to the queue", key)
 
         async def aio_process():
             workers = []
@@ -164,6 +163,7 @@ class SparseRetriever(Retriever, Generic[InputType]):
                     worker.cancel()
             return results
 
+        logger.info("Retrieve all with %d CPUs", available_cpus())
         results = asyncio.run(aio_process())
         return results
 
@@ -209,7 +209,7 @@ class DocumentIterator:
         return batchiter(
             self.batch_size,
             zip(
-                range(sys.maxsize if self.max_docs == 0 else self.max_docs),
+                range(self.max_docs or sys.maxsize),
                 self.documents.iter_documents(),
             ),
         )
@@ -271,11 +271,11 @@ class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
         if mp.get_start_method(allow_none=True) is None:
             mp.set_start_method("spawn")
 
-        max_docs = (
-            self.documents.documentcount
-            if self.max_docs == 0
-            else min(self.max_docs, self.documents.documentcount)
-        )
+        max_docs = 0
+        if self.max_docs:
+            max_docs = min(self.max_docs, self.documents.documentcount or sys.maxsize)
+            logger.warning("Limited indexing to %d documents", max_docs)
+
         iter_batches = MultiprocessIterator(
             DocumentIterator(self.documents, max_docs, self.batch_size)
         ).detach()
@@ -321,6 +321,8 @@ class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
         finally:
             logger.info("Waiting for the index process to stop")
             index_thread.join()
+            if not self.index_done:
+                raise RuntimeError("Indexing thread did not complete")
 
     def index(
         self,
@@ -331,6 +333,7 @@ class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
 
         :param queues: Queues are used to send tensors
         """
+        self.index_done = False
         with tqdm(
             total=max_docs,
             unit="documents",
@@ -377,6 +380,9 @@ class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
 
                 logger.info("Building the index")
                 indexer.build(self.in_memory)
+
+                logger.info("Index built")
+                self.index_done = True
             except Empty:
                 logger.warning("One encoder got a problem... stopping")
                 raise

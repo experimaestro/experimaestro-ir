@@ -50,6 +50,23 @@ class MSEAlignmentLoss(AlignmentLoss[RepresentationOutput, RepresentationOutput]
         return self.mse(input.value, target.value)
 
 
+class CosineAlignmentLoss(AlignmentLoss[RepresentationOutput, RepresentationOutput]):
+    """Computes the MSE between contextualized query representation and gold
+    representation"""
+
+    def __post_init__(self):
+        self.loss = torch.nn.CosineEmbeddingLoss()
+
+    def __call__(
+        self,
+        input: RepresentationOutput,
+        target: RepresentationOutput,
+    ):
+        return self.loss(
+            input.value, target.value, torch.Tensor([1]).to(input.value.device)
+        )
+
+
 class AlignmentTrainer(LossTrainer):
     """Compares two representations
 

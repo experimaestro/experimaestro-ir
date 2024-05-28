@@ -1,3 +1,4 @@
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from experimaestro import Config, Param
@@ -127,7 +128,12 @@ class CudaDevice(Device):
         if n_gpus == 1 or not self.distributed:
             callback(DeviceInformation(self.value, True), *args, **kwargs)
         else:
-            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            if sys.version_info.major == 3 and sys.version_info.minor < 10:
+                tmp_directory = tempfile.TemporaryDirectory()
+            else:
+                tmp_directory = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+
+            with tmp_directory as directory:
                 logger.info("Setting up distributed CUDA computing (%d GPUs)", n_gpus)
                 return mp.start_processes(
                     mp_launcher,

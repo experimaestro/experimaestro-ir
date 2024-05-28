@@ -1,5 +1,6 @@
 from typing import Any, List, Optional, Dict
 import logging
+import pandas as pd
 from pathlib import Path
 import click
 import io
@@ -120,13 +121,26 @@ class IRExperimentHelper(LearningExperimentHelper):
                         tb_logs=results.tb_logs,
                     )
 
-                print(results.evaluations.to_dataframe())  # noqa: T201
+                # Print the results
+                df = results.evaluations.to_dataframe()
+                pd.set_option("display.max_columns", None)
+                pd.set_option("display.max_rows", None)
+                pd.set_option("display.width", 200)
+                print(df)  # noqa: T201
+
+                # And save them
+                csv_path = self.xp.resultspath / "results.csv"
+                logging.info(f"Saved results in {csv_path.absolute()}")
+                with csv_path.open("wt") as fp:
+                    df.to_csv(fp, index=False)
 
         return cli(extra_args, standalone_mode=False)
 
     @cached_property
     def tensorboard_service(self):
-        return self.xp.add_service(TensorboardService(self.xp.resultspath / "runs"))
+        return self.xp.add_service(
+            TensorboardService(self.xp, self.xp.resultspath / "runs")
+        )
 
 
 ir_experiment = IRExperimentHelper.decorator
