@@ -188,7 +188,7 @@ class Evaluations:
         self.add(evaluation)
 
         # Use retriever tags
-        retriever_tags = tags(retriever)
+        retriever_tags = tags(evaluation)
         if retriever_tags:
             self.per_tags[retriever_tags] = evaluation
 
@@ -214,6 +214,10 @@ class Evaluations:
             results = evaluate.get_results()
             metrics.update(results.keys())
             to_process.append((tags_dict, results))
+
+        # Sort metrics
+        metrics = list(metrics)
+        metrics.sort()
 
         # Table header
         columns = []

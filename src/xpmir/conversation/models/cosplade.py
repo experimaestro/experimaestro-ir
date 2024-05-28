@@ -3,7 +3,7 @@ from attr import define
 from datamaestro_text.data.conversation.base import EntryType
 import torch
 import sys
-from experimaestro import Param
+from experimaestro import Param, Constant
 from datamaestro.record import Record
 from datamaestro_text.data.ir import TextItem
 from datamaestro_text.data.conversation import (
@@ -35,6 +35,9 @@ class AsymetricMSEContextualizedRepresentationLoss(
 ):
     """Computes the asymetric loss for CoSPLADE"""
 
+    version: Constant[int] = 2
+    """Current version"""
+
     def __call__(self, input: CoSPLADEOutput, target: TextsRepresentationOutput):
         # Builds up the list of tokens in the gold output
         ids = target.tokenized.ids.cpu()
@@ -47,19 +50,12 @@ class AsymetricMSEContextualizedRepresentationLoss(
                 sources.append(ix)
                 tokens.append(token_id)
 
-        # Compute difference on selected tokens
-        difference = torch.nn.functional.mse_loss(
-            input.value[sources, tokens],
-            target.value[sources, tokens],
-            reduction="none",
+        # Compute the loss
+        delta = (
+            torch.relu(target.value[sources, tokens] - input.value[sources, tokens])
+            ** 2
         )
-        loss = torch.zeros(
-            len(target.value), dtype=target.value.dtype, device=target.value.device
-        )
-
-        # Aggregate
-        sources_pt = torch.tensor(sources, device=target.value.device, dtype=torch.long)
-        return loss.scatter_add(0, sources_pt, difference).mean()
+        return torch.sum(delta) / input.value.numel()
 
 
 class CoSPLADE(ConversationRepresentationEncoder):
@@ -73,6 +69,9 @@ class CoSPLADE(ConversationRepresentationEncoder):
 
     history_encoder: Param[SpladeTextEncoderV2[Tuple[str, str]]]
     """Encoder for (query, answer) pairs"""
+
+    version: Constant[int] = 2
+    """Current version"""
 
     def __initialize__(self, options):
         super().__initialize__(options)
@@ -91,8 +90,12 @@ class CoSPLADE(ConversationRepresentationEncoder):
         history_size = self.history_size or sys.maxsize
 
         # Process each topic record
+
+        #: History size for normalization
+        history_sizes = torch.zeros((len(records), 1))
+
         for ix, c_record in enumerate(records):
-            # Adds q_n, q_1, ..., q_{n-1}
+            # Adds q_n, q_{n-1}, ..., q_{1}
             queries.append(
                 [c_record[TextItem].text]
                 + [
@@ -104,10 +107,12 @@ class CoSPLADE(ConversationRepresentationEncoder):
 
             # List of query/answer couples
             answer: Optional[AnswerEntry] = None
+            count = 0
             for item in c_record[ConversationHistoryItem].history:
                 entry_type = item[EntryType]
                 if entry_type == EntryType.USER_QUERY and answer is not None:
-                    query_answer_pairs.append((item[TextItem].text, answer.answer))
+                    count += 1
+                    query_answer_pairs.append((c_record[TextItem].text, answer.answer))
                     pair_origins.append(ix)
                     if len(pair_origins) >= history_size:
                         break
@@ -117,6 +122,8 @@ class CoSPLADE(ConversationRepresentationEncoder):
                 else:
                     # Ignore anything which is not a pair topic-response
                     answer = None
+
+            history_sizes[ix, 0] = max(count, 1)
 
         # (1) encodes the queries
         q_queries = self.queries_encoder(queries).value
@@ -128,5 +135,8 @@ class CoSPLADE(ConversationRepresentationEncoder):
             q_ix = torch.tensor(pair_origins, dtype=torch.long, device=q_queries.device)
             q_ix = q_ix.unsqueeze(-1).expand(x_pairs.shape)
             q_answers.scatter_add_(0, q_ix, x_pairs)
+
+            # Normalize by number of pairs
+            q_answers /= history_sizes.to(q_queries.device)
 
         return CoSPLADEOutput(q_queries + q_answers, q_queries, q_answers)

@@ -1,48 +1,52 @@
 from functools import cached_property
-from datamaestro.record import Record
+from typing import Iterator, List
+
 import numpy as np
+from datamaestro.record import Record
 from datamaestro_text.data.conversation import (
     ConversationDataset,
     ConversationHistoryItem,
     EntryType,
 )
-from experimaestro import Param
+from experimaestro import Config, Param
 
-from xpmir.learning.base import BaseSampler
+from xpmir.learning.base import BaseSampler, SampleIterator
 from xpmir.utils.iter import RandomSerializableIterator
 
 
-class DatasetConversationEntrySampler(BaseSampler):
-    """Uses a conversation dataset and topic records entries"""
-
-    dataset: Param[ConversationDataset]
-    """The conversation dataset"""
+class DatasetConversationBase(Config):
+    datasets: Param[List[ConversationDataset]]
+    """The conversation datasets"""
 
     @cached_property
-    def conversations(self):
-        return list(self.dataset.__iter__())
-
-    def __post_init__(self):
-        super().__post_init__()
-
-    def __iter__(self) -> RandomSerializableIterator[Record]:
-        def generator(random: np.random.RandomState):
-            while True:
-                # Pick a random conversation
-                conversation_ix = random.randint(0, len(self.conversations))
-                conversation = self.conversations[conversation_ix]
-
-                # Pick a random topic record entry
+    def records(self):
+        records = []
+        for dataset in self.datasets:
+            for conversation in dataset.__iter__():
                 nodes = [
                     node
                     for node in conversation
                     if node.entry()[EntryType] == EntryType.USER_QUERY
                 ]
-                node_ix = random.randint(len(nodes))
-                node = nodes[node_ix]
+                for node in nodes:
+                    records.append(
+                        node.entry().update(ConversationHistoryItem(node.history()))
+                    )
 
-                node = node.entry().update(ConversationHistoryItem(node.history()))
+        return records
 
-                yield node
+
+class DatasetConversationIterator(SampleIterator, DatasetConversationBase):
+    def __iter__(self) -> Iterator[Record]:
+        yield from self.records
+
+
+class DatasetConversationEntrySampler(BaseSampler, DatasetConversationBase):
+    """Uses a conversation dataset and topic records entries"""
+
+    def __iter__(self) -> RandomSerializableIterator[Record]:
+        def generator(random: np.random.RandomState):
+            while True:
+                yield self.records[random.randint(0, len(self.records))]
 
         return RandomSerializableIterator(self.random, generator)

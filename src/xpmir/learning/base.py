@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional, Generic, TypeVar
+from typing import Optional, TypeVar, Sequence, Iterator, Iterable
 import numpy as np
 from functools import cached_property
 from experimaestro import Config, Param
@@ -31,7 +31,32 @@ class Sampler(Config, EasyLogger):
 T = TypeVar("T")
 
 
-class BaseSampler(Sampler, Generic[T], ABC):
+class SampleIterator(Config, Iterable[T], ABC):
+    """Generic class to iterate over items or batch of items"""
+
+    @abstractmethod
+    def __iter__() -> Iterator[T]:
+        pass
+
+    def __batch_iter__(self, batch_size: int) -> Iterator[Sequence[T]]:
+        """Batch iterations"""
+        iterator = self.__iter__()
+        data = []
+        try:
+            while True:
+                data.append(next(iterator))
+                if len(data) == batch_size:
+                    yield data
+        except StopIteration:
+            pass
+
+        if data:
+            yield data
+
+
+class BaseSampler(Sampler, SampleIterator[T], ABC):
+    """A serializable sampler iterator"""
+
     @abstractmethod
     def __iter__() -> SerializableIterator[T]:
         pass

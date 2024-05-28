@@ -14,6 +14,8 @@ from experimaestro import (
     tagspath,
     Task,
     PathSerializationLWTask,
+    experiment,
+    RunMode,
 )
 from experimaestro.scheduler import Job, Listener
 from experimaestro.utils import cleanupdir
@@ -488,43 +490,52 @@ class TensorboardServiceListener(Listener):
 class TensorboardService(WebService):
     id = "tensorboard"
 
-    def __init__(self, path: Path):
+    def __init__(self, xp: experiment, path: Path):
         super().__init__()
 
         self.path = path
-        cleanupdir(self.path)
-        self.path.mkdir(exist_ok=True, parents=True)
-        logger.info("You can monitor learning with:")
-        logger.info("tensorboard --logdir=%s", self.path)
         self.url = None
+        self.run_mode = xp.run_mode
+
+        if self.run_mode == RunMode.NORMAL:
+            cleanupdir(self.path)
+            self.path.mkdir(exist_ok=True, parents=True)
+            logger.info("You can monitor learning with:")
+            logger.info("tensorboard --logdir=%s", self.path)
 
     def add(self, task: Task, path: Path):
         # Wait until config has started
-        if job := task.__xpm__.job:
-            if job.scheduler is not None:
-                tag_path = tagspath(task)
-                if tag_path:
-                    job.scheduler.addlistener(
-                        TensorboardServiceListener(self.path / tag_path, path)
-                    )
+        if self.run_mode == RunMode.NORMAL:
+            if job := task.__xpm__.job:
+                if job.scheduler is not None:
+                    tag_path = tagspath(task)
+                    if tag_path:
+                        job.scheduler.addlistener(
+                            TensorboardServiceListener(self.path / tag_path, path)
+                        )
+                    else:
+                        logger.error(
+                            "The task is not associated with tags: "
+                            "cannot link to tensorboard data"
+                        )
                 else:
-                    logger.error(
-                        "The task is not associated with tags: "
-                        "cannot link to tensorboard data"
-                    )
+                    logger.debug("No scheduler: not adding the tensorboard data")
             else:
-                logger.debug("No scheduler: not adding the tensorboard data")
-        else:
-            logger.error("Task was not started: cannot link to tensorboard job path")
+                logger.error(
+                    "Task was not started: cannot link to tensorboard job path"
+                )
 
     def description(self):
         return "Tensorboard service"
 
     def close(self):
-        if self.server:
+        if self.server and self.run_mode == RunMode.NORMAL:
             self.server.shutdown()
 
     def _serve(self, running: threading.Event):
+        if self.run_mode != RunMode.NORMAL:
+            return
+
         import tensorboard as tb
 
         try:

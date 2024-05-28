@@ -316,6 +316,6 @@ class TrainerContext(ComputationContext):
     def scope(self, name: str):
         try:
             self._scope.append(name)
-            yield
+            yield self
         finally:
             self._scope.pop()
