@@ -30,7 +30,7 @@ class HFModelConfigFromId(HFModelConfig):
     model_id: Param[str]
     """HuggingFace Model ID"""
 
-    def __call__(self, options: ModuleInitOptions, automodel: Type[AutoModel]):
+    def get_config(self, options: ModuleInitOptions, automodel: Type[AutoModel]):
         model_id_or_path = self.model_id
 
         # Use saved models
@@ -50,6 +50,12 @@ class HFModelConfigFromId(HFModelConfig):
 
         # Load the model configuration
         config = AutoConfig.from_pretrained(model_id_or_path)
+
+        # Return it
+        return config, model_id_or_path
+
+    def __call__(self, options: ModuleInitOptions, automodel: Type[AutoModel]):
+        config, model_id_or_path = self.get_config(options, automodel)
 
         if options.mode == ModuleInitMode.NONE or options.mode == ModuleInitMode.RANDOM:
             logging.info("Random initialization of HF model")

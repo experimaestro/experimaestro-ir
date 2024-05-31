@@ -173,7 +173,8 @@ class IndexCollection(Index, Task):
             rb""".*index\.IndexCollection\$LocalIndexerThread \(IndexCollection.java:\d+\).* docs added."""  # noqa: E501
         )
         RE_COMPLETE = re.compile(
-            rb""".*IndexCollection\.java.*Indexing Complete.*documents indexed"""
+            rb""".*(IndexCollection|AbstractIndexer).*"""
+            rb"""Indexing Complete.*documents indexed"""
         )
 
         async def run(command):

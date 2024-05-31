@@ -4,6 +4,7 @@ from .encoders import (  # noqa: F401
     TokensEncoderOutput,
     TokenizedTextEncoderBase,
     TokenizedTextEncoder,
+    InputType,
 )
 
 from .tokenizers import (  # noqa: F401

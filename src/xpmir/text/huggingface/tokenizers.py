@@ -162,16 +162,27 @@ class HFTokenizerAdapter(HFTokenizerBase[TokenizerInput]):
 class HFListTokenizer(HFTokenizerBase[List[List[str]]]):
     """Process list of texts by separating them by a separator token"""
 
+    separate_index: Param[bool] = 0
+    """Use a tuple until this index"""
+
     @cached_property
     def sep_string(self):
         token = self.tokenizer.tokenizer.sep_token
         assert token is not None
         return token
 
+    def join(self, text_list: List[str]):
+        if self.separate_index > 0:
+            r = text_list[: self.separate_index]
+            r.extend([self.sep_string.join(text_list[self.separate_index :])])
+            return r
+
+        return self.sep_string.join(text_list)
+
     def tokenize(
         self, text_lists: List[List[str]], options: Optional[TokenizerOptions] = None
     ) -> TokenizedTexts:
         return self.tokenizer.tokenize(
-            [self.sep_string.join(text_list) for text_list in text_lists],
+            [self.join(text_list) for text_list in text_lists],
             options=options,
         )
