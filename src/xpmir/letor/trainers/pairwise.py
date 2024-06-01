@@ -187,10 +187,9 @@ class PairwiseTrainer(LossTrainer):
 
     def acc(self, scores_by_record) -> Tensor:
         with torch.no_grad():
-            count = scores_by_record.shape[0] * (scores_by_record.shape[1] - 1)
             return (
-                scores_by_record[:, :1] > scores_by_record[:, 1:]
-            ).sum().float() / count
+                scores_by_record[:, 0] > scores_by_record[:, 1]
+            ).sum().float() / len(scores_by_record)
 
 
 class PairwiseLossWithTarget(Config):

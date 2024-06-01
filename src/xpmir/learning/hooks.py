@@ -9,7 +9,8 @@ logger.setLevel(logging.INFO)
 
 
 class LayerFreezer(InitializationTrainingHook):
-    """This training hook class can be used to freeze some of the transformer layers"""
+    """This training hook class can be used to freeze a subset of model
+    parameters"""
 
     selector: Param[ParametersIterator]
     """How to select the layers to freeze"""

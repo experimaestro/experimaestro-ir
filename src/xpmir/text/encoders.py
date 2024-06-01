@@ -118,7 +118,7 @@ class TextEncoderBase(Encoder, Generic[InputType, EncoderOutput]):
     __call__: Callable[Tuple["TextEncoderBase", List[InputType]], EncoderOutput]
 
     @abstractmethod
-    def forward(self, texts: List[InputType]) -> EncoderOutput:
+    def forward(self, texts: InputType) -> EncoderOutput:
         raise NotImplementedError()
 
     @property
@@ -232,14 +232,24 @@ class TokenizedTextEncoder(
         self.encoder.initialize(options)
 
     def forward(
-        self, inputs: List[InputType], options: Optional[TokenizerOptions] = None
+        self, inputs: List[InputType], *args, options: Optional[TokenizerOptions] = None
     ) -> EncoderOutput:
+        assert len(args) == 0, "Unhandled extra arguments"
+        tokenized = self.tokenizer.tokenize(inputs, options)
+        return self.forward_tokenized(tokenized)
+
+    def forward_tokenized(self, tokenized, *args):
+        assert len(args) == 0, "Unhandled extra arguments"
+        return self.encoder(tokenized)
+
+    def tokenize(
+        self, inputs: List[InputType], options: Optional[TokenizerOptions] = None
+    ):
         options = options or TokenizerOptions()
         options.max_length = min(
             self.encoder.max_length, options.max_length or sys.maxsize
         )
-        tokenized = self.tokenizer.tokenize(inputs, options)
-        return self.encoder(tokenized)
+        return self.tokenizer.tokenize(inputs, options)
 
     def static(self):
         """Whether embeddings parameters are learnable"""
