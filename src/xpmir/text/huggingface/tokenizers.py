@@ -33,7 +33,7 @@ class HFTokenizer(Config, Initializable):
     """The tokenizer hugginface ID"""
 
     max_length: Param[int] = 4096
-    """Maximum length for the tokenizer (can be overridden)"""
+    """Maximum length for the tokenizer (can be overridden by the model)"""
 
     DEFAULT_OPTIONS = TokenizerOptions()
 
@@ -71,7 +71,7 @@ class HFTokenizer(Config, Initializable):
         if max_length is None:
             max_length = self.tokenizer.model_max_length
         else:
-            max_length = min(max_length, self.tokenizer.model_max_length)
+            max_length = min(max_length, self.maxtokens())
 
         r = self.tokenizer(
             list(texts),
@@ -82,6 +82,7 @@ class HFTokenizer(Config, Initializable):
             return_length=options.return_length,
             return_attention_mask=options.return_mask,
         )
+
         return TokenizedTexts(
             None,
             r["input_ids"],
@@ -124,8 +125,8 @@ class HFTokenizerBase(TokenizerBase[TokenizerInput, TokenizedTexts]):
         self.tokenizer.initialize(options)
 
     @classmethod
-    def from_pretrained_id(cls, hf_id: str):
-        return cls(tokenizer=HFTokenizer(model_id=hf_id))
+    def from_pretrained_id(cls, hf_id: str, **kwargs):
+        return cls(tokenizer=HFTokenizer(model_id=hf_id), **kwargs)
 
     def vocabulary_size(self):
         return self.tokenizer.vocab_size

@@ -100,9 +100,9 @@ class TokensEncoder(Tokenizer, Encoder):
         """
         return True
 
-    def maxtokens(self) -> int:
+    def maxtokens(self) -> Optional[int]:
         """Maximum number of tokens that can be processed"""
-        return sys.maxsize
+        return None
 
 
 LegacyEncoderInput = Union[List[str], List[Tuple[str, str]], List[Tuple[str, str, str]]]
@@ -236,19 +236,16 @@ class TokenizedTextEncoder(
     ) -> EncoderOutput:
         assert len(args) == 0, "Unhandled extra arguments"
         tokenized = self.tokenizer.tokenize(inputs, options)
-        return self.forward_tokenized(tokenized)
+        return self.forward_tokenized(tokenized, *args)
 
-    def forward_tokenized(self, tokenized, *args):
-        assert len(args) == 0, "Unhandled extra arguments"
+    def forward_tokenized(self, tokenized):
         return self.encoder(tokenized)
 
     def tokenize(
         self, inputs: List[InputType], options: Optional[TokenizerOptions] = None
     ):
         options = options or TokenizerOptions()
-        options.max_length = min(
-            self.encoder.max_length, options.max_length or sys.maxsize
-        )
+        options.max_length = min(self.encoder.max_length, options.max_length or None)
         return self.tokenizer.tokenize(inputs, options)
 
     def static(self):
