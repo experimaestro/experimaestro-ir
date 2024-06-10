@@ -18,8 +18,10 @@ from xpmir.measures import Measure
 import xpmir.measures as m
 from xpmir.metrics import evaluator
 from xpmir.rankers import Retriever
-
+from xpmir.utils.logging import easylog
 from experimaestro.launchers import Launcher
+
+logger = easylog()
 
 
 def get_evaluator(metrics: List[ir_measures.Metric], assessments: AdhocAssessments):
@@ -211,9 +213,12 @@ class Evaluations:
         to_process = []
         metrics = set()
         for tags_dict, evaluate in self.per_tags.items():
-            results = evaluate.get_results()
-            metrics.update(results.keys())
-            to_process.append((tags_dict, results))
+            try:
+                results = evaluate.get_results()
+                metrics.update(results.keys())
+                to_process.append((tags_dict, results))
+            except FileNotFoundError:
+                logger.error("Cannot retrieve evaluation results for %s", tags_dict)
 
         # Sort metrics
         metrics = list(metrics)

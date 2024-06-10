@@ -1,11 +1,10 @@
-from typing import Iterable, Iterator, List, Optional, Set, Union
+from typing import Iterable, Iterator, List, Optional, Set, Union, Type
 from pathlib import Path
 from experimaestro import (
     Param,
     Config,
     Task,
     tqdm,
-    cache,
     pathgenerator,
     Annotated,
     Meta,
@@ -20,21 +19,20 @@ from datamaestro_text.data.ir import (
     DocumentStore,
     Documents,
     Topics,
+    TopicRecord,
 )
 
 from datamaestro_text.data.ir.trec import TrecAdhocAssessments
 from datamaestro_text.data.ir.csv import Topics as CSVTopics
 from xpmir.rankers import Retriever
+from xpmir.misc import IDList, FileIDList
 from xpmir.utils.utils import easylog
 
 logger = easylog()
 
 
-class TopicFold(Topics):
+class AbstractTopicFold(Topics):
     """ID-based topic selection"""
-
-    ids: Param[List[str]]
-    """A set of the ids for the topics where we select from"""
 
     topics: Param[Topics]
     """The collection of the topics"""
@@ -42,36 +40,58 @@ class TopicFold(Topics):
     def iter(self):
         ids = set(self.ids)
         for topic in self.topics.iter():
-            if topic.qid in ids:
+            if topic[IDItem].id in ids:
                 yield topic
 
+    @property
+    def topic_recordtype(self) -> Type[TopicRecord]:
+        """The class for topics"""
+        return self.topics.topic_recordtype
 
-class AdhocAssessmentFold(AdhocAssessments):
-    """Filter assessments by topic ID"""
+    def __validate__(self) -> None:
+        super().__validate__()
+        assert self.topics.topic_recordtype.has(IDItem)
 
+
+class TopicFold(AbstractTopicFold):
     ids: Param[List[str]]
-    """A set of the ids for the assessments where we select from"""
+    """A set of the ids for the topics where we select from"""
+
+
+class IDTopicFold(AbstractTopicFold):
+    id_list: Param[IDList]
+
+    @property
+    def ids(self):
+        return self.id_list.ids
+
+
+class AbstractAdhocAssessmentFold(AdhocAssessments):
+    """Filter assessments by topic ID"""
 
     qrels: Param[AdhocAssessments]
     """The collection of the assessments"""
 
-    @cache("assessements.qrels")
-    def trecpath(self, path):
-        ids = set(self.ids)
-        if not path.is_file():
-            with path.open("wt") as fp:
-                for qrels in self.iter():
-                    if qrels.qid in ids:
-                        for qrel in qrels.assessments:
-                            fp.write(f"""{qrels.qid} 0 {qrel.docid} {qrel.rel}\n""")
-
-        return path
-
     def iter(self):
         ids = set(self.ids)
         for qrels in self.qrels.iter():
-            if qrels.qid in ids:
+            if qrels.topic_id in ids:
                 yield qrels
+
+
+class IDAdhocAssessmentFold(AbstractAdhocAssessmentFold):
+    id_list: Param[IDList]
+
+    @property
+    def ids(self):
+        return self.id_list.ids
+
+
+class AdhocAssessmentFold(AbstractAdhocAssessmentFold):
+    """Filter assessments by topic ID"""
+
+    ids: Param[List[str]]
+    """A set of the ids for the assessments where we select from"""
 
 
 def fold(ids: Iterable[str], dataset: Adhoc):
@@ -119,16 +139,21 @@ class ConcatFold(Task):
         self.topics.parent.mkdir(parents=True, exist_ok=True)
         with self.topics.open("wt") as fp:
             for topic in topics:
-                ids.add(topic.qid)
+                ids.add(topic[IDItem].id)
                 slash_t = "\t"
-                fp.write(f"""{topic.qid}\t{topic.text.replace(slash_t, ' ')}\n""")
+                fp.write(
+                    f"""{topic[IDItem].id}\t"""
+                    f"""{topic[TextItem].text.replace(slash_t, ' ')}\n"""
+                )
 
         with self.assessments.open("wt") as fp:
             for dataset in self.datasets:
                 for qrels in dataset.assessments.iter():
-                    if qrels.qid in ids:
+                    if qrels.topic_id in ids:
                         for qrel in qrels.assessments:
-                            fp.write(f"""{qrels.qid} 0 {qrel.docid} {qrel.rel}\n""")
+                            fp.write(
+                                f"""{qrels.topic_id} 0 {qrel.doc_id} {qrel.rel}\n"""
+                            )
 
 
 class RandomFold(Task):
@@ -236,6 +261,112 @@ class RandomFold(Task):
                 if qrels.topic_id in ids:
                     for qrel in qrels.assessments:
                         fp.write(f"""{qrels.topic_id} 0 {qrel.doc_id} {qrel.rel}\n""")
+
+
+class TopicsFoldGenerator(FileIDList, Task):
+    """Extracts a random subset of topics from a dataset
+
+    This task is more generic than the RandomFold one and should work
+    whatever the topics/assessments as long as they are serializable (using
+    pickle).
+    """
+
+    seed: Param[int]
+    """Random seed used to compute the fold"""
+
+    sizes: Param[List[float]]
+    """Number of topics of each fold (or percentage if sums to 1)"""
+
+    dataset: Param[Adhoc]
+    """The Adhoc dataset from which a fold is extracted"""
+
+    fold: Param[int]
+    """Which fold should be taken"""
+
+    exclude: Param[Optional[Topics]]
+    """Exclude some topics from the random fold"""
+
+    path: Annotated[Path, pathgenerator("topics.lst")]
+    """Selected topic IDs"""
+
+    def __validate__(self):
+        assert self.fold < len(self.sizes)
+
+    @staticmethod
+    def folds(
+        seed: int,
+        sizes: List[float],
+        dataset: Param[Adhoc],
+        exclude: Param[Optional[Topics]] = None,
+        submit=True,
+    ):
+        """Creates folds
+
+        Parameters:
+
+        - submit: if true (default), submits the fold tasks to experimaestro
+        """
+
+        folds = []
+        for ix in range(len(sizes)):
+            fold = TopicsFoldGenerator(
+                seed=seed, sizes=sizes, dataset=dataset, exclude=exclude, fold=ix
+            )
+            if submit:
+                fold = fold.submit()
+            folds.append(fold)
+
+        return folds
+
+    def task_outputs(self, dep) -> Adhoc:
+        return dep(
+            Adhoc(
+                id="",  # No need to have a more specific id since it is generated
+                topics=dep(
+                    IDTopicFold(id="", topics=self.dataset.topics, id_list=self)
+                ),
+                assessments=dep(
+                    IDAdhocAssessmentFold(
+                        id="", qrels=self.dataset.assessments, id_list=self
+                    )
+                ),
+                documents=self.dataset.documents,
+            )
+        )
+
+    def execute(self):
+        import numpy as np
+
+        # Get topics
+        badids = (
+            set(topic[IDItem].id for topic in self.exclude.iter())
+            if self.exclude
+            else set()
+        )
+        topics = [
+            topic[IDItem].id
+            for topic in self.dataset.topics.iter()
+            if topic[IDItem].id not in badids
+        ]
+        random = np.random.RandomState(self.seed)
+        random.shuffle(topics)
+
+        # Get the fold
+        sizes = np.array([0.0] + self.sizes)
+        s = sizes.sum()
+        if abs(s - 1) < 1e-6:
+            sizes = np.round(len(topics) * sizes)
+            sizes = np.round(len(topics) * sizes / sizes.sum())
+
+        assert sizes[self.fold + 1] > 0
+
+        indices = sizes.cumsum().astype(int)
+        topics = topics[indices[self.fold] : indices[self.fold + 1]]
+
+        # Write topic IDs
+        with self.path.open("wt") as fp:
+            for topic in topics:
+                fp.write(f"{topic}\n")
 
 
 class DocumentSubset(Documents):

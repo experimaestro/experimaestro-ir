@@ -2,6 +2,7 @@ from typing import Callable, List
 from experimaestro import Config, Param
 import torch.nn as nn
 import torch
+from abc import ABC, abstractmethod
 from xpmir.context import InitializationHook
 from xpmir.learning.devices import ComputationContext, DistributedDeviceInformation
 from xpmir.utils.utils import easylog
@@ -9,18 +10,17 @@ from xpmir.utils.utils import easylog
 logger = easylog()
 
 
-class DistributableModel(Config):
+class DistributableModel(Config, ABC):
     """A model that can be distributed over GPUs
 
     Subclasses must implement :py:meth:`distribute_models`
     """
 
+    @abstractmethod
     def distribute_models(self, update: Callable[[nn.Module], nn.Module]):
         """This method is called with an `update` parameter that should be used
         to update all the torch modules that we need to distribute on GPUs"""
-        raise NotImplementedError(
-            f"distribute_models not implemented in {self.__class__}"
-        )
+        ...
 
 
 class DistributedHook(InitializationHook):
@@ -59,9 +59,13 @@ class DistributedHook(InitializationHook):
 
 
 class DataParallel(torch.nn.DataParallel):
-    """This adapter aims to resolve the problem that in the DataParallel,
-    it generate the '.module.' in the read and write. Need to rewrite the
-    load_state and write_state"""
+    """Subclasses DataParallel for serialization
+
+    Removes the `.module` prefix introduced by DataParallel by:
+
+    - (loading) Registering a load state hook
+    - (saving) Redefining the state dict to skip the module prefix
+    """
 
     module: nn.Module
     """The model to put on multi dataset."""

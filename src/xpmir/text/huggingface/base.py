@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from dataclasses import InitVar
 import logging
+import os
+from pathlib import Path
 from typing import Type
 import torch.nn as nn
 from experimaestro import Config, Param
@@ -28,16 +30,39 @@ class HFModelConfigFromId(HFModelConfig):
     model_id: Param[str]
     """HuggingFace Model ID"""
 
-    def __call__(self, options: ModuleInitOptions, automodel: Type[AutoModel]):
+    def get_config(self, options: ModuleInitOptions, automodel: Type[AutoModel]):
+        model_id_or_path = self.model_id
+
+        # Use saved models
+        if model_path := os.environ.get("XPMIR_TRANSFORMERS_CACHE", None):
+            path = (
+                Path(model_path)
+                / Path(f"{automodel.__module__}.{automodel.__qualname__}")
+                / Path(self.model_id)
+            )
+            if path.is_dir():
+                logging.warning("Using saved model from %s", path)
+                model_id_or_path = path
+            else:
+                logging.warning(
+                    "Could not find saved model in %s, using HF loading", path
+                )
+
         # Load the model configuration
-        config = AutoConfig.from_pretrained(self.model_id)
+        config = AutoConfig.from_pretrained(model_id_or_path)
+
+        # Return it
+        return config, model_id_or_path
+
+    def __call__(self, options: ModuleInitOptions, automodel: Type[AutoModel]):
+        config, model_id_or_path = self.get_config(options, automodel)
 
         if options.mode == ModuleInitMode.NONE or options.mode == ModuleInitMode.RANDOM:
             logging.info("Random initialization of HF model")
             return config, automodel.from_config(config)
 
         logging.info("Loading model from HF (%s)", self.model_id)
-        return config, automodel.from_pretrained(self.model_id, config=config)
+        return config, automodel.from_pretrained(model_id_or_path, config=config)
 
 
 class HFModel(Module):
