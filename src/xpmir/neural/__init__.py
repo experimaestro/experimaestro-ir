@@ -67,11 +67,11 @@ class DualRepresentationScorer(LearnableScorer, Generic[QueriesRep, DocsRep]):
 
         By default, uses `merge`
         """
-        return self.merge(list)
+        return self.merge(queries)
 
     def merge_documents(self, documents: DocsRep):
         """Merge query batches encoded with `encode_documents`"""
-        return self.merge(list)
+        return self.merge(documents)
 
     def merge(self, objects: Union[DocsRep, QueriesRep]):
         """Merge objects
