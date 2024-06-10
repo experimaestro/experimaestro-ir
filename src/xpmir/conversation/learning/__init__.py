@@ -26,11 +26,11 @@ class DatasetConversationBase(Config):
                 nodes = [
                     node
                     for node in conversation
-                    if node.entry()[EntryType] == EntryType.USER_QUERY
+                    if node.entry[EntryType] == EntryType.USER_QUERY
                 ]
                 for node in nodes:
                     records.append(
-                        node.entry().update(ConversationHistoryItem(node.history()))
+                        node.entry.update(ConversationHistoryItem(node.history()))
                     )
 
         return records

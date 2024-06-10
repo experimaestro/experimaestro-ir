@@ -1,3 +1,5 @@
+import os
+from pathlib import Path
 import logging
 from typing import List, Optional, Tuple, Union
 from functools import cached_property
@@ -37,8 +39,22 @@ class HFTokenizer(Config, Initializable):
 
     def __initialize__(self, options: ModuleInitOptions):
         """Initialize the HuggingFace transformer"""
+
+        model_id_or_path = self.model_id
+
+        # Use saved models
+        if model_path := os.environ.get("XPMIR_TRANSFORMERS_CACHE", None):
+            path = Path(model_path) / "tokenizers" / Path(self.model_id)
+            if path.is_dir():
+                logging.warning("Using saved tokenizer from %s", path)
+                model_id_or_path = path
+            else:
+                logging.warning(
+                    "Could not find saved tokenizer in %s, using HF loading", path
+                )
+
         self.tokenizer = AutoTokenizer.from_pretrained(
-            self.model_id, model_max_length=self.max_length
+            model_id_or_path, model_max_length=self.max_length
         )
 
         self.cls = self.tokenizer.cls_token
@@ -146,16 +162,27 @@ class HFTokenizerAdapter(HFTokenizerBase[TokenizerInput]):
 class HFListTokenizer(HFTokenizerBase[List[List[str]]]):
     """Process list of texts by separating them by a separator token"""
 
+    separate_index: Param[bool] = 0
+    """Use a tuple until this index"""
+
     @cached_property
     def sep_string(self):
         token = self.tokenizer.tokenizer.sep_token
         assert token is not None
         return token
 
+    def join(self, text_list: List[str]):
+        if self.separate_index > 0:
+            r = text_list[: self.separate_index]
+            r.extend([self.sep_string.join(text_list[self.separate_index :])])
+            return r
+
+        return self.sep_string.join(text_list)
+
     def tokenize(
         self, text_lists: List[List[str]], options: Optional[TokenizerOptions] = None
     ) -> TokenizedTexts:
         return self.tokenizer.tokenize(
-            [self.sep_string.join(text_list) for text_list in text_lists],
+            [self.join(text_list) for text_list in text_lists],
             options=options,
         )

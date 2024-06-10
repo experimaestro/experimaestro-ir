@@ -73,6 +73,12 @@ class CoSPLADE(ConversationRepresentationEncoder):
     version: Constant[int] = 2
     """Current version"""
 
+    reverse_queries: Param[bool] = False
+    """If True, use the order q_n, q_1, ..., q_{n-1}. If False, q_n, q_{n-1}, ..., q_1
+
+    The original CoSPLADE uses True for this parameter
+    """
+
     def __initialize__(self, options):
         super().__initialize__(options)
 
@@ -96,14 +102,17 @@ class CoSPLADE(ConversationRepresentationEncoder):
 
         for ix, c_record in enumerate(records):
             # Adds q_n, q_{n-1}, ..., q_{1}
-            queries.append(
-                [c_record[TextItem].text]
-                + [
-                    entry[TextItem].text
-                    for entry in c_record[ConversationHistoryItem].history
-                    if entry[EntryType] == EntryType.USER_QUERY
-                ]
-            )
+            q_history = [
+                entry[TextItem].text
+                for entry in c_record[ConversationHistoryItem].history
+                if entry[EntryType] == EntryType.USER_QUERY
+            ]
+
+            if self.reverse_queries:
+                # Adds q_n, q_1, ..., q_{n-1}
+                q_history.reverse()
+
+            queries.append([c_record[TextItem].text] + q_history)
 
             # List of query/answer couples
             answer: Optional[AnswerEntry] = None
