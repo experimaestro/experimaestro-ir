@@ -1,5 +1,4 @@
 import sys
-from typing import Optional
 from experimaestro import Param
 from xpmir.learning import Module
 from xpmir.text.encoders import (
@@ -70,9 +69,6 @@ class HFCLSEncoder(
     HFEncoderBase, TokenizedEncoder[TokenizedTexts, TextsRepresentationOutput]
 ):
     """Encodes a text using the [CLS] token"""
-
-    maxlen: Param[Optional[int]] = None
-    """Limit the text to be encoded"""
 
     def forward(self, tokenized: TokenizedTexts) -> TextsRepresentationOutput:
         tokenized = tokenized.to(self.device)

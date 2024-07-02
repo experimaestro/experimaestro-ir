@@ -2,7 +2,6 @@ from typing import List, Optional
 import torch
 from experimaestro import Param
 from datamaestro_text.data.ir import TextItem
-from xpmir.distributed import DistributableModel
 from xpmir.learning.batchers import Batcher
 from xpmir.letor.records import TopicRecord, DocumentRecord
 from xpmir.neural import DualRepresentationScorer, QueriesRep, DocsRep
@@ -69,7 +68,7 @@ class Dense(DualVectorScorer[QueriesRep, DocsRep]):
     """A scorer based on a pair of (query, document) dense vectors"""
 
     def score_product(self, queries, documents, info: Optional[TrainerContext] = None):
-        return queries @ documents.T
+        return queries.value @ documents.value.T
 
     def score_pairs(self, queries, documents, info: Optional[TrainerContext] = None):
         scores = (queries.unsqueeze(1) @ documents.unsqueeze(2)).squeeze(-1).squeeze(-1)
@@ -111,7 +110,7 @@ class CosineDense(Dense):
         return documents / documents.norm(dim=1, keepdim=True)
 
 
-class DotDense(Dense, DistributableModel):
+class DotDense(Dense):
     """Dual model based on inner product."""
 
     def __validate__(self):

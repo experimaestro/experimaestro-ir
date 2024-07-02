@@ -31,7 +31,7 @@ from xpmir.text.encoders import TextEncoderBase, TextsRepresentationOutput, Inpu
 from xpmir.rankers import Retriever, TopicRecord, ScoredDocument
 from xpmir.utils.iter import MultiprocessIterator
 from xpmir.utils.multiprocessing import StoppableQueue, available_cpus
-import xpmir_rust
+import impact_index
 
 logger = easylog()
 
@@ -42,13 +42,11 @@ class SparseRetrieverIndex(Config):
     index_path: Meta[Path]
     documents: Param[DocumentStore]
 
-    index: xpmir_rust.index.SparseBuilderIndex
+    index: impact_index.Index
     ordered = False
 
     def initialize(self, in_memory: bool):
-        self.index = xpmir_rust.index.SparseBuilderIndex.load(
-            str(self.index_path.absolute()), in_memory
-        )
+        self.index = impact_index.Index.load(str(self.index_path.absolute()), in_memory)
 
     def retrieve(self, query: Dict[int, float], top_k: int) -> List[ScoredDocument]:
         results = []
@@ -125,7 +123,12 @@ class SparseRetriever(Retriever, Generic[InputType]):
             batch: List[Tuple[str, InputType]],
             queue: asyncio.Queue,
         ):
-            x = self.encoder([text for _, text in batch]).value.cpu().detach().numpy()
+            x = (
+                self.encoder([topic[TextItem].text for _, topic in batch])
+                .value.cpu()
+                .detach()
+                .numpy()
+            )
             assert len(x) == len(batch), (
                 f"Discrepancy between counts of vectors ({len(x)})"
                 f" and number queries ({len(batch)})"
@@ -351,7 +354,7 @@ class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
                     len(queues),
                     self.index_path,
                 )
-                indexer = xpmir_rust.index.SparseIndexer(str(self.index_path))
+                indexer = impact_index.IndexBuilder(str(self.index_path))
                 heap = [queue.get() for queue in queues]
                 heapq.heapify(heap)
 

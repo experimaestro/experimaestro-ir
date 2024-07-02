@@ -171,7 +171,18 @@ class TripletTextEncoder(TextEncoderBase[Tuple[str, str, str], torch.Tensor]):
 @define
 class RepresentationOutput:
     value: torch.Tensor
-    """An arbitrary representation"""
+    """An arbitrary representation (by default, the batch dimension is the
+    first)"""
+
+    def __len__(self):
+        return len(self.value)
+
+    def __getitem__(self, ix: Union[slice, int]):
+        return self.__class__(self.value[ix])
+
+    @property
+    def device(self):
+        return self.value.device
 
 
 @define
@@ -188,6 +199,12 @@ class TextsRepresentationOutput(RepresentationOutput):
 
     tokenized: TokenizedTexts
     """Tokenized texts"""
+
+    def to(self, device):
+        return self.__class__(self.value.to(device), self.tokenized.to(device))
+
+    def __getitem__(self, ix: Union[slice, int]):
+        return self.__class__(self.value[ix], self.tokenized[ix])
 
 
 class TokenizedEncoder(Encoder, Generic[EncoderOutput, TokenizerOutput]):
