@@ -22,7 +22,7 @@ from experimaestro import (
     tqdm,
     Constant,
 )
-from datamaestro_text.data.ir import DocumentRecord, DocumentStore, TextItem
+from datamaestro_text.data.ir import DocumentRecord, DocumentStore
 from xpmir.learning import ModuleInitMode
 from xpmir.learning.batchers import Batcher
 from xpmir.utils.utils import batchiter, easylog
@@ -77,8 +77,13 @@ class SparseRetrieverIndex(Config):
 
 class SparseRetriever(Retriever, Generic[InputType]):
     index: Param[SparseRetrieverIndex]
-    encoder: Param[TextEncoderBase[InputType, torch.Tensor]]
+    """The sparse retriever index"""
+
+    encoder: Param[TextEncoderBase[InputType, TextsRepresentationOutput]]
+    """Encodes InputType records to text representation output"""
+
     topk: Param[int]
+    """Number of documents to return"""
 
     device: Meta[Device] = DEFAULT_DEVICE
     """The device for building the index"""
@@ -123,12 +128,7 @@ class SparseRetriever(Retriever, Generic[InputType]):
             batch: List[Tuple[str, InputType]],
             queue: asyncio.Queue,
         ):
-            x = (
-                self.encoder([topic[TextItem].text for _, topic in batch])
-                .value.cpu()
-                .detach()
-                .numpy()
-            )
+            x = self.encoder([topic for _, topic in batch]).value.cpu().detach().numpy()
             assert len(x) == len(batch), (
                 f"Discrepancy between counts of vectors ({len(x)})"
                 f" and number queries ({len(batch)})"
@@ -458,8 +458,6 @@ class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
         queue: "mp.Queue[EncodedDocument]",
     ):
         # Assumes for now dense vectors
-        vectors = (
-            encoder([d[TextItem].text for _, d in batch]).value.cpu().numpy()
-        )  # bs * vocab
+        vectors = encoder([d for _, d in batch]).value.cpu().numpy()  # bs * vocab
         for vector, (docid, _) in zip(vectors, batch):
             queue.put(EncodedDocument(docid, vector))

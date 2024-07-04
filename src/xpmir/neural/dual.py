@@ -1,7 +1,6 @@
 from typing import List, Optional
 import torch
 from experimaestro import Param
-from datamaestro_text.data.ir import TextItem
 from xpmir.learning.batchers import Batcher
 from xpmir.letor.records import TopicRecord, DocumentRecord
 from xpmir.neural import DualRepresentationScorer, QueriesRep, DocsRep
@@ -100,13 +99,11 @@ class CosineDense(Dense):
     """Dual model based on cosine similarity."""
 
     def encode_queries(self, records: List[TopicRecord]):
-        queries = (self.query_encoder or self.encoder)(
-            [record[TextItem].text for record in records]
-        )
+        queries = (self.query_encoder or self.encoder)(records)
         return queries / queries.norm(dim=1, keepdim=True)
 
     def encode_documents(self, records: List[DocumentRecord]):
-        documents = self.encoder([record[TextItem].text for record in records])
+        documents = self.encoder(records)
         return documents / documents.norm(dim=1, keepdim=True)
 
 
@@ -119,11 +116,11 @@ class DotDense(Dense):
 
     def encode_queries(self, records: List[TopicRecord]):
         """Encode the different queries"""
-        return self._query_encoder([record[TextItem].text for record in records])
+        return self._query_encoder(records)
 
     def encode_documents(self, records: List[DocumentRecord]):
         """Encode the different documents"""
-        return self.encoder([record[TextItem].text for record in records])
+        return self.encoder(records)
 
     def getRetriever(
         self, retriever: "Retriever", batch_size: int, batcher: Batcher, device=None
