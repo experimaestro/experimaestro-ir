@@ -26,7 +26,7 @@ class DualRepresentationScorer(LearnableScorer, Generic[QueriesRep, DocsRep]):
 
         # Score product
         if isinstance(inputs, ProductRecords):
-            return self.score_product(enc_queries, enc_documents).flatten()
+            return self.score_product(enc_queries, enc_documents, info,).flatten()
 
         # Score pairs
         pairs = inputs.pairs()
@@ -92,7 +92,39 @@ class DualRepresentationScorer(LearnableScorer, Generic[QueriesRep, DocsRep]):
 
         if isinstance(objects[0], List):
             return list(itertools.chain(objects))
+        
+################################################################################
+        from xpmir.text.encoders import TextsRepresentationOutput
+        from xpmir.text.tokenizers import TokenizedTexts
 
+        if isinstance(objects[0], TextsRepresentationOutput):
+            def merge_mask(mask):
+                min_batch_size = torch.min(torch.tensor(list(map(lambda x: x.shape, mask))), dim=0)[0][0]
+                batch_equalized = list(itertools.chain(*map(lambda x: x.t().split(min_batch_size, dim=1), mask)))
+
+                pad = torch.nn.utils.rnn.pad_sequence(batch_equalized)
+
+                return pad.reshape(pad.shape[0], -1).t()
+
+            tokenized = list(map(lambda x: x.tokenized, objects))
+
+            tokens = list(filter(lambda x: x is not None, map(lambda x: x.tokens, tokenized)))
+            tokens = None if len(tokens) == 0 else list(itertools.chain(*tokens))
+
+            ids = merge_mask(list(map(lambda x: x.ids, tokenized)))
+
+            lens = list(itertools.chain(*map(lambda x: x.lens, tokenized)))
+
+            mask = list(map(lambda x: x.mask, tokenized))
+            mask = None if len(mask) == 0 else merge_mask(mask)
+
+            token_type_ids = list(filter(lambda x: x is not None, map(lambda x: x.token_type_ids, tokenized)))
+            token_type_ids = None if len(token_type_ids) == 0 else torch.cat(token_type_ids)
+
+            return TextsRepresentationOutput(torch.cat(list(map(lambda x: x.value, objects))), TokenizedTexts(tokens, ids, lens, mask, token_type_ids))
+
+            
+################################################################################
         raise RuntimeError(f"Cannot deal with objects of type {type(list[0])}")
 
     @abstractmethod
