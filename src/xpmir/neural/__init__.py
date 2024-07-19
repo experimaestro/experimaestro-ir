@@ -26,7 +26,7 @@ class DualRepresentationScorer(LearnableScorer, Generic[QueriesRep, DocsRep]):
 
         # Score product
         if isinstance(inputs, ProductRecords):
-            return self.score_product(enc_queries, enc_documents).flatten()
+            return self.score_product(enc_queries, enc_documents, info).flatten()
 
         # Score pairs
         pairs = inputs.pairs()
