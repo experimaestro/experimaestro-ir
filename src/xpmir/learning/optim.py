@@ -299,7 +299,11 @@ class GradientHook(OptimizationHook):
     The gradient is guaranteed to be unscaled in this case.
     """
 
-    pass
+    def before(self, main: "ScheduledOptimizer"):
+        pass
+
+    def after(self, main: "ScheduledOptimizer"):
+        pass
 
 
 class GradientClippingHook(GradientHook):
@@ -308,7 +312,7 @@ class GradientClippingHook(GradientHook):
     max_norm: Param[float]
     """Maximum norm for gradient clipping"""
 
-    def __call__(self, main: "ScheduledOptimizer"):
+    def before(self, main: "ScheduledOptimizer"):
         torch.nn.utils.clip_grad_norm_(main.module.parameters(), self.max_norm)
 
 
@@ -317,7 +321,7 @@ class GradientLogHook(GradientHook):
 
     name: Param[str] = "gradient_norm"
 
-    def __call__(self, main: "ScheduledOptimizer"):
+    def before(self, main: "ScheduledOptimizer"):
         sum_norms = 0.0
         n_params = 0
         with torch.no_grad():
@@ -419,7 +423,7 @@ class ScheduledOptimizer:
             # Apply gradient hooks
             foreach(
                 self.context.hooks(GradientHook),
-                lambda hook: hook(self),
+                lambda hook: hook.before(self),
             )
 
             for optimizer in self.optimizers:
@@ -433,7 +437,7 @@ class ScheduledOptimizer:
             # Apply gradient hooks
             foreach(
                 self.context.hooks(GradientHook),
-                lambda hook: hook(self),
+                lambda hook: hook.before(self),
             )
 
             # Step
@@ -443,6 +447,11 @@ class ScheduledOptimizer:
                 ScalarMetric("gradient/scaler", self.scaler.get_scale(), 1)
             )
             self.scaler.update()
+
+        foreach(
+            self.context.hooks(GradientHook),
+            lambda hook: hook.after(self),
+        )
 
     def scheduler_step(self, context: "TrainerContext"):
         """Performs a step for all the schedulers"""
