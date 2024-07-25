@@ -105,10 +105,13 @@ class HFModel(Module):
 
     def forward(self, tokenized: TokenizedTexts):
         tokenized = tokenized.to(self.model.device)
+        kwargs = {}
+        if tokenized.token_type_ids is not None:
+            kwargs["token_type_ids"] = tokenized.token_type_ids
+
         return self.model(
             input_ids=tokenized.ids,
             attention_mask=tokenized.mask,
-            token_type_ids=tokenized.token_type_ids,
         )
 
 

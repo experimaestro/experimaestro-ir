@@ -9,13 +9,14 @@ from experimaestro import Config
 from xpmir.text.utils import lengthToMask
 from xpmir.learning.optim import ModuleInitOptions
 from xpmir.utils.utils import Initializable
+from xpmir.utils.misc import opt_slice
 from xpmir.utils.torch import to_device
 
 
 class TokenizedTexts(NamedTuple):
     """Tokenized texts output"""
 
-    tokens: List[List[str]]
+    tokens: Optional[List[List[str]]]
     """The list of tokens"""
 
     ids: torch.LongTensor
@@ -29,6 +30,18 @@ class TokenizedTexts(NamedTuple):
 
     token_type_ids: Optional[torch.LongTensor] = None
     """Type of each token"""
+
+    def __len__(self):
+        return len(self.ids)
+
+    def __getitem__(self, ix):
+        return TokenizedTexts(
+            opt_slice(self.tokens, ix),
+            self.ids[ix],
+            self.lens[ix],
+            opt_slice(self.mask, ix),
+            opt_slice(self.token_type_ids, ix),
+        )
 
     def to(self, device: torch.device):
         if device is self.ids.device:

@@ -19,11 +19,22 @@ class ParameterElement(NamedTuple):
     https://pytorch.org/docs/stable/generated/torch.nn.Module.html#torch.nn.Module.named_parameters
     """
 
+    module: nn.Module
+    """The torch module"""
+
     parameter: nn.parameter.Parameter
     """The parameter object"""
 
     selected: bool
     """Selection status"""
+
+    def set(self, value: nn.parameter.Parameter):
+        """Set this parameter to a new value"""
+        *parts, last = self.name.split(".")
+        module = self.module
+        for part in parts:
+            module = getattr(module, part)
+        setattr(module, last, value)
 
     def __repr__(self):
         return (
@@ -48,9 +59,18 @@ class ParametersIterator(Config, ABC):
         """
         ...
 
+    def selected(self) -> Iterator[ParameterElement]:
+        """Iterates over selected parameters"""
+        for element in self.iter():
+            if element.selected:
+                yield element
+
 
 class RegexParametersIterator(ParametersIterator):
     """Itertor over all the parameters which match the given regex"""
+
+    negative_regex: Param[str] = ""
+    """The negative regex expression (should not match)"""
 
     regex: Param[str]
     """The regex expression"""
@@ -59,16 +79,25 @@ class RegexParametersIterator(ParametersIterator):
     """The model we want to select the parameters from"""
 
     def __post_init__(self):
-        self._regex = re.compile(self.regex)
+        self._regex = re.compile(self.regex) if self.regex else None
+        self._negative_regex = (
+            re.compile(self.negative_regex) if self.negative_regex else None
+        )
 
     def should_pick(self, name: str) -> bool:
         """given the name of the str, return true if the regex expression
         matches"""
-        return bool(self._regex.search(name))
+        if self.negative_regex:
+            if self._negative_regex.search(name):
+                return False
+        if self._regex:
+            value = bool(self._regex.search(name))
+            return value
+        return True
 
     def iter(self) -> Iterator[ParameterElement]:
         for name, parameters in self.model.named_parameters():
-            yield ParameterElement(name, parameters, self.should_pick(name))
+            yield ParameterElement(name, self.model, parameters, self.should_pick(name))
 
 
 class InverseParametersIterator(ParametersIterator):
@@ -78,8 +107,8 @@ class InverseParametersIterator(ParametersIterator):
 
     def iter(self) -> Iterator[ParameterElement]:
         yield from (
-            ParameterElement(name, param, not (selected))
-            for name, param, selected in self.iterator.iter()
+            ParameterElement(name, module, param, not (selected))
+            for name, module, param, selected in self.iterator.iter()
         )
 
 
@@ -99,7 +128,7 @@ class SubParametersIterator(ParametersIterator):
     def iter(self) -> Iterator[ParameterElement]:
         # Gather all the model parameters
         model_params = {
-            id(p): ParameterElement(name, p, self.default)
+            id(p): ParameterElement(name, self.model, p, self.default)
             for name, p in self.model.named_parameters()
         }
 
@@ -108,7 +137,7 @@ class SubParametersIterator(ParametersIterator):
             if mp := model_params.get(id(param), None):
                 if mp.selected != selected:
                     model_params[id(param)] = ParameterElement(
-                        mp.name, mp.parameter, selected
+                        mp.name, mp.module, mp.parameter, selected
                     )
             else:
                 raise RuntimeError("Sub-model parameters are not model parameters")

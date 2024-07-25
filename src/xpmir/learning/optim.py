@@ -5,7 +5,6 @@ from typing import Any, Callable, List, Optional, TYPE_CHECKING, Union
 from pathlib import Path
 import numpy as np
 import torch
-import logging
 import re
 
 from experimaestro import (
@@ -19,9 +18,10 @@ from experimaestro import (
 )
 from experimaestro.scheduler import Job, Listener
 from experimaestro.utils import cleanupdir
+from xpmir.utils.logging import easylog, LazyJoin
 from experimaestro.scheduler.services import WebService
 from xpmir.context import Hook, Context
-from xpmir.utils.utils import easylog, Initializable, foreach
+from xpmir.utils.utils import Initializable, foreach
 from xpmir.learning.metrics import ScalarMetric
 from .schedulers import Scheduler
 
@@ -187,7 +187,7 @@ class ModuleList(Module, Initializable):
 class ModuleLoader(PathSerializationLWTask):
     def execute(self):
         """Loads the model from disk using the given serialization path"""
-        logging.info("Loading model from disk: %s", self.path)
+        logger.info("Loading model from disk: %s", self.path)
         self.value.initialize(ModuleInitMode.NONE.to_options())
         data = torch.load(self.path)
         self.value.load_state_dict(data)
@@ -259,18 +259,23 @@ class ParameterOptimizer(Config):
     ) -> torch.optim.Optimizer:
         """Returns a (pytorch) optimizer"""
         module = self.module or module
-        params = [
-            param
+        params = {
+            name: param
             for name, param in module.named_parameters()
             if (self.filter is None or self.filter(name, param)) and filter(name, param)
-        ]
+        }
         if not params:
-            logging.warning(
+            logger.warning(
                 "Parameter list: %s", [name for name, _ in module.named_parameters()]
             )
             raise RuntimeError(f"Parameter list is empty with {self.filter}")
 
-        optimizer = self.optimizer(params)
+        logger.debug(
+            "Optimizing with %s parameters [%s]",
+            self.filter,
+            LazyJoin(",", params.keys()),
+        )
+        optimizer = self.optimizer(params.values())
         return optimizer
 
 

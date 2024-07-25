@@ -9,7 +9,8 @@ logger.setLevel(logging.INFO)
 
 
 class LayerFreezer(InitializationTrainingHook):
-    """This training hook class can be used to freeze some of the transformer layers"""
+    """This training hook class can be used to freeze a subset of model
+    parameters"""
 
     selector: Param[ParametersIterator]
     """How to select the layers to freeze"""
@@ -20,7 +21,30 @@ class LayerFreezer(InitializationTrainingHook):
     def after(self, state: TrainState):
         if not self._initialized:
             self._initialized = True
-            for name, param, to_freeze in self.selector.iter():
+            for name, module, param, to_freeze in self.selector.iter():
                 if to_freeze:
                     logger.info("Freezing layer %s", name)
                     param.requires_grad = False
+
+
+class LayerSharer(InitializationTrainingHook):
+    """This training hook class can be used to freeze a subset of model
+    parameters"""
+
+    source: Param[ParametersIterator]
+    """The parameters to share"""
+
+    target: Param[ParametersIterator]
+    """The parameters to be shared"""
+
+    def __init__(self):
+        self._initialized = False
+
+    def after(self, state: TrainState):
+        if not self._initialized:
+            self._initialized = True
+            for source, target in zip(
+                self.source.selected(), self.target.selected(), strict=True
+            ):
+                logger.info("Sharing layer %s -> %s", source.name, target.name)
+                target.set(source.parameter)

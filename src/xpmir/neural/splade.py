@@ -26,7 +26,7 @@ logger = easylog()
 class Aggregation(Config):
     """The aggregation function for Splade"""
 
-    def get_output_module(self, linear: nn.Module):
+    def get_output_module(self, linear: nn.Module) -> nn.Module:
         return AggregationModule(linear, self)
 
 
@@ -106,7 +106,7 @@ class SpladeTextEncoder(TextEncoder, DistributableModel):
         """Returns a batch x vocab tensor"""
         tokenized = self.encoder.batch_tokenize(texts, mask=True, maxlen=self.maxlen)
         out = self.model(tokenized)
-        return out
+        return TextsRepresentationOutput(out, tokenized)
 
     @property
     def dimension(self):

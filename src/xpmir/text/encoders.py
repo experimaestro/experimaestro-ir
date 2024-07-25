@@ -100,9 +100,9 @@ class TokensEncoder(Tokenizer, Encoder):
         """
         return True
 
-    def maxtokens(self) -> int:
+    def maxtokens(self) -> Optional[int]:
         """Maximum number of tokens that can be processed"""
-        return sys.maxsize
+        return None
 
 
 LegacyEncoderInput = Union[List[str], List[Tuple[str, str]], List[Tuple[str, str, str]]]
@@ -118,7 +118,7 @@ class TextEncoderBase(Encoder, Generic[InputType, EncoderOutput]):
     __call__: Callable[Tuple["TextEncoderBase", List[InputType]], EncoderOutput]
 
     @abstractmethod
-    def forward(self, texts: List[InputType]) -> EncoderOutput:
+    def forward(self, texts: InputType) -> EncoderOutput:
         raise NotImplementedError()
 
     @property
@@ -171,7 +171,18 @@ class TripletTextEncoder(TextEncoderBase[Tuple[str, str, str], torch.Tensor]):
 @define
 class RepresentationOutput:
     value: torch.Tensor
-    """An arbitrary representation"""
+    """An arbitrary representation (by default, the batch dimension is the
+    first)"""
+
+    def __len__(self):
+        return len(self.value)
+
+    def __getitem__(self, ix: Union[slice, int]):
+        return self.__class__(self.value[ix])
+
+    @property
+    def device(self):
+        return self.value.device
 
 
 @define
@@ -188,6 +199,12 @@ class TextsRepresentationOutput(RepresentationOutput):
 
     tokenized: TokenizedTexts
     """Tokenized texts"""
+
+    def to(self, device):
+        return self.__class__(self.value.to(device), self.tokenized.to(device))
+
+    def __getitem__(self, ix: Union[slice, int]):
+        return self.__class__(self.value[ix], self.tokenized[ix])
 
 
 class TokenizedEncoder(Encoder, Generic[EncoderOutput, TokenizerOutput]):
@@ -232,14 +249,21 @@ class TokenizedTextEncoder(
         self.encoder.initialize(options)
 
     def forward(
-        self, inputs: List[InputType], options: Optional[TokenizerOptions] = None
+        self, inputs: List[InputType], *args, options: Optional[TokenizerOptions] = None
     ) -> EncoderOutput:
-        options = options or TokenizerOptions()
-        options.max_length = min(
-            self.encoder.max_length, options.max_length or sys.maxsize
-        )
+        assert len(args) == 0, "Unhandled extra arguments"
         tokenized = self.tokenizer.tokenize(inputs, options)
+        return self.forward_tokenized(tokenized, *args)
+
+    def forward_tokenized(self, tokenized):
         return self.encoder(tokenized)
+
+    def tokenize(
+        self, inputs: List[InputType], options: Optional[TokenizerOptions] = None
+    ):
+        options = options or TokenizerOptions()
+        options.max_length = min(self.encoder.max_length, options.max_length or None)
+        return self.tokenizer.tokenize(inputs, options)
 
     def static(self):
         """Whether embeddings parameters are learnable"""

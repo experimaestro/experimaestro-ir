@@ -298,6 +298,7 @@ class AnseriniRetriever(Retriever):
         """Returns the associated index (if any)"""
         if self.index.storeContents:
             return self.index
+        return self.store
 
     def retrieve(self, record: TopicRecord) -> List[ScoredDocument]:
         # see
@@ -317,7 +318,9 @@ class AnseriniRetriever(Retriever):
         return [
             ScoredDocument(
                 create_record(
-                    InternalIDItem(hit.lucene_docid), id=hit.docid, text=hit.contents
+                    InternalIDItem(hit.lucene_docid),
+                    id=hit.docid,
+                    text=getattr(hit, "contents", None),
                 ),
                 hit.score,
             )

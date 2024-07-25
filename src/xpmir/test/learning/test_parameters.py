@@ -25,7 +25,9 @@ class MyParametersIterator(ParametersIterator):
 
     def iter(self) -> Iterator[ParameterElement]:
         for name, param in self.model.named_parameters():
-            yield ParameterElement(name, param, param is self.model.layer.weight)
+            yield ParameterElement(
+                name, self.model, param, param is self.model.layer.weight
+            )
 
 
 def test_iterator():

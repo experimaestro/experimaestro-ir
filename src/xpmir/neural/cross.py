@@ -10,6 +10,7 @@ from xpmir.letor.records import (
     PairwiseRecords,
 )
 from xpmir.rankers import LearnableScorer
+from xpmir.text import TokenizerOptions
 from xpmir.text.encoders import TextEncoderBase, TripletTextEncoder
 from xpmir.rankers import (
     DuoLearnableScorer,
@@ -28,6 +29,9 @@ class CrossScorer(LearnableScorer, DistributableModel):
     AKA Cross-Encoder
     """
 
+    max_length: Param[int]
+    """Maximum length (in tokens) for the query-document string"""
+
     encoder: Param[TextEncoderBase[Tuple[str, str], torch.Tensor]]
     """an encoder for encoding the concatenated query-document tokens which
     doesn't contains the final linear layer"""
@@ -40,6 +44,7 @@ class CrossScorer(LearnableScorer, DistributableModel):
         super().__initialize__(options)
         self.encoder.initialize(options)
         self.classifier = torch.nn.Linear(self.encoder.dimension, 1)
+        self.tokenizer_options = TokenizerOptions(max_length=self.max_length)
 
     def forward(self, inputs: BaseRecords, info: TrainerContext = None):
         # Encode queries and documents
@@ -47,7 +52,8 @@ class CrossScorer(LearnableScorer, DistributableModel):
             [
                 (tr[TextItem].text, dr[TextItem].text)
                 for tr, dr in zip(inputs.topics, inputs.documents)
-            ]
+            ],
+            options=self.tokenizer_options,
         )  # shape (batch_size * dimension)
         return self.classifier(pairs.value).squeeze(1)
 
