@@ -67,11 +67,11 @@ class DualRepresentationScorer(LearnableScorer, Generic[QueriesRep, DocsRep]):
 
         By default, uses `merge`
         """
-        return self.merge(list)
+        return self.merge(queries)
 
     def merge_documents(self, documents: DocsRep):
         """Merge query batches encoded with `encode_documents`"""
-        return self.merge(list)
+        return self.merge(documents)
 
     def merge(self, objects: Union[DocsRep, QueriesRep]):
         """Merge objects
@@ -79,7 +79,13 @@ class DualRepresentationScorer(LearnableScorer, Generic[QueriesRep, DocsRep]):
         - for tensors, uses torch.cat
         - for lists, concatenate all of them
         """
-        assert isinstance(objects, List), "Merging can only be done with lists"
+        assert isinstance(
+            objects, List
+        ), f"Merging can only be done with lists, got {type(objects)}"
+
+        # Just returns the only object to merge
+        if len(objects) == 1:
+            return objects[0]
 
         if isinstance(objects[0], torch.Tensor):
             return torch.cat(objects)

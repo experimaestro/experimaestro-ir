@@ -32,6 +32,7 @@ from .encoders import (  # noqa: F401
     HFTokensEncoder,
     HFCLSEncoder,
 )
+from .base import HFMaskedLanguageModel  # noqa: F401
 
 
 try:

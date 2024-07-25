@@ -522,7 +522,7 @@ class RetrieverBasedCollection(Task):
             # don't need to worry about the threshold here
             for retriever in self.retrievers:
                 docids.update(
-                    sd.document[IDItem].id for sd in retriever.retrieve(topic.text)
+                    sd.document[IDItem].id for sd in retriever.retrieve(topic)
                 )
 
         # Write the document IDs

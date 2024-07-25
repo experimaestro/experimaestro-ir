@@ -27,3 +27,14 @@ class EasyLogger:
             self.__class__.__LOGGER__ = logger
 
         return logger
+
+
+class LazyJoin:
+    """Lazy join of an iterator"""
+
+    def __init__(self, glue: str, iterator):
+        self.glue = glue
+        self.iterator = iterator
+
+    def __str__(self):
+        return self.glue.join(str(x) for x in self.iterator)
