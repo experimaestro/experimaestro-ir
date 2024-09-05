@@ -128,6 +128,8 @@ class DistillationPairwiseTrainer(LossTrainer):
         # Builds records and teacher score matrix
         teacher_scores = torch.empty(len(samples), 2)
         records = PairwiseRecords()
+        # FIXME: need to adapt the code to make the sample.document as a
+        # DocumentRecord instead of a ScoredDocument
         for ix, sample in enumerate(samples):
             records.add(
                 PairwiseRecord(

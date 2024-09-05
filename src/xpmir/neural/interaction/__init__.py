@@ -23,9 +23,7 @@ class InteractionScorer(DualVectorScorer[SimilarityInput, SimilarityInput]):
     encoder: Param[TokenizedTextEncoderBase[str, TokensEncoderOutput]]
     """The embedding model -- the vocab also defines how to tokenize text"""
 
-    query_encoder: Param[
-        Optional[TokenizedTextEncoderBase[str, TokensEncoderOutput]]
-    ] = None
+    query_encoder: Param[Optional[TokenizedTextEncoderBase[str, TokensEncoderOutput]]]
     """The embedding model for queries (if None, uses encoder)"""
 
     similarity: Param[Similarity]
