@@ -21,6 +21,16 @@ class SimilarityInput(Sequence["SimilarityInput"]):
     def __len__(self) -> int:
         return len(self.value)
 
+    def to(self, device):
+        return SimilarityInput(
+            value=self.value.to(device),
+            mask=self.mask.to(device),
+        )
+
+    @property
+    def device(self):
+        return self.value.device
+
 
 @define
 class SimilarityInputWithTokens(SimilarityInput):
