@@ -52,12 +52,12 @@ class PairwiseHydrator(PairwiseDistillationSamples, SampleHydrator):
     def transform(self, sample: PairwiseDistillationSample):
         topic, documents = sample.query, sample.documents
 
-        if transformed := self.querystore.transforme_topics():
-            topic = TopicRecord(*transformed)
+        if transformed := self.transform_topics(topic):
+            topic = transformed[0]
 
-        if transformed := self.documentstore.transforme_documents():
+        if transformed := self.transform_documents(documents):
             documents = tuple(
-                ScoredDocument(d, sd.score)
+                ScoredDocument(d, sd[ScoredItem].score)
                 for d, sd in zip(transformed, sample.documents)
             )
 

@@ -76,7 +76,7 @@ class Dense(DualVectorScorer[QueriesRep, DocsRep]):
         return queries.value @ documents.value.T
 
     def score_pairs(self, queries, documents, info: Optional[TrainerContext] = None):
-        scores = (queries.unsqueeze(1) @ documents.unsqueeze(2)).squeeze(-1).squeeze(-1)
+        scores = (queries.value.unsqueeze(1) @ documents.value.unsqueeze(2)).squeeze(-1).squeeze(-1)
 
         # Apply the dual vector hook
         if info is not None:
