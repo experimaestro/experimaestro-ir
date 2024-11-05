@@ -17,6 +17,16 @@ from xpmir.learning.optim import ModuleLoader
 logger = easylog()
 
 
+class ValidationModuleLoader(ModuleLoader):
+    """Specializes the validation module loader"""
+
+    listener: Param["ValidationListener"]
+    """The listener"""
+
+    key: Param[str]
+    """The key for this listener"""
+
+
 class ValidationListener(LearnerListener):
     """Learning validation early-stopping
 
@@ -82,24 +92,13 @@ class ValidationListener(LearnerListener):
     def monitored(self) -> Iterator[str]:
         return [key for key, monitored in self.metrics.items() if monitored]
 
-    def task_outputs(self, learner: "Learner", dep):
-        """Experimaestro outputs: returns the best checkpoints for each
-        metric"""
-        res = {
-            key: ModuleLoader.construct(
-                learner.model, self.bestpath / key / TrainState.MODEL_PATH, dep
-            )
-            for key, store in self.metrics.items()
-            if store
-        }
-
-        return res
-
     def init_task(self, learner: "Learner", dep):
         return {
             key: dep(
-                ModuleLoader(
+                ValidationModuleLoader(
                     value=learner.model,
+                    listener=self,
+                    key=key,
                     path=self.bestpath / key / TrainState.MODEL_PATH,
                 )
             )

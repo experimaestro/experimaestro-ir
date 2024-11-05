@@ -3,7 +3,7 @@ import os
 from abc import ABC, abstractmethod
 from dataclasses import InitVar
 from pathlib import Path
-from typing import Type
+from typing import Any, Tuple, Type
 
 import torch.nn as nn
 from experimaestro import Config, Param
@@ -23,7 +23,19 @@ class HFModelConfig(Config, ABC):
     """Base class for all HuggingFace model configurations"""
 
     @abstractmethod
-    def __call__(self, options: ModuleInitOptions):
+    def __call__(
+        self,
+        options: ModuleInitOptions,
+        autoconfig: Type[AutoModel],
+        automodel: Type[AutoConfig],
+    ) -> Tuple[Any, Any]:
+        """Returns a configuration and a model
+
+        :param options: The initiatization options
+        :param autoconfig: configuration factory
+        :param automodel: model factory
+        :return: a Tuple (configuration, model)
+        """
         ...
 
 
