@@ -40,7 +40,7 @@ def prepare_collection(prepare_str: str) -> Union[Documents, Adhoc]:
     return prepare_dataset(prepare_str)
 
 
-MEASURES = [AP, P @ 20, nDCG, nDCG @ 10, nDCG @ 20, RR, RR @ 10, Success @ 5]
+MEASURES = [AP, P @ 20, nDCG, nDCG @ 10, nDCG @ 20, RR, RR @ 10, Success @ 5, R @ 1000]
 
 # --- MsMarco v1
 
