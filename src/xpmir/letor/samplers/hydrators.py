@@ -20,13 +20,13 @@ from xpmir.utils.iter import (
 class SampleTransform(Config, ABC):
     @abstractmethod
     def transform_topics(
-        self, topics: Iterator[ir.TopicRecord]
+        self, topics: List[ir.TopicRecord]
     ) -> Optional[List[ir.TopicRecord]]:
         ...
 
     @abstractmethod
     def transform_documents(
-        self, documents: Iterator[ir.DocumentRecord]
+        self, documents: List[ir.DocumentRecord]
     ) -> Optional[List[ir.DocumentRecord]]:
         ...
 
@@ -40,7 +40,7 @@ class SampleHydrator(SampleTransform):
     querystore: Param[Optional[TextStore]]
     """The store for query texts if needed"""
 
-    def transform_topics(self, topics: List[ir.TopicRecord]):
+    def transform_topics(self, topic: List[ir.TopicRecord]):
         if self.querystore is None:
             return None
         return [

@@ -67,10 +67,16 @@ class Dense(DualVectorScorer[QueriesRep, DocsRep]):
     """A scorer based on a pair of (query, document) dense vectors"""
 
     def score_product(self, queries, documents, info: Optional[TrainerContext] = None):
+        if info is not None:
+            foreach(
+                info.hooks(DualVectorListener),
+                lambda hook: hook(info, queries, documents),
+            )
+
         return queries.value @ documents.value.T
 
     def score_pairs(self, queries, documents, info: Optional[TrainerContext] = None):
-        scores = (queries.unsqueeze(1) @ documents.unsqueeze(2)).squeeze(-1).squeeze(-1)
+        scores = (queries.value.unsqueeze(1) @ documents.value.unsqueeze(2)).squeeze(-1).squeeze(-1)
 
         # Apply the dual vector hook
         if info is not None:
@@ -169,6 +175,9 @@ class FlopsRegularizer(DualVectorListener):
         # queries and documents are length x dimension
         # Assumes that all weights are positive
         assert info.metrics is not None
+
+        queries = queries.value
+        documents = documents.value
 
         # q of shape (dimension), flops_q of shape (1)
         q, flops_q = FlopsRegularizer.compute(queries)

@@ -113,6 +113,10 @@ class HFTokenizer(Config, Initializable):
         """Returns the size of the vocabulary"""
         return self.tokenizer.vocab_size
 
+    @property
+    def vocab(self) -> dict:
+        return self.tokenizer.vocab
+
 
 class HFTokenizerBase(TokenizerBase[TokenizerInput, TokenizedTexts]):
     """Base class for all Hugging-Face tokenizers"""
@@ -136,6 +140,9 @@ class HFTokenizerBase(TokenizerBase[TokenizerInput, TokenizedTexts]):
 
     def id2tok(self, idx: int) -> str:
         return self.tokenizer.id2tok(idx)
+    
+    def get_vocabulary(self):
+        return self.tokenizer.vocab
 
 
 class HFStringTokenizer(HFTokenizerBase[HFTokenizerInput]):
