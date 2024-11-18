@@ -182,6 +182,7 @@ class SparseRetriever(Retriever, Generic[InputType]):
         """
 
         # Build up iterators
+        self.encoder.eval()
         vector = self.encoder([query]).value[0].cpu().detach().numpy()
         (ix,) = vector.nonzero()  # ix represents the position without 0 in the vector
         query = {
