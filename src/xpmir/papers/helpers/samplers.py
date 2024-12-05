@@ -146,6 +146,14 @@ def msmarco_v1_tests(dev_test_size: int = 0):
 
 
 @cache
+def beir_tests(corpus_name, test_set):
+    """The beir test_set"""
+    return EvaluationsCollection(
+        beir_dataset=Evaluations(prepare_dataset(test_set), MEASURES)
+    )
+
+
+@cache
 def msmarco_hofstaetter_ensemble_hard_negatives() -> DistillationPairwiseSampler:
     """Hard negatives from Hofstätter et al. (2020)
 
