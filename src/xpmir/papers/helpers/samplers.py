@@ -149,7 +149,8 @@ def msmarco_v1_tests(dev_test_size: int = 0):
 def msmarco_v1_tests_dev_small():
     return EvaluationsCollection(
         msmarco_dev=Evaluations(
-            prepare_collection("irds.msmarco-passage.dev.small"), MEASURES
+            prepare_collection("irds.msmarco-passage.dev.small").tag("ds", "dev_small"),
+            MEASURES,
         )
     )
 
@@ -158,10 +159,12 @@ def msmarco_v1_tests_dev_small():
 def msmarco_v1_tests_trec_dl():
     return EvaluationsCollection(
         trec2019=Evaluations(
-            prepare_dataset("irds.msmarco-passage.trec-dl-2019"), MEASURES
+            prepare_dataset("irds.msmarco-passage.trec-dl-2019").tag("ds", "trec2019"),
+            MEASURES,
         ),
         trec2020=Evaluations(
-            prepare_dataset("irds.msmarco-passage.trec-dl-2020"), MEASURES
+            prepare_dataset("irds.msmarco-passage.trec-dl-2020").tag("ds", "trec2020"),
+            MEASURES,
         ),
     )
 
