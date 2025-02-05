@@ -40,7 +40,7 @@ class SampleHydrator(SampleTransform):
     querystore: Param[Optional[TextStore]]
     """The store for query texts if needed"""
 
-    def transform_topics(self, topic: List[ir.TopicRecord]):
+    def transform_topics(self, topics: List[ir.TopicRecord]):
         if self.querystore is None:
             return None
         return [
