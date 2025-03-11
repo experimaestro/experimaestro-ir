@@ -7,6 +7,7 @@ from xpmir.text.encoders import TokenizedTexts
 from typing import List, Tuple
 from xpmir.distributed import DistributableModel
 import torch
+from datamaestro_text.data.ir import TextItem
 
 
 class HFCrossScorer(LearnableScorer, DistributableModel):
@@ -44,7 +45,7 @@ class HFCrossScorer(LearnableScorer, DistributableModel):
             maxlen = min(maxlen, self.tokenizer.model_max_length)
 
         texts: List[Tuple[str, str]] = [
-            (q.text, d.text)
+            (q[TextItem].text, d[TextItem].text)
             for q, d in zip(input_records.queries, input_records.documents)
         ]
 
