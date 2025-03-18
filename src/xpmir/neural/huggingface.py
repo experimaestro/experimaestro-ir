@@ -72,7 +72,7 @@ class HFCrossScorer(LearnableScorer, DistributableModel):
         # strange that some existing models on the huggingface don't use the token_type
         with torch.set_grad_enabled(torch.is_grad_enabled()):
             result = self.model(
-                tokenized.ids, attention_mask=tokenized.mask.to(self.device)
+                tokenized.ids, token_type_ids=tokenized.token_type_ids.to(self.device), attention_mask=tokenized.mask.to(self.device)
             ).logits  # Tensor[float] of length records size
         return result
 
