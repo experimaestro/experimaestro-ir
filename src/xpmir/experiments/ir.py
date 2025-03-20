@@ -129,7 +129,10 @@ class IRExperimentHelper(LearningExperimentHelper):
                 print(df)  # noqa: T201
 
                 # And save them
+
                 csv_path = self.xp.resultspath / "results.csv"
+                if not self.xp.resultspath.exists():
+                    self.xp.resultspath.mkdir(parents=True, exist_ok=True)
                 logging.info(f"Saved results in {csv_path.absolute()}")
                 with csv_path.open("wt") as fp:
                     df.to_csv(fp, index=False)
