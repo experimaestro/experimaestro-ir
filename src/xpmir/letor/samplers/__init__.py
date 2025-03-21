@@ -337,7 +337,7 @@ class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
         text = None
         while text is None:
             docid, rel, score = samples[self.random.randint(0, len(samples))]
-            document = self.document(docid).add(ScoredItem(score))
+            document = self.document(docid).update(ScoredItem(score))
             text = document[TextItem].text
         return document
 
