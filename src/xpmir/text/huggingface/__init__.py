@@ -78,6 +78,10 @@ class BaseTransformer(Encoder):
     @property
     def pad_tokenid(self) -> int:
         return self.tokenizer.pad_token_id
+    
+    @cached_property
+    def config(self):
+        return AutoConfig.from_pretrained(self.model_id)
 
     @property
     def automodel(self):
@@ -92,15 +96,14 @@ class BaseTransformer(Encoder):
         super().__initialize__(options)
 
         # Load the model configuration
-        config = AutoConfig.from_pretrained(self.model_id)
         if self.dropout != 0:
-            config.hidden_dropout_prob = self.dropout
-            config.attention_probs_dropout_prob = self.dropout
+            self.config.hidden_dropout_prob = self.dropout
+            self.config.attention_probs_dropout_prob = self.dropout
 
         if options.mode == ModuleInitMode.NONE or options.mode == ModuleInitMode.RANDOM:
-            self.model = self.automodel.from_config(config)
+            self.model = self.automodel.from_config(self.config)
         else:
-            self.model = self.automodel.from_pretrained(self.model_id, config=config)
+            self.model = self.automodel.from_pretrained(self.model_id, config=self.config)
 
         # Loads the tokenizer
         self._tokenizer = AutoTokenizer.from_pretrained(self.model_id, use_fast=True)
@@ -178,10 +181,10 @@ class BaseTransformer(Encoder):
         return self.tokenizer._tokenizer.get_vocab_size()
 
     def maxtokens(self) -> int:
-        return self.tokenizer.model_max_length
+        return self.config.max_position_embeddings
 
     def dim(self):
-        return self.model.config.hidden_size
+        return self.config.hidden_size
 
     @property
     def vocab_size(self) -> int:
