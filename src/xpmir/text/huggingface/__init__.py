@@ -181,7 +181,11 @@ class BaseTransformer(Encoder):
         return self.tokenizer._tokenizer.get_vocab_size()
 
     def maxtokens(self) -> int:
-        return self.config.max_position_embeddings
+        try:
+            return self.tokenizer.max_model_length
+        except:
+            logging.info("No `max_model_length` in the tokenizer, defaulting to `model.config.max_position_embeddings` instead")
+            return self.config.max_position_embeddings
 
     def dim(self):
         return self.config.hidden_size
