@@ -53,9 +53,9 @@ class CrossScorer(LearnableScorer, DistributableModel):
                 (tr[TextItem].text, dr[TextItem].text)
                 for tr, dr in zip(inputs.topics, inputs.documents)
             ],
-            options=self.tokenizer_options,
+            # options=self.tokenizer_options,
         )  # shape (batch_size * dimension)
-        return self.classifier(pairs.value).squeeze(1)
+        return self.classifier(pairs).squeeze(1)
 
     def distribute_models(self, update):
         self.encoder = update(self.encoder)
