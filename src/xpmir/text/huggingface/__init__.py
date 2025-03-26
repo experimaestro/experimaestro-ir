@@ -298,8 +298,12 @@ class TransformerEncoder(BaseTransformer, TextEncoder, DistributableModel):
 
     maxlen: Param[Optional[int]] = None
 
-    def forward(self, texts: List[str], maxlen=None):
-        tokenized = self.batch_tokenize(texts, maxlen=maxlen or self.maxlen, mask=True)
+    def forward(self, texts: List[str]):
+        tokenized = self.batch_tokenize(
+            texts, 
+            maxlen=self.maxlen if self.maxlen is not None else self.maxtokens(), 
+            mask=True
+        )
 
         with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
             y = self.model(tokenized.ids, attention_mask=tokenized.mask.to(self.device))
@@ -330,7 +334,10 @@ class TransformerTextEncoderAdapter(TextEncoder, DistributableModel):
         return self.encoder.dimension
 
     def forward(self, texts: List[str], maxlen=None):
-        return self.encoder.forward(texts, maxlen=self.maxlen)
+        return self.encoder.forward(
+            texts, 
+            maxlen=self.maxlen
+        )
 
     def static(self):
         return self.encoder.static()
@@ -355,7 +362,11 @@ class DualTransformerEncoder(BaseTransformer, DualTextEncoder):
     version: Constant[int] = 2
 
     def forward(self, texts: List[Tuple[str, str]]):
-        tokenized = self.batch_tokenize(texts, maxlen=self.maxlen, mask=True)
+        tokenized = self.batch_tokenize(
+            texts, 
+            maxlen=self.maxlen if self.maxlen is not None else self.maxtokens(), 
+            mask=True
+    )
 
         with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
             kwargs = {}
