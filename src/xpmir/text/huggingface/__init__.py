@@ -16,6 +16,8 @@ from xpmir.text.encoders import (
     DualTextEncoder,
     TextEncoder,
     TripletTextEncoder,
+    EncoderOutput,
+    RepresentationOutput
 )
 from xpmir.utils.utils import easylog
 from xpmir.learning.context import TrainerContext, TrainState
@@ -361,7 +363,7 @@ class DualTransformerEncoder(BaseTransformer, DualTextEncoder):
 
     version: Constant[int] = 2
 
-    def forward(self, texts: List[Tuple[str, str]]):
+    def forward(self, texts: List[Tuple[str, str]])->EncoderOutput:
         tokenized = self.batch_tokenize(
             texts, 
             maxlen=self.maxlen if self.maxlen is not None else self.maxtokens(), 
@@ -378,7 +380,7 @@ class DualTransformerEncoder(BaseTransformer, DualTextEncoder):
             )
 
         # Assumes that [CLS] is the first token
-        return y.last_hidden_state[:, 0]
+        return RepresentationOutput(y.last_hidden_state[:, 0])
 
     @property
     def dimension(self) -> int:
