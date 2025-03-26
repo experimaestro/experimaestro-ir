@@ -184,7 +184,7 @@ class BaseTransformer(Encoder):
         try:
             return self.tokenizer.max_model_length
         except:
-            logging.info("No `max_model_length` in the tokenizer, defaulting to `model.config.max_position_embeddings` instead")
+            logging.warning("No `max_model_length` in the tokenizer, defaulting to `model.config.max_position_embeddings` instead")
             return self.config.max_position_embeddings
 
     def dim(self):
