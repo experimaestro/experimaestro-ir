@@ -37,10 +37,10 @@ class DualRepresentationScorer(LearnableScorer, Generic[QueriesRep, DocsRep]):
         q_ix, d_ix = pairs
         return self.score_pairs(
             enc_queries[
-                q_ix,
+                q_ix
             ],
             enc_documents[
-                d_ix,
+                d_ix
             ],
             info,
         ).flatten()
