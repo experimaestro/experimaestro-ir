@@ -545,7 +545,7 @@ class MemoryTopicStore(TextStore):
 
     @cached_property
     def store(self):
-        return {topic[IDItem].id: topic.text for topic in self.topics.iter()}
+        return {topic[IDItem].id: topic[TextItem].text for topic in self.topics.iter()}
 
     def __getitem__(self, key: str) -> str:
         return self.store[key]

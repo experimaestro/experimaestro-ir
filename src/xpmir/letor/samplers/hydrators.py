@@ -20,13 +20,13 @@ from xpmir.utils.iter import (
 class SampleTransform(Config, ABC):
     @abstractmethod
     def transform_topics(
-        self, topics: Iterator[ir.TopicRecord]
+        self, topics: List[ir.TopicRecord]
     ) -> Optional[List[ir.TopicRecord]]:
         ...
 
     @abstractmethod
     def transform_documents(
-        self, documents: Iterator[ir.DocumentRecord]
+        self, documents: List[ir.DocumentRecord]
     ) -> Optional[List[ir.DocumentRecord]]:
         ...
 

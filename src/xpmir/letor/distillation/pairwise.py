@@ -131,9 +131,9 @@ class DistillationPairwiseTrainer(LossTrainer):
         for ix, sample in enumerate(samples):
             records.add(
                 PairwiseRecord(
-                    sample.query.as_record(),
-                    DocumentRecord(sample.documents[0].document),
-                    DocumentRecord(sample.documents[1].document),
+                    sample.query,
+                    sample.documents[0].document,
+                    sample.documents[1].document,
                 )
             )
             teacher_scores[ix, 0] = sample.documents[0].score
