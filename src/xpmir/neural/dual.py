@@ -106,11 +106,13 @@ class CosineDense(Dense):
 
     def encode_queries(self, records: List[TopicRecord]):
         queries = (self.query_encoder or self.encoder)(records)
-        return queries / queries.norm(dim=1, keepdim=True)
+        queries.value /= queries.value.norm(dim=1, keepdim=True)
+        return queries
 
     def encode_documents(self, records: List[DocumentRecord]):
         documents = self.encoder(records)
-        return documents / documents.norm(dim=1, keepdim=True)
+        documents.value /= documents.value.norm(dim=1, keepdim=True)
+        return documents
 
 
 class DotDense(Dense):
