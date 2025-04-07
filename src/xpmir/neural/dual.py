@@ -2,10 +2,8 @@ from typing import List, Optional
 from attrs import evolve
 import torch
 from experimaestro import Param
-from xpmir.learning.batchers import Batcher
 from xpmir.letor.records import TopicRecord, DocumentRecord
 from xpmir.neural import DualRepresentationScorer, QueriesRep, DocsRep
-from xpmir.rankers import Retriever
 from xpmir.utils.utils import easylog, foreach
 from xpmir.text.encoders import TextEncoderBase
 from xpmir.learning.context import Loss, TrainerContext, TrainingHook
@@ -137,19 +135,6 @@ class DotDense(Dense):
     def encode_documents(self, records: List[DocumentRecord]):
         """Encode the different documents"""
         return self.encoder(records)
-
-    def getRetriever(
-        self, retriever: "Retriever", batch_size: int, batcher: Batcher, device=None
-    ):
-        from xpmir.rankers.full import FullRetrieverRescorer
-
-        return FullRetrieverRescorer(
-            documents=retriever.documents,
-            scorer=self,
-            batchsize=batch_size,
-            batcher=batcher,
-            device=device,
-        )
 
 
 class FlopsRegularizer(DualVectorListener):
