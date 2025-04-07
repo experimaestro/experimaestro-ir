@@ -23,6 +23,7 @@ readme = {file = ["README.md"], content-type = "text/markdown"}
 dependencies = {file = ["requirements.txt"]}
 
 [project.optional-dependencies]
+
 anserini = [
     "pyserini >= 0.20.0"
 ]
@@ -33,6 +34,23 @@ neural = [
     "transformers",
     "sentence_transformers"
 ]
+
+[dependency-groups]
+
+documentation = [
+    "Sphinx>6",
+    "myst-parser",
+    "mock",
+    "sphinx-toolbox",
+    "sphinx-rtd-theme>=3",
+    "sphobjinv"
+]
+test = [
+    { include-group = "documentation" },
+    "pytest",
+    "faiss-cpu"
+]
+
 
 [project.urls]
 homepage = "https://github.com/bpiwowar/experimaestro-ir"

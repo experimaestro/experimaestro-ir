@@ -2,7 +2,6 @@ from abc import abstractmethod
 from typing import Iterable, Optional, List
 import torch
 from experimaestro import Param
-from datamaestro_text.data.ir import TextItem
 from xpmir.learning.context import TrainerContext
 from xpmir.neural.dual import (
     DualVectorScorer,
@@ -10,6 +9,7 @@ from xpmir.neural.dual import (
     DocumentRecord,
 )
 from xpmir.text import TokenizedTextEncoderBase, TokenizerOptions, TokensEncoderOutput
+from xpmir.text.encoders import InputType
 from .common import SimilarityInput, SimilarityOutput, Similarity
 
 
@@ -20,11 +20,11 @@ class InteractionScorer(DualVectorScorer[SimilarityInput, SimilarityInput]):
     of cosine/inner products between query and document token representations.
     """
 
-    encoder: Param[TokenizedTextEncoderBase[str, TokensEncoderOutput]]
+    encoder: Param[TokenizedTextEncoderBase[InputType, TokensEncoderOutput]]
     """The embedding model -- the vocab also defines how to tokenize text"""
 
     query_encoder: Param[
-        Optional[TokenizedTextEncoderBase[str, TokensEncoderOutput]]
+        Optional[TokenizedTextEncoderBase[InputType, TokensEncoderOutput]]
     ] = None
     """The embedding model for queries (if None, uses encoder)"""
 
@@ -50,7 +50,7 @@ class InteractionScorer(DualVectorScorer[SimilarityInput, SimilarityInput]):
 
     def _encode(
         self,
-        texts: List[str],
+        texts: List[InputType],
         encoder: TokenizedTextEncoderBase[str, TokensEncoderOutput],
         options: TokenizerOptions,
     ) -> SimilarityInput:
@@ -62,7 +62,7 @@ class InteractionScorer(DualVectorScorer[SimilarityInput, SimilarityInput]):
     def encode_documents(self, records: Iterable[DocumentRecord]) -> SimilarityInput:
         return self.similarity.preprocess(
             self._encode(
-                [record[TextItem].text for record in records],
+                records,
                 self.encoder,
                 TokenizerOptions(self.dlen),
             )
@@ -71,7 +71,7 @@ class InteractionScorer(DualVectorScorer[SimilarityInput, SimilarityInput]):
     def encode_queries(self, records: Iterable[TopicRecord]) -> SimilarityInput:
         return self.similarity.preprocess(
             self._encode(
-                [record[TextItem].text for record in records],
+                records,
                 self._query_encoder,
                 TokenizerOptions(self.qlen),
             )

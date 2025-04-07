@@ -9,7 +9,7 @@ import re
 import subprocess
 import sys
 from typing import List, Optional
-from experimaestro import tqdm as xpmtqdm, Task, Meta
+from experimaestro import tqdm as xpmtqdm, Task, Meta, field, PathGenerator
 
 from datamaestro_text.data.ir import (
     DocumentStore,
@@ -26,7 +26,7 @@ from datamaestro_text.data.ir.trec import (
     TipsterCollection,
     TrecTopics,
 )
-from experimaestro import Param, param, pathoption, progress
+from experimaestro import Param, progress
 from tqdm import tqdm
 from xpmir.index.anserini import Index
 from xpmir.rankers import Retriever, ScoredDocument, document_cache
@@ -60,9 +60,6 @@ def javacommand():
 
 
 @pyserini_java
-@param("documents", type=Documents)
-@param("threads", default=8, ignored=True)
-@pathoption("path", "index")
 class IndexCollection(Index, Task):
     """An [Anserini](https://github.com/castorini/anserini) index"""
 
@@ -73,6 +70,8 @@ class IndexCollection(Index, Task):
 
     thread: Meta[int] = 8
     """Number of threads when indexing"""
+
+    path: Meta[Path] = field(default_factory=PathGenerator("index"))
 
     id: Param[str] = ""
     """Use an empty ID since identifier is determined by documents"""
@@ -98,9 +97,10 @@ class IndexCollection(Index, Task):
             def _generator(out):
                 counter = 0
                 size = os.path.getsize(documents.path)
-                with documents.path.open("rt", encoding="utf-8") as fp, tqdm(
-                    total=size, unit="B", unit_scale=True
-                ) as pb:
+                with (
+                    documents.path.open("rt", encoding="utf-8") as fp,
+                    tqdm(total=size, unit="B", unit_scale=True) as pb,
+                ):
                     for ix, line in enumerate(fp):
                         # Update progress
                         ll = len(line)
@@ -220,11 +220,12 @@ class IndexCollection(Index, Task):
 
 
 @pyserini_java
-@param("index", Index)
-@param("topics", Topics)
-@param("model", Model)
-@pathoption("path", "results.trec")
 class SearchCollection(Task):
+    index: Param[Index]
+    topics: Param[Topics]
+    model: Param[Model]
+    path: Meta[Path] = field(default_factory=PathGenerator("results.trec"))
+
     def execute(self):
         command = javacommand()
         command.append("io.anserini.search.SearchCollection")

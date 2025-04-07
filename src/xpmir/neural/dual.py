@@ -1,10 +1,9 @@
 from typing import List, Optional
+from attrs import evolve
 import torch
 from experimaestro import Param
-from xpmir.learning.batchers import Batcher
 from xpmir.letor.records import TopicRecord, DocumentRecord
 from xpmir.neural import DualRepresentationScorer, QueriesRep, DocsRep
-from xpmir.rankers import Retriever
 from xpmir.utils.utils import easylog, foreach
 from xpmir.text.encoders import TextEncoderBase
 from xpmir.learning.context import Loss, TrainerContext, TrainingHook
@@ -76,7 +75,11 @@ class Dense(DualVectorScorer[QueriesRep, DocsRep]):
         return queries.value @ documents.value.T
 
     def score_pairs(self, queries, documents, info: Optional[TrainerContext] = None):
-        scores = (queries.value.unsqueeze(1) @ documents.value.unsqueeze(2)).squeeze(-1).squeeze(-1)
+        scores = (
+            (queries.value.unsqueeze(1) @ documents.value.unsqueeze(2))
+            .squeeze(-1)
+            .squeeze(-1)
+        )
 
         # Apply the dual vector hook
         if info is not None:
@@ -106,14 +109,16 @@ class CosineDense(Dense):
 
     def encode_queries(self, records: List[TopicRecord]):
         queries = (self.query_encoder or self.encoder)(records)
-        queries.value /= queries.value.norm(dim=1, keepdim=True)
-        return queries
+        return evolve(
+            queries, value=queries.value / queries.value.norm(dim=-1, keepdim=True)
+        )
 
     def encode_documents(self, records: List[DocumentRecord]):
         documents = self.encoder(records)
-        documents.value /= documents.value.norm(dim=1, keepdim=True)
-        return documents
-
+        return evolve(
+            documents,
+            value=documents.value / documents.value.norm(dim=-1, keepdim=True),
+        )
 
 class DotDense(Dense):
     """Dual model based on inner product."""
@@ -129,19 +134,6 @@ class DotDense(Dense):
     def encode_documents(self, records: List[DocumentRecord]):
         """Encode the different documents"""
         return self.encoder(records)
-
-    def getRetriever(
-        self, retriever: "Retriever", batch_size: int, batcher: Batcher, device=None
-    ):
-        from xpmir.rankers.full import FullRetrieverRescorer
-
-        return FullRetrieverRescorer(
-            documents=retriever.documents,
-            scorer=self,
-            batchsize=batch_size,
-            batcher=batcher,
-            device=device,
-        )
 
 
 class FlopsRegularizer(DualVectorListener):
