@@ -15,6 +15,7 @@ from xpmir.neural.interaction import (
     TokenizerOptions,
     TokensEncoderOutput,
 )
+from xpmir.text.encoders import InputType
 from .common import SimilarityInputWithTokens
 
 # The code below is heavily borrowed from OpenNIR
@@ -110,15 +111,15 @@ class Drmm(InteractionScorer):
 
     def __initialize__(self, options):
         super().__initialize__(options)
-        self.simmat = modules.InteractionMatrix(self.encoder.pad_tokenid)
+        self.simmat = modules.InteractionMatrix(self.encoder.pad_token_id)
         self.hidden_1 = nn.Linear(self.hist.nbins, self.hidden)
         self.hidden_2 = nn.Linear(self.hidden, 1)
         self.needs_idf = isinstance(self.combine, IdfCombination)
 
     def _encode(
         self,
-        texts: List[str],
-        encoder: TokenizedTextEncoderBase[str, TokensEncoderOutput],
+        texts: List[InputType],
+        encoder: TokenizedTextEncoderBase[InputType, TokensEncoderOutput],
         options: TokenizerOptions,
     ) -> SimilarityInputWithTokens:
         encoded = encoder(texts, options=options)
