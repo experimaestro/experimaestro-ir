@@ -6,6 +6,7 @@ from xpmir.text import (
     TokenizedTextEncoderBase,
     TokenizerOptions,
 )
+from xpmir.text.encoders import InputType
 from xpmir.neural.interaction import (
     InteractionScorer,
     SimilarityInput,
@@ -47,8 +48,8 @@ class Colbert(InteractionScorer):
 
     def _encode(
         self,
-        texts: List[str],
-        encoder: TokenizedTextEncoderBase[str, TokensEncoderOutput],
+        texts: List[InputType],
+        encoder: TokenizedTextEncoderBase[InputType, TokensEncoderOutput],
         options: TokenizerOptions,
     ) -> SimilarityInput:
         encoded = encoder(texts, options=options)
@@ -88,15 +89,20 @@ def colbert(
         to True
     :return: A ColBERT configuration object
     """
-    from xpmir.text.huggingface import HFStringTokenizer, HFTokensEncoder
     from xpmir.text.encoders import TokenizedTextEncoder
+    from xpmir.text.adapters import TopicTextConverter
+    from xpmir.text.huggingface import HFTokensEncoder
+    from xpmir.text.huggingface.tokenizers import HFTokenizerAdapter
 
     assert query_token is False, "Not implemented: use [QUERY] token"
     assert doc_token is False, "Not implemented: use [DOCUMENT] token"
     assert mask_token is False, "Not implemented: use [MASK] token"
 
     encoder = TokenizedTextEncoder(
-        tokenizer=HFStringTokenizer.from_pretrained_id(model_id),
+        tokenizer=HFTokenizerAdapter.from_pretrained_id(
+            model_id,
+            converter=TopicTextConverter(),
+        ),
         encoder=HFTokensEncoder.from_pretrained_id(model_id),
     )
     return Colbert(encoder=encoder, similarity=CosineSimilarity())

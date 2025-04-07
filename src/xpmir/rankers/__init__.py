@@ -151,6 +151,29 @@ class Scorer(Config, Initializable, EasyLogger, ABC):
             top_k=top_k if top_k else None,
         )
 
+    def getFullRetriever(
+        self, retriever: "Retriever", batch_size: int, batcher: Batcher, device=None
+    ):
+        """Return a full scorer retriever which score and reranks all the documents
+        given by the original retriever
+
+        :param device: Device for the ranker or None if no change should be made
+
+        :param retriever: The original full retriever
+
+        :param batch_size: The number of documents in each batch
+
+        """
+        from xpmir.rankers.full import FullRetrieverRescorer
+
+        return FullRetrieverRescorer(
+            documents=retriever.documents,
+            scorer=self,
+            batchsize=batch_size,
+            batcher=batcher,
+            device=device,
+        )
+
 
 def scorer_retriever(
     documents: Documents,
