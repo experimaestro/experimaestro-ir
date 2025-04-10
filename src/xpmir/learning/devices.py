@@ -1,3 +1,4 @@
+import logging
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -149,6 +150,26 @@ class CudaDevice(Device):
                     join=True,
                     start_method=mp.get_start_method(),
                 )
+
+
+class BestDevice(Device):
+    """Try to use a GPU device if it exists, fallbacks to CPU otherwise
+    
+    To be used when debugging"""
+
+    @cached_property
+    def value(self):
+        import torch
+        if torch.cuda.is_available():
+            device = torch.device('cuda')
+            logging.info(f"Using GPU: {torch.cuda.get_device_name(0)}")
+        elif torch.backends.mps.is_available():
+            device = torch.device('mps')
+            logging.info(f"Using MPS: {torch.backends.mps.is_available()}")
+        else:
+            device = torch.device('cpu')
+            logging.info(f"Using CPU: {torch.device('cpu')}")
+        return device
 
 
 # Default device is the CPU
