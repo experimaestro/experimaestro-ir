@@ -68,7 +68,7 @@ class IndexCollection(Index, Task):
     documents: Param[Documents]
     """The documents to index"""
 
-    thread: Meta[int] = 8
+    threads: Meta[int] = 8
     """Number of threads when indexing"""
 
     path: Meta[Path] = field(default_factory=PathGenerator("index"))
