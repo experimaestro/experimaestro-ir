@@ -105,7 +105,6 @@ class SpladeTextEncoder(TextEncoder, DistributableModel):
 
     def forward(self, texts: List[str]) -> torch.Tensor:
         """Returns a batch x vocab tensor"""
-        # FIXME: need to verify to the change should be here or not.
         if not isinstance(texts[0], str):
             texts = [text[TextItem].text for text in texts]
         tokenized = self.encoder.batch_tokenize(texts, mask=True, maxlen=self.maxlen)

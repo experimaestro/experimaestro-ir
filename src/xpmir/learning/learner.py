@@ -143,10 +143,6 @@ class Learner(Task, EasyLogger):
     before and after the initialization of the trainer and listeners.
     """
 
-    # FIXME: to remove
-    use_pretasks: Meta[bool] = False
-    """Use deprected pre-tasks as the output"""
-
     def __validate__(self):
         assert self.optimizers, "At least one optimizer should be defined"
         assert len(set(listener.id for listener in self.listeners)) == len(
