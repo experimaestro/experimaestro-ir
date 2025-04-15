@@ -120,7 +120,6 @@ class CosineDense(Dense):
             value=documents.value / documents.value.norm(dim=-1, keepdim=True),
         )
 
-
 class DotDense(Dense):
     """Dual model based on inner product."""
 

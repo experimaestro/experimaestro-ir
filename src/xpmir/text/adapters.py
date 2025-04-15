@@ -24,9 +24,11 @@ class MeanTextEncoder(TokenizedTextEncoderBase[InputType, RepresentationOutput])
         return self.encoder.dimension
 
     def forward(self, texts: List[InputType], options=None) -> RepresentationOutput:
-        emb_texts = self.encoder(texts, options=options)
+        # emb_texts = self.encoder(texts, options=options)
+        emb_texts = self.encoder([record[TextItem].text for record in texts], options=options)
         # Computes the mean over the time dimension (vocab output is batch x time x dim)
-        return emb_texts.value.mean(1)
+        emb_texts.value = emb_texts.value.mean(1)
+        return emb_texts
 
 
 class TopicTextConverter(Converter[Record, str]):
