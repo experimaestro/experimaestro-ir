@@ -1,7 +1,7 @@
 from abc import abstractmethod
 from typing import Iterable, Optional, List
 import torch
-from experimaestro import Param
+from experimaestro import Param, Annotated, field
 from xpmir.learning.context import TrainerContext
 from xpmir.neural.dual import (
     DualVectorScorer,
@@ -23,9 +23,10 @@ class InteractionScorer(DualVectorScorer[SimilarityInput, SimilarityInput]):
     encoder: Param[TokenizedTextEncoderBase[InputType, TokensEncoderOutput]]
     """The embedding model -- the vocab also defines how to tokenize text"""
 
-    query_encoder: Param[
-        Optional[TokenizedTextEncoderBase[InputType, TokensEncoderOutput]]
-    ] = None
+    query_encoder: Annotated[
+        Optional[TokenizedTextEncoderBase[InputType, TokensEncoderOutput]],
+        field(default=None),
+    ]
     """The embedding model for queries (if None, uses encoder)"""
 
     similarity: Param[Similarity]

@@ -1,5 +1,6 @@
 from typing import List, Optional, Generic
 from experimaestro import Config, Param
+from datamaestro_text.data.ir import TextItem
 import torch.nn as nn
 import torch
 from xpmir.learning import ModuleInitOptions
@@ -104,6 +105,8 @@ class SpladeTextEncoder(TextEncoder, DistributableModel):
 
     def forward(self, texts: List[str]) -> torch.Tensor:
         """Returns a batch x vocab tensor"""
+        if not isinstance(texts[0], str):
+            texts = [text[TextItem].text for text in texts]
         tokenized = self.encoder.batch_tokenize(texts, mask=True, maxlen=self.maxlen)
         out = self.model(tokenized)
         return TextsRepresentationOutput(out, tokenized)
