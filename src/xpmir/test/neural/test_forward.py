@@ -160,7 +160,7 @@ def cross_scorer():
     """Cross-scorer classifier factory"""
     from xpmir.neural.cross import CrossScorer
 
-    return CrossScorer(encoder=DummyDualTextEncoder()).instance()
+    return CrossScorer(max_length=100, encoder=DummyDualTextEncoder()).instance()
 
 
 # ---

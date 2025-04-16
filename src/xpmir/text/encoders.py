@@ -192,6 +192,9 @@ class TokensRepresentationOutput(RepresentationOutput):
     tokenized: TokenizedTexts
     """Tokenized texts"""
 
+    def __getitem__(self, ix: Union[slice, int]):
+        return self.__class__(self.value[ix], self.tokenized[ix])
+
 
 @define
 class TextsRepresentationOutput(RepresentationOutput):

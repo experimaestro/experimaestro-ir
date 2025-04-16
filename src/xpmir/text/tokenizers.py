@@ -36,9 +36,9 @@ class TokenizedTexts(NamedTuple):
 
     def __getitem__(self, ix):
         return TokenizedTexts(
-            opt_slice(self.tokens, ix),
+            [opt_slice(self.tokens, i) for i in ix],
             self.ids[ix],
-            self.lens[ix],
+            [self.lens[i] for i in ix],
             opt_slice(self.mask, ix),
             opt_slice(self.token_type_ids, ix),
         )
