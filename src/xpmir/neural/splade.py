@@ -125,6 +125,7 @@ class SpladeTextEncoder(TextEncoder, DistributableModel):
 class IdentityWithBias(nn.Identity):
     def __init__(self):
         # So that set_output_embeddings is happy
+        super().__init__()
         self.bias = None
 
 
