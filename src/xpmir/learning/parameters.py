@@ -133,11 +133,13 @@ class SubParametersIterator(ParametersIterator):
         }
 
         # Copy the selection status from the sub-model iterator
-        for name, param, selected in self.iterator.iter():
-            if mp := model_params.get(id(param), None):
-                if mp.selected != selected:
-                    model_params[id(param)] = ParameterElement(
-                        mp.name, mp.module, mp.parameter, selected
+        for element in self.iterator.iter():
+            id_param = id(element.parameter)
+            
+            if mp := model_params.get(id_param, None):
+                if mp.selected != element.selected:
+                    model_params[id_param] = ParameterElement(
+                        mp.name, mp.module, mp.parameter, element.selected
                     )
             else:
                 raise RuntimeError("Sub-model parameters are not model parameters")
@@ -280,7 +282,8 @@ class SubModuleLoader(PathSerializationLWTask):
 
         partial_data = {}
         value_names = set(key for key, _ in self.value.named_parameters())
-        for name, params, selected in self.selector.iter():
+        for element in self.selector.iter():
+            name, params, selected = element.name, element.parameter, element.selected
             if selected:
                 if mapper is None:
                     key = name
