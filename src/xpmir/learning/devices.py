@@ -126,6 +126,7 @@ class CudaDevice(Device):
         # Setup distributed computation
         # Seehttps://pytorch.org/tutorials/intermediate/ddp_tutorial.html
         n_gpus = torch.cuda.device_count()
+        assert torch.cuda.device_count() > 0
         if n_gpus == 1 or not self.distributed:
             callback(DeviceInformation(self.value, True), *args, **kwargs)
         else:
