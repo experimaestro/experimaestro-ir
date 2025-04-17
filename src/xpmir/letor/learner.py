@@ -18,7 +18,7 @@ logger = easylog()
 
 
 class ValidationModuleLoader(ModuleLoader):
-    """Specializes the validation module loader"""
+    """Specializes the validation listener"""
 
     listener: Param["ValidationListener"]
     """The listener"""

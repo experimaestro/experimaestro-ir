@@ -9,6 +9,7 @@ from datamaestro_text.data.ir import (
     DocumentStore,
     InternalIDItem,
     SimpleTextItem,
+    TextItem,
 )
 
 from experimaestro import Param
@@ -76,7 +77,7 @@ class VectorGenerator:
 
 
 def check_str(x: Any):
-    assert isinstance(x, str)
+    assert isinstance(x, str), f"{type(x)} is not a string"
     return x
 
 
@@ -104,6 +105,9 @@ class SparseRandomTextEncoder(TextEncoder):
 
     def forward(self, texts: List[str]) -> torch.Tensor:
         """Returns a matrix encoding the provided texts"""
-        return RepresentationOutput(
-            torch.cat([self.map[check_str(text)].unsqueeze(0) for text in texts])
-        )
+
+        tensors = [self.map[check_str(
+            text[TextItem].text if isinstance(text, Record) else text
+        )].unsqueeze(0) for text in texts]
+
+        return RepresentationOutput(torch.cat(tensors))

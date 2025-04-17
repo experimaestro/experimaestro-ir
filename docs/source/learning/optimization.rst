@@ -63,6 +63,11 @@ Freezing
 
 .. autoxpmconfig:: xpmir.learning.hooks.LayerFreezer
 
+Sharing
+*******
+
+.. autoxpmconfig:: xpmir.learning.hooks.LayerSharer
+
 Loading
 *******
 
@@ -86,6 +91,7 @@ the way to use it (i.e. multi-gpu settings).
 .. autoxpmconfig:: xpmir.learning.devices.Device
 
 .. autoxpmconfig:: xpmir.learning.devices.CudaDevice
+.. autoxpmconfig:: xpmir.learning.devices.BestDevice
 
 
 Schedulers
@@ -102,3 +108,4 @@ Base classes
 .. autoxpmconfig:: xpmir.learning.base.Sampler
 .. autoxpmconfig:: xpmir.learning.base.BaseSampler
 .. autoxpmconfig:: xpmir.learning.trainers.Trainer
+.. autoxpmconfig:: xpmir.learning.base.SampleIterator
