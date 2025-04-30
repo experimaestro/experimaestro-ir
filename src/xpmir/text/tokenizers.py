@@ -63,7 +63,7 @@ class Tokenizer(Config):
     **Deprecated**: Use TokenizerBase instead
     """
 
-    def tokenize(self, text):
+    def tokenize(self, text: str):
         """
         Meant to be overwritten in to provide vocab-specific tokenization when necessary
         e.g., BERT's WordPiece tokenization

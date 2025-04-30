@@ -10,7 +10,8 @@ Learning
 .. autoxpmconfig:: xpmir.conversation.learning.reformulation.DecontextualizedQueryConverter
 
 
-
+.. autoxpmconfig:: xpmir.conversation.learning.DatasetConversationBase
+.. autoxpmconfig:: xpmir.conversation.learning.DatasetConversationIterator
 
 CoSPLADE
 --------

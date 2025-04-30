@@ -122,6 +122,13 @@ class SpladeTextEncoder(TextEncoder, DistributableModel):
         self.model = update(self.model)
 
 
+class IdentityWithBias(nn.Identity):
+    def __init__(self):
+        # So that set_output_embeddings is happy
+        super().__init__()
+        self.bias = None
+
+
 class SpladeTextEncoderV2(
     TextEncoderBase[EncoderInputType, TextsRepresentationOutput],
     DistributableModel,
@@ -159,7 +166,7 @@ class SpladeTextEncoderV2(
         assert isinstance(
             output_embeddings, nn.Linear
         ), f"Cannot handle output embeddings of class {output_embeddings.__cls__}"
-        self.encoder.model.set_output_embeddings(nn.Identity())
+        self.encoder.model.set_output_embeddings(IdentityWithBias())
 
         self.aggregation = self.aggregation.get_output_module(output_embeddings)
 

@@ -21,6 +21,7 @@ Listeners
 =========
 
 .. autoxpmconfig:: xpmir.letor.learner.ValidationListener
+.. autoxpmconfig:: xpmir.letor.learner.ValidationModuleLoader
 
 Scorers
 =======

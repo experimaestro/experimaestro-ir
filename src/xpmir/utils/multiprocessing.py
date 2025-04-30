@@ -13,7 +13,10 @@ T = TypeVar("T")
 
 def available_cpus():
     """Returns the number of available CPU cores"""
-    return len(os.sched_getaffinity(0))
+    try:
+        return len(os.sched_getaffinity(0))
+    except AttributeError:
+        return mp.cpu_count()
 
 
 class StoppableQueue(Generic[T]):

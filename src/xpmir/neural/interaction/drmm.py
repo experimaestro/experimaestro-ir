@@ -111,7 +111,7 @@ class Drmm(InteractionScorer):
 
     def __initialize__(self, options):
         super().__initialize__(options)
-        self.simmat = modules.InteractionMatrix(self.encoder.pad_token_id)
+        self.simmat = modules.InteractionMatrix(self.encoder.pad_tokenid)
         self.hidden_1 = nn.Linear(self.hist.nbins, self.hidden)
         self.hidden_2 = nn.Linear(self.hidden, 1)
         self.needs_idf = isinstance(self.combine, IdfCombination)

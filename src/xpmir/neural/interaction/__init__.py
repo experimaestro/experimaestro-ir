@@ -52,7 +52,7 @@ class InteractionScorer(DualVectorScorer[SimilarityInput, SimilarityInput]):
     def _encode(
         self,
         texts: List[InputType],
-        encoder: TokenizedTextEncoderBase[str, TokensEncoderOutput],
+        encoder: TokenizedTextEncoderBase[InputType, TokensEncoderOutput],
         options: TokenizerOptions,
     ) -> SimilarityInput:
         encoded = encoder(texts, options=options)

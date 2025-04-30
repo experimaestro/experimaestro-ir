@@ -6,6 +6,8 @@ import torch
 from collections import defaultdict
 from experimaestro import Constant
 from datamaestro_text.data.ir import TextItem, create_record
+from datamaestro.record import Record
+from datamaestro_text.data.ir import TextItem
 from xpmir.index import Index
 from xpmir.learning import Random, ModuleInitMode
 from xpmir.neural.dual import CosineDense, DotDense
@@ -41,7 +43,7 @@ class TestTokenizer(Tokenizer):
             return tokid
 
 
-class RandomTokensEncoder(TokenizedTextEncoderBase[str, TokensRepresentationOutput]):
+class RandomTokensEncoder(TokenizedTextEncoderBase[Record, TokensRepresentationOutput]):
     DIMENSION = 7
     MAX_WORDS = 100
 
@@ -60,10 +62,10 @@ class RandomTokensEncoder(TokenizedTextEncoderBase[str, TokensRepresentationOutp
     def pad_tokenid(self) -> int:
         return 0
 
-    def forward(self, texts: List[str], options=None):
+    def forward(self, records: List[Record], options=None):
         options = options or TokenizerOptions()
         tok_texts = self.tokenizer.batch_tokenize(
-            texts, maxlen=options.max_length, mask=True
+            [record[TextItem].text for record in records], maxlen=options.max_length, mask=True
         )
         return TokensRepresentationOutput(self.embed(tok_texts.ids), tok_texts)
 

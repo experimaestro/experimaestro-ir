@@ -24,11 +24,16 @@ Documents
 Assessments
 -----------
 
+.. autoxpmconfig:: AbstractAdhocAssessmentFold
 .. autoxpmconfig:: AdhocAssessmentFold
+.. autoxpmconfig:: IDAdhocAssessmentFold
 
 Topics
 ------
 
+.. autoxpmconfig:: AbstractTopicFold
 .. autoxpmconfig:: TopicFold
+.. autoxpmconfig:: IDTopicFold
+.. autoxpmconfig:: TopicsFoldGenerator
 .. autoxpmconfig:: MemoryTopicStore
 .. autoxpmconfig:: TextStore

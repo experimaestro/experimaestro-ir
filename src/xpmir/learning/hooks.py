@@ -28,8 +28,7 @@ class LayerFreezer(InitializationTrainingHook):
 
 
 class LayerSharer(InitializationTrainingHook):
-    """This training hook class can be used to freeze a subset of model
-    parameters"""
+    """This training hook class can be used to share parameters"""
 
     source: Param[ParametersIterator]
     """The parameters to share"""

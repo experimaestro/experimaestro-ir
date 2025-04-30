@@ -33,7 +33,9 @@ class SparseIndex:
         )
 
         # Build the index
-        builder_instance = builder.instance(context=context, objects=objects)
+        builder_instance: SparseRetrieverIndexBuilder = builder.instance(
+            context=context, objects=objects
+        )
         builder_instance.execute()
 
         self.document_store = builder_instance.documents
@@ -65,7 +67,7 @@ def test_sparse_indexation(sparse_index: SparseIndex):
             nz = nz[sorted_ix]
 
         sparse_index.index_instance.initialize(False)
-        for (jx, posting) in enumerate(sparse_index.index_instance.index.postings(ix)):
+        for jx, posting in enumerate(sparse_index.index_instance.index.postings(ix)):
             assert (
                 posting.docid == nz[jx]
             ), f"Error for posting {jx} of term {ix} (docid)"
