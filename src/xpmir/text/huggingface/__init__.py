@@ -1,3 +1,4 @@
+import os
 import re
 import logging
 import torch.nn as nn
@@ -17,7 +18,7 @@ from xpmir.text.encoders import (
     TextEncoder,
     TripletTextEncoder,
     EncoderOutput,
-    RepresentationOutput
+    RepresentationOutput,
 )
 from xpmir.utils.utils import easylog
 from xpmir.learning.context import TrainerContext, TrainState
@@ -80,7 +81,7 @@ class BaseTransformer(Encoder):
     @property
     def pad_tokenid(self) -> int:
         return self.tokenizer.pad_token_id
-    
+
     @cached_property
     def config(self):
         return AutoConfig.from_pretrained(self.model_id)
@@ -102,13 +103,18 @@ class BaseTransformer(Encoder):
             self.config.hidden_dropout_prob = self.dropout
             self.config.attention_probs_dropout_prob = self.dropout
 
+        local_files_only = os.environ("HF_HUB_OFFLINE")
         if options.mode == ModuleInitMode.NONE or options.mode == ModuleInitMode.RANDOM:
             self.model = self.automodel.from_config(self.config)
         else:
-            self.model = self.automodel.from_pretrained(self.model_id, config=self.config)
+            self.model = self.automodel.from_pretrained(
+                self.model_id, config=self.config, local_files_only=local_files_only
+            )
 
         # Loads the tokenizer
-        self._tokenizer = AutoTokenizer.from_pretrained(self.model_id, use_fast=True)
+        self._tokenizer = AutoTokenizer.from_pretrained(
+            self.model_id, use_fast=True, local_files_only=local_files_only
+        )
 
         self.CLS = self.tokenizer.cls_token_id
         self.SEP = self.tokenizer.sep_token_id
@@ -185,8 +191,11 @@ class BaseTransformer(Encoder):
     def maxtokens(self) -> int:
         try:
             return self.tokenizer.max_model_length
-        except:
-            logging.warning("No `max_model_length` in the tokenizer, defaulting to `model.config.max_position_embeddings` instead")
+        except Exception:
+            logging.warning(
+                "No `max_model_length` in the tokenizer, "
+                "defaulting to `model.config.max_position_embeddings` instead"
+            )
             return self.config.max_position_embeddings
 
     def dim(self):
@@ -302,9 +311,9 @@ class TransformerEncoder(BaseTransformer, TextEncoder, DistributableModel):
 
     def forward(self, texts: List[str]):
         tokenized = self.batch_tokenize(
-            texts, 
-            maxlen=self.maxlen if self.maxlen is not None else self.maxtokens(), 
-            mask=True
+            texts,
+            maxlen=self.maxlen if self.maxlen is not None else self.maxtokens(),
+            mask=True,
         )
 
         with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
@@ -336,10 +345,7 @@ class TransformerTextEncoderAdapter(TextEncoder, DistributableModel):
         return self.encoder.dimension
 
     def forward(self, texts: List[str], maxlen=None):
-        return self.encoder.forward(
-            texts, 
-            maxlen=self.maxlen
-        )
+        return self.encoder.forward(texts, maxlen=self.maxlen)
 
     def static(self):
         return self.encoder.static()
@@ -363,12 +369,12 @@ class DualTransformerEncoder(BaseTransformer, DualTextEncoder):
 
     version: Constant[int] = 2
 
-    def forward(self, texts: List[Tuple[str, str]])->EncoderOutput:
+    def forward(self, texts: List[Tuple[str, str]]) -> EncoderOutput:
         tokenized = self.batch_tokenize(
-            texts, 
-            maxlen=self.maxlen if self.maxlen is not None else self.maxtokens(), 
-            mask=True
-    )
+            texts,
+            maxlen=self.maxlen if self.maxlen is not None else self.maxtokens(),
+            mask=True,
+        )
 
         with torch.set_grad_enabled(torch.is_grad_enabled() and self.trainable):
             kwargs = {}

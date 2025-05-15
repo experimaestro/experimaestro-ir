@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from typing import Optional, Union, Dict
 import shutil
@@ -49,8 +50,12 @@ class AutoModel:
         hf_id_or_folder: str, variant: Optional[str] = None, as_instance: bool = False
     ):
         """Loads from hugging face hub or from a folder"""
+        local_files_only = os.environ("HF_HUB_OFFLINE")
         data = XPMIRHFHub.from_pretrained(
-            hf_id_or_folder, variant=variant, as_instance=as_instance
+            hf_id_or_folder,
+            variant=variant,
+            as_instance=as_instance,
+            local_files_only=local_files_only,
         )
 
         if isinstance(data, ModuleLoader):
