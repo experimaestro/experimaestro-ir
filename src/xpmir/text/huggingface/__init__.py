@@ -103,17 +103,16 @@ class BaseTransformer(Encoder):
             self.config.hidden_dropout_prob = self.dropout
             self.config.attention_probs_dropout_prob = self.dropout
 
-        local_files_only = os.environ("HF_HUB_OFFLINE")
         if options.mode == ModuleInitMode.NONE or options.mode == ModuleInitMode.RANDOM:
             self.model = self.automodel.from_config(self.config)
         else:
             self.model = self.automodel.from_pretrained(
-                self.model_id, config=self.config, local_files_only=local_files_only
+                self.model_id, config=self.config
             )
 
         # Loads the tokenizer
         self._tokenizer = AutoTokenizer.from_pretrained(
-            self.model_id, use_fast=True, local_files_only=local_files_only
+            self.model_id, use_fast=True
         )
 
         self.CLS = self.tokenizer.cls_token_id
