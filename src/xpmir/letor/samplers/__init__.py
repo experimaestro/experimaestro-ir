@@ -589,9 +589,9 @@ class ModelBasedHardNegativeSampler(Task, Sampler):
         assessments = {}  # type: Dict[str, Dict[str, float]]
         for qrels in self.dataset.assessments.iter():
             doc2rel = {}
-            assessments[qrels.qid] = doc2rel
+            assessments[qrels.topic_id] = doc2rel
             for qrel in qrels.assessments:
-                doc2rel[qrel.docid] = qrel.rel
+                doc2rel[qrel.doc_id] = qrel.rel
         self.logger.info("Assessment loaded")
         self.logger.info("Read assessments for %d topics", len(assessments))
 
@@ -607,37 +607,35 @@ class ModelBasedHardNegativeSampler(Task, Sampler):
             # available
             skipped = 0
             for query in tqdm(queries):
-                qassessments = assessments.get(query.qid, None)
+                qassessments = assessments.get(query[IDItem].id, None)
                 if not qassessments:
                     skipped += 1
-                    self.logger.warning("Skipping topic %s (no assessments)", query.qid)
+                    self.logger.warning("Skipping topic %s (no assessments)", query[IDItem].id)
                     continue
 
                 # Write all the positive documents
                 positives = []
                 negatives = []
-                scoreddocuments: List[ScoredDocument] = self.retriever.retrieve(
-                    query.text
-                )
+                scoreddocuments: List[ScoredDocument] = self.retriever.retrieve(query)
 
                 for rank, sd in enumerate(scoreddocuments):
-                    if qassessments.get(sd.docid, 0) > 0:
+                    if qassessments.get(sd.document[IDItem].id, 0) > 0:
                         # It is a positive document:
-                        positives.append(sd.docid)
+                        positives.append(sd.document[IDItem].id)
                     else:
                         # It is a negative document or
                         # don't exist in assessment
-                        negatives.append(sd.docid)
+                        negatives.append(sd.document[IDItem].id)
 
                 if not positives:
                     self.logger.debug(
-                        "Skipping topic %s (no relevant documents)", query.qid
+                        "Skipping topic %s (no relevant documents)", query[IDItem].id
                     )
                     skipped += 1
                     continue
                 if not negatives:
                     self.logger.debug(
-                        "Skipping topic %s (no negative documents)", query.qid
+                        "Skipping topic %s (no negative documents)", query[IDItem].id
                     )
                     skipped += 1
                     continue
@@ -646,7 +644,7 @@ class ModelBasedHardNegativeSampler(Task, Sampler):
                 positive_str = " ".join(positives)
                 negative_str = " ".join(negatives)
                 fp.write(
-                    f"{qrels.qid}\tpositives:\t{positive_str}\t"
+                    f"{query[IDItem].id}\tpositives:\t{positive_str}\t"
                     f"negatives:\t{negative_str}"
                 )
 
