@@ -487,7 +487,7 @@ class TSVPairwiseSampleDataset(PairwiseSampleDataset):
             positives = triplet[2].split(" ")
             negatives = triplet[4].split(" ")
             # at the moment, I don't have some good idea to store the algo
-            yield PairwiseSample(topics, positives, negatives)
+            yield PairwiseSample(topics=topics, positives=positives, negatives=negatives)
 
 
 class JSONLPairwiseSampleDataset(PairwiseSampleDataset):
