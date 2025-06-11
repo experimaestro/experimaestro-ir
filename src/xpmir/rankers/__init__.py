@@ -18,7 +18,7 @@ from typing import (
 import torch
 import torch.nn as nn
 import attrs
-from experimaestro import Param, Config, Meta
+from experimaestro import Param, Config, Meta, field
 from datamaestro_text.data.ir import (
     Documents,
     DocumentStore,
@@ -130,7 +130,7 @@ class Scorer(Config, Initializable, EasyLogger, ABC):
         self,
         retriever: "Retriever",
         batch_size: int,
-        batcher: Batcher = Batcher(),
+        batcher: Batcher = Batcher.C(),
         top_k=None,
         device=None,
     ):
@@ -337,16 +337,16 @@ class AbstractTwoStageRetriever(Retriever):
     scorer: Param[Scorer]
     """The scorer used to re-rank the documents"""
 
-    top_k: Param[Optional[int]] = None
+    top_k: Param[Optional[int]]
     """The number of returned documents (if None, returns all the documents)"""
 
     batchsize: Meta[int] = 0
     """The batch size for the re-ranker"""
 
-    batcher: Meta[Batcher] = Batcher()
+    batcher: Meta[Batcher] = field(default_factory=Batcher.C)
     """How to provide batches of documents"""
 
-    device: Meta[Optional[Device]] = None
+    device: Meta[Optional[Device]]
     """Device on which the model is run"""
 
     def initialize(self):

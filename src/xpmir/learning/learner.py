@@ -157,7 +157,7 @@ class Learner(Task, EasyLogger):
                 for listener in self.listeners
             },
             learned_model=dep(
-                ModuleLoader(
+                ModuleLoader.C(
                     value=self.model,
                     path=self.last_checkpoint_path / TrainState.MODEL_PATH,
                 )

@@ -17,7 +17,7 @@ class Measure(BaseMeasure):
     """Cutoff value"""
 
     def __matmul__(self, cutoff):
-        return Measure(identifier=self.identifier, rel=self.rel, cutoff=int(cutoff))
+        return Measure.C(identifier=self.identifier, rel=self.rel, cutoff=int(cutoff))
 
     def __call__(self):
         measure = irm.parse_measure(self.identifier)
@@ -29,21 +29,21 @@ class Measure(BaseMeasure):
         return f"{self.identifier}@{self.cutoff}/rel={self.rel}"
 
 
-AP = Measure(identifier="AP")
+AP = Measure.C(identifier="AP")
 """Average precision metric"""
 
-P = Measure(identifier="P")
+P = Measure.C(identifier="P")
 """Precision at rank"""
 
-RR = Measure(identifier="RR")
+RR = Measure.C(identifier="RR")
 """Reciprocical rank"""
 
-nDCG = Measure(identifier="nDCG")
+nDCG = Measure.C(identifier="nDCG")
 """Normalized Discounted Cumulated Gain"""
 
-R = Measure(identifier="R")
+R = Measure.C(identifier="R")
 """Recall at rank"""
 
-Success = Measure(identifier="Success")
+Success = Measure.C(identifier="Success")
 """1 if a document with at least rel relevance is found in the first cutoff
 documents, else 0."""

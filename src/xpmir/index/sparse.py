@@ -18,6 +18,7 @@ from experimaestro import (
     Task,
     Param,
     Meta,
+    field,
     pathgenerator,
     tqdm,
     Constant,
@@ -88,7 +89,7 @@ class SparseRetriever(Retriever, Generic[InputType]):
     device: Meta[Device] = DEFAULT_DEVICE
     """The device for building the index"""
 
-    batcher: Meta[Batcher] = Batcher()
+    batcher: Meta[Batcher] = field(default_factory=Batcher.C)
     """The way to prepare batches of queries (when using retrieve_all)"""
 
     batchsize: Meta[int]
@@ -239,7 +240,7 @@ class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
     encoder: Param[TextEncoderBase[InputType, TextsRepresentationOutput]]
     """The encoder"""
 
-    batcher: Meta[Batcher] = Batcher()
+    batcher: Meta[Batcher] = field(default_factory=Batcher.C)
     """Batcher used when computing representations"""
 
     batch_size: Param[int]
@@ -272,7 +273,7 @@ class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
         SparseRetriever to search efficiently for documents"""
 
         return dep(
-            SparseRetrieverIndex(index_path=self.index_path, documents=self.documents)
+            SparseRetrieverIndex.C(index_path=self.index_path, documents=self.documents)
         )
 
     def execute(self):

@@ -46,7 +46,7 @@ class BaseEvaluation(Task):
 
     def task_outputs(self, dep):
         return dep(
-            TrecAdhocResults(
+            TrecAdhocResults.C(
                 id="",
                 results=self.aggregated,
                 detailed=self.detailed,
@@ -180,7 +180,7 @@ class Evaluations:
         if not isinstance(retriever, Retriever):
             retriever = retriever(self.dataset.documents)
 
-        evaluation: AdhocResults = Evaluate(
+        evaluation: AdhocResults = Evaluate.C(
             retriever=retriever,
             measures=self.measures,
             dataset=self.dataset,

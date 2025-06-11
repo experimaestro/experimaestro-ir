@@ -1,5 +1,5 @@
 from typing import Dict
-from experimaestro import Param
+from experimaestro import Param, field
 import numpy as np
 from xpmir.learning.metrics import ScalarMetric
 from xpmir.letor.samplers import Sampler, SerializableIterator
@@ -23,7 +23,7 @@ class LossTrainer(Trainer):
     - the `sampler_iter` is initialized – and is a serializable iterator over batches
     """
 
-    batcher: Param[Batcher] = Batcher()
+    batcher: Param[Batcher] = field(default_factory=Batcher.C)
     """How to batch samples together"""
 
     sampler: Param[Sampler]

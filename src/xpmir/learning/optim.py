@@ -251,7 +251,7 @@ class ParameterOptimizer(Config):
     module: Param[Optional[Module]]
     """The module from which parameters should be extracted"""
 
-    filter: Param[Optional[ParameterFilter]] = ParameterFilter()
+    filter: Param[Optional[ParameterFilter]] = ParameterFilter.C()
     """How parameters should be selected for this (by default, use them all)"""
 
     def create_optimizer(

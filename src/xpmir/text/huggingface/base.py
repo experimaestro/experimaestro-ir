@@ -107,7 +107,7 @@ class HFModel(Module):
 
     @classmethod
     def from_pretrained_id(cls, model_id: str):
-        return cls(config=HFModelConfigFromId(model_id=model_id))
+        return cls.C(config=HFModelConfigFromId.C(model_id=model_id))
 
     @property
     def autoconfig(self):

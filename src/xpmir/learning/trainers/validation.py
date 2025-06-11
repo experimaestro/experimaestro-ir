@@ -3,7 +3,7 @@ import json
 from typing import Dict, Any
 from pathlib import Path
 
-from experimaestro import Annotated, Param, pathgenerator
+from experimaestro import Annotated, Param, pathgenerator, field
 
 from xpmir.learning import SampleIterator
 from xpmir.learning.batchers import Batcher
@@ -29,7 +29,7 @@ class TrainerValidationLoss(LearnerListener):
     data: Param[SampleIterator]
     """The dataset to use"""
 
-    batcher: Param[Batcher] = Batcher()
+    batcher: Param[Batcher] = field(default_factory=Batcher.C)
     """How to batch samples together"""
 
     batch_size: Param[int]
@@ -74,7 +74,7 @@ class TrainerValidationLoss(LearnerListener):
 
     def init_task(self, learner: "Learner", dep):
         return dep(
-            ModuleLoader(
+            ModuleLoader.C(
                 value=learner.model,
                 path=self.bestpath / TrainState.MODEL_PATH,
             )

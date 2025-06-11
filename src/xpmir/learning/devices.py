@@ -155,23 +155,24 @@ class CudaDevice(Device):
 
 class BestDevice(Device):
     """Try to use a GPU device if it exists, fallbacks to CPU otherwise
-    
+
     To be used when debugging"""
 
     @cached_property
     def value(self):
         import torch
+
         if torch.cuda.is_available():
-            device = torch.device('cuda')
+            device = torch.device("cuda")
             logging.info(f"Using GPU: {torch.cuda.get_device_name(0)}")
         elif torch.backends.mps.is_available():
-            device = torch.device('mps')
+            device = torch.device("mps")
             logging.info(f"Using MPS: {torch.backends.mps.is_available()}")
         else:
-            device = torch.device('cpu')
+            device = torch.device("cpu")
             logging.info(f"Using CPU: {torch.device('cpu')}")
         return device
 
 
 # Default device is the CPU
-DEFAULT_DEVICE = Device()
+DEFAULT_DEVICE = Device.C()
