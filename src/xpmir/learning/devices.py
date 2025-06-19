@@ -79,6 +79,38 @@ def mp_launcher(rank, path, world_size, callback, taskenv, args, kwargs):
     dist.destroy_process_group()
 
 
+def cuda_execute(callback, args, kwargs, distributed=True):
+    # Setup distributed computation
+    # Seehttps://pytorch.org/tutorials/intermediate/ddp_tutorial.html
+    n_gpus = torch.cuda.device_count()
+
+    if n_gpus == 1 or not distributed:
+        logger.info("Using mono-GPU CUDA computing")
+        callback(DeviceInformation(torch.device("cuda"), True), *args, **kwargs)
+    else:
+        if sys.version_info.major == 3 and sys.version_info.minor < 10:
+            tmp_directory = tempfile.TemporaryDirectory()
+        else:
+            tmp_directory = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+
+        with tmp_directory as directory:
+            logger.info("Setting up distributed CUDA computing (%d GPUs)", n_gpus)
+            return mp.start_processes(
+                mp_launcher,
+                args=(
+                    str((Path(directory) / "link").absolute()),
+                    n_gpus,
+                    callback,
+                    TaskEnv.instance(),
+                    args,
+                    kwargs,
+                ),
+                nprocs=n_gpus,
+                join=True,
+                start_method=mp.get_start_method(),
+            )
+
+
 class CudaDevice(Device):
     """CUDA device"""
 
@@ -123,34 +155,7 @@ class CudaDevice(Device):
         return 1
 
     def execute(self, callback, *args, **kwargs):
-        # Setup distributed computation
-        # Seehttps://pytorch.org/tutorials/intermediate/ddp_tutorial.html
-        n_gpus = torch.cuda.device_count()
-        assert torch.cuda.device_count() > 0
-        if n_gpus == 1 or not self.distributed:
-            callback(DeviceInformation(self.value, True), *args, **kwargs)
-        else:
-            if sys.version_info.major == 3 and sys.version_info.minor < 10:
-                tmp_directory = tempfile.TemporaryDirectory()
-            else:
-                tmp_directory = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
-
-            with tmp_directory as directory:
-                logger.info("Setting up distributed CUDA computing (%d GPUs)", n_gpus)
-                return mp.start_processes(
-                    mp_launcher,
-                    args=(
-                        str((Path(directory) / "link").absolute()),
-                        n_gpus,
-                        callback,
-                        TaskEnv.instance(),
-                        args,
-                        kwargs,
-                    ),
-                    nprocs=n_gpus,
-                    join=True,
-                    start_method=mp.get_start_method(),
-                )
+        cuda_execute(callback, args, kwargs)
 
 
 class BestDevice(Device):
@@ -172,6 +177,12 @@ class BestDevice(Device):
             device = torch.device("cpu")
             logging.info(f"Using CPU: {torch.device('cpu')}")
         return device
+
+    def execute(self, callback, *args, **kwargs):
+        if self.value.type != "cuda":
+            callback(DeviceInformation(self.value, True), *args, **kwargs)
+        else:
+            cuda_execute(callback, args, kwargs)
 
 
 # Default device is the CPU
