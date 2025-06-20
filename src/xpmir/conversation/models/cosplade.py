@@ -119,7 +119,7 @@ class CoSPLADE(ConversationRepresentationEncoder):
             count = 0
             for item in c_record[ConversationHistoryItem].history:
                 entry_type = item[EntryType]
-                if entry_type == EntryType.USER_QUERY and answer is not None:
+                if entry_type == EntryType.USER_QUERY and answer is not None and answer.answer is not None:
                     count += 1
                     query_answer_pairs.append((c_record[TextItem].text, answer.answer))
                     pair_origins.append(ix)
