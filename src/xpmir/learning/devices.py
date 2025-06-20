@@ -178,6 +178,13 @@ class BestDevice(Device):
             logging.info(f"Using CPU: {torch.device('cpu')}")
         return device
 
+    @cached_property
+    def n_processes(self):
+        """Number of processes"""
+        if self.value.type == "cuda":
+            return torch.cuda.device_count()
+        return 1
+
     def execute(self, callback, *args, **kwargs):
         if self.value.type != "cuda":
             callback(DeviceInformation(self.value, True), *args, **kwargs)
