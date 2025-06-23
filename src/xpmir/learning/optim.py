@@ -318,11 +318,7 @@ class GradientClippingHook(GradientHook):
     """Maximum norm for gradient clipping"""
 
     def before(self, main: "ScheduledOptimizer"):
-        grad_clip_module = []
-        for param in main.module.parameters():
-            if not (param.grad.norm().isnan() or param.grad.norm().isinf()):
-                grad_clip_module.append(param)
-        torch.nn.utils.clip_grad_norm_(grad_clip_module, self.max_norm)
+        torch.nn.utils.clip_grad_norm_(main.module.parameters(), self.max_norm)
 
 
 class GradientLogHook(GradientHook):
