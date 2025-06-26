@@ -184,6 +184,13 @@ class BestDevice(Device):
         else:
             cuda_execute(callback, args, kwargs)
 
+    @cached_property
+    def n_processes(self):
+        """Number of processes"""
+        if torch.cuda.is_available():
+            return torch.cuda.device_count()
+        return 1
+
 
 # Default device is the CPU
 DEFAULT_DEVICE = Device.C()
