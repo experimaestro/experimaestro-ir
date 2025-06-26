@@ -1,5 +1,6 @@
 """Index for sparse models"""
 
+from abc import abstractmethod, ABC
 import asyncio
 from functools import cached_property
 import threading
@@ -10,16 +11,16 @@ import torch.multiprocessing as mp
 import numpy as np
 import sys
 from pathlib import Path
-from typing import Dict, List, Tuple, Generic, Iterator, Union
+from typing import Dict, List, Tuple, Generic, Iterator, Union, Any
 from attrs import define
+from dataclasses import InitVar
 from experimaestro import (
-    Annotated,
     Config,
     Task,
     Param,
     Meta,
     field,
-    pathgenerator,
+    PathGenerator,
     tqdm,
     Constant,
 )
@@ -37,158 +38,6 @@ import impact_index
 logger = easylog()
 
 # --- Index and retriever
-
-
-class SparseRetrieverIndex(Config):
-    index_path: Meta[Path]
-    documents: Param[DocumentStore]
-
-    index: impact_index.Index
-    ordered = False
-
-    def initialize(self, in_memory: bool):
-        self.index = impact_index.Index.load(str(self.index_path.absolute()), in_memory)
-
-    def retrieve(self, query: Dict[int, float], top_k: int) -> List[ScoredDocument]:
-        results = []
-        for sd in self.index.search_maxscore(query, top_k):
-            results.append(
-                ScoredDocument(
-                    self.documents.document_int(sd.docid),
-                    sd.score,
-                )
-            )
-
-        return results
-
-    async def aio_retrieve(
-        self, query: Dict[int, float], top_k: int
-    ) -> List[ScoredDocument]:
-        results = []
-        for sd in await self.index.aio_search_maxscore(query, top_k):
-            results.append(
-                ScoredDocument(
-                    self.documents.document_int(sd.docid),
-                    sd.score,
-                )
-            )
-
-        return results
-
-
-class SparseRetriever(Retriever, Generic[InputType]):
-    index: Param[SparseRetrieverIndex]
-    """The sparse retriever index"""
-
-    encoder: Param[TextEncoderBase[InputType, TextsRepresentationOutput]]
-    """Encodes InputType records to text representation output"""
-
-    topk: Param[int]
-    """Number of documents to return"""
-
-    device: Meta[Device] = DEFAULT_DEVICE
-    """The device for building the index"""
-
-    batcher: Meta[Batcher] = field(default_factory=Batcher.C)
-    """The way to prepare batches of queries (when using retrieve_all)"""
-
-    batchsize: Meta[int]
-    """Size of batches (when using retrieve_all)"""
-
-    in_memory: Meta[bool] = False
-    """Whether the index should be fully loaded in memory (otherwise, uses
-    virtual memory)"""
-
-    def initialize(self):
-        super().initialize()
-        logger.info("Initializing the encoder")
-        self.encoder.initialize(ModuleInitMode.DEFAULT.to_options(None))
-        self.encoder.to(self.device.value)
-        logger.info("Initializing the index")
-        self.index.initialize(self.in_memory)
-
-    def retrieve_all(
-        self, queries: Dict[str, InputType]
-    ) -> Dict[str, List[ScoredDocument]]:
-        """Input queries: {id: text}"""
-
-        async def aio_search_worker(progress, results: Dict, queue: asyncio.Queue):
-            try:
-                while True:
-                    key, query, topk = await queue.get()
-                    results[key] = await self.index.aio_retrieve(query, topk)
-                    progress.update(1)
-                    queue.task_done()
-            except asyncio.exceptions.CancelledError:
-                # Just stopped
-                pass
-            except Exception:
-                logger.exception("Error in worker thread")
-
-        async def reducer(
-            batch: List[Tuple[str, InputType]],
-            queue: asyncio.Queue,
-        ):
-            x = self.encoder([topic for _, topic in batch]).value.cpu().detach().numpy()
-            assert len(x) == len(batch), (
-                f"Discrepancy between counts of vectors ({len(x)})"
-                f" and number queries ({len(batch)})"
-            )
-            for (key, _), vector in zip(batch, x):
-                (ix,) = vector.nonzero()
-                query = {ix: float(v) for ix, v in zip(ix, vector[ix])}
-                logger.debug("Adding topic %s to the queue", key)
-                await queue.put((key, query, self.topk))
-                logger.debug("[done] Adding topic %s to the queue", key)
-
-        async def aio_process():
-            workers = []
-            results = {}
-            try:
-                queue = asyncio.Queue(available_cpus())
-                items = list(queries.items())
-
-                with tqdm(
-                    desc="Retrieve documents", total=len(items), unit="queries"
-                ) as progress:
-                    self.encoder.eval()
-                    for _ in range(available_cpus()):
-                        worker = asyncio.create_task(
-                            aio_search_worker(progress, results, queue)
-                        )
-                        workers.append(worker)
-
-                    batcher = self.batcher.initialize(self.batchsize)
-                    with torch.no_grad():
-                        for batch in batchiter(self.batchsize, items):
-                            await batcher.aio_reduce(batch, reducer, queue)
-
-                    # Just wait for this to end
-                    await queue.join()
-
-            finally:
-                # Stop all retriever workers
-                for worker in workers:
-                    worker.cancel()
-            return results
-
-        logger.info("Retrieve all with %d CPUs", available_cpus())
-        results = asyncio.run(aio_process())
-        return results
-
-    def retrieve(self, query: TopicRecord, top_k=None) -> List[ScoredDocument]:
-        """Search with document-at-a-time (DAAT) strategy
-
-        :param top_k: Overrides the default top-K value
-        """
-
-        # Build up iterators
-        vector = self.encoder([query]).value[0].cpu().detach().numpy()
-        (ix,) = vector.nonzero()  # ix represents the position without 0 in the vector
-        query = {
-            ix: float(v) for ix, v in zip(ix, vector[ix])
-        }  # generate a dict: {position:value}
-        return self.index.retrieve(query, top_k or self.topk)
 
 
 @define(frozen=True)
@@ -227,7 +76,7 @@ class DocumentIterator:
         return next(self.iterator)
 
 
-class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
+class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
     """Builds an index from a sparse representation
 
     Assumes that document and queries have the same dimension, and
@@ -256,25 +105,13 @@ class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
     max_postings: Meta[int] = 16384
     """Maximum number of postings (per term) before flushing to disk"""
 
-    index_path: Annotated[Path, pathgenerator("index")]
-
-    in_memory: Meta[bool] = False
-    """Whether the index should be fully loaded in memory (otherwise, uses
-    virtual memory)"""
+    index_path: Meta[Path] = field(default_factory=PathGenerator("index"))
 
     version: Constant[int] = 3
     """Version 3 of the index"""
 
     max_docs: Param[int] = 0
     """Maximum number of indexed documents"""
-
-    def task_outputs(self, dep):
-        """Returns a sparse retriever index that can be used by a
-        SparseRetriever to search efficiently for documents"""
-
-        return dep(
-            SparseRetrieverIndex.C(index_path=self.index_path, documents=self.documents)
-        )
 
     def execute(self):
         if mp.get_start_method(allow_none=True) is None:
@@ -303,7 +140,8 @@ class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
 
         if self.index_path.is_dir():
             rmtree(self.index_path)
-        self.index_path.mkdir(parents=True)
+        elif self.index_path.is_file():
+            self.index_path.unlink()
 
         # Start the index process (thread)
         index_thread = threading.Thread(
@@ -355,7 +193,7 @@ class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
                     len(queues),
                     self.index_path,
                 )
-                indexer = impact_index.IndexBuilder(str(self.index_path))
+                self.create_index_builder()
                 heap = [queue.get() for queue in queues]
                 heapq.heapify(heap)
 
@@ -371,15 +209,12 @@ class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
                         ), f"Mismatch in document IDs ({encoded.docid} vs {docid})"
 
                         (nonzero_ix,) = encoded.value.nonzero()
-                        indexer.add(
-                            docid,
-                            nonzero_ix.astype(np.uint64),
-                            encoded.value[nonzero_ix],
-                        )
+                        self.add_encoded_document(docid, encoded, nonzero_ix)
                         pb.update()
 
                     # Get next range
-                    next_range = queues[current.rank].get()  # type: DocumentRange
+                    # type: DocumentRange
+                    next_range = queues[current.rank].get()
                     if next_range:
                         logger.debug("Got next range: %s", next_range)
                         heapq.heappushpop(heap, next_range)
@@ -388,7 +223,7 @@ class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
                         heapq.heappop(heap)
 
                 logger.info("Building the index")
-                indexer.build(self.in_memory)
+                self.build_index()
 
                 logger.info("Index built")
                 self.index_done = True
@@ -462,3 +297,424 @@ class SparseRetrieverIndexBuilder(Task, Generic[InputType]):
         vectors = encoder([d for _, d in batch]).value.cpu().numpy()  # bs * vocab
         for vector, (docid, _) in zip(vectors, batch):
             queue.put(EncodedDocument(docid, vector))
+
+    @abstractmethod
+    def build_index(self, indexer: impact_index.IndexBuilder):
+        ...
+
+    @abstractmethod
+    def add_encoded_document(
+        self, indexer: impact_index.IndexBuilder, docid, encoded, nonzero_ix
+    ):
+        ...
+
+    @abstractmethod
+    def create_index_builder(self):
+        ...
+
+
+class SparseRetriever(Retriever, Generic[InputType]):
+    index: Param["AbstractSparseRetrieverIndex"]
+    """The sparse retriever index"""
+
+    encoder: Param[TextEncoderBase[InputType, TextsRepresentationOutput]]
+    """Encodes InputType records to text representation output"""
+
+    topk: Param[int]
+    """Number of documents to return"""
+
+    device: Meta[Device] = DEFAULT_DEVICE
+    """The device for building the index"""
+
+    batcher: Meta[Batcher] = field(default_factory=Batcher.C)
+    """The way to prepare batches of queries (when using retrieve_all)"""
+
+    batchsize: Meta[int]
+    """Size of batches (when using retrieve_all)"""
+
+    in_memory: Meta[bool] = False
+    """Whether the index should be fully loaded in memory (otherwise, uses
+    virtual memory)"""
+
+    def initialize(self):
+        super().initialize()
+        logger.info("Initializing the encoder")
+        self.encoder.initialize(ModuleInitMode.DEFAULT.to_options(None))
+        self.encoder.to(self.device.value)
+        logger.info("Initializing the index")
+        self.index.initialize(self.in_memory)
+
+    def retrieve_all(
+        self, queries: Dict[str, InputType]
+    ) -> Dict[str, List[ScoredDocument]]:
+        """Input queries: {id: text}"""
+
+        async def aio_search_worker(progress, results: Dict, queue: asyncio.Queue):
+            try:
+                while True:
+                    key, query, topk = await queue.get()
+                    results[key] = await self.index.aio_retrieve(
+                        query, topk, **self.get_retrieval_options()
+                    )
+                    progress.update(1)
+                    queue.task_done()
+            except asyncio.exceptions.CancelledError:
+                # Just stopped
+                pass
+            except Exception:
+                logger.exception("Error in worker thread")
+
+        async def reducer(
+            batch: List[Tuple[str, InputType]],
+            queue: asyncio.Queue,
+        ):
+            x = self.encoder([topic for _, topic in batch]).value.cpu().detach().numpy()
+            assert len(x) == len(batch), (
+                f"Discrepancy between counts of vectors ({len(x)})"
+                f" and number queries ({len(batch)})"
+            )
+            for (key, _), vector in zip(batch, x):
+                (ix,) = vector.nonzero()
+                query = {ix: float(v) for ix, v in zip(ix, vector[ix])}
+                logger.debug("Adding topic %s to the queue", key)
+                await queue.put((key, query, self.topk))
+                logger.debug("[done] Adding topic %s to the queue", key)
+
+        async def aio_process():
+            workers = []
+            results = {}
+            try:
+                queue = asyncio.Queue(available_cpus())
+                items = list(queries.items())
+
+                with tqdm(
+                    desc="Retrieve documents", total=len(items), unit="queries"
+                ) as progress:
+                    self.encoder.eval()
+                    for _ in range(available_cpus()):
+                        worker = asyncio.create_task(
+                            aio_search_worker(progress, results, queue)
+                        )
+                        workers.append(worker)
+
+                    batcher = self.batcher.initialize(self.batchsize)
+                    with torch.no_grad():
+                        for batch in batchiter(self.batchsize, items):
+                            await batcher.aio_reduce(batch, reducer, queue)
+
+                    # Just wait for this to end
+                    await queue.join()
+
+            finally:
+                # Stop all retriever workers
+                for worker in workers:
+                    worker.cancel()
+            return results
+
+        logger.info("Retrieve all with %d CPUs", available_cpus())
+        results = asyncio.run(aio_process())
+        return results
+
+    def retrieve(self, query: TopicRecord, top_k=None) -> List[ScoredDocument]:
+        """Search with document-at-a-time (DAAT) strategy
+
+        :param top_k: Overrides the default top-K value
+        """
+
+        # Build up iterators
+        vector = self.encoder([query]).value[0].cpu().detach().numpy()
+        (ix,) = vector.nonzero()  # ix represents the position without 0 in the vector
+        query = {
+            ix: float(v) for ix, v in zip(ix, vector[ix])
+        }  # generate a dict: {position:value}
+        return self.index.retrieve(
+            query, top_k or self.topk, **self.get_retrieval_options()
+        )
+
+    def get_retrieval_options(self) -> dict[str, Any]:
+        """Returns extra retrieval options to be used when retrieving"""
+        return {}
+
+    def __validate__(self):
+        # Checks that we are using the right retriever
+        assert isinstance(
+            self, self.index.Retriever
+        ), f"{type(self)} is not an instance of {self.index.Retriever}"
+
+
+class AbstractSparseRetrieverIndex(Config, ABC):
+    Retriever = SparseRetriever
+
+    documents: Param[DocumentStore]
+    """The indexed document collection"""
+
+    index: impact_index.Index
+    ordered = False
+
+    def initialize(self, in_memory: bool):
+        self.index = impact_index.Index.load(str(self.index_path.absolute()), in_memory)
+
+    @abstractmethod
+    def retrieve(
+        self, query: Dict[int, float], top_k: int, **kwargs
+    ) -> List[ScoredDocument]:
+        ...
+
+    @abstractmethod
+    async def aio_retrieve(
+        self, query: Dict[int, float], top_k: int, **kwargs
+    ) -> List[ScoredDocument]:
+        ...
+
+
+# ---
+# --- Sparse index with the impact_index library
+# ---
+
+
+class SparseRetrieverIndex(AbstractSparseRetrieverIndex):
+    index_path: Meta[Path]
+
+    ordered = False
+
+    index: impact_index.Index
+
+    def initialize(self, in_memory: bool):
+        self.index = impact_index.Index.load(str(self.index_path.absolute()), in_memory)
+
+    def retrieve(self, query: Dict[int, float], top_k: int) -> List[ScoredDocument]:
+        results = []
+        for sd in self.index.search_maxscore(query, top_k):
+            results.append(
+                ScoredDocument(
+                    self.documents.document_int(sd.docid),
+                    sd.score,
+                )
+            )
+
+        return results
+
+    async def aio_retrieve(
+        self, query: Dict[int, float], top_k: int
+    ) -> List[ScoredDocument]:
+        results = []
+        for sd in await self.index.aio_search_maxscore(query, top_k):
+            results.append(
+                ScoredDocument(
+                    self.documents.document_int(sd.docid),
+                    sd.score,
+                )
+            )
+
+        return results
+
+
+class SparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputType]):
+    in_memory: Meta[bool] = False
+    """Whether the index should be fully loaded in memory (otherwise, uses
+    virtual memory)"""
+
+    def task_outputs(self, dep):
+        """Returns a sparse retriever index that can be used by a
+        SparseRetriever to search efficiently for documents"""
+
+        return dep(
+            SparseRetrieverIndex.C(index_path=self.index_path, documents=self.documents)
+        )
+
+    def create_index_builder(self):
+        self.index_path.mkdir(parents=True)
+        self.indexer = impact_index.IndexBuilder(str(self.index_path))
+
+    def build_index(self, indexer: impact_index.IndexBuilder):
+        self.indexer.build(self.in_memory)
+
+    def add_encoded_document(
+        self, indexer: impact_index.IndexBuilder, docid, encoded, nonzero_ix
+    ):
+        self.indexer.add(
+            docid,
+            nonzero_ix.astype(np.uint64),
+            encoded.value[nonzero_ix],
+        )
+
+
+# ---
+# --- Sparse index with the bmp library
+# ---
+
+
+class BMPSparseRetriever(SparseRetriever):
+    """A Block-Max Pruning retriever"""
+
+    alpha: Param[float]
+    """Granularity of approximation (0 to 1, 1 = no approximation)"""
+
+    beta: Param[float]
+    """Percentage of query tokens to keep (0 to 1, 1 = no pruning)"""
+
+    def get_retrieval_options(self) -> dict[str, Any]:
+        """Returns extra retrieval options to be used when retrieving"""
+        return {"alpha": self.alpha, "beta": self.beta}
+
+
+class BMPSparseRetrieverIndex(AbstractSparseRetrieverIndex):
+    Retriever = BMPSparseRetriever
+
+    index_path: Meta[Path]
+
+    ordered = False
+
+    index: impact_index.Index
+
+    def initialize(self, in_memory: bool):
+        if not in_memory:
+            logger.warning("BMP indices are in-memory only")
+        try:
+            from bmp import Searcher
+        except ModuleNotFoundError:
+            logger.warning(
+                "Did not find the Block Max Pruning (bmp) library. "
+                "Check https://github.com/pisa-engine/BMP"
+            )
+            raise
+        self.searcher = Searcher(str(self.index_path))
+
+    def retrieve(
+        self, query: Dict[int, float], top_k: int, alpha=None, beta=None
+    ) -> List[ScoredDocument]:
+        results = []
+        doc_ids, scores = self.searcher.search(
+            {str(ix): float(value) for ix, value in query.items()},
+            k=top_k,
+            alpha=alpha,
+            beta=beta,
+        )
+
+        for doc_id, score in zip(doc_ids, scores):
+            results.append(
+                ScoredDocument(
+                    self.documents.document_int(int(doc_id)),
+                    score,
+                )
+            )
+
+        return results
+
+    async def aio_retrieve(
+        self, query: Dict[int, float], top_k: int, **kwargs
+    ) -> List[ScoredDocument]:
+        return self.retrieve(query, top_k, **kwargs)
+
+
+class BMPSparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputType]):
+    QUANTIZATION_LEVELS = 256
+
+    """Index using a BMP index
+    """
+    block_size: Param[int]
+    """The block size"""
+
+    compress_range: Param[bool]
+    """Compress the BM index"""
+
+    quantization_doc_count: Param[int]
+    """Number of documents to setup the quantization"""
+
+    n_docs: int
+    indexer: InitVar[Any]
+    range: Tuple[int, int]
+    buffer: List[Tuple[str, torch.LongTensor, torch.Tensor]]
+    """list of (docid, encoded, nonzero_ix)"""
+    min_value: InitVar[float]
+    max_value: InitVar[float]
+
+    def task_outputs(self, dep):
+        """Returns a sparse retriever index that can be used by a
+        SparseRetriever to search efficiently for documents"""
+
+        return dep(
+            BMPSparseRetrieverIndex.C(
+                index_path=self.index_path, documents=self.documents
+            )
+        )
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.indexer = None
+
+    def create_index_builder(self):
+        try:
+            from bmp import Indexer
+        except ModuleNotFoundError:
+            logger.warning(
+                "Did not find the Block Max Pruning (bmp) library. "
+                "Check https://github.com/pisa-engine/BMP"
+            )
+            raise
+
+        assert self.indexer is None
+        self.n_docs = 0
+        self.buffer = []
+
+        self.indexer = Indexer(
+            str(self.index_path),
+            bsize=self.block_size,
+            compress_range=self.compress_range,
+        )
+
+    def build_index(self):
+        # Finish and flush to disk
+        assert self.n_docs >= self.block_size, (
+            f"The number of documents in the collection ({self.ndocs}) "
+            f"is less than the block size ({self.block_size})"
+        )
+        self.flush()  # just in case
+        self.indexer.finish()
+
+    def quantize(self, value: torch.Tensor):
+        """Quantize a vector of values"""
+        return (
+            (
+                BMPSparseRetrieverIndexBuilder.QUANTIZATION_LEVELS
+                * (value - self.min_value)
+                / self.value_span
+            )
+            .clip(0, BMPSparseRetrieverIndexBuilder.QUANTIZATION_LEVELS - 1)
+            .astype(np.uint64)
+        )
+
+    def flush(self):
+        if self.buffer:
+            # Compute min & max
+            self.min_value = min(values.min() for _, _, values in self.buffer)
+            self.max_value = min(values.max() for _, _, values in self.buffer)
+            self.value_span = self.max_value - self.min_value
+
+            # Add to index
+            for docid, nonzero_ix, values in self.buffer:
+                self.indexer.add_document(
+                    docid,
+                    {
+                        str(ix): value
+                        for ix, value in zip(nonzero_ix, self.quantize(values))
+                    },
+                )
+            self.buffer = []
+
+    def add_encoded_document(self, docid, encoded, nonzero_ix):
+        # Collect statistics
+        self.n_docs += 1
+        if self.n_docs <= self.quantization_doc_count:
+            self.buffer.append((str(docid), nonzero_ix, encoded.value[nonzero_ix]))
+
+            if self.n_docs < self.quantization_doc_count:
+                return
+
+            self.flush()
+
+        # Add the document
+        values = self.quantize(encoded.value)
+        self.indexer.add_document(
+            str(docid), {str(ix): values[ix] for ix in nonzero_ix}
+        )

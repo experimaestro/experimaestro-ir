@@ -50,6 +50,10 @@ test = [
     "pytest",
     "faiss-cpu"
 ]
+dev = [
+    "docutils>=0.21.2",
+    "pytest>=8.4.1",
+]
 
 
 [project.urls]
