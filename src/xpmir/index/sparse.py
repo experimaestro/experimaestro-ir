@@ -299,13 +299,11 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
             queue.put(EncodedDocument(docid, vector))
 
     @abstractmethod
-    def build_index(self, indexer: impact_index.IndexBuilder):
+    def build_index(self):
         ...
 
     @abstractmethod
-    def add_encoded_document(
-        self, indexer: impact_index.IndexBuilder, docid, encoded, nonzero_ix
-    ):
+    def add_encoded_document(self, docid, encoded, nonzero_ix):
         ...
 
     @abstractmethod
@@ -526,12 +524,10 @@ class SparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputType]
         self.index_path.mkdir(parents=True)
         self.indexer = impact_index.IndexBuilder(str(self.index_path))
 
-    def build_index(self, indexer: impact_index.IndexBuilder):
+    def build_index(self):
         self.indexer.build(self.in_memory)
 
-    def add_encoded_document(
-        self, indexer: impact_index.IndexBuilder, docid, encoded, nonzero_ix
-    ):
+    def add_encoded_document(self, docid, encoded, nonzero_ix):
         self.indexer.add(
             docid,
             nonzero_ix.astype(np.uint64),
