@@ -5,7 +5,7 @@ datamaestro>=1.0.1
 datamaestro_text>=2024.2.29
 ir_datasets
 docstring_parser
-impact-index == 0.23.*
+impact-index == 0.26.*
 omegaconf>=2.2
 attrs
 

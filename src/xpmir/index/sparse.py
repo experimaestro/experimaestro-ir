@@ -3,6 +3,8 @@
 from abc import abstractmethod, ABC
 import asyncio
 from functools import cached_property
+import logging
+import shutil
 import threading
 import heapq
 import torch
@@ -104,8 +106,6 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
 
     max_postings: Meta[int] = 16384
     """Maximum number of postings (per term) before flushing to disk"""
-
-    index_path: Meta[Path] = field(default_factory=PathGenerator("index"))
 
     version: Constant[int] = 3
     """Version 3 of the index"""
@@ -299,16 +299,13 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
             queue.put(EncodedDocument(docid, vector))
 
     @abstractmethod
-    def build_index(self):
-        ...
+    def build_index(self): ...
 
     @abstractmethod
-    def add_encoded_document(self, docid, encoded, nonzero_ix):
-        ...
+    def add_encoded_document(self, docid, encoded, nonzero_ix): ...
 
     @abstractmethod
-    def create_index_builder(self):
-        ...
+    def create_index_builder(self): ...
 
 
 class SparseRetriever(Retriever, Generic[InputType]):
@@ -455,14 +452,28 @@ class AbstractSparseRetrieverIndex(Config, ABC):
     @abstractmethod
     def retrieve(
         self, query: Dict[int, float], top_k: int, **kwargs
-    ) -> List[ScoredDocument]:
-        ...
+    ) -> List[ScoredDocument]: ...
 
     @abstractmethod
     async def aio_retrieve(
         self, query: Dict[int, float], top_k: int, **kwargs
-    ) -> List[ScoredDocument]:
-        ...
+    ) -> List[ScoredDocument]: ...
+
+
+# ---
+# --- CIFF file
+# ---
+
+
+class CIFFBuilder:
+    def __init__(self, path: Path, levels: int):
+        """Constructs a CIFF index
+
+        :param path: _description_
+        :param levels: _description_
+        """
+        # Path of the final index ("file.ciff")
+        self.path = path
 
 
 # ---
@@ -512,6 +523,8 @@ class SparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputType]
     """Whether the index should be fully loaded in memory (otherwise, uses
     virtual memory)"""
 
+    index_path: Meta[Path] = field(default_factory=PathGenerator("index"))
+
     def task_outputs(self, dep):
         """Returns a sparse retriever index that can be used by a
         SparseRetriever to search efficiently for documents"""
@@ -558,6 +571,7 @@ class BMPSparseRetrieverIndex(AbstractSparseRetrieverIndex):
     Retriever = BMPSparseRetriever
 
     index_path: Meta[Path]
+    """The path of the BMP index"""
 
     ordered = False
 
@@ -614,16 +628,11 @@ class BMPSparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputTy
     compress_range: Param[bool]
     """Compress the BM index"""
 
-    quantization_doc_count: Param[int]
-    """Number of documents to setup the quantization"""
-
-    n_docs: int
-    indexer: InitVar[Any]
-    range: Tuple[int, int]
-    buffer: List[Tuple[str, torch.LongTensor, torch.Tensor]]
-    """list of (docid, encoded, nonzero_ix)"""
-    min_value: InitVar[float]
-    max_value: InitVar[float]
+    bmp_index_path: Meta[Path] = field(default_factory=PathGenerator("index.bmp"))
+    """The final index path"""
+    
+    index_path: Meta[Path] = field(default_factory=PathGenerator("index"))
+    
 
     def task_outputs(self, dep):
         """Returns a sparse retriever index that can be used by a
@@ -640,77 +649,24 @@ class BMPSparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputTy
         self.indexer = None
 
     def create_index_builder(self):
-        try:
-            from bmp import Indexer
-        except ModuleNotFoundError:
-            logger.warning(
-                "Did not find the Block Max Pruning (bmp) library. "
-                "Check https://github.com/pisa-engine/BMP"
-            )
-            raise
+        self.index_path.mkdir(parents=True)
+        self.indexer = impact_index.IndexBuilder(str(self.index_path))
 
-        assert self.indexer is None
-        self.n_docs = 0
-        self.buffer = []
-
-        self.indexer = Indexer(
-            str(self.index_path),
-            bsize=self.block_size,
-            compress_range=self.compress_range,
+    def add_encoded_document(self, docid, encoded, nonzero_ix):
+        self.indexer.add(
+            docid,
+            nonzero_ix.astype(np.uint64),
+            encoded.value[nonzero_ix],
         )
 
     def build_index(self):
-        # Finish and flush to disk
-        assert self.n_docs >= self.block_size, (
-            f"The number of documents in the collection ({self.ndocs}) "
-            f"is less than the block size ({self.block_size})"
-        )
-        self.flush()  # just in case
-        self.indexer.finish()
+        logger.info("Flushing the sparse index")
+        self.indexer.build(self.in_memory)
 
-    def quantize(self, value: torch.Tensor):
-        """Quantize a vector of values"""
-        return (
-            (
-                BMPSparseRetrieverIndexBuilder.QUANTIZATION_LEVELS
-                * (value - self.min_value)
-                / self.value_span
-            )
-            .clip(0, BMPSparseRetrieverIndexBuilder.QUANTIZATION_LEVELS - 1)
-            .astype(np.uint64)
-        )
-
-    def flush(self):
-        if self.buffer:
-            # Compute min & max
-            self.min_value = min(values.min() for _, _, values in self.buffer)
-            self.max_value = min(values.max() for _, _, values in self.buffer)
-            self.value_span = self.max_value - self.min_value
-
-            # Add to index
-            for docid, nonzero_ix, values in self.buffer:
-                self.indexer.add_document(
-                    docid,
-                    {
-                        str(ix): value
-                        for ix, value in zip(nonzero_ix, self.quantize(values))
-                    },
-                )
-            self.buffer = []
-
-    def add_encoded_document(self, docid, encoded, nonzero_ix):
-        # Collect statistics
-        self.n_docs += 1
-        if self.n_docs <= self.quantization_doc_count:
-            self.buffer.append((str(docid), nonzero_ix, encoded.value[nonzero_ix]))
-
-            if self.n_docs < self.quantization_doc_count:
-                return
-
-            self.flush()
-
-        # Add the document
-        values = self.quantize(encoded.value)
-        self.indexer.add_document(
-            str(docid), {str(ix): values[ix] for ix in nonzero_ix}
-        )
+        logger.info("Converting to BMP index")
+        self.indexer.to_bmp(str(self.bmp_index_path), self.block_size, self.compress_range)
+        
+        # Removes the old index
+        logger.info("Removing the old index path")
+        shutil.rmtree(self.index_path)
+        self.index_path.rmdir()
