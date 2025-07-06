@@ -134,15 +134,6 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
             for _ in range(self.device.n_processes)
         ]
 
-        # Cleanup the index before starting
-        # ENHANCE: recover index build when possible
-        from shutil import rmtree
-
-        if self.index_path.is_dir():
-            rmtree(self.index_path)
-        elif self.index_path.is_file():
-            self.index_path.unlink()
-
         # Start the index process (thread)
         index_thread = threading.Thread(
             target=self.index,
@@ -534,6 +525,7 @@ class SparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputType]
         )
 
     def create_index_builder(self):
+        shutil.rmtree(self.index_path)
         self.index_path.mkdir(parents=True)
         self.indexer = impact_index.IndexBuilder(str(self.index_path))
 
@@ -649,6 +641,9 @@ class BMPSparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputTy
         self.indexer = None
 
     def create_index_builder(self):
+        if self.index_path.is_dir():
+            shutil.rmtree(self.index_path)
+        self.bmp_index_path.unlink(missing_ok=True)
         self.index_path.mkdir(parents=True)
         self.indexer = impact_index.IndexBuilder(str(self.index_path))
 
@@ -661,12 +656,11 @@ class BMPSparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputTy
 
     def build_index(self):
         logger.info("Flushing the sparse index")
-        self.indexer.build(self.in_memory)
+        index = self.indexer.build(False)
 
         logger.info("Converting to BMP index")
-        self.indexer.to_bmp(str(self.bmp_index_path), self.block_size, self.compress_range)
+        index.to_bmp(str(self.bmp_index_path), self.block_size, self.compress_range)
         
         # Removes the old index
         logger.info("Removing the old index path")
         shutil.rmtree(self.index_path)
-        self.index_path.rmdir()
