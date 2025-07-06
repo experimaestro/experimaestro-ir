@@ -565,8 +565,6 @@ class BMPSparseRetrieverIndex(AbstractSparseRetrieverIndex):
     index_path: Meta[Path]
     """The path of the BMP index"""
 
-    ordered = False
-
     index: impact_index.Index
 
     def initialize(self, in_memory: bool):
@@ -580,6 +578,7 @@ class BMPSparseRetrieverIndex(AbstractSparseRetrieverIndex):
                 "Check https://github.com/pisa-engine/BMP"
             )
             raise
+        logger.info("Loading BMP index from %s", self.index_path)
         self.searcher = Searcher(str(self.index_path))
 
     def retrieve(
@@ -632,7 +631,7 @@ class BMPSparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputTy
 
         return dep(
             BMPSparseRetrieverIndex.C(
-                index_path=self.index_path, documents=self.documents
+                index_path=self.bmp_index_path, documents=self.documents
             )
         )
 
