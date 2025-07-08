@@ -662,4 +662,5 @@ class BMPSparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputTy
         
         # Removes the old index
         logger.info("Removing the old index path")
-        shutil.rmtree(self.index_path)
+        index = None
+        shutil.rmtree(self.index_path, ignore_errors=True)
