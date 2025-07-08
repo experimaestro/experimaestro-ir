@@ -267,7 +267,7 @@ class Learner(Task, EasyLogger):
                     decision = decision.update(listener(state))
 
                 if decision == LearnerListenerStatus.STOP:
-                    self.logger.warn(
+                    self.logger.warning(
                         "stopping after epoch {epoch} ({early_stop} epochs) since "
                         "all listeners asked for it"
                     )
