@@ -67,7 +67,7 @@ class HFModelConfigFromId(HFModelConfig):
                 )
 
         # Load the model configuration
-        config = autoconfig.from_pretrained(model_id_or_path)
+        config = autoconfig.from_pretrained(model_id_or_path, trust_remote_code=True)
 
         # Return it
         return config, model_id_or_path
@@ -82,7 +82,7 @@ class HFModelConfigFromId(HFModelConfig):
 
         if options.mode == ModuleInitMode.NONE or options.mode == ModuleInitMode.RANDOM:
             logging.info("Random initialization of HF model")
-            return config, automodel.from_config(config)
+            return config, automodel.from_config(config, trust_remote_code=True)
 
         logging.info(
             "Loading model from HF (%s) with model %s.%s",
@@ -90,7 +90,7 @@ class HFModelConfigFromId(HFModelConfig):
             automodel.__module__,
             automodel.__name__,
         )
-        return config, automodel.from_pretrained(model_id_or_path, config=config)
+        return config, automodel.from_pretrained(model_id_or_path, config=config, trust_remote_code=True)
 
 
 class HFModel(Module):
