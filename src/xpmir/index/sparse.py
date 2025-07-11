@@ -525,7 +525,9 @@ class SparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputType]
         )
 
     def create_index_builder(self):
-        shutil.rmtree(self.index_path)
+        if self.index_path.is_dir():
+            # Removing partially built index
+            shutil.rmtree(self.index_path)
         self.index_path.mkdir(parents=True)
         self.indexer = impact_index.IndexBuilder(str(self.index_path))
 
