@@ -566,7 +566,7 @@ class SparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputType]
         options = impact_index.BuilderOptions()
         options.checkpoint_frequency = self.checkpoint_frequency
         if self.max_postings is not None:
-            options.max_postings = self.max_postings
+            options.in_memory_threshold = self.max_postings
 
         # and create the index builder
         self.indexer = impact_index.IndexBuilder(str(self.index_path), options)
@@ -584,7 +584,8 @@ class SparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputType]
 
 
 # ---
-# --- Sparse index with the bmp library
+# --- Sparse index with the BMP library
+# --- https://github.com/pisa-engine/BMP
 # ---
 
 
@@ -651,7 +652,7 @@ class BMPSparseRetrieverIndex(AbstractSparseRetrieverIndex):
         return self.retrieve(query, top_k, **kwargs)
 
 
-class BMPSparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputType]):
+class BMPSparseRetrieverIndexBuilder(SparseRetrieverIndexBuilder[InputType]):
     QUANTIZATION_LEVELS = 256
 
     """Index using a BMP index
@@ -665,8 +666,6 @@ class BMPSparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputTy
     bmp_index_path: Meta[Path] = field(default_factory=PathGenerator("index.bmp"))
     """The final index path"""
 
-    index_path: Meta[Path] = field(default_factory=PathGenerator("index"))
-
     def task_outputs(self, dep):
         """Returns a sparse retriever index that can be used by a
         SparseRetriever to search efficiently for documents"""
@@ -677,26 +676,9 @@ class BMPSparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputTy
             )
         )
 
-    def __post_init__(self):
-        super().__post_init__()
-        self.indexer = None
-
-    def create_index_builder(self):
-        if self.index_path.is_dir():
-            shutil.rmtree(self.index_path)
-        self.bmp_index_path.unlink(missing_ok=True)
-        self.index_path.mkdir(parents=True)
-        self.indexer = impact_index.IndexBuilder(str(self.index_path))
-
-    def add_encoded_document(self, docid, encoded, nonzero_ix):
-        self.indexer.add(
-            docid,
-            nonzero_ix.astype(np.uint64),
-            encoded.value[nonzero_ix],
-        )
-
     def build_index(self):
-        logger.info("Flushing the sparse index")
+        # Build the index
+        logger.info("Building the index")
         index = self.indexer.build(False)
 
         logger.info("Converting to BMP index")
