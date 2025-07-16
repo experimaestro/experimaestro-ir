@@ -8,14 +8,13 @@ import shutil
 import threading
 import heapq
 import torch
-from queue import Empty
+from queue import Empty, Queue
 import torch.multiprocessing as mp
 import numpy as np
 import sys
 from pathlib import Path
-from typing import Dict, List, Tuple, Generic, Iterator, Union, Any
+from typing import Dict, List, Optional, Tuple, Generic, Iterator, Union, Any
 from attrs import define
-from dataclasses import InitVar
 from experimaestro import (
     Config,
     Task,
@@ -59,18 +58,24 @@ class DocumentRange:
 
 
 class DocumentIterator:
-    def __init__(self, documents, max_docs, batch_size):
+    def __init__(
+        self, documents: DocumentStore, last_doc_id: None | int, max_docs, batch_size
+    ):
         self.documents = documents
+        self.last_doc_id = last_doc_id
         self.max_docs = max_docs
         self.batch_size = batch_size
 
     @cached_property
     def iterator(self):
+        start = 0 if self.last_doc_id is None else self.last_doc_id + 1
+        iter = self.documents.iter_documents_from(start)
+
         return batchiter(
             self.batch_size,
             zip(
-                range(self.max_docs or sys.maxsize),
-                self.documents.iter_documents(),
+                range(start, self.max_docs or sys.maxsize),
+                iter,
             ),
         )
 
@@ -104,9 +109,6 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
     device: Meta[Device] = DEFAULT_DEVICE
     """The device for building the index"""
 
-    max_postings: Meta[int] = 16384
-    """Maximum number of postings (per term) before flushing to disk"""
-
     version: Constant[int] = 3
     """Version 3 of the index"""
 
@@ -122,10 +124,6 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
             max_docs = min(self.max_docs, self.documents.documentcount or sys.maxsize)
             logger.warning("Limited indexing to %d documents", max_docs)
 
-        iter_batches = MultiprocessIterator(
-            DocumentIterator(self.documents, max_docs, self.batch_size)
-        ).detach()
-
         self.encoder.initialize(ModuleInitMode.DEFAULT.to_options(None))
 
         closed = mp.Event()
@@ -135,15 +133,22 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
         ]
 
         # Start the index process (thread)
+        last_doc_id_queue = Queue()
         index_thread = threading.Thread(
             target=self.index,
             name="index",
-            args=(queues, max_docs),
+            args=(queues, max_docs, last_doc_id_queue),
         )
         index_thread.start()
 
-        # Waiting for the encoder process to end
+        last_doc_id = last_doc_id_queue.get()
         logger.info(f"Starting to index {max_docs} documents")
+        if last_doc_id:
+            logging.info(f" -- recovering from last indexed document: {last_doc_id}")
+
+        iter_batches = MultiprocessIterator(
+            DocumentIterator(self.documents, last_doc_id, max_docs, self.batch_size)
+        ).detach()
 
         try:
             self.device.execute(
@@ -156,6 +161,7 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
             )
         except Exception:
             logger.exception("Got an exception while running encoders")
+
         finally:
             logger.info("Waiting for the index process to stop")
             index_thread.join()
@@ -166,6 +172,7 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
         self,
         queues: List[StoppableQueue[Union[DocumentRange, EncodedDocument]]],
         max_docs: int,
+        last_doc_id_queue: Queue[Optional[int]],
     ):
         """Index encoded documents
 
@@ -184,7 +191,14 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
                     len(queues),
                     self.index_path,
                 )
-                self.create_index_builder()
+
+                if last_doc_id := self.create_index_builder():
+                    logger.info("Starting back from document %d", last_doc_id)
+                    pb.update(last_doc_id)
+
+                logging.info("Last indexed document: %s", last_doc_id)
+                last_doc_id_queue.put(last_doc_id)
+
                 heap = [queue.get() for queue in queues]
                 heapq.heapify(heap)
 
@@ -221,7 +235,7 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
             except Empty:
                 logger.warning("One encoder got a problem... stopping")
                 raise
-            except Exception:
+            except BaseException:
                 # Close all the queues
                 logger.exception(
                     "Got an exception in the indexing process, closing the queues"
@@ -274,7 +288,8 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
             # Build the index
             logger.info("Closing queue %d", device_information.rank)
             queue.put(None)
-        except Exception:
+        except BaseException:
+            logging.exception("Got an exception while encoding documents")
             queue.stop()
             raise
 
@@ -282,7 +297,7 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
     def encode_documents(
         batch: List[Tuple[int, DocumentRecord]],
         encoder: TextEncoderBase[InputType, TextsRepresentationOutput],
-        queue: "mp.Queue[EncodedDocument]",
+        queue: "Queue[EncodedDocument]",
     ):
         # Assumes for now dense vectors
         vectors = encoder([d for _, d in batch]).value.cpu().numpy()  # bs * vocab
@@ -290,13 +305,21 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
             queue.put(EncodedDocument(docid, vector))
 
     @abstractmethod
-    def build_index(self): ...
+    def build_index(self):
+        ...
 
     @abstractmethod
-    def add_encoded_document(self, docid, encoded, nonzero_ix): ...
+    def add_encoded_document(self, docid, encoded, nonzero_ix):
+        ...
 
     @abstractmethod
-    def create_index_builder(self): ...
+    def create_index_builder(self) -> int | None:
+        """Creates a new index builder
+
+        :return: the last doc ID when using checkpointing (so we start back with
+            the next document)
+        """
+        ...
 
 
 class SparseRetriever(Retriever, Generic[InputType]):
@@ -443,12 +466,14 @@ class AbstractSparseRetrieverIndex(Config, ABC):
     @abstractmethod
     def retrieve(
         self, query: Dict[int, float], top_k: int, **kwargs
-    ) -> List[ScoredDocument]: ...
+    ) -> List[ScoredDocument]:
+        ...
 
     @abstractmethod
     async def aio_retrieve(
         self, query: Dict[int, float], top_k: int, **kwargs
-    ) -> List[ScoredDocument]: ...
+    ) -> List[ScoredDocument]:
+        ...
 
 
 # ---
@@ -516,6 +541,13 @@ class SparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputType]
 
     index_path: Meta[Path] = field(default_factory=PathGenerator("index"))
 
+    checkpoint_frequency: Meta[int] = 0
+    """Checkpoint frequency (allows recovery at the cost of writing some
+    information to disk)"""
+
+    max_postings: Meta[Optional[int]] = None
+    """Number of postings before dumping a term postings to disk"""
+
     def task_outputs(self, dep):
         """Returns a sparse retriever index that can be used by a
         SparseRetriever to search efficiently for documents"""
@@ -525,11 +557,20 @@ class SparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputType]
         )
 
     def create_index_builder(self):
-        if self.index_path.is_dir():
+        if self.index_path.is_dir() and self.checkpoint_frequency == 0:
             # Removing partially built index
             shutil.rmtree(self.index_path)
-        self.index_path.mkdir(parents=True)
-        self.indexer = impact_index.IndexBuilder(str(self.index_path))
+        self.index_path.mkdir(parents=True, exist_ok=True)
+
+        # Setup options
+        options = impact_index.BuilderOptions()
+        options.checkpoint_frequency = self.checkpoint_frequency
+        if self.max_postings is not None:
+            options.in_memory_threshold = self.max_postings
+
+        # and create the index builder
+        self.indexer = impact_index.IndexBuilder(str(self.index_path), options)
+        return self.indexer.get_checkpoint_doc_id()
 
     def build_index(self):
         self.indexer.build(self.in_memory)
@@ -543,7 +584,8 @@ class SparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputType]
 
 
 # ---
-# --- Sparse index with the bmp library
+# --- Sparse index with the BMP library
+# --- https://github.com/pisa-engine/BMP
 # ---
 
 
@@ -610,7 +652,7 @@ class BMPSparseRetrieverIndex(AbstractSparseRetrieverIndex):
         return self.retrieve(query, top_k, **kwargs)
 
 
-class BMPSparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputType]):
+class BMPSparseRetrieverIndexBuilder(SparseRetrieverIndexBuilder[InputType]):
     QUANTIZATION_LEVELS = 256
 
     """Index using a BMP index
@@ -623,9 +665,6 @@ class BMPSparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputTy
 
     bmp_index_path: Meta[Path] = field(default_factory=PathGenerator("index.bmp"))
     """The final index path"""
-    
-    index_path: Meta[Path] = field(default_factory=PathGenerator("index"))
-    
 
     def task_outputs(self, dep):
         """Returns a sparse retriever index that can be used by a
@@ -637,31 +676,14 @@ class BMPSparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputTy
             )
         )
 
-    def __post_init__(self):
-        super().__post_init__()
-        self.indexer = None
-
-    def create_index_builder(self):
-        if self.index_path.is_dir():
-            shutil.rmtree(self.index_path)
-        self.bmp_index_path.unlink(missing_ok=True)
-        self.index_path.mkdir(parents=True)
-        self.indexer = impact_index.IndexBuilder(str(self.index_path))
-
-    def add_encoded_document(self, docid, encoded, nonzero_ix):
-        self.indexer.add(
-            docid,
-            nonzero_ix.astype(np.uint64),
-            encoded.value[nonzero_ix],
-        )
-
     def build_index(self):
-        logger.info("Flushing the sparse index")
+        # Build the index
+        logger.info("Building the index")
         index = self.indexer.build(False)
 
         logger.info("Converting to BMP index")
         index.to_bmp(str(self.bmp_index_path), self.block_size, self.compress_range)
-        
+
         # Removes the old index
         logger.info("Removing the old index path")
         index = None
