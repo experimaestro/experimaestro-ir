@@ -603,6 +603,7 @@ class BMPSparseRetriever(SparseRetriever):
         return {"alpha": self.alpha, "beta": self.beta}
 
 
+
 class BMPSparseRetrieverIndex(AbstractSparseRetrieverIndex):
     Retriever = BMPSparseRetriever
 
@@ -651,10 +652,40 @@ class BMPSparseRetrieverIndex(AbstractSparseRetrieverIndex):
     ) -> List[ScoredDocument]:
         return self.retrieve(query, top_k, **kwargs)
 
+class Sparse2BMPConverter(Task):
+    index: Param[SparseRetrieverIndex]
+    """The sparse index"""
+
+    bmp_index_path: Meta[Path] = field(default_factory=PathGenerator("index.bmp"))
+    """The final index path"""
+
+    block_size: Param[int]
+    """The block size"""
+
+    compress_range: Param[bool]
+    """Compress the BM index"""
+
+    def task_outputs(self, dep):
+        """Returns a sparse retriever index that can be used by a
+        SparseRetriever to search efficiently for documents"""
+
+        return dep(
+            BMPSparseRetrieverIndex.C(
+                index_path=self.bmp_index_path, documents=self.index.documents
+            )
+        )
+
+    def execute(self):
+        logging.info("Loading the index")
+        self.index.initialize(False)
+
+        logging.info("Converting to BMP")
+        self.index.index.to_bmp(str(self.bmp_index_path), self.block_size, self.compress_range)
+
+        logging.info("Done")
+
 
 class BMPSparseRetrieverIndexBuilder(SparseRetrieverIndexBuilder[InputType]):
-    QUANTIZATION_LEVELS = 256
-
     """Index using a BMP index
     """
     block_size: Param[int]
