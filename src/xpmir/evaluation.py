@@ -209,6 +209,8 @@ class Evaluations:
         )
         tags.sort()
 
+        assert len(tags) > 0, "No tags found, please tag your evaluations to convert results to dataframe"
+
         # Get all the results and metrics
         to_process = []
         metrics = set()
