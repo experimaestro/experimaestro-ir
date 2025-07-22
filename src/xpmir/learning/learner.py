@@ -136,6 +136,12 @@ class Learner(Task, EasyLogger):
     device: Meta[Device] = DEFAULT_DEVICE
     """The device(s) to be used for the model"""
 
+    init_scale: Meta[int] = 65536
+    """The init scaling for the GradScale
+    Need to manually set it smaller when the loss is large at the beginning of
+    training
+    """
+
     hooks: Param[List[Hook]] = []
     """Global learning hooks
 
@@ -227,6 +233,7 @@ class Learner(Task, EasyLogger):
             self.use_fp16,
             hooks=[hook for hook in self.hooks if isinstance(hook, OptimizationHook)],
             trainer_context=self.context,
+            init_scale=self.init_scale,
         )
 
         foreach(
