@@ -55,6 +55,19 @@ class TokenizedTexts(NamedTuple):
             to_device(self.token_type_ids, device),
         )
 
+    def subset(self, ids: torch.Tensor) -> "TokenizedTexts":
+        """Returns a subset of the tokenized texts
+        Arguments:
+            ids: a boolean mask or a list of indices to select
+        """
+        length = torch.sum(ids).item() if isinstance(ids, torch.Tensor) else len(ids)
+        return TokenizedTexts(
+            [self.tokens[i] for i in ids] if self.tokens else None,
+            self.ids[:,ids],
+            [length for i in self.lens],
+            self.mask[:,ids] if self.mask is not None else None,
+            self.token_type_ids[:,ids] if self.token_type_ids is not None else None,
+        )
 
 class Tokenizer(Config):
     """
