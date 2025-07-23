@@ -142,7 +142,7 @@ class Scorer(Config, Initializable, EasyLogger, ABC):
 
         :param top_k: Number of documents to re-rank (or None for all)
         """
-        return TwoStageRetriever(
+        return TwoStageRetriever.C(
             retriever=retriever,
             scorer=self,
             batchsize=batch_size,
