@@ -14,7 +14,7 @@ from xpmir.learning.learner import (
     TrainerContext,
     TrainState,
 )
-from xpmir.learning.optim import ModuleLoader
+from xpmir.letor.learner import ValidationModuleLoader
 from xpmir.letor.records import BaseRecords
 from xpmir.letor.trainers import LossTrainer
 from xpmir.learning.metrics import Metrics, ScalarMetric
@@ -74,8 +74,10 @@ class TrainerValidationLoss(LearnerListener):
 
     def init_task(self, learner: "Learner", dep):
         return dep(
-            ModuleLoader.C(
+            ValidationModuleLoader.C(
                 value=learner.model,
+                listener=self,
+                key="",
                 path=self.bestpath / TrainState.MODEL_PATH,
             )
         )
