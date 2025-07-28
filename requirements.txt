@@ -2,7 +2,7 @@
 
 experimaestro>=1.7.1
 datamaestro>=1.0.1
-datamaestro_text>=2024.2.29
+datamaestro_text>=2025.7.28
 ir_datasets
 docstring_parser
 impact-index == 0.27.*
