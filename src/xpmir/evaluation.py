@@ -197,7 +197,7 @@ class Evaluations:
         *,
         init_tasks=[],
         with_run=False,
-    ) -> Tuple[Retriever, AdhocResults, Optional[AdhocRun]]:
+    ) -> "EvaluationResult":
         """Evaluates a retriever
 
         :param key: test collection key
@@ -215,13 +215,15 @@ class Evaluations:
                 kwargs["key"] = key
             retriever = retriever(self.dataset.documents, **kwargs)
 
-        evaluation = Evaluate.C(
+        task = Evaluate.C(
             retriever=retriever,
             measures=self.measures,
             dataset=self.dataset,
             topic_wrapper=self.topic_wrapper,
             with_run=with_run,
-        ).submit(launcher=launcher, init_tasks=init_tasks)
+        )
+
+        evaluation = task.submit(launcher=launcher, init_tasks=init_tasks)
 
         run = None
         if with_run:
@@ -234,7 +236,7 @@ class Evaluations:
         if retriever_tags:
             self.per_tags[retriever_tags] = evaluation
 
-        return retriever, evaluation, run
+        return EvaluationResult(key, evaluation, run, task)
 
     def add(self, *results: BaseEvaluation):
         self.results.extend(results)
@@ -303,6 +305,9 @@ class EvaluationResult:
     run: Optional[AdhocRun]
     """The run (if available)"""
 
+    task: Evaluate
+    """The task for this result"""
+
 
 class EvaluationsCollection:
     """A collection of evaluation
@@ -342,10 +347,10 @@ class EvaluationsCollection:
 
         results = []
         for key, evaluations in self.collection.items():
-            _retriever, result, run = evaluations.evaluate_retriever(
+            result = evaluations.evaluate_retriever(
                 key, retriever, launcher, init_tasks=init_tasks, with_run=with_run
             )
-            results.append(EvaluationResult(key, result, run))
+            results.append(result)
 
         # Adds to per model results
         if model_id is not None:
