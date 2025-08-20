@@ -406,7 +406,7 @@ class DocumentSubset(Documents):
     def __getitem__(self, slice: Union[int, slice]):
         docids = self.docids[slice]
         if isinstance(docids, List):
-            return DocumentSubsetSlice.C(self, self.docids[slice])
+            return DocumentSubsetSlice(self, self.docids[slice])
         return self.document_ext(docids)
 
     @cached_property
