@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from typing import List, Optional
 from attrs import evolve
 import torch
@@ -39,6 +40,39 @@ class DualVectorListener(TrainingHook):
         raise NotImplementedError(f"__call__ in {self.__class__}")
 
 
+class DualVectorScorerListener(TrainingHook, ABC):
+    """Listener called with the (vectorial) representation of queries and
+    documents
+
+    The hook is called just after the computation of documents and queries
+    representations.
+
+    This can be used for logging purposes, but more importantly, to add
+    regularization losses such as the :class:`FlopsRegularizer` regularizer.
+    """
+
+    @abstractmethod
+    def __call__(
+        self,
+        context: TrainerContext,
+        queries: torch.Tensor,
+        documents: torch.Tensor,
+        scorer: torch.Tensor,
+    ):
+        """Hook handler
+
+        Args:
+            context (TrainerContext): The training context queries
+            (torch.Tensor): The query vectors documents (torch.Tensor): The
+            document vectors scores (torch.Tensor): A vector or matrix of scores
+            (depending on how the scores were computed)
+
+        Raises:
+            NotImplementedError: _description_
+        """
+        raise NotImplementedError(f"__call__ in {self.__class__}")
+
+
 class DualVectorScorer(DualRepresentationScorer[QueriesRep, DocsRep]):
     """A scorer based on dual vectorial representations"""
 
@@ -66,13 +100,19 @@ class Dense(DualVectorScorer[QueriesRep, DocsRep]):
     """A scorer based on a pair of (query, document) dense vectors"""
 
     def score_product(self, queries, documents, info: Optional[TrainerContext] = None):
+        scores = queries.value @ documents.value.T
+
         if info is not None:
             foreach(
                 info.hooks(DualVectorListener),
                 lambda hook: hook(info, queries, documents),
             )
+            foreach(
+                info.hooks(DualVectorScorerListener),
+                lambda hook: hook(info, queries, documents, scores),
+            )
 
-        return queries.value @ documents.value.T
+        return scores
 
     def score_pairs(self, queries, documents, info: Optional[TrainerContext] = None):
         scores = (
@@ -86,6 +126,10 @@ class Dense(DualVectorScorer[QueriesRep, DocsRep]):
             foreach(
                 info.hooks(DualVectorListener),
                 lambda hook: hook(info, queries, documents),
+            )
+            foreach(
+                info.hooks(DualVectorScorerListener),
+                lambda hook: hook(info, queries, documents, scores),
             )
         return scores
 
@@ -119,6 +163,7 @@ class CosineDense(Dense):
             documents,
             value=documents.value / documents.value.norm(dim=-1, keepdim=True),
         )
+
 
 class DotDense(Dense):
     """Dual model based on inner product."""
