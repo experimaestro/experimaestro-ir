@@ -95,7 +95,7 @@ class ValidationListener(LearnerListener):
     def init_task(self, learner: "Learner", dep):
         return {
             key: dep(
-                ValidationModuleLoader(
+                ValidationModuleLoader.C(
                     value=learner.model,
                     listener=self,
                     key=key,

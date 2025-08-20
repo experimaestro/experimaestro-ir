@@ -11,12 +11,18 @@ from experimaestro import Config, Param
 from xpmir.learning import Module
 from xpmir.learning.optim import ModuleInitMode, ModuleInitOptions
 from xpmir.text import TokenizedTexts
+from xpmir.utils.functools import cache
 
 try:
     from transformers import AutoConfig, AutoModel, AutoModelForMaskedLM
 except Exception:
     logging.error("Install huggingface transformers to use these configurations")
     raise
+
+
+@cache
+def is_local_files_only():
+    return os.environ.get("HF_HUB_OFFLINE", "").lower() in ["1", "true", "on"]
 
 
 class HFModelConfig(Config, ABC):
@@ -67,7 +73,11 @@ class HFModelConfigFromId(HFModelConfig):
                 )
 
         # Load the model configuration
-        config = autoconfig.from_pretrained(model_id_or_path, trust_remote_code=True)
+        config = autoconfig.from_pretrained(
+            model_id_or_path,
+            trust_remote_code=True,
+            local_files_only=is_local_files_only(),
+        )
 
         # Return it
         return config, model_id_or_path
@@ -90,7 +100,12 @@ class HFModelConfigFromId(HFModelConfig):
             automodel.__module__,
             automodel.__name__,
         )
-        return config, automodel.from_pretrained(model_id_or_path, config=config, trust_remote_code=True)
+        return config, automodel.from_pretrained(
+            model_id_or_path,
+            config=config,
+            trust_remote_code=True,
+            local_files_only=is_local_files_only(),
+        )
 
 
 class HFModel(Module):
