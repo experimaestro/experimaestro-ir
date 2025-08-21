@@ -45,8 +45,16 @@ class SparseRetrieverIndex(Config):
     index: impact_index.Index
     ordered = False
 
+    def __post_init__(self):
+        self.index_loaded = False
+
     def initialize(self, in_memory: bool):
-        self.index = impact_index.Index.load(str(self.index_path.absolute()), in_memory)
+        if not self.index_loaded:
+            self.index = impact_index.Index.load(
+                str(self.index_path.absolute()), in_memory
+            )
+            self.index_loaded = True
+            logger.info("index loaded successfully")
 
     def retrieve(self, query: Dict[int, float], top_k: int) -> List[ScoredDocument]:
         results = []
