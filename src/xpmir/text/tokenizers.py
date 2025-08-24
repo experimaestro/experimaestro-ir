@@ -36,9 +36,9 @@ class TokenizedTexts(NamedTuple):
 
     def __getitem__(self, ix):
         return TokenizedTexts(
-            [opt_slice(self.tokens, i) for i in ix],
+            opt_slice(self.tokens, ix),
             self.ids[ix],
-            [self.lens[i] for i in ix],
+            opt_slice(self.lens, ix),
             opt_slice(self.mask, ix),
             opt_slice(self.token_type_ids, ix),
         )
@@ -63,11 +63,12 @@ class TokenizedTexts(NamedTuple):
         length = torch.sum(ids).item() if isinstance(ids, torch.Tensor) else len(ids)
         return TokenizedTexts(
             [self.tokens[i] for i in ids] if self.tokens else None,
-            self.ids[:,ids],
+            self.ids[:, ids],
             [length for i in self.lens],
-            self.mask[:,ids] if self.mask is not None else None,
-            self.token_type_ids[:,ids] if self.token_type_ids is not None else None,
+            self.mask[:, ids] if self.mask is not None else None,
+            self.token_type_ids[:, ids] if self.token_type_ids is not None else None,
         )
+
 
 class Tokenizer(Config):
     """
