@@ -113,7 +113,7 @@ def msmarco_v1_docpairs_efficient_sampler(
 @cache
 def msmarco_v1_validation_dataset(cfg: ValidationSample, launcher=None):
     """Sample dev topics to get a validation subset"""
-    return RandomFold(
+    return RandomFold.C(
         dataset=prepare_collection("irds.msmarco-passage.dev"),
         seed=cfg.seed,
         fold=0,
@@ -155,21 +155,21 @@ def msmarco_hofstaetter_ensemble_hard_negatives() -> DistillationPairwiseSampler
     Mete Sertkan, Allan Hanbury), 2020
     """
     train_triples_distil = prepare_dataset(
-        "com.github.sebastian-hofstaetter." "neural-ranking-kd.msmarco.ensemble.teacher"
+        "com.github.sebastian-hofstaetter." "neural-ranking-kd.msmarco_ensemble_teacher"
     )
 
     # Access to topic text
     train_topics = prepare_dataset("irds.msmarco-passage.train.queries")
 
     # Combine the training triplets with the document and queries texts
-    distillation_samples = PairwiseHydrator(
+    distillation_samples = PairwiseHydrator.C(
         samples=train_triples_distil,
         documentstore=prepare_collection("irds.msmarco-passage.documents"),
-        querystore=MemoryTopicStore(topics=train_topics),
+        querystore=MemoryTopicStore.C(topics=train_topics),
     )
 
     # Generate a sampler from the samples
-    return DistillationPairwiseSampler(samples=distillation_samples)
+    return DistillationPairwiseSampler.C(samples=distillation_samples)
 
 
 @cache
@@ -177,7 +177,7 @@ def finetuning_validation_dataset(
     cfg: ValidationSample, dataset_id: str, launcher=None
 ):
     """Sample dev topics to get a validation subset"""
-    return RandomFold(
+    return RandomFold.C(
         dataset=prepare_collection(dataset_id),
         seed=cfg.seed,
         fold=0,

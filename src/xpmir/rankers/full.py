@@ -34,7 +34,7 @@ class FullRetrieverRescorer(Retriever):
     """The scorer (a dual representation scorer)"""
 
     batchsize: Param[int] = 0
-    batcher: Meta[Batcher] = Batcher()
+    batcher: Meta[Batcher] = Batcher.C()
     device: Meta[Optional[Device]] = None
 
     def initialize(self):

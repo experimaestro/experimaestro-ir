@@ -333,7 +333,7 @@ class AnseriniRetriever(Retriever):
 def index_builder(
     documents: Documents, *, launcher=None, **index_params
 ) -> IndexCollection:
-    return IndexCollection(documents=documents, **index_params).submit(
+    return IndexCollection.C(documents=documents, **index_params).submit(
         launcher=launcher
     )
 
@@ -349,6 +349,6 @@ def retriever(
     """Function to construct an Anserini retriever"""
     index = index_builder(documents)
 
-    return AnseriniRetriever(
+    return AnseriniRetriever.C(
         index=index, k=k or AnseriniRetriever.k, model=model, store=store
     )

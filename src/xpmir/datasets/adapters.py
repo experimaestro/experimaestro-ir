@@ -468,8 +468,8 @@ class RetrieverBasedCollection(Task):
     def __validate__(self):
         assert len(self.retrievers) > 0, "At least one retriever should be given"
 
-    def task_outputs(self, dep) -> Adhoc:
-        return Adhoc(
+    def task_outputs(self, dep) -> Adhoc.C:
+        return Adhoc.C(
             id="",  # No need to have a more specific id since it is generated
             topics=self.dataset.topics,
             assessments=self.dataset.assessments,
