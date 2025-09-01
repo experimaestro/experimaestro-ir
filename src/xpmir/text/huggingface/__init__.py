@@ -103,7 +103,8 @@ class BaseTransformer(Encoder):
             self.config.hidden_dropout_prob = self.dropout
             self.config.attention_probs_dropout_prob = self.dropout
 
-        local_files_only = os.environ("HF_HUB_OFFLINE")
+        local_files_only = os.environ.get("HF_HUB_OFFLINE", False)
+
         if options.mode == ModuleInitMode.NONE or options.mode == ModuleInitMode.RANDOM:
             self.model = self.automodel.from_config(self.config)
         else:
