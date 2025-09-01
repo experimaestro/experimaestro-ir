@@ -50,7 +50,7 @@ class AutoModel:
         hf_id_or_folder: str, variant: Optional[str] = None, as_instance: bool = False
     ):
         """Loads from hugging face hub or from a folder"""
-        local_files_only = os.environ("HF_HUB_OFFLINE")
+        local_files_only = os.environ.get("HF_HUB_OFFLINE", False)
         data = XPMIRHFHub.from_pretrained(
             hf_id_or_folder,
             variant=variant,
