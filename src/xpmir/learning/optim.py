@@ -189,7 +189,7 @@ class ModuleLoader(PathSerializationLWTask):
         """Loads the model from disk using the given serialization path"""
         logger.info("Loading model from disk: %s", self.path)
         self.value.initialize(ModuleInitMode.NONE.to_options())
-        data = torch.load(self.path)
+        data = torch.load(self.path, map_location=torch.device('cpu'))
         self.value.load_state_dict(data)
 
 
