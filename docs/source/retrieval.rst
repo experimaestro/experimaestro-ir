@@ -84,6 +84,22 @@ FAISS
 Sparse
 ------
 
+.. autoxpmconfig:: xpmir.index.sparse.AbstractSparseRetrieverIndex
+.. autoxpmconfig:: xpmir.index.sparse.AbstractSparseRetrieverIndexBuilder
 .. autoxpmconfig:: xpmir.index.sparse.SparseRetriever
+
+Impact library (rust)
++++++++++++++++++++++
+
 .. autoxpmconfig:: xpmir.index.sparse.SparseRetrieverIndex
 .. autoxpmconfig:: xpmir.index.sparse.SparseRetrieverIndexBuilder
+
+Faster Learned Sparse Retrieval with Block-Max Pruning
+++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+Adapters for the "Faster Learned Sparse Retrieval with Block-Max Pruning"
+are available
+
+.. autoxpmconfig:: xpmir.index.sparse.BMPSparseRetrieverIndex
+.. autoxpmconfig:: xpmir.index.sparse.BMPSparseRetrieverIndexBuilder
+.. autoxpmconfig:: xpmir.index.sparse.BMPSparseRetriever

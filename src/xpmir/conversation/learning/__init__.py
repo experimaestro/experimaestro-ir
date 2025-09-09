@@ -45,8 +45,22 @@ class DatasetConversationEntrySampler(BaseSampler, DatasetConversationBase):
     """Uses a conversation dataset and topic records entries"""
 
     def __iter__(self) -> RandomSerializableIterator[Record]:
-        def generator(random: np.random.RandomState):
-            while True:
-                yield self.records[random.randint(0, len(self.records))]
+        return RandomSerializableIterator(self.random, self.get_iterator)
 
-        return RandomSerializableIterator(self.random, generator)
+    def get_iterator(self, random: np.random.RandomState):
+        return DatasetConversationEntrySamplerIterator(self, random)
+
+
+class DatasetConversationEntrySamplerIterator(Iterator[Record]):
+    def __init__(
+        self, sampler: DatasetConversationEntrySampler, random: np.random.RandomState
+    ):
+        self.sampler = sampler
+        self.random = random
+
+    def __next__(self):
+        if self.random is None:
+            raise ValueError(
+                "Random state is not initialized. Call the iterator first."
+            )
+        return self.sampler.records[self.random.randint(0, len(self.sampler.records))]

@@ -164,7 +164,7 @@ class Learner(Task, EasyLogger):
                 for listener in self.listeners
             },
             learned_model=dep(
-                ModuleLoader(
+                ModuleLoader.C(
                     value=self.model,
                     path=self.last_checkpoint_path / TrainState.MODEL_PATH,
                 )
@@ -276,7 +276,7 @@ class Learner(Task, EasyLogger):
                     decision = decision.update(listener(state))
 
                 if decision == LearnerListenerStatus.STOP:
-                    self.logger.warn(
+                    self.logger.warning(
                         "stopping after epoch {epoch} ({early_stop} epochs) since "
                         "all listeners asked for it"
                     )

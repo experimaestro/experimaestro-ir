@@ -200,7 +200,7 @@ class RandomFold(Task):
 
         folds = []
         for ix in range(len(sizes)):
-            fold = RandomFold(
+            fold = RandomFold.C(
                 seed=seed, sizes=sizes, dataset=dataset, exclude=exclude, fold=ix
             )
             if submit:
@@ -211,10 +211,10 @@ class RandomFold(Task):
 
     def task_outputs(self, dep) -> Adhoc:
         return dep(
-            Adhoc(
+            Adhoc.C(
                 id="",  # No need to have a more specific id since it is generated
-                topics=dep(CSVTopics(id="", path=self.topics)),
-                assessments=dep(TrecAdhocAssessments(id="", path=self.assessments)),
+                topics=dep(CSVTopics.C(id="", path=self.topics)),
+                assessments=dep(TrecAdhocAssessments.C(id="", path=self.assessments)),
                 documents=self.dataset.documents,
             )
         )
@@ -309,7 +309,7 @@ class TopicsFoldGenerator(FileIDList, Task):
 
         folds = []
         for ix in range(len(sizes)):
-            fold = TopicsFoldGenerator(
+            fold = TopicsFoldGenerator.C(
                 seed=seed, sizes=sizes, dataset=dataset, exclude=exclude, fold=ix
             )
             if submit:
@@ -323,10 +323,10 @@ class TopicsFoldGenerator(FileIDList, Task):
             Adhoc(
                 id="",  # No need to have a more specific id since it is generated
                 topics=dep(
-                    IDTopicFold(id="", topics=self.dataset.topics, id_list=self)
+                    IDTopicFold.C(id="", topics=self.dataset.topics, id_list=self)
                 ),
                 assessments=dep(
-                    IDAdhocAssessmentFold(
+                    IDAdhocAssessmentFold.C(
                         id="", qrels=self.dataset.assessments, id_list=self
                     )
                 ),
@@ -468,13 +468,13 @@ class RetrieverBasedCollection(Task):
     def __validate__(self):
         assert len(self.retrievers) > 0, "At least one retriever should be given"
 
-    def task_outputs(self, dep) -> Adhoc:
-        return Adhoc(
+    def task_outputs(self, dep) -> Adhoc.C:
+        return Adhoc.C(
             id="",  # No need to have a more specific id since it is generated
             topics=self.dataset.topics,
             assessments=self.dataset.assessments,
             documents=dep(
-                DocumentSubset(
+                DocumentSubset.C(
                     id="", base=self.dataset.documents, docids_path=self.docids_path
                 )
             ),

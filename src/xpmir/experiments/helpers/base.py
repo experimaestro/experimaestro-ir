@@ -24,13 +24,13 @@ class NeuralIRExperiment(ConfigurationBase):
 
     @attrs_cached_property
     def random(self):
-        return Random(seed=self.seed)
+        return Random.C(seed=self.seed)
 
     @attrs_cached_property
     def device(self) -> Device:
         if self.use_best_device:
-            return BestDevice()
-        return CudaDevice() if self.gpu else Device()
+            return BestDevice.C()
+        return CudaDevice.C() if self.gpu else Device.C()
 
 
 @configuration()

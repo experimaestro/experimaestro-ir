@@ -22,7 +22,7 @@ class ApexWrapper(types.ModuleType):
 
             return apex
         except ImportError:
-            _logger.warn(
+            _logger.warning(
                 "Module apex not installed. Please see <https://github.com/NVIDIA/apex>"
             )
             raise

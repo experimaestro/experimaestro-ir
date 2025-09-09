@@ -142,9 +142,13 @@ def is_cublas_alloc_failed(exception):
     )
 
 
-def is_oom_error(exception):
+def is_oom_error(exception: Exception):
     """Detect CUDA out-of-memory errors"""
+    import torch
     from pytorch_lightning.utilities.memory import is_oom_error as legacy_check
+
+    if isinstance(exception, torch.cuda.OutOfMemoryError):
+        return True
 
     if legacy_check(exception):
         return True

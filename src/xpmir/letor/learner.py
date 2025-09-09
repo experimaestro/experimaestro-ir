@@ -21,7 +21,7 @@ logger = easylog()
 class ValidationModuleLoader(ModuleLoader):
     """Specializes the validation listener"""
 
-    listener: Param["ValidationListener"]
+    listener: Param["LearnerListener"]
     """The listener"""
 
     key: Param[str]
@@ -96,7 +96,7 @@ class ValidationListener(LearnerListener):
     def init_task(self, learner: "Learner", dep):
         return {
             key: dep(
-                ValidationModuleLoader(
+                ValidationModuleLoader.C(
                     value=learner.model,
                     listener=self,
                     key=key,

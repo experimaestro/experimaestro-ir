@@ -39,24 +39,26 @@ class TransformerOptimization:
         weight_decay = self.weight_decay if regularization else 0
 
         if self.optimizer_name == "adam-w":
-            return AdamW(
+            return AdamW.C(
                 lr=lr,
                 weight_decay=weight_decay,
                 eps=self.eps,
             )
         elif self.optimizer_name == "adam":
-            return Adam(lr, weight_decay=weight_decay, eps=self.eps)
+            return Adam.C(lr, weight_decay=weight_decay, eps=self.eps)
         elif self.optimizer_name == "sgd":
-            return SGD(lr=lr, weight_decay=weight_decay)
+            return SGD.C(lr=lr, weight_decay=weight_decay)
         elif self.optimizer_name == "adafactor":
-            return Adafactor(lr=lr, weight_decay=weight_decay, relative_step=lr is None)
+            return Adafactor.C(
+                lr=lr, weight_decay=weight_decay, relative_step=lr is None
+            )
         else:
             raise ValueError(f"Cannot handle optimizer named {self.optimizer_name}")
 
     @cached_property
     def scheduler_instance(self):
         scheduler = (
-            LinearWithWarmup(
+            LinearWithWarmup.C(
                 num_warmup_steps=self.num_warmup_steps,
                 min_factor=self.warmup_min_factor,
             )
@@ -70,7 +72,7 @@ class TransformerOptimization:
         if not self.re_no_l2_regularization:
             return get_optimizers(
                 [
-                    ParameterOptimizer(
+                    ParameterOptimizer.C(
                         scheduler=self.scheduler_instance,
                         optimizer=self.get_optimizer(True, self.lr),
                     ),
@@ -79,12 +81,12 @@ class TransformerOptimization:
 
         return get_optimizers(
             [
-                ParameterOptimizer(
+                ParameterOptimizer.C(
                     scheduler=self.scheduler_instance,
                     optimizer=self.get_optimizer(False, self.lr),
                     filter=RegexParameterFilter(includes=self.re_no_l2_regularization),
                 ),
-                ParameterOptimizer(
+                ParameterOptimizer.C(
                     scheduler=self.scheduler_instance,
                     optimizer=self.get_optimizer(True, self.lr),
                 ),

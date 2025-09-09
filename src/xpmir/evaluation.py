@@ -1,5 +1,9 @@
+import inspect
+import logging
 import sys
 from itertools import chain
+from attrs import define
+from datamaestro_text.interfaces.trec import write_run_dict
 import pandas as pd
 from pathlib import Path
 from typing import DefaultDict, Dict, List, Protocol, Union, Tuple, Optional
@@ -8,6 +12,8 @@ from experimaestro import Task, Param, pathgenerator, Annotated, tags, TagDict
 from datamaestro_text.data.ir import (
     Adhoc,
     AdhocAssessments,
+    AdhocRun,
+    AdhocRunDict,
     Documents,
     AdhocResults,
     IDItem,
@@ -44,18 +50,31 @@ class BaseEvaluation(Task):
     detailed: Annotated[Path, pathgenerator("detailed.dat")]
     """Path for detailed results"""
 
+    with_run: Param[bool] = False
+    """Saves the run together with the evaluation"""
+
+    run_path: Annotated[Path, pathgenerator("run.txt")]
+    """Path to save the run (TREC format). Only used if with_run is True"""
+
     def task_outputs(self, dep):
-        return dep(
-            TrecAdhocResults(
+        results = dep(
+            TrecAdhocResults.C(
                 id="",
                 results=self.aggregated,
                 detailed=self.detailed,
                 metrics=self.measures,
             )
         )
+        if self.with_run:
+            return results, dep(TrecAdhocRun.C(id="", path=self.run_path))
+        return results
 
-    def _execute(self, run, assessments):
+    def _execute(self, run: AdhocRunDict, assessments):
         """Evaluate an IR ad-hoc run with trec-eval"""
+
+        if self.with_run:
+            logging.info("Writing the run")
+            write_run_dict(run, self.run_path)
 
         evaluator = get_evaluator([measure() for measure in self.measures], assessments)
 
@@ -71,7 +90,7 @@ class BaseEvaluation(Task):
                 print_line(fp, str(key), "all", value)
 
 
-def get_run(retriever: Retriever, dataset: Adhoc):
+def get_run(retriever: Retriever, dataset: Adhoc) -> AdhocRunDict:
     """Returns the scored documents for each topic in a dataset"""
     results = retriever.retrieve_all(
         {topic[IDItem].id: topic for topic in dataset.topics.iter()}
@@ -172,20 +191,43 @@ class Evaluations:
 
     def evaluate_retriever(
         self,
+        key: str,
         retriever: Union[Retriever, RetrieverFactory],
         launcher: Launcher = None,
+        *,
         init_tasks=[],
-    ) -> Tuple[Retriever, AdhocResults]:
-        """Evaluates a retriever"""
-        if not isinstance(retriever, Retriever):
-            retriever = retriever(self.dataset.documents)
+        with_run=False,
+    ) -> "EvaluationResult":
+        """Evaluates a retriever
 
-        evaluation: AdhocResults = Evaluate(
+        :param key: test collection key
+        :param retriever: the retriever (or the retriever factory)
+        """
+        if not isinstance(retriever, Retriever):
+            kwargs = {}
+            sig = inspect.signature(retriever)
+            kw_only = set(
+                name
+                for name, p in sig.parameters.items()
+                if p.kind == inspect.Parameter.KEYWORD_ONLY
+            )
+            if "key" in kw_only:
+                kwargs["key"] = key
+            retriever = retriever(self.dataset.documents, **kwargs)
+
+        task = Evaluate.C(
             retriever=retriever,
             measures=self.measures,
             dataset=self.dataset,
             topic_wrapper=self.topic_wrapper,
-        ).submit(launcher=launcher, init_tasks=init_tasks)
+            with_run=with_run,
+        )
+
+        evaluation = task.submit(launcher=launcher, init_tasks=init_tasks)
+
+        run = None
+        if with_run:
+            evaluation, run = evaluation
 
         self.add(evaluation)
 
@@ -194,7 +236,7 @@ class Evaluations:
         if retriever_tags:
             self.per_tags[retriever_tags] = evaluation
 
-        return retriever, evaluation
+        return EvaluationResult(key, evaluation, run, task)
 
     def add(self, *results: BaseEvaluation):
         self.results.extend(results)
@@ -208,6 +250,10 @@ class Evaluations:
             set(chain(*[tags_dict.keys() for tags_dict in self.per_tags.keys()]))
         )
         tags.sort()
+
+        assert (
+            len(tags) > 0
+        ), "No tags found, please tag your evaluations to convert results to dataframe"
 
         # Get all the results and metrics
         to_process = []
@@ -248,6 +294,21 @@ class Evaluations:
         return pd.DataFrame(rows, columns=index)
 
 
+@define
+class EvaluationResult:
+    key: str
+    """Dataset identifier"""
+
+    result: AdhocResults
+    """Results"""
+
+    run: Optional[AdhocRun]
+    """The run (if available)"""
+
+    task: Evaluate
+    """The task for this result"""
+
+
 class EvaluationsCollection:
     """A collection of evaluation
 
@@ -270,10 +331,15 @@ class EvaluationsCollection:
         launcher: Launcher = None,
         model_id: str = None,
         overwrite: bool = False,
+        with_run: bool = False,
         init_tasks=[],
-    ):
+    ) -> list[EvaluationResult]:
         """Evaluate a retriever for all the evaluations in this collection (the
-        tasks are submitted to the experimaestro scheduler)"""
+        tasks are submitted to the experimaestro scheduler)
+
+        :param with_run: should the run be preserved (default False). Note that
+            this changes the experiment ID.
+        """
         if model_id is not None and not overwrite:
             assert (
                 model_id not in self.per_model
@@ -281,10 +347,10 @@ class EvaluationsCollection:
 
         results = []
         for key, evaluations in self.collection.items():
-            _retriever, result = evaluations.evaluate_retriever(
-                retriever, launcher, init_tasks=init_tasks
+            result = evaluations.evaluate_retriever(
+                key, retriever, launcher, init_tasks=init_tasks, with_run=with_run
             )
-            results.append((key, result))
+            results.append(result)
 
         # Adds to per model results
         if model_id is not None:
@@ -337,7 +403,7 @@ class EvaluationsCollection:
             all_metrics.update(all_results[key].keys())
         all_metrics = sorted(all_metrics)
 
-        file.write(f"| Dataset  | {' | '.join(all_metrics)}  |\n")
+        file.write(f"| Dataset  | {' | '.join(all_metrics)}  |\n")  # noqa: E221
         file.write(f"|----| {'---|---'.join('' for _ in all_metrics)}---|\n")
         for key, values in all_results.items():
             file.write(f"| {key}")

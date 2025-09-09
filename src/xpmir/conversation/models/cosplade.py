@@ -35,8 +35,11 @@ class AsymetricMSEContextualizedRepresentationLoss(
 ):
     """Computes the asymetric loss for CoSPLADE"""
 
-    version: Constant[int] = 2
-    """Current version"""
+    version: Constant[int] = 3
+    """Current version
+    
+    version 3: uses q_answers and not q_cosplade
+    """
 
     def __call__(self, input: CoSPLADEOutput, target: TextsRepresentationOutput):
         # Builds up the list of tokens in the gold output
@@ -52,7 +55,7 @@ class AsymetricMSEContextualizedRepresentationLoss(
 
         # Compute the loss
         delta = (
-            torch.relu(target.value[sources, tokens] - input.value[sources, tokens])
+            torch.relu(target.value[sources, tokens] - input.q_answers[sources, tokens])
             ** 2
         )
         return torch.sum(delta) / input.value.numel()

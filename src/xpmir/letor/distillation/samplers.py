@@ -52,7 +52,7 @@ class PairwiseHydrator(PairwiseDistillationSamples, SampleHydrator):
     def transform(self, sample: PairwiseDistillationSample):
         topic, documents = sample.query, sample.documents
 
-        if transformed := self.transform_topics(topic):
+        if transformed := self.transform_topics([topic]):
             topic = transformed[0]
 
         if transformed := self.transform_documents(documents):
