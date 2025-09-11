@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from typing import Dict, Iterator, List
 from datamaestro_text.data.ir import Adhoc
-from experimaestro import Param, pathgenerator, Annotated
+from experimaestro import Param, pathgenerator, Annotated, field
 import numpy as np
 from xpmir.utils.utils import easylog, foreach
 from xpmir.evaluation import evaluate
@@ -20,8 +20,9 @@ logger = easylog()
 class ValidationModuleLoader(ModuleLoader):
     """Specializes the validation listener"""
 
-    listener: Param["LearnerListener"]
-    """The listener"""
+    listener: Param["LearnerListener"] = field(ignore_generated=True)
+    """The listener (kept there to change the validation loader identifier based
+    on the learner listener configuration)"""
 
     key: Param[str]
     """The key for this listener"""
