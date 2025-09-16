@@ -135,25 +135,31 @@ def msmarco_v1_validation_dataset(
 
 
 @cache
-def msmarco_v1_tests(dev_test_size: int = 0):
+def msmarco_v1_tests(dev_test_size: int = 0, only_judged=False):
     """MS-Marco default test collections: DL TREC 2019 & 2020 + devsmall
 
     devsmall can be restricted to a smaller dataset for debugging using dev_test_size
+
+    If only_judged = False, use full version for TREC DL (by default), which
+    contains the unassessed.
+    else use the judged only version, which only contains the queries that have
+    at least one non 0 qrel
     """
     v1_devsmall_ds = prepare_collection("irds.msmarco-passage.dev.small")
     if dev_test_size > 0:
         (v1_devsmall_ds,) = RandomFold.folds(
             seed=0, sizes=[dev_test_size], dataset=v1_devsmall_ds
         )
-
+    if only_judged:
+        dl19 = prepare_dataset("irds.msmarco-passage.trec-dl-2019.judged")
+        dl20 = prepare_dataset("irds.msmarco-passage.trec-dl-2020.judged")
+    else:
+        dl19 = prepare_dataset("irds.msmarco-passage.trec-dl-2019")
+        dl20 = prepare_dataset("irds.msmarco-passage.trec-dl-2020")
     return EvaluationsCollection(
         msmarco_dev=Evaluations(v1_devsmall_ds, MEASURES),
-        trec2019=Evaluations(
-            prepare_dataset("irds.msmarco-passage.trec-dl-2019.judged"), MEASURES
-        ),
-        trec2020=Evaluations(
-            prepare_dataset("irds.msmarco-passage.trec-dl-2020.judged"), MEASURES
-        ),
+        trec2019=Evaluations(dl19, MEASURES),
+        trec2020=Evaluations(dl20, MEASURES),
     )
 
 
