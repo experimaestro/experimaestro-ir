@@ -111,10 +111,22 @@ def msmarco_v1_docpairs_efficient_sampler(
 
 
 @cache
-def msmarco_v1_validation_dataset(cfg: ValidationSample, launcher=None):
-    """Sample dev topics to get a validation subset"""
+def msmarco_v1_validation_dataset(
+    cfg: ValidationSample, launcher=None, only_judged=False
+):
+    """Sample dev topics to get a validation subset
+    If only_judged = False, use irds.msmarco-passage.dev (by default), which
+    contains the unassessed.
+    else use irds.msmarco-passage.dev.judged, which only contains the queries
+    that have at least one non 0 qrel
+    """
+    if only_judged:
+        candidate_ds = prepare_collection("irds.msmarco-passage.dev.judged")
+    else:
+        candidate_ds = prepare_collection("irds.msmarco-passage.dev")
+
     return RandomFold.C(
-        dataset=prepare_collection("irds.msmarco-passage.dev"),
+        dataset=candidate_ds,
         seed=cfg.seed,
         fold=0,
         sizes=[cfg.size],
@@ -137,10 +149,10 @@ def msmarco_v1_tests(dev_test_size: int = 0):
     return EvaluationsCollection(
         msmarco_dev=Evaluations(v1_devsmall_ds, MEASURES),
         trec2019=Evaluations(
-            prepare_dataset("irds.msmarco-passage.trec-dl-2019"), MEASURES
+            prepare_dataset("irds.msmarco-passage.trec-dl-2019.judged"), MEASURES
         ),
         trec2020=Evaluations(
-            prepare_dataset("irds.msmarco-passage.trec-dl-2020"), MEASURES
+            prepare_dataset("irds.msmarco-passage.trec-dl-2020.judged"), MEASURES
         ),
     )
 
