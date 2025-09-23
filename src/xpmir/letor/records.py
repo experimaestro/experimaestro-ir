@@ -405,7 +405,7 @@ class DocumentRecords(List[DocumentRecord]):
 
     def __getitem__(self, ix: Union[slice, int]):
         if isinstance(ix, slice):
-            records = DocumentRecord()
+            records = DocumentRecords()
             for i in range(ix.start, min(ix.stop, len(self)), ix.step or 1):
                 records.add(self.documents[i])
             return records
