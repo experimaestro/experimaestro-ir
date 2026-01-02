@@ -110,6 +110,56 @@ class PairwiseDistillationSamplesTSV(PairwiseDistillationSamples, File):
         return SkippingIterator(iterate())
 
 
+class _DistillationPairwiseBatchIterator(SerializableIterator):
+    """Batch iterator for DistillationPairwiseSampler.
+
+    Defined at module level to allow pickling for multiprocessing.
+    """
+
+    def __init__(self, sampler: "DistillationPairwiseSampler", size: int):
+        self.sampler = sampler
+        self.size = size
+        self._iter = None
+        self._state = None
+
+    def _ensure_iter(self):
+        """Lazily initialize the iterator."""
+        if self._iter is None:
+            self._iter = self.sampler.pairwise_iter()
+            if self._state is not None:
+                self._iter.load_state_dict(self._state)
+                self._state = None
+
+    def __getstate__(self):
+        """For pickling: save the state_dict instead of the iterator."""
+        state = self.__dict__.copy()
+        if self._iter is not None:
+            state["_state"] = self._iter.state_dict()
+        state["_iter"] = None
+        return state
+
+    def __setstate__(self, state):
+        """For unpickling: restore from state_dict."""
+        self.__dict__.update(state)
+
+    def state_dict(self):
+        self._ensure_iter()
+        return self._iter.state_dict()
+
+    def load_state_dict(self, state):
+        if self._iter is not None:
+            self._iter.load_state_dict(state)
+        else:
+            self._state = state
+
+    def __next__(self):
+        self._ensure_iter()
+        batch = []
+        for _, record in zip(range(self.size), self._iter):
+            batch.append(record)
+        return batch
+
+
 class DistillationPairwiseSampler(Sampler):
     """Just loops over samples"""
 
@@ -127,21 +177,4 @@ class DistillationPairwiseSampler(Sampler):
         """Batchwise iterator
 
         Can be subclassed by some classes to be more efficient"""
-
-        class BatchIterator(SerializableIterator):
-            def __init__(self, sampler: DistillationPairwiseSampler):
-                self.iter = sampler.pairwise_iter()
-
-            def state_dict(self):
-                return self.iter.state_dict()
-
-            def load_state_dict(self, state):
-                self.iter.load_state_dict(state)
-
-            def __next__(self):
-                batch = []
-                for _, record in zip(range(size), self.iter):
-                    batch.append(record)
-                return batch
-
-        return BatchIterator(self)
+        return _DistillationPairwiseBatchIterator(self, size)
