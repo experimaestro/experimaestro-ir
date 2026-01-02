@@ -60,9 +60,9 @@ def msmarco_v1_docpairs_sampler(
     """
     topics = prepare_dataset("irds.msmarco-passage.train.queries")
     train_triples = prepare_dataset("irds.msmarco-passage.train.docpairs")
-    triplets = ShuffledTrainingTripletsLines(
+    triplets = ShuffledTrainingTripletsLines.C(
         seed=123,
-        data=StoreTrainingTripletTopicAdapter(data=train_triples, store=topics),
+        data=StoreTrainingTripletTopicAdapter.C(data=train_triples, store=topics),
         sample_rate=sample_rate,
         sample_max=sample_max,
         doc_ids=True,
@@ -70,10 +70,10 @@ def msmarco_v1_docpairs_sampler(
     ).submit(launcher=launcher)
 
     # Adds the text to the documents
-    triplets = StoreTrainingTripletDocumentAdapter(
+    triplets = StoreTrainingTripletDocumentAdapter.C(
         data=triplets, store=prepare_collection("irds.msmarco-passage.documents")
     )
-    return TripletBasedSampler(source=triplets)
+    return TripletBasedSampler.C(source=triplets)
 
 
 @cache
@@ -92,9 +92,9 @@ def msmarco_v1_docpairs_efficient_sampler(
     """
     topics = prepare_dataset("irds.msmarco-passage.train.queries")
     train_triples = prepare_dataset("irds.msmarco-passage.train.docpairs")
-    triplets = ShuffledTrainingTripletsLines(
+    triplets = ShuffledTrainingTripletsLines.C(
         seed=seed,
-        data=StoreTrainingTripletTopicAdapter(data=train_triples, store=topics),
+        data=StoreTrainingTripletTopicAdapter.C(data=train_triples, store=topics),
         sample_rate=sample_rate,
         sample_max=sample_max,
         doc_ids=True,
@@ -107,7 +107,7 @@ def msmarco_v1_docpairs_efficient_sampler(
         documentstore=prepare_collection("irds.msmarco-passage.documents")
     )
 
-    return PairwiseTransformAdapter(sampler=sampler, adapter=hydrator)
+    return PairwiseTransformAdapter.C(sampler=sampler, adapter=hydrator)
 
 
 @cache
