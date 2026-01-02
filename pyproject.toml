@@ -21,7 +21,7 @@ classifiers = [
 
 dependencies = [
     # Experimaestro
-    "experimaestro>=2.0.0b4",
+    "experimaestro>=2.0.0b6",
     "datamaestro>=1.0.1",
     "datamaestro_text>=2025.7.28",
     "ir_datasets",
