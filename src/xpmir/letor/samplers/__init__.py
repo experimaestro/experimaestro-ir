@@ -19,7 +19,7 @@ from datamaestro_text.data.ir import (
 )
 from experimaestro import Param, tqdm, Task, Annotated, pathgenerator
 from experimaestro.annotations import cache
-from experimaestro.compat import cached_property
+from functools import cached_property
 import torch
 from xpmir.rankers import ScoredDocument
 from xpmir.datasets.adapters import TextStore
@@ -487,7 +487,9 @@ class TSVPairwiseSampleDataset(PairwiseSampleDataset):
             positives = triplet[2].split(" ")
             negatives = triplet[4].split(" ")
             # at the moment, I don't have some good idea to store the algo
-            yield PairwiseSample(topics=topics, positives=positives, negatives=negatives)
+            yield PairwiseSample(
+                topics=topics, positives=positives, negatives=negatives
+            )
 
 
 class JSONLPairwiseSampleDataset(PairwiseSampleDataset):
@@ -610,7 +612,9 @@ class ModelBasedHardNegativeSampler(Task, Sampler):
                 qassessments = assessments.get(query[IDItem].id, None)
                 if not qassessments:
                     skipped += 1
-                    self.logger.warning("Skipping topic %s (no assessments)", query[IDItem].id)
+                    self.logger.warning(
+                        "Skipping topic %s (no assessments)", query[IDItem].id
+                    )
                     continue
 
                 # Write all the positive documents
@@ -716,7 +720,7 @@ class TeacherModelBasedHardNegativesTripletSampler(Task, Sampler):
                 # write in the file
                 for i, record in enumerate(batch):
                     fp.write(
-                        f"{record.query.id}\t{record.positive.id}\t{scores[i,0]}"
-                        f"\t{record.negative.id}\t{scores[i,1]}"
+                        f"{record.query.id}\t{record.positive.id}\t{scores[i, 0]}"
+                        f"\t{record.negative.id}\t{scores[i, 1]}"
                     )
         self.logger.info("Teacher models score generating finish")

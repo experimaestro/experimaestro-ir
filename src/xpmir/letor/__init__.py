@@ -1,5 +1,5 @@
 from experimaestro import Config, Param
-from experimaestro.compat import cached_property
+from functools import cached_property
 import numpy as np
 from xpmir.utils.utils import easylog
 

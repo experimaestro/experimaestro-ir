@@ -187,9 +187,10 @@ class ModuleList(Module, Initializable):
 class ModuleLoader(PathSerializationLWTask):
     def execute(self):
         """Loads the model from disk using the given serialization path"""
-        logger.info("Loading model from disk: %s", self.path)
+        logger.info("Initializing the model randomly")
         self.value.initialize(ModuleInitMode.NONE.to_options())
-        data = torch.load(self.path, map_location=torch.device('cpu'))
+        logger.info("Loading model from disk: %s", self.path)
+        data = torch.load(self.path, map_location=torch.device("cpu"))
         self.value.load_state_dict(data)
 
 
@@ -372,7 +373,7 @@ class ScheduledOptimizer:
 
         if use_scaler:
             logger.info("Using GradScaler when optimizing")
-        self.scaler = torch.amp.GradScaler('cuda') if use_scaler else None
+        self.scaler = torch.amp.GradScaler("cuda") if use_scaler else None
 
     def load_state_dict(self, state):
         for optimizer, optimizer_state in zip(self.optimizers, state["optimizers"]):

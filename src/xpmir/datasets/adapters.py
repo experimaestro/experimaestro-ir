@@ -9,7 +9,7 @@ from experimaestro import (
     Annotated,
     Meta,
 )
-from experimaestro.compat import cached_property
+from functools import cached_property
 from datamaestro_text.data.ir import (
     IDItem,
     TextItem,
