@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
+import logging
 import threading
 from typing import Any, Callable, List, Optional, TYPE_CHECKING, Union
 from pathlib import Path
@@ -13,7 +14,6 @@ from experimaestro import (
     tagspath,
     Task,
     PathSerializationLWTask,
-    experiment,
     RunMode,
 )
 from experimaestro.scheduler import Job, Listener
@@ -187,9 +187,10 @@ class ModuleList(Module, Initializable):
 class ModuleLoader(PathSerializationLWTask):
     def execute(self):
         """Loads the model from disk using the given serialization path"""
-        logger.info("Loading model from disk: %s", self.path)
+        logger.info("Initializing the model randomly")
         self.value.initialize(ModuleInitMode.NONE.to_options())
-        data = torch.load(self.path, map_location=torch.device('cpu'))
+        logger.info("Loading model from disk: %s", self.path)
+        data = torch.load(self.path, map_location=torch.device("cpu"))
         self.value.load_state_dict(data)
 
 
@@ -372,7 +373,7 @@ class ScheduledOptimizer:
 
         if use_scaler:
             logger.info("Using GradScaler when optimizing")
-        self.scaler = torch.amp.GradScaler('cuda') if use_scaler else None
+        self.scaler = torch.amp.GradScaler("cuda") if use_scaler else None
 
     def load_state_dict(self, state):
         for optimizer, optimizer_state in zip(self.optimizers, state["optimizers"]):
@@ -495,22 +496,30 @@ class TensorboardServiceListener(Listener):
 class TensorboardService(WebService):
     id = "tensorboard"
 
-    def __init__(self, xp: experiment, path: Path):
+    def __init__(self, path: Path):
         super().__init__()
 
         self.path = path
+        logger.info("Tensorboard path is %s", self.path)
         self.url = None
-        self.run_mode = xp.run_mode
+        self.server = None
+        self.active = False
 
-        if self.run_mode == RunMode.NORMAL:
+    def set_experiment(self, xp):
+        # Cleanup and show the message only when running normally
+        if xp.run_mode == RunMode.NORMAL:
+            self.active = True
             cleanupdir(self.path)
             self.path.mkdir(exist_ok=True, parents=True)
             logger.info("You can monitor learning with:")
             logger.info("tensorboard --logdir=%s", self.path)
 
+    def state_dict(self):
+        return {"path": self.path}
+
     def add(self, task: Task, path: Path):
         # Wait until config has started
-        if self.run_mode == RunMode.NORMAL:
+        if self.active:
             if job := task.__xpm__.job:
                 if job.scheduler is not None:
                     tag_path = tagspath(task)
@@ -538,25 +547,19 @@ class TensorboardService(WebService):
             self.server.shutdown()
 
     def _serve(self, running: threading.Event):
-        if self.run_mode != RunMode.NORMAL:
-            return
-
         import tensorboard as tb
 
-        try:
-            logger.info("Starting %s service", self.id)
-            self.program = tb.program.TensorBoard()
-            self.program.configure(
-                host="localhost",
-                logdir=str(self.path.absolute()),
-                path_prefix=f"/services/{self.id}",
-                port=0,
-            )
-            self.server = self.program._make_server()
+        logger.info("Starting %s service", self.id)
+        logging.getLogger("tensorboard").setLevel(logging.WARNING)
+        self.program = tb.program.TensorBoard()
+        self.program.configure(
+            host="localhost",
+            logdir=str(self.path.absolute()),
+            path_prefix=f"/services/{self.id}",
+            port=0,
+        )
+        self.server = self.program._make_server()
 
-            self.url = self.server.get_url()
-            running.set()
-            self.server.serve_forever()
-        except Exception:
-            logger.exception("Error while starting tensorboard")
-            running.set()
+        self.url = self.server.get_url()
+        running.set()
+        self.server.serve_forever()

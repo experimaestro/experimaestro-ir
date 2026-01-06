@@ -3,7 +3,8 @@ name = "experimaestro-ir"
 requires-python = ">=3.10"
 keywords = ["neural information retrieval", "information retrieval", "experiments"]
 description = "Experimaestro common module for IR experiments"
-dynamic = ["version", "readme", "dependencies"]
+dynamic = ["version"]
+readme = "README.md"
 license = {text = "GPL-3"}
 authors = [
     { name = "Benjamin Piwowarski",  email = "benjamin@piwowarski.fr" }
@@ -18,12 +19,24 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
-[tool.setuptools.dynamic]
-readme = {file = ["README.md"], content-type = "text/markdown"}
-dependencies = {file = ["requirements.txt"]}
+dependencies = [
+    # Experimaestro
+    "experimaestro>=2.0.0b6",
+    "datamaestro>=1.0.1",
+    "datamaestro_text>=2025.7.28",
+    "ir_datasets",
+    "docstring_parser",
+    "impact-index==0.27.*",
+    "omegaconf>=2.2",
+    "attrs",
+    # Information retrieval libraries
+    "ir-measures>=0.3.3",
+    # Torch addons
+    "toma",
+    "pytorch-lightning",
+]
 
 [project.optional-dependencies]
-
 anserini = [
     "pyserini >= 0.20.0"
 ]
@@ -36,7 +49,6 @@ neural = [
 ]
 
 [dependency-groups]
-
 documentation = [
     "Sphinx>6",
     "myst-parser",
@@ -55,7 +67,6 @@ dev = [
     "pytest>=8.4.1",
 ]
 
-
 [project.urls]
 homepage = "https://github.com/bpiwowar/experimaestro-ir"
 documentation = "https://experimaestro-ir.readthedocs.io/en/latest/"
@@ -67,12 +78,24 @@ xpmir = "xpmir.__main__:main"
 [project.entry-points."datamaestro.repositories"]
 ir = "xpmir:Repository"
 
-[tool.setuptools_scm]
-write_to = "src/xpmir/_version.py"
-fallback_version = "0.0.0-dev"
-
 [build-system]
-requires = ["setuptools>=45", "setuptools_scm[toml]>=6.2", "wheel"]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/xpmir/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/xpmir"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/README.md",
+]
 
 [tool.pyright]
 include = ["xpmir"]

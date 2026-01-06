@@ -141,9 +141,7 @@ class IRExperimentHelper(LearningExperimentHelper):
 
     @cached_property
     def tensorboard_service(self):
-        return self.xp.add_service(
-            TensorboardService(self.xp, self.xp.resultspath / "runs")
-        )
+        return self.xp.add_service(TensorboardService(self.xp.resultspath / "runs"))
 
 
 ir_experiment = IRExperimentHelper.decorator

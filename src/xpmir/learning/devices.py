@@ -3,7 +3,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from experimaestro import Config, Param
-from experimaestro.compat import cached_property
+from functools import cached_property
 import torch
 from experimaestro.taskglobals import Env as TaskEnv
 import torch.distributed as dist
@@ -83,6 +83,7 @@ def cuda_execute(callback, args, kwargs, distributed=True):
     # Setup distributed computation
     # Seehttps://pytorch.org/tutorials/intermediate/ddp_tutorial.html
     n_gpus = torch.cuda.device_count()
+    assert n_gpus > 0, "No GPUs detected on this host"
 
     if n_gpus == 1 or not distributed:
         logger.info("Using mono-GPU CUDA computing")

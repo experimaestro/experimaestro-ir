@@ -7,7 +7,7 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 
-from experimaestro.compat import cached_property
+from functools import cached_property
 from experimaestro import Param, Constant, deprecate
 from xpmir.distributed import DistributableModel
 from xpmir.learning.optim import ModuleInitMode, ModuleInitOptions

@@ -1,7 +1,6 @@
 """Complements ir-metrics package"""
 
 import builtins
-from pkg_resources import parse_version
 import ir_measures
 
 if getattr(builtins, "__sphinx_build__", False):
