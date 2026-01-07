@@ -305,12 +305,10 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
             queue.put(EncodedDocument(docid, vector))
 
     @abstractmethod
-    def build_index(self):
-        ...
+    def build_index(self): ...
 
     @abstractmethod
-    def add_encoded_document(self, docid, encoded, nonzero_ix):
-        ...
+    def add_encoded_document(self, docid, encoded, nonzero_ix): ...
 
     @abstractmethod
     def create_index_builder(self) -> int | None:
@@ -466,14 +464,12 @@ class AbstractSparseRetrieverIndex(Config, ABC):
     @abstractmethod
     def retrieve(
         self, query: Dict[int, float], top_k: int, **kwargs
-    ) -> List[ScoredDocument]:
-        ...
+    ) -> List[ScoredDocument]: ...
 
     @abstractmethod
     async def aio_retrieve(
         self, query: Dict[int, float], top_k: int, **kwargs
-    ) -> List[ScoredDocument]:
-        ...
+    ) -> List[ScoredDocument]: ...
 
 
 # ---
@@ -603,7 +599,6 @@ class BMPSparseRetriever(SparseRetriever):
         return {"alpha": self.alpha, "beta": self.beta}
 
 
-
 class BMPSparseRetrieverIndex(AbstractSparseRetrieverIndex):
     Retriever = BMPSparseRetriever
 
@@ -615,16 +610,8 @@ class BMPSparseRetrieverIndex(AbstractSparseRetrieverIndex):
     def initialize(self, in_memory: bool):
         if not in_memory:
             logger.warning("BMP indices are in-memory only")
-        try:
-            from bmp import Searcher
-        except ModuleNotFoundError:
-            logger.warning(
-                "Did not find the Block Max Pruning (bmp) library. "
-                "Check https://github.com/pisa-engine/BMP"
-            )
-            raise
         logger.info("Loading BMP index from %s", self.index_path)
-        self.searcher = Searcher(str(self.index_path))
+        self.searcher = impact_index.BmpSearcher(str(self.index_path))
 
     def retrieve(
         self, query: Dict[int, float], top_k: int, alpha=None, beta=None
@@ -652,6 +639,7 @@ class BMPSparseRetrieverIndex(AbstractSparseRetrieverIndex):
     ) -> List[ScoredDocument]:
         return self.retrieve(query, top_k, **kwargs)
 
+
 class Sparse2BMPConverter(Task):
     index: Param[SparseRetrieverIndex]
     """The sparse index"""
@@ -663,7 +651,7 @@ class Sparse2BMPConverter(Task):
     """The block size"""
 
     compress_range: Param[bool]
-    """Compress the BM index"""
+    """Flag for BMP index compression"""
 
     def task_outputs(self, dep):
         """Returns a sparse retriever index that can be used by a
@@ -680,14 +668,16 @@ class Sparse2BMPConverter(Task):
         self.index.initialize(False)
 
         logging.info("Converting to BMP")
-        self.index.index.to_bmp(str(self.bmp_index_path), self.block_size, self.compress_range)
+        self.index.index.to_streaming_bmp(
+            str(self.bmp_index_path), self.block_size, self.compress_range
+        )
 
         logging.info("Done")
 
 
 class BMPSparseRetrieverIndexBuilder(SparseRetrieverIndexBuilder[InputType]):
-    """Index using a BMP index
-    """
+    """Index using a BMP index"""
+
     block_size: Param[int]
     """The block size"""
 

@@ -22,9 +22,9 @@ class SparseIndex:
     def __init__(self, context, ordered_index: bool = False):
         # Build the index
         objects = ObjectStore()
-        documents = SampleDocumentStore(num_docs=500)
-        self.encoder = SparseRandomTextEncoder(dim=1000, sparsity=0.8)
-        builder = SparseRetrieverIndexBuilder(
+        documents = SampleDocumentStore.C(num_docs=500)
+        self.encoder = SparseRandomTextEncoder.C(dim=1000, sparsity=0.8)
+        builder = SparseRetrieverIndexBuilder.C(
             encoder=self.encoder,
             documents=documents,
             max_postings=10,
@@ -80,7 +80,7 @@ def test_sparse_indexation(sparse_index: SparseIndex):
 
 @pytest.fixture(params=[False])
 def retriever(context, sparse_index: SparseIndex, request: bool):
-    retriever = SparseRetriever(
+    retriever = SparseRetriever.C(
         encoder=sparse_index.encoder,
         topk=sparse_index.topk,
         batchsize=2,
