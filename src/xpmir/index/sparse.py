@@ -668,7 +668,7 @@ class Sparse2BMPConverter(Task):
         self.index.initialize(False)
 
         logging.info("Converting to BMP")
-        self.index.index.to_streaming_bmp(
+        self.index.index.to_bmp_streaming(
             str(self.bmp_index_path), self.block_size, self.compress_range
         )
 
@@ -703,7 +703,9 @@ class BMPSparseRetrieverIndexBuilder(SparseRetrieverIndexBuilder[InputType]):
         index = self.indexer.build(False)
 
         logger.info("Converting to BMP index")
-        index.to_bmp(str(self.bmp_index_path), self.block_size, self.compress_range)
+        index.to_bmp_streaming(
+            str(self.bmp_index_path), self.block_size, self.compress_range
+        )
 
         # Removes the old index
         logger.info("Removing the old index path")
