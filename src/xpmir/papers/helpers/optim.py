@@ -1,6 +1,6 @@
 from typing import List
 from functools import cached_property
-from xpmir.learning.optim import (
+from xpm_torch.optim import (
     AdamW,
     Adam,
     Adafactor,
@@ -9,7 +9,7 @@ from xpmir.learning.optim import (
     RegexParameterFilter,
     get_optimizers,
 )
-from xpmir.learning.schedulers import LinearWithWarmup
+from xpm_torch.schedulers import LinearWithWarmup
 from xpmir.papers import configuration
 
 

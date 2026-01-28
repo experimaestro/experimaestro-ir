@@ -1,13 +1,13 @@
 import os
 from pathlib import Path
-import logging
 from typing import List, Optional, Tuple, Union
 from functools import cached_property
 import torch
 from experimaestro import Config, Param
 
-from xpmir.learning.optim import ModuleInitOptions
-from xpmir.utils.utils import Initializable
+from xpm_torch import ModuleInitOptions
+from xpm_torch.utils.utils import Initializable
+
 from xpmir.utils.convert import Converter
 from xpmir.text.tokenizers import (
     TokenizerBase,
@@ -15,6 +15,10 @@ from xpmir.text.tokenizers import (
     TokenizerInput,
     TokenizerOptions,
 )
+
+
+import logging
+logger = logging.getLogger(__name__)
 
 try:
     from transformers import AutoTokenizer

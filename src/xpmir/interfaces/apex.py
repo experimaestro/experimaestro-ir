@@ -1,8 +1,8 @@
 import sys
 import types
-from xpmir.utils.utils import easylog
 
-_logger = easylog()
+import logging
+_logger = logging.getLogger(__name__)
 
 
 # hack for pylint

@@ -4,10 +4,11 @@ from experimaestro import Param, Config
 import torch
 import numpy as np
 from datamaestro_text.data.ir import DocumentStore, TextItem, create_record
-from xpmir.letor import Random
+from xpm_torch import Random
+from xpm_torch.utils.iter import RandomSerializableIterator, SerializableIterator
+
 from xpmir.letor.records import DocumentRecord, PairwiseRecord, ProductRecords
 from xpmir.letor.samplers import BatchwiseSampler, PairwiseSampler
-from xpmir.utils.iter import RandomSerializableIterator, SerializableIterator
 
 
 class DocumentSampler(Config, ABC):

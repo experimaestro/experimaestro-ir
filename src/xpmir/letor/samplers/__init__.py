@@ -32,9 +32,9 @@ from xpmir.letor.records import (
     TopicRecord,
 )
 from xpmir.rankers import Retriever, Scorer
-from xpmir.learning import Sampler
-from xpmir.utils.utils import easylog
-from xpmir.utils.iter import (
+from xpm_torch import Sampler
+
+from xpm_torch.utils.iter import (
     RandomSerializableIterator,
     SerializableIterator,
     SerializableIteratorAdapter,
@@ -45,7 +45,8 @@ from xpmir.utils.iter import (
 )
 from datamaestro_text.interfaces.plaintext import read_tsv
 
-logger = easylog()
+import logging
+logger = logging.getLogger(__name__)
 
 
 # --- Base classes for samplers

@@ -1,5 +1,4 @@
 # This package contains all rankers
-
 from abc import ABC, abstractmethod
 from experimaestro import tqdm
 from enum import Enum
@@ -26,12 +25,13 @@ from datamaestro_text.data.ir import (
     IDItem,
 )
 from datamaestro_text.data.ir.base import DocumentRecord
-from xpmir.utils.utils import Initializable
-from xpmir.letor import Device, Random
-from xpmir.learning import ModuleInitMode, ModuleInitOptions
-from xpmir.learning.batchers import Batcher
-from xpmir.learning.context import TrainerContext
-from xpmir.learning.optim import Module
+from xpm_torch.utils.utils import Initializable
+from xpm_torch.utils.logging import EasyLogger
+from xpm_torch.optim import ModuleInitMode, ModuleInitOptions
+from xpm_torch import Module, Random
+from xpm_torch.batchers import Batcher
+from xpm_torch.learner import TrainerContext
+
 from xpmir.letor.records import (
     TopicRecord,
     BaseRecords,
@@ -39,12 +39,12 @@ from xpmir.letor.records import (
     PairwiseRecords,
     ProductRecords,
 )
-from xpmir.utils.utils import EasyLogger, easylog
 
 if TYPE_CHECKING:
     from xpmir.evaluation import RetrieverFactory
 
-logger = easylog()
+import logging
+logger = logging.getLogger(__name__)
 
 
 @attrs.define()
@@ -147,7 +147,6 @@ class Scorer(Config, Initializable, EasyLogger, ABC):
             scorer=self,
             batchsize=batch_size,
             batcher=batcher,
-            device=device,
             top_k=top_k if top_k else None,
         )
 
@@ -345,9 +344,6 @@ class AbstractTwoStageRetriever(Retriever):
 
     batcher: Meta[Batcher] = field(default_factory=Batcher.C)
     """How to provide batches of documents"""
-
-    device: Meta[Optional[Device]]
-    """Device on which the model is run"""
 
     def initialize(self):
         self.retriever.initialize()

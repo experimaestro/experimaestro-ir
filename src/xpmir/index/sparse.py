@@ -36,7 +36,8 @@ from xpmir.utils.iter import MultiprocessIterator
 from xpmir.utils.multiprocessing import StoppableQueue, available_cpus
 import impact_index
 
-logger = easylog()
+import logging
+logger = logging.getLogger(__name__)
 
 # --- Index and retriever
 

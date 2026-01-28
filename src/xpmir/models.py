@@ -6,11 +6,11 @@ from experimaestro.huggingface import ExperimaestroHFHub
 from experimaestro import Config
 from xpmir.neural.dual import DotDense
 from xpmir.neural.huggingface import HFCrossScorer
-from xpmir.utils.utils import easylog
-from xpmir.learning.optim import ModuleLoader
+from xpm_torch import ModuleLoader
 import importlib
 
-logger = easylog()
+import logging
+logger = logging.getLogger(__name__)
 
 
 def get_class(name: str):

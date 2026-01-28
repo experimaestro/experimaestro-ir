@@ -20,14 +20,15 @@ from datamaestro_text.data.ir import (
 )
 from datamaestro_text.data.ir.trec import TrecAdhocRun, TrecAdhocResults
 from datamaestro_text.transforms.ir import TopicWrapper
-from xpmir.measures import Measure
+
 import xpmir.measures as m
+from xpmir.measures import Measure
 from xpmir.metrics import evaluator
 from xpmir.rankers import Retriever
-from xpmir.utils.logging import easylog
 from experimaestro.launchers import Launcher
 
-logger = easylog()
+import logging
+logger = logging.getLogger(__name__)
 
 
 def get_evaluator(metrics: List[ir_measures.Metric], assessments: AdhocAssessments):

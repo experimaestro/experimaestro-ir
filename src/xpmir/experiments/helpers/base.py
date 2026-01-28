@@ -2,8 +2,7 @@ from experimaestro.experiments import configuration, ConfigurationBase
 from experimaestro.launcherfinder import find_launcher
 
 from functools import cached_property as attrs_cached_property
-from xpmir.learning.devices import CudaDevice, BestDevice, Device
-from xpmir.letor import Random
+from xpm_torch import Random
 
 
 PaperExperiment = ConfigurationBase
@@ -25,12 +24,6 @@ class NeuralIRExperiment(ConfigurationBase):
     @attrs_cached_property
     def random(self):
         return Random.C(seed=self.seed)
-
-    @attrs_cached_property
-    def device(self) -> Device:
-        if self.use_best_device:
-            return BestDevice.C()
-        return CudaDevice.C() if self.gpu else Device.C()
 
 
 @configuration()

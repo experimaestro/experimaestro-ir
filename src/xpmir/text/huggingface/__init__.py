@@ -9,8 +9,13 @@ import torch
 
 from functools import cached_property
 from experimaestro import Param, Constant, deprecate
-from xpmir.distributed import DistributableModel
-from xpmir.learning.optim import ModuleInitMode, ModuleInitOptions
+
+
+from xpm_torch import ModuleInitMode, ModuleInitOptions
+from xpm_torch.learner import TrainerContext, TrainState
+from xpm_torch.parameters import ParametersIterator
+
+
 from xpmir.text.encoders import (
     Encoder,
     TokensEncoder,
@@ -20,9 +25,7 @@ from xpmir.text.encoders import (
     EncoderOutput,
     RepresentationOutput,
 )
-from xpmir.utils.utils import easylog
-from xpmir.learning.context import TrainerContext, TrainState
-from xpmir.learning.parameters import ParametersIterator
+
 from .tokenizers import (  # noqa: F401
     HFTokenizer,
     HFTokenizerBase,
@@ -52,8 +55,8 @@ except Exception:
 
 from xpmir.text import TokenizedTexts
 
-logger = easylog()
-logger.setLevel(logging.INFO)
+import logging
+logger = logging.getLogger(__name__)
 
 
 class BaseTransformer(Encoder):
@@ -305,7 +308,7 @@ class HuggingfaceTokenizer(OneHotHuggingFaceEncoder):
     pass
 
 
-class TransformerEncoder(BaseTransformer, TextEncoder, DistributableModel):
+class TransformerEncoder(BaseTransformer, TextEncoder):
     """Encodes using the [CLS] token"""
 
     maxlen: Param[Optional[int]] = None
@@ -334,7 +337,7 @@ class TransformerEncoder(BaseTransformer, TextEncoder, DistributableModel):
         self.model = update(self.model)
 
 
-class TransformerTextEncoderAdapter(TextEncoder, DistributableModel):
+class TransformerTextEncoderAdapter(TextEncoder):
     encoder: Param[TransformerEncoder]
     maxlen: Param[Optional[int]] = None
 
@@ -536,7 +539,7 @@ class MLMModelOutput:
     labels: torch.Tensor
 
 
-class MLMEncoder(BaseTransformer, DistributableModel):
+class MLMEncoder(BaseTransformer):
     """Implementation of the encoder for the Masked Language Modeling task"""
 
     maxlen: Param[Optional[int]] = None

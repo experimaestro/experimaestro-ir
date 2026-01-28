@@ -1,6 +1,6 @@
 import sys
 from experimaestro import Param
-from xpmir.learning import Module
+from xpm_torch import Module
 from xpmir.text.encoders import (
     TextsRepresentationOutput,
     TokenizedEncoder,

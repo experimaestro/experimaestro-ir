@@ -1,19 +1,19 @@
 from typing import Any, List, Optional, Dict
+from pathlib import Path
 import logging
 import pandas as pd
-from pathlib import Path
-import click
-import io
+import click, io
 from functools import cached_property
-
 import docstring_parser
+
 from experimaestro import RunMode, Config
 from experimaestro.exceptions import HandledException
+from xpm_torch.experiments import TensorboardService
+
 from xpmir.evaluation import EvaluationsCollection
 from xpmir.models import XPMIRHFHub
 from xpmir.papers.results import PaperResults
 from xpmir.experiments.learning import LearningExperimentHelper
-from xpmir.learning.optim import TensorboardService
 
 
 class UploadToHub:

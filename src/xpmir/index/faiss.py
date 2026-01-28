@@ -25,7 +25,8 @@ from xpmir.utils.utils import batchiter, easylog, foreach
 from xpmir.documents.samplers import DocumentSampler
 from xpmir.context import Context, Hook, InitializationHook
 
-logger = easylog()
+import logging
+logger = logging.getLogger(__name__)
 
 try:
     import faiss

@@ -26,9 +26,9 @@ from datamaestro_text.data.ir.trec import TrecAdhocAssessments
 from datamaestro_text.data.ir.csv import Topics as CSVTopics
 from xpmir.rankers import Retriever
 from xpmir.misc import IDList, FileIDList
-from xpmir.utils.utils import easylog
 
-logger = easylog()
+import logging
+logger = logging.getLogger(__name__)
 
 
 class AbstractTopicFold(Topics):

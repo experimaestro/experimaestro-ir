@@ -8,10 +8,11 @@ from typing import Any, Tuple, Type
 import torch.nn as nn
 from experimaestro import Config, Param
 
-from xpmir.learning import Module
-from xpmir.learning.optim import ModuleInitMode, ModuleInitOptions
+from xpm_torch import Module
+from xpm_torch import ModuleInitMode, ModuleInitOptions
 from xpmir.text import TokenizedTexts
-from xpmir.utils.functools import cache
+from functools import lru_cache
+
 
 try:
     from transformers import AutoConfig, AutoModel, AutoModelForMaskedLM
@@ -20,7 +21,7 @@ except Exception:
     raise
 
 
-@cache
+@lru_cache
 def is_local_files_only():
     return os.environ.get("HF_HUB_OFFLINE", "").lower() in ["1", "true", "on"]
 

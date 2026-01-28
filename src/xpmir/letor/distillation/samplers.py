@@ -6,8 +6,9 @@ from typing import (
     List,
     Any,
 )
-
 import numpy as np
+
+from experimaestro import Config, Meta, Param
 from datamaestro.data import File
 from datamaestro_text.data.ir.base import (
     TopicRecord,
@@ -17,15 +18,15 @@ from datamaestro_text.data.ir.base import (
     IDItem,
     create_record,
 )
-from experimaestro import Config, Meta, Param
-from xpmir.learning import Sampler
-from xpmir.letor.samplers.hydrators import SampleHydrator
-from xpmir.rankers import ScoredDocument
-from xpmir.utils.iter import (
+from xpm_torch.utils.iter import (
     SerializableIterator,
     SkippingIterator,
     SerializableIteratorTransform,
 )
+
+from xpm_torch.base import Sampler
+from xpmir.letor.samplers.hydrators import SampleHydrator
+from xpmir.rankers import ScoredDocument
 
 
 class PairwiseDistillationSample(NamedTuple):

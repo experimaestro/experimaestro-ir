@@ -20,7 +20,8 @@ from xpmir.learning.batchers import Batcher
 from xpmir.learning.devices import DEFAULT_DEVICE, Device, DeviceInformation
 from xpmir.utils.utils import batchiter, easylog, foreach
 
-logger = easylog()
+import logging
+logger = logging.getLogger(__name__)
 
 
 class SyntheticQueryGeneration(Task):

@@ -9,7 +9,9 @@ import re
 import subprocess
 import sys
 from typing import List, Optional
+
 from experimaestro import tqdm as xpmtqdm, Task, Meta, field, PathGenerator
+from experimaestro import Param, progress
 
 from datamaestro_text.data.ir import (
     DocumentStore,
@@ -26,12 +28,14 @@ from datamaestro_text.data.ir.trec import (
     TipsterCollection,
     TrecTopics,
 )
-from experimaestro import Param, progress
 from tqdm import tqdm
 from xpmir.index.anserini import Index
 from xpmir.rankers import Retriever, ScoredDocument, document_cache
 from xpmir.rankers.standard import BM25, QLDirichlet, Model
 from xpmir.utils.utils import Handler, StreamGenerator, needs_java
+
+import logging
+logger = logging.getLogger(__name__)
 
 pyserini_java = needs_java(11)
 

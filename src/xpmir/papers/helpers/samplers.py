@@ -13,7 +13,6 @@ from datamaestro_text.transforms.ir import (
 )
 from datamaestro_text.data.ir import Documents, Adhoc
 
-from xpmir.utils.functools import cache
 from xpmir.datasets.adapters import RandomFold
 from xpmir.evaluation import Evaluations, EvaluationsCollection
 from xpmir.letor.samplers import TripletBasedSampler
@@ -45,7 +44,7 @@ MEASURES = [AP, P @ 20, nDCG, nDCG @ 10, nDCG @ 20, RR, RR @ 10, Success @ 5]
 # --- MsMarco v1
 
 
-@cache
+@lru_cache
 def msmarco_v1_docpairs_sampler(
     *,
     sample_rate: float = 1.0,
@@ -76,7 +75,7 @@ def msmarco_v1_docpairs_sampler(
     return TripletBasedSampler.C(source=triplets)
 
 
-@cache
+@lru_cache
 def msmarco_v1_docpairs_efficient_sampler(
     *,
     sample_rate: float = 1.0,
@@ -110,7 +109,7 @@ def msmarco_v1_docpairs_efficient_sampler(
     return PairwiseTransformAdapter.C(sampler=sampler, adapter=hydrator)
 
 
-@cache
+@lru_cache
 def msmarco_v1_validation_dataset(
     cfg: ValidationSample, launcher=None, only_judged=False
 ):
@@ -134,7 +133,7 @@ def msmarco_v1_validation_dataset(
     ).submit(launcher=launcher)
 
 
-@cache
+@lru_cache
 def msmarco_v1_tests(dev_test_size: int = 0, only_judged=False):
     """MS-Marco default test collections: DL TREC 2019 & 2020 + devsmall
 
@@ -163,7 +162,7 @@ def msmarco_v1_tests(dev_test_size: int = 0, only_judged=False):
     )
 
 
-@cache
+@lru_cache
 def msmarco_hofstaetter_ensemble_hard_negatives() -> DistillationPairwiseSampler:
     """Hard negatives from Hofstätter et al. (2020)
 
@@ -190,7 +189,7 @@ def msmarco_hofstaetter_ensemble_hard_negatives() -> DistillationPairwiseSampler
     return DistillationPairwiseSampler.C(samples=distillation_samples)
 
 
-@cache
+@lru_cache
 def finetuning_validation_dataset(
     cfg: ValidationSample, dataset_id: str, launcher=None
 ):
