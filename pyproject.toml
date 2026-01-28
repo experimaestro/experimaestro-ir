@@ -34,6 +34,7 @@ dependencies = [
     # Torch addons
     "toma",
     "pytorch-lightning",
+    "xpm-torch",
 ]
 
 [project.optional-dependencies]
@@ -102,3 +103,6 @@ include = [
 
 [tool.pyright]
 include = ["xpmir"]
+
+[tool.uv.sources]
+xpm-torch = { path = "../xpm-torch", editable = true }

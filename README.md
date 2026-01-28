@@ -4,7 +4,7 @@
 
 # Information Retrieval for experimaestro
 
-Information Retrieval module for [experimaestro](https://experimaestro-python.readthedocs.io/)
+Information Retrieval module for [experimaestro](https://experimaestro-python.readthedocs.io/), based on [xpm-torch](https://github.com/experimaestro/xpm-torch)
 
 The full documentation can be read at [IR@experimaestro](https://experimaestro-ir.readthedocs.io/).
 
