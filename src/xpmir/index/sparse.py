@@ -26,10 +26,10 @@ from experimaestro import (
     Constant,
 )
 from datamaestro_text.data.ir import DocumentRecord, DocumentStore
-from xpmir.learning import ModuleInitMode
-from xpmir.learning.batchers import Batcher
-from xpmir.utils.utils import batchiter, easylog
-from xpmir.letor import Device, DeviceInformation, DEFAULT_DEVICE
+from xpm_torch.learner import ModuleInitMode
+from xpm_torch.batchers import Batcher
+
+from xpmir.utils.utils import batchiter
 from xpmir.text.encoders import TextEncoderBase, TextsRepresentationOutput, InputType
 from xpmir.rankers import Retriever, TopicRecord, ScoredDocument
 from xpmir.utils.iter import MultiprocessIterator

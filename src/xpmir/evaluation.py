@@ -8,7 +8,18 @@ import pandas as pd
 from pathlib import Path
 from typing import DefaultDict, Dict, List, Protocol, Union, Optional
 import ir_measures
-from experimaestro import Task, Param, pathgenerator, Annotated, tags, TagDict
+from lightning import Fabric
+
+from experimaestro import (
+    Task,
+    Param,
+    Meta,
+    field,
+    pathgenerator,
+    Annotated,
+    tags,
+    TagDict,
+)
 from datamaestro_text.data.ir import (
     Adhoc,
     AdhocAssessments,
@@ -21,6 +32,9 @@ from datamaestro_text.data.ir import (
 from datamaestro_text.data.ir.trec import TrecAdhocRun, TrecAdhocResults
 from datamaestro_text.transforms.ir import TopicWrapper
 
+from xpm_torch.configuration import FabricConfiguration
+from xpm_torch.optim import find_module_attributes
+
 import xpmir.measures as m
 from xpmir.measures import Measure
 from xpmir.metrics import evaluator
@@ -28,6 +42,7 @@ from xpmir.rankers import Retriever
 from experimaestro.launchers import Launcher
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -153,8 +168,22 @@ class Evaluate(BaseEvaluation, Task):
     topic_wrapper: Param[Optional[TopicWrapper]] = None
     """Topic extractor"""
 
+    fabric_config: Meta[FabricConfiguration] = field(default_factory=FabricConfiguration.C)
+    """Runtime configuration, managed by Fabric"""
+
     def execute(self):
         self.retriever.initialize()
+        
+        #instanciate the Fabirc object
+        fabric = self.fabric_config.get_instance()
+        fabric.launch()
+
+        # wrap our retriver
+        modules = find_module_attributes(self.retriever)
+        for name, module in modules.items():
+            setattr(self.retriever, name, fabric.setup(module))
+            logger.info(f"Using device {fabric.device} for {name}")
+
         run = get_run(self.retriever, self.dataset)
         self._execute(run, self.dataset.assessments)
 
@@ -162,8 +191,7 @@ class Evaluate(BaseEvaluation, Task):
 class RetrieverFactory(Protocol):
     """Generates a retriever for a given dataset"""
 
-    def __call__(self, dataset: Documents) -> Retriever:
-        ...
+    def __call__(self, dataset: Documents) -> Retriever: ...
 
 
 class Evaluations:

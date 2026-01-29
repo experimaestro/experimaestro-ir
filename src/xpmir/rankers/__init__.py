@@ -209,7 +209,6 @@ class AbstractModuleScorer(Scorer, Module):
         nn.Module.__init__(self)
         super().__init__()
         self._initialized = False
-        self.fabric = Fabric(accelerator="auto", devices=1)
 
     def __str__(self):
         return f"scorer {self.__class__.__qualname__}"
@@ -230,7 +229,6 @@ class AbstractModuleScorer(Scorer, Module):
             torch.manual_seed(seed)
             torch.cuda.manual_seed_all(seed)
 
-        self.fabric.setup(self)
         return self
 
     def compute(

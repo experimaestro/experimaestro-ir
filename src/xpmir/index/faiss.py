@@ -13,15 +13,10 @@ from experimaestro import Meta, Task, Param, tqdm, field
 import logging
 from datamaestro_text.data.ir import DocumentStore, TextItem
 from xpmir.rankers import Retriever, ScoredDocument
-from xpmir.learning.batchers import Batcher
-from xpmir.learning import ModuleInitMode
+from xpm_torch.batchers import Batcher
 from xpmir.text.encoders import TextEncoder
-from xpmir.letor import (
-    Device,
-    DEFAULT_DEVICE,
-    DeviceInformation,
-)
-from xpmir.utils.utils import batchiter, easylog, foreach
+
+from xpmir.utils.utils import batchiter, foreach
 from xpmir.documents.samplers import DocumentSampler
 from xpmir.context import Context, Hook, InitializationHook
 
