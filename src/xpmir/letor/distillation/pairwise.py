@@ -9,8 +9,9 @@ from xpmir.letor.records import (
     PairwiseRecord,
     PairwiseRecords,
 )
-from xpmir.learning.context import Loss
-from xpmir.letor.trainers import TrainerContext, LossTrainer
+from xpm_torch.trainers import TrainerContext, LossTrainer
+from xpm_torch.losses import Loss 
+
 from xpmir.utils.utils import foreach
 from .samplers import DistillationPairwiseSampler, PairwiseDistillationSample
 from xpmir.utils.iter import MultiprocessSerializableIterator
@@ -112,11 +113,10 @@ class DistillationPairwiseTrainer(LossTrainer):
         context: TrainerContext,
     ):
         super().initialize(random, context)
-        self.lossfn.initialize(self.ranker)
-        foreach(
-            context.hooks(DistillationPairwiseLoss),
-            lambda loss: loss.initialize(self.ranker),
-        )
+        self.lossfn.initialize(self.model)
+        for loss in context.hooks(DistillationPairwiseLoss):
+            loss.initialize(self.model)
+        
         self.sampler.initialize(random)
         self.sampler_iter = self.sampler.pairwise_iter()
 
@@ -140,7 +140,7 @@ class DistillationPairwiseTrainer(LossTrainer):
             teacher_scores[ix, 1] = sample.documents[1].score
 
         # Get the next batch and compute the scores for each query/document
-        scores = self.ranker(records, self.context).reshape(2, len(records)).T
+        scores = self.model(records, self.context).reshape(2, len(records)).T
 
         if torch.isnan(scores).any() or torch.isinf(scores).any():
             self.logger.error(

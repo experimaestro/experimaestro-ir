@@ -178,7 +178,7 @@ class Evaluate(BaseEvaluation, Task):
         fabric = self.fabric_config.get_instance()
         fabric.launch()
 
-        # wrap our retriver
+        # find children of retriver that are Modules, and wrap them with fabric for device management
         modules = find_module_attributes(self.retriever)
         for name, module in modules.items():
             setattr(self.retriever, name, fabric.setup(module))
