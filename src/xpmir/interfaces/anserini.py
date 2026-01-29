@@ -75,9 +75,9 @@ class IndexCollection(Index, Task):
     threads: Meta[int] = 8
     """Number of threads when indexing"""
 
-    path: Meta[Path] = field(default_factory=PathGenerator("index"))
+    path: Meta[Path] = field(default_factory=PathGenerator("index"), overrides=True)
 
-    id: Param[str] = ""
+    id: Param[str] = field(overrides=True)
     """Use an empty ID since identifier is determined by documents"""
 
     def execute(self):
