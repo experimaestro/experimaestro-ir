@@ -15,7 +15,7 @@ from xpmir.utils.utils import foreach
 from .samplers import DistillationPairwiseSampler, PairwiseDistillationSample
 from xpmir.utils.iter import MultiprocessSerializableIterator
 import numpy as np
-from xpmir.rankers import LearnableScorer
+from xpmir.rankers import AbstractModuleScorer
 
 
 class DistillationPairwiseLoss(Config, nn.Module):
@@ -24,7 +24,7 @@ class DistillationPairwiseLoss(Config, nn.Module):
     weight: Param[float] = 1.0
     NAME = "?"
 
-    def initialize(self, ranker: LearnableScorer):
+    def initialize(self, ranker: AbstractModuleScorer):
         pass
 
     def process(

@@ -17,6 +17,7 @@ from typing import (
 import torch
 import torch.nn as nn
 import attrs
+from lightning import Fabric
 from experimaestro import Param, Config, Meta, field
 from datamaestro_text.data.ir import (
     Documents,
@@ -193,7 +194,7 @@ class AbstractModuleScorerCall(Protocol):
 
 
 class AbstractModuleScorer(Scorer, Module):
-    """Base class for all learnable scorer
+    """Base class for all torch-based Modules implementing the `xpmir.rankers.Scorer`
 
     This class provides a `compute` method that calls the forward method,
 
@@ -201,7 +202,6 @@ class AbstractModuleScorer(Scorer, Module):
 
     # Ensures basic operations are redirected to torch.nn.Module methods
     __call__: AbstractModuleScorerCall = nn.Module.__call__
-    to = nn.Module.to
     train = nn.Module.train
 
     def __init__(self):
@@ -209,6 +209,7 @@ class AbstractModuleScorer(Scorer, Module):
         nn.Module.__init__(self)
         super().__init__()
         self._initialized = False
+        self.fabric = Fabric(accelerator="auto", devices=1)
 
     def __str__(self):
         return f"scorer {self.__class__.__qualname__}"
@@ -229,6 +230,7 @@ class AbstractModuleScorer(Scorer, Module):
             torch.manual_seed(seed)
             torch.cuda.manual_seed_all(seed)
 
+        self.fabric.setup(self)
         return self
 
     def compute(
@@ -250,29 +252,14 @@ class AbstractModuleScorer(Scorer, Module):
             scoredDocuments.append(
                 ScoredDocument(
                     scored_documents[i].document,
-                    float(scores[i]),
+                    float(scores[i].item()),
                 )
             )
 
         return scoredDocuments
 
 
-class LearnableScorer(AbstractModuleScorer):
-    """Learnable scorer
-
-    A scorer with parameters that can be learnt"""
-
-    def forward(self, inputs: "BaseRecords", info: Optional[TrainerContext]):
-        """Computes the score of all (query, document) pairs
-
-        Different subclasses can process the input more or
-        less efficiently based on the `BaseRecords` instance (pointwise,
-        pairwise, or structured)
-        """
-        raise NotImplementedError(f"forward in {self.__class__}")
-
-
-class DuoLearnableScorer(LearnableScorer):
+class DuoLearnableScorer(AbstractModuleScorer):
     """Base class for models that can score a triplet (query, document 1, document 2)"""
 
     def forward(self, inputs: "PairwiseRecords", info: Optional[TrainerContext]):
@@ -350,9 +337,6 @@ class AbstractTwoStageRetriever(Retriever):
         self._batcher = self.batcher.initialize(self.batchsize)
         self.scorer.initialize(ModuleInitMode.DEFAULT.to_options())
 
-        # Compute with the scorer
-        if self.device is not None:
-            self.scorer.to(self.device.value)
 
 
 class TwoStageRetriever(AbstractTwoStageRetriever):

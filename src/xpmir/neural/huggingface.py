@@ -8,10 +8,10 @@ from datamaestro_text.data.ir import TextItem
 from xpmir.text import TokenizedTexts
 
 from xpmir.letor.records import BaseRecords
-from xpmir.rankers import LearnableScorer
+from xpmir.rankers import AbstractModuleScorer
 
 
-class HFCrossScorer(LearnableScorer):
+class HFCrossScorer(AbstractModuleScorer):
     """Load a cross scorer model from the huggingface"""
 
     hf_id: Param[str]
@@ -20,13 +20,7 @@ class HFCrossScorer(LearnableScorer):
     max_length: Param[Optional[int]] = None
     """the max length for the transformer model"""
 
-    @property
-    def device(self):
-        return self._dummy_param.device
-
     def __post_init__(self):
-        self._dummy_param = torch.nn.Parameter(torch.Tensor())
-
         self.config = AutoConfig.from_pretrained(self.hf_id)
         self.model = AutoModelForSequenceClassification.from_pretrained(
             self.hf_id, config=self.config
@@ -73,7 +67,9 @@ class HFCrossScorer(LearnableScorer):
         # strange that some existing models on the huggingface don't use the token_type
         with torch.set_grad_enabled(torch.is_grad_enabled()):
             result = self.model(
-                tokenized.ids, token_type_ids=tokenized.token_type_ids.to(self.device), attention_mask=tokenized.mask.to(self.device)
+                tokenized.ids,
+                token_type_ids=tokenized.token_type_ids.to(self.device),
+                attention_mask=tokenized.mask.to(self.device),
             ).logits  # Tensor[float] of length records size
         return result
 

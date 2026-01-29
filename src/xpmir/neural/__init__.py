@@ -5,13 +5,13 @@ import torch
 from datamaestro_text.data.ir import TextItem
 from xpm_torch.learner import TrainerContext
 from xpmir.letor.records import BaseRecords, ProductRecords, TopicRecord, DocumentRecord
-from xpmir.rankers import LearnableScorer
+from xpmir.rankers import AbstractModuleScorer
 
 QueriesRep = TypeVar("QueriesRep", bound=Sequence)
 DocsRep = TypeVar("DocsRep", bound=Sequence)
 
 
-class DualRepresentationScorer(LearnableScorer, Generic[QueriesRep, DocsRep]):
+class DualRepresentationScorer(AbstractModuleScorer, Generic[QueriesRep, DocsRep]):
     """Neural scorer based on (at least a partially) independent representation
     of the document and the question.
 
