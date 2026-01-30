@@ -182,6 +182,9 @@ class Evaluate(BaseEvaluation, Task):
         modules = find_module_attributes(self.retriever)
         for name, module in modules.items():
             setattr(self.retriever, name, fabric.setup(module))
+            getattr(self.retriever, name).to(fabric.device)
+            # TODO - this should NOT be necessary and may cause problems later...
+            
             logger.info(f"Using device {fabric.device} for {name}")
 
         run = get_run(self.retriever, self.dataset)
