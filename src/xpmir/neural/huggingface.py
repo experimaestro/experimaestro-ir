@@ -22,6 +22,13 @@ class HFCrossScorer(AbstractModuleScorer):
 
     def __post_init__(self):
         self.config = AutoConfig.from_pretrained(self.hf_id)
+
+        #ensure that num_labels is one for a Cross-encoder
+        if hasattr(self.config, "num_labels"):
+            self.config.num_labels = 1
+        else:
+            self.logger.warning("no 'num_labels param found in config, check that classifier outputs one label")
+
         self.model = AutoModelForSequenceClassification.from_pretrained(
             self.hf_id, config=self.config
         )
