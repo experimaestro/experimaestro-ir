@@ -27,8 +27,10 @@ from experimaestro import (
     Constant,
 )
 from datamaestro_text.data.ir import DocumentRecord, DocumentStore
+from xpm_torch import Module
 from xpm_torch.learner import ModuleInitMode
 from xpm_torch.batchers import Batcher
+from xpm_torch.optim import find_module_attributes
 
 from xpmir.utils.utils import batchiter
 from xpmir.text.encoders import TextEncoderBase, TextsRepresentationOutput, InputType
@@ -36,7 +38,6 @@ from xpmir.rankers import Retriever, TopicRecord, ScoredDocument
 from xpmir.utils.iter import MultiprocessIterator
 from xpmir.utils.multiprocessing import StoppableQueue, available_cpus
 from xpm_torch.configuration import FabricConfiguration
-from xpm_torch.optim import find_module_attributes
 import impact_index
 
 import logging
@@ -561,19 +562,21 @@ class SparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputType]
     """Runtime configuration, managed by Fabric"""  
 
     def execute(self):
-        self.encoder.initialize(ModuleInitMode.DEFAULT.to_options(None))
         #instanciate the Fabirc object
         fabric = self.fabric_config.get_instance()
         fabric.launch()
 
+        self.encoder.initialize(ModuleInitMode.DEFAULT.to_options(None))
+        
+        assert isinstance(self.encoder, Module)
         # find children of retriver that are Modules, and wrap them with fabric for device management
-        modules = find_module_attributes(self.encoder)
-        for name, module in modules.items():
-            setattr(self.encoder, name, fabric.setup(module))
-            getattr(self.encoder, name).to(fabric.device)
-            # TODO - this should NOT be necessary and may cause problems later...
+        
+        self.encoder =  fabric.setup(self.encoder)
+        self.encoder.to(fabric.device)
+        
+        # TODO - this should NOT be necessary and may cause problems later...
             
-            logger.info(f"Using device {fabric.device} for {name}")
+        logger.info(f"Using device {fabric.device} for {name}")
 
         self._execute(fabric_instance=fabric)
 
