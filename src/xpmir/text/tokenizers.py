@@ -7,6 +7,7 @@ import torch
 from experimaestro import Config
 from xpm_torch.utils.utils import Initializable
 from xpm_torch import ModuleInitOptions
+from xpm_torch.utils import to_device
 
 from xpmir.text.utils import lengthToMask
 
