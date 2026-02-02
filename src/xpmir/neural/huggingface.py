@@ -39,7 +39,12 @@ class HFCrossScorer(AbstractModuleScorer):
         self.model = AutoModelForSequenceClassification.from_pretrained(
             self.hf_id, config=self.config
         )
-        self.tokenizer = AutoTokenizer.from_pretrained(self.hf_id)
+
+        if self.hf_id == "microsoft/MiniLM-L12-H384-uncased":
+            self.logger.warning("Enforcing lower_case to True for microsoft/MiniLM-L12-H384-uncased")
+            self.tokenizer = AutoTokenizer.from_pretrained(self.hf_id, do_lower_case=True)
+        else:
+            self.tokenizer = AutoTokenizer.from_pretrained(self.hf_id)
 
     def batch_tokenize(
         self,
@@ -103,6 +108,116 @@ class HFCrossScorer(AbstractModuleScorer):
             r.get("attention_mask", None),
             r.get("token_type_ids", None),  # if r["token_type_ids"] else None
         )
+    
+    def batch_tokenize_v2(
+        self,
+        input_records: BaseRecords,
+        maxlen=None,
+        mask=False,
+    ) -> TokenizedTexts:
+        """Transform the text to tokens by using the tokenizer"""
+        # determine per-side token limits (instance params take precedence)
+        q_max = self.max_query_length if getattr(self, "max_query_length", None) is not None else None
+        d_max = self.max_doc_length if getattr(self, "max_doc_length", None) is not None else None
+
+        queries = [q[TextItem].text for q in input_records.queries]
+        docs = [d[TextItem].text for d in input_records.documents]
+
+        # compute combined max length (respect model maximum)
+        combined_limit = self.tokenizer.model_max_length
+        if maxlen is not None:
+            combined_limit = min(maxlen, combined_limit)
+        if q_max is not None and d_max is not None:
+            combined_limit = min(combined_limit, q_max + d_max)
+
+        # Encode without special tokens and with per-side truncation
+        enc_q = self.tokenizer(
+            queries,
+            add_special_tokens=False,
+            truncation=(q_max is not None),
+            max_length=q_max,
+        )
+        enc_d = self.tokenizer(
+            docs,
+            add_special_tokens=False,
+            truncation=(d_max is not None),
+            max_length=d_max,
+        )
+
+        q_ids_list = enc_q["input_ids"]
+        d_ids_list = enc_d["input_ids"]
+
+        cls_id = self.tokenizer.cls_token_id or self.tokenizer.convert_tokens_to_ids(self.tokenizer.cls_token)
+        sep_id = self.tokenizer.sep_token_id or self.tokenizer.convert_tokens_to_ids(self.tokenizer.sep_token)
+        pad_id = (
+            self.tokenizer.pad_token_id
+            if getattr(self.tokenizer, "pad_token_id", None) is not None
+            else (self.tokenizer.eos_token_id if getattr(self.tokenizer, "eos_token_id", None) is not None else 0)
+        )
+
+        built_inputs: List[List[int]] = []
+        lengths: List[int] = []
+        for q_ids, d_ids in zip(q_ids_list, d_ids_list):
+            # assemble with special tokens
+            # desired: [CLS] q_ids [SEP] d_ids [SEP]
+            total_len = 1 + len(q_ids) + 1 + len(d_ids) + 1
+            if total_len > combined_limit:
+                overflow = total_len - combined_limit
+                # prefer truncating document side first
+                if len(d_ids) > overflow:
+                    d_ids = d_ids[: len(d_ids) - overflow]
+                else:
+                    # drop all doc tokens and remove remaining from query
+                    needed = overflow - len(d_ids)
+                    d_ids = []
+                    if needed >= len(q_ids):
+                        q_ids = []
+                    else:
+                        q_ids = q_ids[: len(q_ids) - needed]
+
+            inp = [cls_id] + q_ids + [sep_id] + d_ids + [sep_id]
+            built_inputs.append(inp)
+            lengths.append(len(inp))
+
+        # pad to batch max length (bounded by combined_limit)
+        batch_max = min(combined_limit, max(lengths) if lengths else 0)
+        padded_inputs: List[List[int]] = []
+        attention_masks: List[List[int]] = []
+        token_type_ids_batch: List[List[int]] = []
+        for inp in built_inputs:
+            if len(inp) > batch_max:
+                seq = inp[:batch_max]
+            else:
+                seq = inp + [pad_id] * (batch_max - len(inp))
+            padded_inputs.append(seq)
+            attention_masks.append([1 if i < len(inp) else 0 for i in range(batch_max)])
+
+            # token_type_ids: 0 for [CLS] + query + first [SEP], 1 for doc + final [SEP]
+            # compute split point: index of first sep (after query)
+            try:
+                first_sep = inp.index(sep_id)
+            except ValueError:
+                first_sep = 1 + len(q_ids_list[0])  # fallback
+            ttypes: List[int] = []
+            for i in range(batch_max):
+                if i <= first_sep:
+                    ttypes.append(0)
+                else:
+                    ttypes.append(1)
+            token_type_ids_batch.append(ttypes)
+
+        ids_tensor = torch.tensor(padded_inputs, dtype=torch.long).to(self.device)
+        lengths_tensor = torch.tensor(lengths, dtype=torch.long)
+        attention_mask_tensor = torch.tensor(attention_masks, dtype=torch.long)
+        token_type_ids_tensor = torch.tensor(token_type_ids_batch, dtype=torch.long)
+
+        return TokenizedTexts(
+            None,
+            ids_tensor,
+            lengths_tensor,
+            attention_mask_tensor if mask else None,
+            token_type_ids_tensor,
+        )
 
     def forward(self, inputs: BaseRecords, info: TrainerContext = None):
 
@@ -116,5 +231,3 @@ class HFCrossScorer(AbstractModuleScorer):
             ).logits  # Tensor[float] of length records size
         return result
 
-    def distribute_models(self, update):
-        self.model = update(self.model)
