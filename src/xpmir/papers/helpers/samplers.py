@@ -101,8 +101,8 @@ def msmarco_v1_docpairs_efficient_sampler(
     ).submit(launcher=launcher)
 
     # Builds the sampler by hydrating documents
-    sampler = TripletBasedSampler(source=triplets)
-    hydrator = SampleHydrator(
+    sampler = TripletBasedSampler.C(source=triplets)
+    hydrator = SampleHydrator.C(
         documentstore=prepare_collection("irds.msmarco-passage.documents")
     )
 
