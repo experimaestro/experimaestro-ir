@@ -356,14 +356,20 @@ class SparseRetriever(Retriever, Generic[InputType]):
         fabric = self.fabric_config.get_instance()
         fabric.launch()
 
+        
+        # TODO - this should NOT be necessary and may cause problems later...
+        self.encoder.to(fabric.device)
+        logger.info(f"Using device {fabric.device}")
+
         # find children of retriver that are Modules, and wrap them with fabric for device management
-        modules = find_module_attributes(self.encoder)
-        for name, module in modules.items():
-            setattr(self.encoder, name, fabric.setup(module))
-            getattr(self.encoder, name).to(fabric.device)
-            # TODO - this should NOT be necessary and may cause problems later...
+        # modules = find_module_attributes(self.encoder)
+        
+        # for name, module in modules.items():
+        #     setattr(self.encoder, name, fabric.setup(module))
+        #     # TODO - this should NOT be necessary and may cause problems later...
+        #     getattr(self.encoder, name).to(fabric.device)
             
-            logger.info(f"Using device {fabric.device} for {name}")
+        #     logger.info(f"Using device {fabric.device} for {name}")
 
     def retrieve_all(
         self, queries: Dict[str, InputType]
@@ -575,8 +581,7 @@ class SparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputType]
         self.encoder.to(fabric.device)
         
         # TODO - this should NOT be necessary and may cause problems later...
-            
-        logger.info(f"Using device {fabric.device} for {name}")
+        logger.info(f"Using device {fabric.device}")
 
         self._execute(fabric_instance=fabric)
 
