@@ -289,6 +289,82 @@ class PairwiseRecordsWithTarget(PairwiseRecords):
         return PairwiseRecordWithTarget(
             self._topics[ix], self.positives[ix], self.negatives[ix], self.target[ix]
         )
+    
+class ListwiseRecord:
+    """A pairwise record is composed of a query, a positive and a negative document"""
+
+    query: TopicRecord
+    documents: List[DocumentRecord]
+
+    def __init__(
+        self, query: TopicRecord, documents: List[DocumentRecord]
+    ):
+        self.query = query
+        self.documents = documents
+
+
+class ListwiseRecords(BaseRecords):
+    """Pairwise records of queries associated with (positive, negative) pairs"""
+
+    # The queries
+    _topics: List[TopicRecord]
+
+    # The list of documents per query
+    documents: List[List[DocumentRecord]]
+
+
+    def __init__(self):
+        self._topics = []
+        self.documents = []
+
+    def add(self, record: ListwiseRecord):
+        self._topics.append(record.query)
+        self.documents.append(record.documents)
+
+    @property
+    def topics(self):
+        return itertools.chain(self._topics, self._topics)
+
+    def set_unique_topics(self, topics: List[TopicRecord]):
+        assert len(topics) == len(
+            self._topics
+        ), f"Number of topics do not match ({len(topics)} vs {len(self._topics)})"
+        self._topics = topics
+
+    def set_unique_documents(self, documents: List[DocumentRecord]):
+        raise NotImplementedError("set_unique_documents() in ListwiseRecords")
+
+    queries = topics
+
+    @property
+    def unique_topics(self):
+        return self._topics
+
+    unique_queries = unique_topics
+
+    @property
+    def documents(self):
+        return itertools.chain.from_iterable(self.documents)
+
+    def pairs(self):
+        indices = list(range(len(self._topics)))
+        return indices * 2, list(range(2 * len(self.documents)))
+
+    def __len__(self):
+        return len(self._topics)
+
+    def __getitem__(self, ix: Union[slice, int]):
+        if isinstance(ix, slice):
+            records = ListwiseRecords()
+            for i in range(ix.start, min(ix.stop, len(self._topics)), ix.step or 1):
+                records.add(
+                    ListwiseRecord(
+                        self._topics[i], self.documents[i]
+                    )
+                )
+            return records
+
+        return ListwiseRecord(self._topics[ix], self.documents[ix])
 
 
 class BatchwiseRecords(BaseRecords):

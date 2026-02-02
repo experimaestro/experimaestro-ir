@@ -179,3 +179,180 @@ class DistillationPairwiseSampler(Sampler):
 
         Can be subclassed by some classes to be more efficient"""
         return _DistillationPairwiseBatchIterator(self, size)
+
+
+#######
+# LISTWISE Distillation datasets samplers
+######
+
+class ListwiseDistillationSample(NamedTuple):
+    query: TopicRecord
+    """The query"""
+
+    documents: List[DocumentRecord]
+    """List of documents with their ranking position"""
+
+
+class ListwiseDistillationSamples(Config, Iterable[ListwiseDistillationSample]):
+    """Listwise distillation file"""
+
+    def __iter__(self) -> Iterator[ListwiseDistillationSample]:
+        raise NotImplementedError()
+
+
+class ListwiseHydrator(ListwiseDistillationSamples, SampleHydrator):
+    """Hydrate ID-based samples with document and/or query content"""
+
+    samples: Param[ListwiseDistillationSamples]
+    """The distillation samples without texts for query and documents"""
+
+    def transform(self, sample: ListwiseDistillationSample):
+        topic, documents = sample.query, sample.documents
+
+        if transformed := self.transform_topics([topic]):
+            topic = transformed[0]
+
+        if transformed := self.transform_documents(documents):
+            documents = list(
+                ScoredDocument(d, sd[ScoredItem].score)
+                for d, sd in zip(transformed, sample.documents)
+            )
+
+        return ListwiseDistillationSample(topic, documents)
+
+    def __iter__(self) -> Iterator[ListwiseDistillationSample]:
+        iterator = iter(self.samples)
+        return SerializableIteratorTransform(
+            SkippingIterator.make_serializable(iterator), self.transform
+        )
+
+class ListwiseDistillationSamplesTSV(ListwiseDistillationSamples, File):
+    """A TSV file ("query_id", "q0", "doc_id", "rank", "score", "system")"""
+
+    top_k: Param[int]
+    with_docid: Meta[bool]
+    with_queryid: Meta[bool]
+
+    def __iter__(self) -> Iterator[ListwiseDistillationSample]:
+        return self.iter()
+
+    def iter(self) -> Iterator[ListwiseDistillationSample]:
+        import csv
+
+        def iterate():
+            with self.path.open("rt") as fp:
+                reader = csv.reader(fp, delimiter="\t")
+
+                current_q = None
+                current_query_record = None
+                documents: List[DocumentRecord] = []
+
+                for row in reader:
+                    if not row:
+                        continue
+
+                    qkey = row[0]
+
+                    # start a new block when query changes or when we've reached top_k
+                    if current_q is None:
+                        current_q = qkey
+                        current_query_record = (
+                            create_record(id=qkey)
+                            if self.with_queryid
+                            else create_record(text=qkey)
+                        )
+
+                    if qkey != current_q or (self.top_k and len(documents) >= int(self.top_k)):
+                        if documents:
+                            yield ListwiseDistillationSample(current_query_record, documents)
+                        # reset for new block (may be new query or another block for same query)
+                        current_q = qkey
+                        current_query_record = (
+                            create_record(id=qkey)
+                            if self.with_queryid
+                            else create_record(text=qkey)
+                        )
+                        documents = []
+
+                    if self.with_docid:
+                        doc = DocumentRecord(IDItem(row[2]), ScoredItem(float(row[4])))
+                    else:
+                        doc = DocumentRecord(SimpleTextItem(row[2]), ScoredItem(float(row[4])))
+
+                    documents.append(doc)
+
+                # emit any remaining documents for the last block
+                if documents:
+                    yield ListwiseDistillationSample(current_query_record, documents)
+
+        return SkippingIterator(iterate())
+
+
+class _DistillationListwiseBatchIterator(SerializableIterator):
+    """Batch iterator for DistillationListwiseSampler.
+
+    Defined at module level to allow pickling for multiprocessing.
+    """
+
+    def __init__(self, sampler: "DistillationListwiseSampler", size: int):
+        self.sampler = sampler
+        self.size = size
+        self._iter = None
+        self._state = None
+
+    def _ensure_iter(self):
+        """Lazily initialize the iterator."""
+        if self._iter is None:
+            self._iter = self.sampler.listwise_iter()
+            if self._state is not None:
+                self._iter.load_state_dict(self._state)
+                self._state = None
+
+    def __getstate__(self):
+        """For pickling: save the state_dict instead of the iterator."""
+        state = self.__dict__.copy()
+        if self._iter is not None:
+            state["_state"] = self._iter.state_dict()
+        state["_iter"] = None
+        return state
+
+    def __setstate__(self, state):
+        """For unpickling: restore from state_dict."""
+        self.__dict__.update(state)
+
+    def state_dict(self):
+        self._ensure_iter()
+        return self._iter.state_dict()
+
+    def load_state_dict(self, state):
+        if self._iter is not None:
+            self._iter.load_state_dict(state)
+        else:
+            self._state = state
+
+    def __next__(self):
+        self._ensure_iter()
+        batch = []
+        for _, record in zip(range(self.size), self._iter):
+            batch.append(record)
+        return batch
+
+
+class DistillationListwiseSampler(Sampler):
+    """Just loops over samples"""
+
+    samples: Param[ListwiseDistillationSamples]
+
+    def initialize(self, random: np.random.RandomState):
+        super().initialize(random)
+
+    def listwise_iter(self) -> SerializableIterator[ListwiseDistillationSample, Any]:
+        return SkippingIterator.make_serializable(iter(self.samples))
+
+    def listwise_batch_iter(
+        self, size
+    ) -> SerializableIterator[List[ListwiseDistillationSample], Any]:
+        """Batchwise iterator
+
+        Can be subclassed by some classes to be more efficient"""
+        return _DistillationListwiseBatchIterator(self, size)

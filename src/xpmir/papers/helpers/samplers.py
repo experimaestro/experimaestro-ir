@@ -18,7 +18,9 @@ from xpmir.evaluation import Evaluations, EvaluationsCollection
 from xpmir.letor.samplers import TripletBasedSampler
 from xpmir.datasets.adapters import MemoryTopicStore
 from xpmir.letor.distillation.samplers import (
+    DistillationListwiseSampler,
     DistillationPairwiseSampler,
+    ListwiseHydrator,
     PairwiseHydrator,
 )
 from xpmir.letor.samplers.hydrators import SampleHydrator, PairwiseTransformAdapter
@@ -187,6 +189,32 @@ def msmarco_hofstaetter_ensemble_hard_negatives() -> DistillationPairwiseSampler
 
     # Generate a sampler from the samples
     return DistillationPairwiseSampler.C(samples=distillation_samples)
+
+
+@lru_cache
+def msmarco_rankdistillm_colbert_top100() -> DistillationPairwiseSampler:
+    """Distillation data from RankZephyr reranking ColBERTv2 top 100 on 10k queries of MSMARCO
+
+    Rank-DistiLLM: Closing the Effectiveness Gap Between Cross-Encoders and LLMs for Passage 
+    Re-Ranking, (Ferdinand Schlatt, Maik Fröbe, Harrisen Scells, Shengyao Zhuang, Bevan Koopman, 
+    Guido Zuccon, Benno Stein, Martin Potthast, Matthias Hagen), 2025
+    """
+    train_ranks_distil = prepare_dataset(
+        "com.github.webis-de." "rank-distillm.rankzephyr_colbert_10000_sampled_100_annotated"
+    )
+
+    # Access to topic text
+    train_topics = prepare_dataset("irds.msmarco-passage.train.queries")
+
+    # Combine the training triplets with the document and queries texts
+    distillation_samples = ListwiseHydrator.C(
+        samples=train_ranks_distil,
+        documentstore=prepare_collection("irds.msmarco-passage.documents"),
+        querystore=MemoryTopicStore.C(topics=train_topics),
+    )
+
+    # Generate a sampler from the samples
+    return DistillationListwiseSampler.C(samples=distillation_samples)
 
 
 @lru_cache
