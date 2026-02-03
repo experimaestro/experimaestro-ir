@@ -7,7 +7,7 @@ from xpmir.letor.distillation.samplers import ListwiseDistillationSamplesTSV, Pa
 
 
 @filedownloader(
-    "__bm25__msmarco-passage-train-judged.run",
+    "bm25__msmarco_passage_train_judged.run",
     "https://zenodo.org/records/12528410/files/"
     "__bm25__msmarco-passage-train-judged.run?download=1",
     checker=HashCheck("835372b2ab4d20acf10addeae526c559", md5),
@@ -27,7 +27,7 @@ def msmarco_bm25_annotated(bm25__msmarco_passage_train_judged_run):
     }
 
 @filedownloader(
-    "__colbert__msmarco-passage-train-judged.run",
+    "colbert__msmarco_passage_train_judged.run",
     "https://zenodo.org/records/12528410/files/"
     "__colbert__msmarco-passage-train-judged.run?download=1",
     checker=HashCheck("6ed152027f7270f32fcbfaaa6def951e", md5),
@@ -48,7 +48,7 @@ def msmarco_colbertv2_annotated(colbert__msmarco_passage_train_judged_run):
 
 
 @filedownloader(
-    "__rankzephyr-bm25-10000-sampled-100__msmarco-passage-train-judged.run",
+    "rankzephyr_bm25_10000_sampled_100__msmarco_passage_train_judged.run",
     "https://zenodo.org/records/12528410/files/"
     "__rankzephyr-bm25-10000-sampled-100__msmarco-passage-train-judged.run?download=1",
     checker=HashCheck("05e3137ea3526671e1565cc90f9a2c8a ", md5),
@@ -57,7 +57,7 @@ def msmarco_colbertv2_annotated(colbert__msmarco_passage_train_judged_run):
     ListwiseDistillationSamplesTSV,
     url="https://github.com/webis-de/rank-distillm",
 )
-def rankzephyr_bm25_10000_sampled_100_annotated(__rankzephyr_bm25_10000_sampled_100__msmarco_passage_train_judged_run):
+def rankzephyr_bm25_10000_sampled_100_annotated(rankzephyr_bm25_10000_sampled_100__msmarco_passage_train_judged_run):
     """Top 100 passages retrieved by BM25 for 10k queries sampled from the MSMARCO training set.
 
     All passages are then reranked using RankZephyr and can be used for distillation.
@@ -66,12 +66,12 @@ def rankzephyr_bm25_10000_sampled_100_annotated(__rankzephyr_bm25_10000_sampled_
         "top_k": 100,
         "with_docid": True,
         "with_queryid": True,
-        "path": __rankzephyr_bm25_10000_sampled_100__msmarco_passage_train_judged_run,
+        "path": rankzephyr_bm25_10000_sampled_100__msmarco_passage_train_judged_run,
     }
 
 
 @filedownloader(
-    "__rankzephyr-colbert-10000-sampled-100__msmarco-passage-train-judged.run",
+    "rankzephyr_colbert_10000_sampled_100__msmarco_passage_train_judged_run",
     "https://zenodo.org/records/12528410/files/"
     "__rankzephyr-colbert-10000-sampled-100__msmarco-passage-train-judged.run?download=1",
     checker=HashCheck("49f8dbf2c1ee7a2ca1fe517eda528af6  ", md5),
@@ -80,7 +80,7 @@ def rankzephyr_bm25_10000_sampled_100_annotated(__rankzephyr_bm25_10000_sampled_
     ListwiseDistillationSamplesTSV,
     url="https://github.com/webis-de/rank-distillm",
 )
-def rankzephyr_colbert_10000_sampled_100_annotated(__rankzephyr_colbert_10000_sampled_100__msmarco_passage_train_judged_run):
+def rankzephyr_colbert_10000_sampled_100_annotated(rankzephyr_colbert_10000_sampled_100__msmarco_passage_train_judged_run):
     """Top 100 passages retrieved by BM25 for 10k queries sampled from the MSMARCO training set.
 
     All passages are then reranked using RankZephyr and can be used for distillation.
@@ -89,12 +89,12 @@ def rankzephyr_colbert_10000_sampled_100_annotated(__rankzephyr_colbert_10000_sa
         "top_k": 100,
         "with_docid": True,
         "with_queryid": True,
-        "path": __rankzephyr_colbert_10000_sampled_100__msmarco_passage_train_judged_run,
+        "path": rankzephyr_colbert_10000_sampled_100__msmarco_passage_train_judged_run,
     }
 
 
 @filedownloader(
-    "__rankzephyr-colbert-10000-sampled-10__msmarco-passage-train-judged.run",
+    "rankzephyr_colbert_10000_sampled_10__msmarco_passage_train_judged.run",
     "https://zenodo.org/records/12528410/files/"
     "__rankzephyr-colbert-10000-sampled-10__msmarco-passage-train-judged.run?download=1",
     checker=HashCheck("619bc815bd133bdca44d6331b241d39a  ", md5),
@@ -103,7 +103,7 @@ def rankzephyr_colbert_10000_sampled_100_annotated(__rankzephyr_colbert_10000_sa
     ListwiseDistillationSamplesTSV,
     url="https://github.com/webis-de/rank-distillm",
 )
-def rankzephyr_colbert_10000_sampled_10_annotated(__rankzephyr_colbert_10000_sampled_10__msmarco_passage_train_judged_run):
+def rankzephyr_colbert_10000_sampled_10_annotated(rankzephyr_colbert_10000_sampled_10__msmarco_passage_train_judged_run):
     """Top 10 passages retrieved by ColBERT for 10k queries sampled from the MSMARCO training set.
 
     All passages are then reranked using RankZephyr and can be used for distillation.
@@ -112,5 +112,5 @@ def rankzephyr_colbert_10000_sampled_10_annotated(__rankzephyr_colbert_10000_sam
         "top_k": 10,
         "with_docid": True,
         "with_queryid": True,
-        "path": __rankzephyr_colbert_10000_sampled_10__msmarco_passage_train_judged_run,
+        "path": rankzephyr_colbert_10000_sampled_10__msmarco_passage_train_judged_run,
     }
