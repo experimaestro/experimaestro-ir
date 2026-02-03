@@ -229,7 +229,7 @@ class ListwiseHydrator(ListwiseDistillationSamples, SampleHydrator):
 class ListwiseDistillationSamplesTSV(ListwiseDistillationSamples, File):
     """A TSV file ("query_id", "q0", "doc_id", "rank", "score", "system")"""
 
-    top_k: Param[int]
+    top_k: Meta[int]
     with_docid: Meta[bool]
     with_queryid: Meta[bool]
 
