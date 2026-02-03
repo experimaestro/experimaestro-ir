@@ -217,6 +217,9 @@ class AbstractModuleScorer(Scorer, Module):
         """Put the model in training mode"""
         self.train(False)
 
+    def to(self, *args, **kwargs):
+        return torch.nn.Module.to(self, *args, **kwargs)
+
     def __initialize__(self, options: ModuleInitOptions):
         """Initialize a learnable scorer
 
