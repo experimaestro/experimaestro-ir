@@ -4,6 +4,7 @@ from pathlib import Path
 import numpy as np
 from typing import Dict, Iterator, List
 from collections import defaultdict
+from numpy import mean
 from experimaestro import Param, pathgenerator, Annotated, field
 from datamaestro_text.data.ir import Adhoc
 
