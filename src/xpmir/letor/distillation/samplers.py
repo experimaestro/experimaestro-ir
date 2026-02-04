@@ -225,6 +225,35 @@ class ListwiseHydrator(ListwiseDistillationSamples, SampleHydrator):
         return SerializableIteratorTransform(
             SkippingIterator.make_serializable(iterator), self.transform
         )
+    
+class ListwiseHydratorWithAnnotations(ListwiseDistillationSamples, SampleHydrator):
+    """Hydrate ID-based samples with document and/or query content"""
+
+    samples: Param[ListwiseDistillationSamples]
+    """The distillation samples without texts for query and documents"""
+
+    def transform_documents(self, documents):
+        return super().transform_documents(documents)
+
+    def transform(self, sample: ListwiseDistillationSample):
+        topic, documents = sample.query, sample.documents
+
+        if transformed := self.transform_topics([topic]):
+            topic = transformed[0]
+
+        if transformed := self.transform_documents(documents):
+            documents = list(
+                ScoredDocument(d, sd[ScoredItem].score)
+                for d, sd in zip(transformed, sample.documents)
+            )
+
+        return ListwiseDistillationSample(topic, documents)
+
+    def __iter__(self) -> Iterator[ListwiseDistillationSample]:
+        iterator = iter(self.samples)
+        return SerializableIteratorTransform(
+            SkippingIterator.make_serializable(iterator), self.transform
+        )
 
 class ListwiseDistillationSamplesTSV(ListwiseDistillationSamples, File):
     """A TSV file ("query_id", "q0", "doc_id", "rank", "score", "system")"""

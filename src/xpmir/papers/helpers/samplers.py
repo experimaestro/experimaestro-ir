@@ -21,6 +21,7 @@ from xpmir.letor.distillation.samplers import (
     DistillationListwiseSampler,
     DistillationPairwiseSampler,
     ListwiseHydrator,
+    ListwiseHydratorWithAnnotations,
     PairwiseHydrator,
 )
 from xpmir.letor.samplers.hydrators import SampleHydrator, PairwiseTransformAdapter
@@ -216,6 +217,31 @@ def msmarco_rankdistillm_colbert_top100() -> DistillationListwiseSampler:
     # Generate a sampler from the samples
     return DistillationListwiseSampler.C(samples=distillation_samples)
 
+@lru_cache
+def msmarco_colbertv2_annotated() -> DistillationListwiseSampler:
+    """Top 500 passages for all queries that have at least one relevance judgement 
+    in the MS MARCO training query set retrieved by ColBERTv2
+
+    Rank-DistiLLM: Closing the Effectiveness Gap Between Cross-Encoders and LLMs for Passage 
+    Re-Ranking, (Ferdinand Schlatt, Maik Fröbe, Harrisen Scells, Shengyao Zhuang, Bevan Koopman, 
+    Guido Zuccon, Benno Stein, Martin Potthast, Matthias Hagen), 2025
+    """
+    train_ranks_distil = prepare_dataset(
+        "com.github.webis-de." "rank-distillm.msmarco_colbertv2_annotated"
+    )
+
+    # Access to topic text
+    train_topics = prepare_dataset("irds.msmarco-passage.train.queries")
+
+    # Combine the training triplets with the document and queries texts
+    distillation_samples = ListwiseHydratorWithAnnotations.C(
+        samples=train_ranks_distil,
+        documentstore=prepare_collection("irds.msmarco-passage.documents"),
+        querystore=MemoryTopicStore.C(topics=train_topics),
+    )
+
+    # Generate a sampler from the samples
+    return DistillationListwiseSampler.C(samples=distillation_samples)
 
 @lru_cache
 def finetuning_validation_dataset(

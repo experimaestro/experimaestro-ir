@@ -460,6 +460,48 @@ class ProductRecords(BatchwiseRecords):
                 documents.append(d)
         return topics, documents
 
+    def __getitem__(self, ix: Union[slice, int]):
+        if isinstance(ix, slice):
+            start, stop, step = ix.indices(len(self._topics))
+            records = ProductRecords()
+            # add selected topics
+            for i in range(start, stop, step):
+                records.add_topics(self._topics[i])
+            # keep same documents
+            for d in self._documents:
+                records.add_documents(d)
+            # slice relevances rows if present
+            if hasattr(self, "relevances") and self.relevances is not None:
+                # build list of row indices and index into tensor
+                rows = list(range(start, stop, step))
+                records.set_relevances(self.relevances[rows])
+            return records
+
+        # integer index: return a PointwiseRecords containing this topic
+        # paired with every document (preserving relevances when present)
+        if ix < 0:
+            ix += len(self._topics)
+        if ix < 0 or ix >= len(self._topics):
+            raise IndexError("ProductRecords index out of range")
+
+        records = PointwiseRecords()
+        topic = self._topics[ix]
+
+        if hasattr(self, "relevances") and self.relevances is not None:
+            row = self.relevances[ix]
+            try:
+                rels = list(row.tolist())
+            except Exception:
+                rels = list(row)
+
+            for d, r in zip(self._documents, rels):
+                records.add(PointwiseRecord(topic, d, float(r)))
+        else:
+            for d in self._documents:
+                records.add(PointwiseRecord(topic, d, None))
+
+        return records
+
 
 class DocumentRecords(List[DocumentRecord]):
     """Masked Language Modeling Records are a set of documents"""

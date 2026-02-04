@@ -554,6 +554,24 @@ class PairwiseSamplerFromTSV(PairwiseSampler):
         return SkippingIterator(iter)
 
 
+# A class for loading the data, need to move the other places.
+class ListwiseSamplerFromTSV(ListwiseSampler):
+
+    pairwise_samples_path: Param[Path]
+    """The path which stores the existing triplets"""
+
+    def pairwise_iter(self) -> SerializableIterator[PairwiseRecord, Any]:
+        def iter() -> Iterator[PairwiseSample]:
+            for triplet in read_tsv(self.pairwise_samples_path):
+                q_id, pos_id, pos_score, neg_id, neg_score = triplet
+                yield PairwiseRecord(
+                    Record(IDItem(q_id)),
+                    Record(IDItem(pos_id), ScoredItem(pos_score)),
+                    Record(IDItem(neg_id), ScoredItem(neg_score)),
+                )
+
+        return SkippingIterator(iter)
+
 # --- Tasks for hard negatives
 
 

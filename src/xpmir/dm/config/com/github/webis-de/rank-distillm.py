@@ -3,7 +3,7 @@ from hashlib import md5
 from datamaestro.definitions import dataset
 from datamaestro.download.single import filedownloader
 from datamaestro.utils import HashCheck
-from xpmir.letor.distillation.samplers import ListwiseDistillationSamplesTSV, PairwiseDistillationSamplesTSV
+from xpmir.letor.distillation.samplers import ListwiseDistillationSamplesTSV
 
 
 @filedownloader(
@@ -13,7 +13,7 @@ from xpmir.letor.distillation.samplers import ListwiseDistillationSamplesTSV, Pa
     checker=HashCheck("835372b2ab4d20acf10addeae526c559", md5),
 )
 @dataset(
-    PairwiseDistillationSamplesTSV,
+    ListwiseDistillationSamplesTSV,
     url="https://github.com/webis-de/rank-distillm",
 )
 def msmarco_bm25_annotated(bm25__msmarco_passage_train_judged_run):
@@ -33,7 +33,7 @@ def msmarco_bm25_annotated(bm25__msmarco_passage_train_judged_run):
     checker=HashCheck("6ed152027f7270f32fcbfaaa6def951e", md5),
 )
 @dataset(
-    PairwiseDistillationSamplesTSV,
+    ListwiseDistillationSamplesTSV,
     url="https://github.com/webis-de/rank-distillm",
 )
 def msmarco_colbertv2_annotated(colbert__msmarco_passage_train_judged_run):
