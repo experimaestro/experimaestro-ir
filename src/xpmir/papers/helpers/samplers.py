@@ -192,7 +192,7 @@ def msmarco_hofstaetter_ensemble_hard_negatives() -> DistillationPairwiseSampler
 
 
 @lru_cache
-def msmarco_rankdistillm_colbert_top100() -> DistillationPairwiseSampler:
+def msmarco_rankdistillm_colbert_top100() -> DistillationListwiseSampler:
     """Distillation data from RankZephyr reranking ColBERTv2 top 100 on 10k queries of MSMARCO
 
     Rank-DistiLLM: Closing the Effectiveness Gap Between Cross-Encoders and LLMs for Passage 

@@ -302,7 +302,6 @@ class ListwiseRecord:
         self.query = query
         self.documents = documents
 
-
 class ListwiseRecords(BaseRecords):
     """Pairwise records of queries associated with (positive, negative) pairs"""
 
@@ -310,16 +309,16 @@ class ListwiseRecords(BaseRecords):
     _topics: List[TopicRecord]
 
     # The list of documents per query
-    documents: List[List[DocumentRecord]]
+    _documents: List[List[DocumentRecord]]
 
 
     def __init__(self):
         self._topics = []
-        self.documents = []
+        self._documents = []
 
     def add(self, record: ListwiseRecord):
         self._topics.append(record.query)
-        self.documents.append(record.documents)
+        self._documents.append(record.documents)
 
     @property
     def topics(self):
@@ -344,12 +343,11 @@ class ListwiseRecords(BaseRecords):
 
     @property
     def documents(self):
-        return itertools.chain.from_iterable(self.documents)
+        return itertools.chain.from_iterable(self._documents)
 
     def pairs(self):
         indices = list(range(len(self._topics)))
-        return indices * 2, list(range(2 * len(self.documents)))
-
+        return indices * 2, list(range(2 * len(self._documents)))
     def __len__(self):
         return len(self._topics)
 
@@ -364,7 +362,7 @@ class ListwiseRecords(BaseRecords):
                 )
             return records
 
-        return ListwiseRecord(self._topics[ix], self.documents[ix])
+        return ListwiseRecord(self._topics[ix], self._documents[ix])
 
 
 class BatchwiseRecords(BaseRecords):

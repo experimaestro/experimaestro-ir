@@ -248,6 +248,12 @@ class ListwiseDistillationSamplesTSV(ListwiseDistillationSamples, File):
                 documents: List[DocumentRecord] = []
 
                 for row in reader:
+                    # Some run files are space-separated (TREC format) rather than
+                    # tab-separated. csv.reader with delimiter="\t" then yields
+                    # a single-field row containing the whole line; detect that
+                    # and split on whitespace to recover fields.
+                    if len(row) == 1:
+                        row = row[0].split()
                     if not row:
                         continue
 
