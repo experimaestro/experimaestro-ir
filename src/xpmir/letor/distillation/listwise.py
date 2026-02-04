@@ -5,14 +5,12 @@ from torch import nn
 from torch.functional import Tensor
 from experimaestro import Config, Param, field
 from xpmir.letor.records import (
-    DocumentRecord,
-    ListwiseRecord,
-    ListwiseRecords,
+    PointwiseRecord,
+    PointwiseRecords,
 )
 from xpm_torch.trainers import TrainerContext, LossTrainer
 from xpm_torch.losses import Loss 
 
-from xpmir.utils.utils import foreach
 from .samplers import DistillationListwiseSampler
 from xpmir.utils.iter import MultiprocessSerializableIterator
 import numpy as np
@@ -20,7 +18,7 @@ from xpmir.rankers import AbstractModuleScorer
 
 
 class DistillationListwiseLoss(Config, nn.Module):
-    """The abstract loss for pairwise distillation"""
+    """The abstract loss for listwise distillation"""
 
     weight: Param[float] = 1.0
     NAME = "?"
@@ -32,7 +30,7 @@ class DistillationListwiseLoss(Config, nn.Module):
         self, student_scores: Tensor, teacher_scores: Tensor, info: TrainerContext
     ):
         loss = self.compute(student_scores, teacher_scores, info)
-        info.add_loss(Loss(f"pairwise-{self.NAME}", loss, self.weight))
+        info.add_loss(Loss(f"listwise-{self.NAME}", loss, self.weight))
 
     def compute(
         self, student_scores: Tensor, teacher_scores: Tensor, context: TrainerContext
@@ -47,6 +45,94 @@ class DistillationListwiseLoss(Config, nn.Module):
         """
         raise NotImplementedError()
 
+class DistillRankNetLoss(DistillationListwiseLoss):
+    """Adaptation of the pairwise RankNET loss to lists of passages
+    ranked by a LLM. Follows Rank-DistiLLM: Closing the Effectiveness Gap 
+    Between Cross-Encoders and LLMs for Passage Re-Ranking, 2025
+    """
+
+    NAME = "DistillRankNET"
+
+    def initialize(self, ranker):
+        super().initialize(ranker)
+        self.loss = torch.nn.functional.binary_cross_entropy_with_logits
+    
+    @staticmethod
+    def get_pairwise_idcs(targets: torch.Tensor) -> tuple[torch.Tensor, ...]:
+        """Get pairwise indices for positive and negative samples based on targets.
+
+        Function copied from the official implementation of Rank-DistiLLM: 
+        https://github.com/webis-de/lightning-ir/blob/main/lightning_ir/loss/base.py#L131
+        """
+        # positive items are items where label is greater than other label in sample
+        return torch.nonzero(targets[..., None] > targets[:, None], as_tuple=True)
+    
+    def compute(
+        self, student_scores: Tensor, teacher_scores: Tensor, context: TrainerContext
+    ) -> torch.Tensor:
+        """
+        Compute the DistillRankNet loss
+
+        Arguments:
+
+            student_scores: A (batch x num_docs) tensor
+            teacher_scores: A (batch x num_docs) tensor
+        """
+        query_idcs, pos_idcs, neg_idcs = self.get_pairwise_idcs(teacher_scores)
+        pos = student_scores[query_idcs, pos_idcs]
+        neg = student_scores[query_idcs, neg_idcs]
+        margin = pos - neg
+        loss = self.loss(margin, torch.ones_like(margin))
+        return loss
+
+class ADR_MSE(DistillationListwiseLoss):
+    """New loss to distill from lists of passages ranked by LLM, proposed
+    by Rank-DistiLLM: Closing the Effectiveness Gap Between Cross-Encoders and
+    LLMs for Passage Re-Ranking, 2025
+    """
+    NAME = "ADR-MSE"
+
+    def initialize(self, ranker):
+        super().initialize(ranker)
+        self.loss = nn.MSELoss()
+        self.discount = "log2"
+        self.temperature = 1
+    
+    @staticmethod
+    def get_approx_ranks(scores: torch.Tensor, temperature: float) -> torch.Tensor:
+        """Compute approximate ranks from scores. 
+        Function copied from the official implementation of Rank-DistiLLM: 
+        https://github.com/webis-de/lightning-ir/blob/main/lightning_ir/loss/approximate.py#L34
+
+        """
+        score_diff = scores[:, None] - scores[..., None]
+        normalized_score_diff = torch.sigmoid(score_diff / temperature)
+        # set diagonal to 0
+        normalized_score_diff = normalized_score_diff * (1 - torch.eye(scores.shape[1], device=scores.device))
+        approx_ranks = normalized_score_diff.sum(-1) + 1
+        return approx_ranks
+    
+    def compute(
+        self, student_scores: Tensor, teacher_scores: Tensor, context: TrainerContext
+    ) -> torch.Tensor:
+        """
+        Compute the ADR-MSE loss
+
+        Arguments:
+
+            student_scores: A (batch x num_docs) tensor
+            teacher_scores: A (batch x num_docs) tensor
+        """
+        student_ranks = self.get_approx_ranks(student_scores, self.temperature)
+        teacher_ranks = torch.argsort(torch.argsort(teacher_scores, descending=True)) + 1
+        loss = self.loss(student_ranks, teacher_ranks, reduction="none")
+        if self.discount == "log2":
+            weight = 1 / torch.log2(teacher_ranks + 1)
+        else:
+            weight = 1
+        loss = loss * weight
+        loss = loss.mean()
+        return loss
 
 class DistillationListwiseTrainer(LossTrainer):
     """Listwise trainer for distillation"""
@@ -77,19 +163,20 @@ class DistillationListwiseTrainer(LossTrainer):
     def train_batch(self, samples: List[DistillationListwiseSampler]):
         # Builds records and teacher score matrix
         teacher_scores = torch.empty(len(samples), len(samples[0].documents))
-        records = ListwiseRecords()
+        records = PointwiseRecords()
         for ix, sample in enumerate(samples):
-            records.add(
-                ListwiseRecord(
-                    sample.query,
-                    [doc.document for doc in sample.documents],
+            for doc in sample.documents:
+                records.add(
+                    PointwiseRecord(
+                        sample.query,
+                        doc.document,
+                        doc.score
+                    )
                 )
-            )
             teacher_scores[ix] = torch.tensor([doc.score for doc in sample.documents])
 
         # Get the next batch and compute the scores for each query/document
-        #TODO debug : out should be of shape [2* len(records)], not the case for now
-        scores = self.model(records, self.context).reshape(2, len(records)).T
+        scores = self.model(records, self.context)
 
         if torch.isnan(scores).any() or torch.isinf(scores).any():
             self.logger.error(
@@ -99,4 +186,4 @@ class DistillationListwiseTrainer(LossTrainer):
 
         # Call the losses (distillation, pairwise and pointwise)
         teacher_scores = teacher_scores.to(scores.device)
-        self.lossfn.process(scores, teacher_scores, self.context)
+        self.lossfn.process(scores.reshape_as(teacher_scores), teacher_scores, self.context)
