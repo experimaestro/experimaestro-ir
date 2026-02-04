@@ -94,7 +94,7 @@ class ADR_MSE(DistillationListwiseLoss):
 
     def initialize(self, ranker):
         super().initialize(ranker)
-        self.loss = nn.MSELoss()
+        self.loss = nn.MSELoss(reduction="none")
         self.discount = "log2"
         self.temperature = 1
     
@@ -124,8 +124,11 @@ class ADR_MSE(DistillationListwiseLoss):
             teacher_scores: A (batch x num_docs) tensor
         """
         student_ranks = self.get_approx_ranks(student_scores, self.temperature)
+        # teacher ranks are integer (Long) after argsort; cast to student's dtype/device
         teacher_ranks = torch.argsort(torch.argsort(teacher_scores, descending=True)) + 1
-        loss = self.loss(student_ranks, teacher_ranks, reduction="none")
+        teacher_ranks = teacher_ranks.to(dtype=student_ranks.dtype, device=student_ranks.device)
+
+        loss = self.loss(student_ranks, teacher_ranks)
         if self.discount == "log2":
             weight = 1 / torch.log2(teacher_ranks + 1)
         else:
