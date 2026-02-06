@@ -4,7 +4,7 @@ from datamaestro.definitions import dataset
 from datamaestro.download.single import filedownloader
 from datamaestro.utils import HashCheck
 from xpmir.letor.distillation.samplers import ListwiseDistillationSamplesTSV, ListwiseDistillationSamplesTSVWithAnnotations
-
+from datamaestro import prepare_dataset
 
 @filedownloader(
     "bm25__msmarco_passage_train_judged.run",
@@ -21,8 +21,9 @@ def msmarco_bm25_annotated(bm25__msmarco_passage_train_judged):
     in the MS MARCO training query set retrieved by BM25.
     """
     return {
-        "qrels_file": "irds.msmarco-passage.train.qrels",
+        "qrels": prepare_dataset("irds.msmarco-passage.train.qrels"),
         "top_k": 500,
+        "sampling_k": 8,
         "with_docid": True,
         "with_queryid": True,
         "path": bm25__msmarco_passage_train_judged,
@@ -43,8 +44,9 @@ def msmarco_colbertv2_annotated(colbert__msmarco_passage_train_judged):
     in the MS MARCO training query set retrieved by ColBERTv2.
     """
     return {
-        "qrels_file": "irds.msmarco-passage.train.qrels",
+        "qrels": prepare_dataset("irds.msmarco-passage.train.qrels"),
         "top_k": 500,
+        "sampling_k": 8,
         "with_docid": True,
         "with_queryid": True,
         "path": colbert__msmarco_passage_train_judged,

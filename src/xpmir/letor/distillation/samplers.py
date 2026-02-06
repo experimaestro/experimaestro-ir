@@ -1,3 +1,5 @@
+import logging
+import random
 from typing import (
     Iterable,
     Iterator,
@@ -17,9 +19,8 @@ from datamaestro_text.data.ir.base import (
     SimpleTextItem,
     IDItem,
     create_record,
-    AdhocAssessedTopic,
 )
-from datamaestro import prepare_dataset
+from datamaestro_text.data.ir import AdhocAssessments
 import torch
 from xpm_torch.utils.iter import (
     SerializableIterator,
@@ -301,19 +302,27 @@ class ListwiseDistillationSamplesTSV(ListwiseDistillationSamples, File):
 
 class ListwiseDistillationSamplesTSVWithAnnotations(ListwiseDistillationSamplesTSV):
 
-    qrels_file: Param[str]
+    qrels: Param[AdhocAssessments]
+    sampling_k: Param[int] = 8
+
+    def __post_init__(self):
+        self.qrels_dict = {}
+        logging.info("Loading qrels into memory...")
+        for qrel in self.qrels.iter():
+            self.qrels_dict[qrel.topic_id] = [assess.doc_id for assess in qrel.assessments if assess.rel > 0]
+
 
     def iter(self) -> Iterator[ListwiseDistillationSample]:
         import csv
 
         def iterate():
-            qrels = prepare_dataset(self.qrels_file)
             with self.path.open("rt") as fp:
                 reader = csv.reader(fp, delimiter="\t")
 
                 current_q = None
                 current_query_record = None
                 documents: List[DocumentRecord] = []
+                rel: List[DocumentRecord] = []
 
                 for row in reader:
                     # Some run files are space-separated (TREC format) rather than
@@ -326,7 +335,7 @@ class ListwiseDistillationSamplesTSVWithAnnotations(ListwiseDistillationSamplesT
                         continue
 
                     qkey = row[0]
-
+                    qrel = self.qrels_dict.get(qkey, set())
                     # start a new block when query changes or when we've reached top_k
                     if current_q is None:
                         current_q = qkey
@@ -338,7 +347,10 @@ class ListwiseDistillationSamplesTSVWithAnnotations(ListwiseDistillationSamplesT
 
                     if qkey != current_q or (self.top_k and len(documents) >= int(self.top_k)):
                         if documents:
-                            yield ListwiseDistillationSample(current_query_record, documents)
+                            for rel_doc in rel:
+                                # Each rel_doc is associated to sampling_k -1 negatives randomly sampled from the non-rel docs
+                                sampled_docs = [rel_doc] + random.sample(documents, self.sampling_k - 1)
+                                yield ListwiseDistillationSample(current_query_record, sampled_docs)
                         # reset for new block (may be new query or another block for same query)
                         current_q = qkey
                         current_query_record = (
@@ -347,17 +359,25 @@ class ListwiseDistillationSamplesTSVWithAnnotations(ListwiseDistillationSamplesT
                             else create_record(text=qkey)
                         )
                         documents = []
+                        rel = []
 
+                    # determine relevance by raw doc id membership (qrel is a set of doc ids)
+                    relevance = ScoredItem(1) if row[2] in qrel else ScoredItem(0)
                     if self.with_docid:
-                        doc = DocumentRecord(IDItem(row[2]), ScoredItem(float(row[4])))
+                        doc = DocumentRecord(IDItem(row[2]), relevance)
                     else:
-                        doc = DocumentRecord(SimpleTextItem(row[2]), ScoredItem(float(row[4])))
+                        doc = DocumentRecord(SimpleTextItem(row[2]), relevance)
 
-                    documents.append(doc)
+                    if relevance.score > 0:
+                        rel.append(doc)
+                    else:
+                        documents.append(doc)
 
                 # emit any remaining documents for the last block
                 if documents:
-                    yield ListwiseDistillationSample(current_query_record, documents)
+                    for rel_doc in rel:
+                        sampled_docs = [rel_doc] + random.sample(documents, self.sampling_k - 1)
+                        yield ListwiseDistillationSample(current_query_record, sampled_docs)
 
         return SkippingIterator(iterate())
 
@@ -436,6 +456,7 @@ class DistillationInBatchNegativesSampler(BatchwiseSampler):
     """An in-batch negative sampler constructured from a pairwise one"""
 
     samples: Param[ListwiseDistillationSamples]
+    sampling_k: Param[int] = 8
 
     def initialize(self, random: np.random.RandomState):
         super().initialize(random)
@@ -446,20 +467,26 @@ class DistillationInBatchNegativesSampler(BatchwiseSampler):
     def batchwise_iter(
         self, batch_size: int
     ) -> SerializableIterator[BatchwiseRecords, Any]:
-        def iter(pair_iter):
-            # Pre-compute relevance matrix (query x document)
-            relevances = torch.cat(
-                (torch.eye(batch_size), torch.zeros(batch_size, batch_size)), 1
-            )
+        def iter(iter):
+            # Pre-compute relevance matrix (query x document).
+            # There is 1 positive per query and (sampling_k - 1) negatives per query,
+            # so total documents = batch_size * sampling_k.
+            total_docs = batch_size * self.sampling_k
+            relevances = torch.zeros(batch_size, total_docs)
+            # positives are added first (one per query), place identity there
+            relevances[:, :batch_size] = torch.eye(batch_size)
 
             while True:
                 batch = ProductRecords()
                 positives = []
                 negatives = []
-                for _, record in zip(range(batch_size), pair_iter):
+                for _, record in zip(range(batch_size), iter):
                     batch.add_topics(record.query)
-                    positives.append(record.positive)
-                    negatives.append(record.negative)
+                    for doc in record.documents:
+                        if doc.score > 0:
+                            positives.append(doc)
+                        else:
+                            negatives.append(doc)
                 batch.add_documents(*positives)
                 batch.add_documents(*negatives)
                 batch.set_relevances(relevances)

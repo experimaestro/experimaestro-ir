@@ -445,7 +445,7 @@ class ProductRecords(BatchwiseRecords):
     def documents(self):
         for _ in self._topics:
             for d in self._documents:
-                yield d
+                yield d.document
 
     @property
     def unique_documents(self):
