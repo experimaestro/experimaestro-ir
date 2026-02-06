@@ -17,7 +17,10 @@ from datamaestro_text.data.ir.base import (
     SimpleTextItem,
     IDItem,
     create_record,
+    AdhocAssessedTopic,
 )
+from datamaestro import prepare_dataset
+import torch
 from xpm_torch.utils.iter import (
     SerializableIterator,
     SkippingIterator,
@@ -25,8 +28,11 @@ from xpm_torch.utils.iter import (
 )
 
 from xpm_torch.base import Sampler
+from xpmir.letor.records import BatchwiseRecords, ProductRecords
+from xpmir.letor.samplers import BatchwiseSampler
 from xpmir.letor.samplers.hydrators import SampleHydrator
 from xpmir.rankers import ScoredDocument
+from xpmir.utils.iter import SerializableIteratorAdapter
 
 
 class PairwiseDistillationSample(NamedTuple):
@@ -225,35 +231,6 @@ class ListwiseHydrator(ListwiseDistillationSamples, SampleHydrator):
         return SerializableIteratorTransform(
             SkippingIterator.make_serializable(iterator), self.transform
         )
-    
-class ListwiseHydratorWithAnnotations(ListwiseDistillationSamples, SampleHydrator):
-    """Hydrate ID-based samples with document and/or query content"""
-
-    samples: Param[ListwiseDistillationSamples]
-    """The distillation samples without texts for query and documents"""
-
-    def transform_documents(self, documents):
-        return super().transform_documents(documents)
-
-    def transform(self, sample: ListwiseDistillationSample):
-        topic, documents = sample.query, sample.documents
-
-        if transformed := self.transform_topics([topic]):
-            topic = transformed[0]
-
-        if transformed := self.transform_documents(documents):
-            documents = list(
-                ScoredDocument(d, sd[ScoredItem].score)
-                for d, sd in zip(transformed, sample.documents)
-            )
-
-        return ListwiseDistillationSample(topic, documents)
-
-    def __iter__(self) -> Iterator[ListwiseDistillationSample]:
-        iterator = iter(self.samples)
-        return SerializableIteratorTransform(
-            SkippingIterator.make_serializable(iterator), self.transform
-        )
 
 class ListwiseDistillationSamplesTSV(ListwiseDistillationSamples, File):
     """A TSV file ("query_id", "q0", "doc_id", "rank", "score", "system")"""
@@ -269,6 +246,68 @@ class ListwiseDistillationSamplesTSV(ListwiseDistillationSamples, File):
         import csv
 
         def iterate():
+            with self.path.open("rt") as fp:
+                reader = csv.reader(fp, delimiter="\t")
+
+                current_q = None
+                current_query_record = None
+                documents: List[DocumentRecord] = []
+
+                for row in reader:
+                    # Some run files are space-separated (TREC format) rather than
+                    # tab-separated. csv.reader with delimiter="\t" then yields
+                    # a single-field row containing the whole line; detect that
+                    # and split on whitespace to recover fields.
+                    if len(row) == 1:
+                        row = row[0].split()
+                    if not row:
+                        continue
+
+                    qkey = row[0]
+
+                    # start a new block when query changes or when we've reached top_k
+                    if current_q is None:
+                        current_q = qkey
+                        current_query_record = (
+                            create_record(id=qkey)
+                            if self.with_queryid
+                            else create_record(text=qkey)
+                        )
+
+                    if qkey != current_q or (self.top_k and len(documents) >= int(self.top_k)):
+                        if documents:
+                            yield ListwiseDistillationSample(current_query_record, documents)
+                        # reset for new block (may be new query or another block for same query)
+                        current_q = qkey
+                        current_query_record = (
+                            create_record(id=qkey)
+                            if self.with_queryid
+                            else create_record(text=qkey)
+                        )
+                        documents = []
+
+                    if self.with_docid:
+                        doc = DocumentRecord(IDItem(row[2]), ScoredItem(float(row[4])))
+                    else:
+                        doc = DocumentRecord(SimpleTextItem(row[2]), ScoredItem(float(row[4])))
+
+                    documents.append(doc)
+
+                # emit any remaining documents for the last block
+                if documents:
+                    yield ListwiseDistillationSample(current_query_record, documents)
+
+        return SkippingIterator(iterate())
+
+class ListwiseDistillationSamplesTSVWithAnnotations(ListwiseDistillationSamplesTSV):
+
+    qrels_file: Param[str]
+
+    def iter(self) -> Iterator[ListwiseDistillationSample]:
+        import csv
+
+        def iterate():
+            qrels = prepare_dataset(self.qrels_file)
             with self.path.open("rt") as fp:
                 reader = csv.reader(fp, delimiter="\t")
 
@@ -391,3 +430,39 @@ class DistillationListwiseSampler(Sampler):
 
         Can be subclassed by some classes to be more efficient"""
         return _DistillationListwiseBatchIterator(self, size)
+    
+
+class DistillationInBatchNegativesSampler(BatchwiseSampler):
+    """An in-batch negative sampler constructured from a pairwise one"""
+
+    samples: Param[ListwiseDistillationSamples]
+
+    def initialize(self, random: np.random.RandomState):
+        super().initialize(random)
+
+    def listwise_iter(self) -> SerializableIterator[ListwiseDistillationSample, Any]:
+        return SkippingIterator.make_serializable(iter(self.samples))
+
+    def batchwise_iter(
+        self, batch_size: int
+    ) -> SerializableIterator[BatchwiseRecords, Any]:
+        def iter(pair_iter):
+            # Pre-compute relevance matrix (query x document)
+            relevances = torch.cat(
+                (torch.eye(batch_size), torch.zeros(batch_size, batch_size)), 1
+            )
+
+            while True:
+                batch = ProductRecords()
+                positives = []
+                negatives = []
+                for _, record in zip(range(batch_size), pair_iter):
+                    batch.add_topics(record.query)
+                    positives.append(record.positive)
+                    negatives.append(record.negative)
+                batch.add_documents(*positives)
+                batch.add_documents(*negatives)
+                batch.set_relevances(relevances)
+                yield batch
+
+        return SerializableIteratorAdapter(self.listwise_iter(), iter)

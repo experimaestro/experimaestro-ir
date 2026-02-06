@@ -18,10 +18,10 @@ from xpmir.evaluation import Evaluations, EvaluationsCollection
 from xpmir.letor.samplers import TripletBasedSampler
 from xpmir.datasets.adapters import MemoryTopicStore
 from xpmir.letor.distillation.samplers import (
+    DistillationInBatchNegativesSampler,
     DistillationListwiseSampler,
     DistillationPairwiseSampler,
     ListwiseHydrator,
-    ListwiseHydratorWithAnnotations,
     PairwiseHydrator,
 )
 from xpmir.letor.samplers.hydrators import SampleHydrator, PairwiseTransformAdapter
@@ -234,14 +234,14 @@ def msmarco_colbertv2_annotated() -> DistillationListwiseSampler:
     train_topics = prepare_dataset("irds.msmarco-passage.train.queries")
 
     # Combine the training triplets with the document and queries texts
-    distillation_samples = ListwiseHydratorWithAnnotations.C(
+    distillation_samples = ListwiseHydrator.C(
         samples=train_ranks_distil,
         documentstore=prepare_collection("irds.msmarco-passage.documents"),
         querystore=MemoryTopicStore.C(topics=train_topics),
     )
 
     # Generate a sampler from the samples
-    return DistillationListwiseSampler.C(samples=distillation_samples)
+    return DistillationInBatchNegativesSampler.C(samples=distillation_samples)
 
 @lru_cache
 def finetuning_validation_dataset(
