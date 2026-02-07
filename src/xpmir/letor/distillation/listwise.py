@@ -4,6 +4,8 @@ import torch
 from torch import nn
 from torch.functional import Tensor
 from experimaestro import Config, Param, field
+import torch.nn.functional as F
+from xpmir.rankers import ScorerOutputType
 from xpmir.letor.records import (
     PointwiseRecord,
     PointwiseRecords,
@@ -135,6 +137,41 @@ class ADR_MSE(DistillationListwiseLoss):
             weight = 1
         loss = loss * weight
         loss = loss.mean()
+        return loss
+
+
+class ListwiseSoftmaxCrossEntropy(DistillationListwiseLoss):
+    """Reproduces the original `SoftmaxCrossEntropy` behavior used in
+    batchwise losses, adapted to listwise distillation.
+
+    The original formula is:
+      -logsumexp(normalize(scores) + (1 - 1.0 / relevances), dim=-1).mean()
+
+    where `normalize` depends on the model output type.
+    """
+
+    NAME = "listwise-infonce"
+
+    def initialize(self, ranker: AbstractModuleScorer):
+        super().initialize(ranker)
+        self.normalize = {
+            ScorerOutputType.REAL: lambda x: F.log_softmax(x, -1),
+            ScorerOutputType.LOG_PROBABILITY: lambda x: x,
+            ScorerOutputType.PROBABILITY: lambda x: x.log(),
+        }[ranker.outputType]
+
+    def compute(
+        self, student_scores: Tensor, teacher_scores: Tensor, context: TrainerContext
+    ) -> torch.Tensor:
+        # teacher_scores used as "relevances" in the original formula.
+        # Guard against zeros to avoid division-by-zero.
+        eps = 1e-8
+        rel = teacher_scores.clone()
+        rel = torch.where(rel == 0, torch.tensor(eps, device=rel.device, dtype=rel.dtype), rel)
+
+        term = self.normalize(student_scores) + (1.0 - 1.0 / rel)
+        # sum over documents, mean over queries
+        loss = -torch.logsumexp(term, dim=-1).sum() / student_scores.shape[0]
         return loss
 
 class DistillationListwiseTrainer(LossTrainer):

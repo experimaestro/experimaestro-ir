@@ -21,7 +21,6 @@ from datamaestro_text.data.ir.base import (
     create_record,
 )
 from datamaestro_text.data.ir import AdhocAssessments
-import torch
 from xpm_torch.utils.iter import (
     SerializableIterator,
     SkippingIterator,
@@ -29,11 +28,9 @@ from xpm_torch.utils.iter import (
 )
 
 from xpm_torch.base import Sampler
-from xpmir.letor.records import BatchwiseRecords, ProductRecords
-from xpmir.letor.samplers import BatchwiseSampler
+from xpmir.letor.records import BatchwiseRecords, ListwiseRecords, ListwiseRecord
 from xpmir.letor.samplers.hydrators import SampleHydrator
 from xpmir.rankers import ScoredDocument
-from xpmir.utils.iter import SerializableIteratorAdapter
 
 
 class PairwiseDistillationSample(NamedTuple):
@@ -452,10 +449,9 @@ class DistillationListwiseSampler(Sampler):
         return _DistillationListwiseBatchIterator(self, size)
     
 
-class DistillationInBatchNegativesSampler(BatchwiseSampler):
+class DistillationInBatchNegativesSampler(DistillationListwiseSampler):
     """An in-batch negative sampler constructured from a pairwise one"""
 
-    samples: Param[ListwiseDistillationSamples]
     sampling_k: Param[int] = 8
 
     def initialize(self, random: np.random.RandomState):
@@ -464,32 +460,20 @@ class DistillationInBatchNegativesSampler(BatchwiseSampler):
     def listwise_iter(self) -> SerializableIterator[ListwiseDistillationSample, Any]:
         return SkippingIterator.make_serializable(iter(self.samples))
 
-    def batchwise_iter(
-        self, batch_size: int
+    def listwise_batch_iter(
+        self, size: int
     ) -> SerializableIterator[BatchwiseRecords, Any]:
         def iter(iter):
-            # Pre-compute relevance matrix (query x document).
-            # There is 1 positive per query and (sampling_k - 1) negatives per query,
-            # so total documents = batch_size * sampling_k.
-            total_docs = batch_size * self.sampling_k
-            relevances = torch.zeros(batch_size, total_docs)
-            # positives are added first (one per query), place identity there
-            relevances[:, :batch_size] = torch.eye(batch_size)
-
             while True:
-                batch = ProductRecords()
-                positives = []
-                negatives = []
-                for _, record in zip(range(batch_size), iter):
-                    batch.add_topics(record.query)
-                    for doc in record.documents:
-                        if doc.score > 0:
-                            positives.append(doc)
-                        else:
-                            negatives.append(doc)
-                batch.add_documents(*positives)
-                batch.add_documents(*negatives)
-                batch.set_relevances(relevances)
+                batch = ListwiseRecords()
+
+                for _, record in zip(range(size), iter):
+                    # Unwrap ScoredDocument to underlying DocumentRecord if needed
+                    docs = [d.document if hasattr(d, "document") else d for d in record.documents]
+
+                    # Add a ListwiseRecord (query + documents list)
+                    batch.add(ListwiseRecord(record.query, docs))
+
                 yield batch
 
-        return SerializableIteratorAdapter(self.listwise_iter(), iter)
+        return _DistillationListwiseBatchIterator(self, size)
