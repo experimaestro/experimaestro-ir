@@ -449,7 +449,7 @@ class DistillationListwiseSampler(Sampler):
         return _DistillationListwiseBatchIterator(self, size)
     
 
-class DistillationInBatchNegativesSampler(DistillationListwiseSampler):
+class DistillationNegativesSampler(DistillationListwiseSampler):
     """An in-batch negative sampler constructured from a pairwise one"""
 
     sampling_k: Param[int] = 8

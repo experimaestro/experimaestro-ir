@@ -18,7 +18,7 @@ from xpmir.evaluation import Evaluations, EvaluationsCollection
 from xpmir.letor.samplers import TripletBasedSampler
 from xpmir.datasets.adapters import MemoryTopicStore
 from xpmir.letor.distillation.samplers import (
-    DistillationInBatchNegativesSampler,
+    DistillationNegativesSampler,
     DistillationListwiseSampler,
     DistillationPairwiseSampler,
     ListwiseHydrator,
@@ -218,7 +218,7 @@ def msmarco_rankdistillm_colbert_top50() -> DistillationListwiseSampler:
     return DistillationListwiseSampler.C(samples=distillation_samples)
 
 @lru_cache
-def msmarco_colbertv2_annotated() -> DistillationListwiseSampler:
+def msmarco_colbertv2_annotated(passages_per_query: int) -> DistillationListwiseSampler:
     """Top 500 passages for all queries that have at least one relevance judgement 
     in the MS MARCO training query set retrieved by ColBERTv2
 
@@ -241,7 +241,7 @@ def msmarco_colbertv2_annotated() -> DistillationListwiseSampler:
     )
 
     # Generate a sampler from the samples
-    return DistillationInBatchNegativesSampler.C(samples=distillation_samples)
+    return DistillationNegativesSampler.C(samples=distillation_samples, sampling_k=passages_per_query)
 
 @lru_cache
 def finetuning_validation_dataset(
