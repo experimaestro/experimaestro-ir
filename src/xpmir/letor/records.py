@@ -291,7 +291,7 @@ class PairwiseRecordsWithTarget(PairwiseRecords):
         )
     
 class ListwiseRecord:
-    """A pairwise record is composed of a query, a positive and a negative document"""
+    """A listwise record is composed of a query and a list of documents"""
 
     query: TopicRecord
     documents: List[DocumentRecord]
@@ -303,7 +303,7 @@ class ListwiseRecord:
         self.documents = documents
 
 class ListwiseRecords(BaseRecords):
-    """Pairwise records of queries associated with (positive, negative) pairs"""
+    """Listwise records of queries associated with lists of documents"""
 
     # The queries
     _topics: List[TopicRecord]
@@ -357,7 +357,7 @@ class ListwiseRecords(BaseRecords):
             for i in range(ix.start, min(ix.stop, len(self._topics)), ix.step or 1):
                 records.add(
                     ListwiseRecord(
-                        self._topics[i], self.documents[i]
+                        self._topics[i], self._documents[i]
                     )
                 )
             return records
@@ -445,7 +445,7 @@ class ProductRecords(BatchwiseRecords):
     def documents(self):
         for _ in self._topics:
             for d in self._documents:
-                yield d.document
+                yield d
 
     @property
     def unique_documents(self):
