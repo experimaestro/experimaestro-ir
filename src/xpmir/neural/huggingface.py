@@ -9,7 +9,7 @@ from xpmir.text import TokenizedTexts
 
 from xpmir.letor.records import BaseRecords
 from xpmir.rankers import AbstractModuleScorer
-
+from xpm_torch.utils import to_device
 
 class HFCrossScorer(AbstractModuleScorer):
     """Load a cross scorer model from the huggingface"""
@@ -226,8 +226,8 @@ class HFCrossScorer(AbstractModuleScorer):
         with torch.set_grad_enabled(torch.is_grad_enabled()):
             result = self.model(
                 tokenized.ids,
-                token_type_ids=tokenized.token_type_ids.to(self.device),
-                attention_mask=tokenized.mask.to(self.device),
+                token_type_ids= to_device(tokenized.token_type_ids, self.device),
+                attention_mask= to_device(tokenized.mask, self.device),
             ).logits  # Tensor[float] of length records size
         return result
 
