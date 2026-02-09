@@ -22,9 +22,11 @@ from datamaestro_text.data.ir.base import (
 )
 from datamaestro_text.data.ir import AdhocAssessments
 from xpm_torch.utils.iter import (
+    InfiniteSkippingIterator,
     SerializableIterator,
     SkippingIterator,
     SerializableIteratorTransform,
+    iterable_of,
 )
 
 from xpm_torch.base import Sampler
@@ -295,7 +297,7 @@ class ListwiseDistillationSamplesTSV(ListwiseDistillationSamples, File):
                 if documents:
                     yield ListwiseDistillationSample(current_query_record, documents)
 
-        return SkippingIterator(iterate())
+        return InfiniteSkippingIterator(iterable_of(iterate))
 
 class ListwiseDistillationSamplesTSVWithAnnotations(ListwiseDistillationSamplesTSV):
 
@@ -376,7 +378,7 @@ class ListwiseDistillationSamplesTSVWithAnnotations(ListwiseDistillationSamplesT
                         sampled_docs = [rel_doc] + random.sample(documents, self.sampling_k - 1)
                         yield ListwiseDistillationSample(current_query_record, sampled_docs)
 
-        return SkippingIterator(iterate())
+        return InfiniteSkippingIterator(iterable_of(iterate))
 
 
 class _DistillationListwiseBatchIterator(SerializableIterator):
