@@ -197,7 +197,7 @@ class AbstractModuleScorer(Scorer, Module):
     train = nn.Module.train
 
     def __init__(self):
-        self.logger.info("Initializing %s", self)
+        self.logger.info(f"Initializing {self.__class__.__name__}")
         nn.Module.__init__(self)
         super().__init__()
         self._initialized = False
