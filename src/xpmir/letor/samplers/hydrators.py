@@ -1,34 +1,25 @@
 from abc import ABC, abstractmethod
-from typing import Iterator, Optional, List, Any
+from typing import Optional, List
 from experimaestro import Config, Param
 import numpy as np
 import datamaestro_text.data.ir.base as ir
 from datamaestro_text.data.ir import DocumentStore, IDItem
 from xpmir.datasets.adapters import TextStore
 from xpmir.letor.samplers import PairwiseSampler
-from xpmir.letor.records import (
-    PairwiseRecords,
-    PairwiseRecord,
-)
-from xpmir.utils.iter import (
-    SerializableIterator,
-    SkippingIterator,
-    SerializableIteratorTransform,
-)
+from xpmir.letor.records import PairwiseRecord
+from xpm_torch.datasets import ShardedIterableDataset, TransformDataset
 
 
 class SampleTransform(Config, ABC):
     @abstractmethod
     def transform_topics(
         self, topics: List[ir.TopicRecord]
-    ) -> Optional[List[ir.TopicRecord]]:
-        ...
+    ) -> Optional[List[ir.TopicRecord]]: ...
 
     @abstractmethod
     def transform_documents(
         self, documents: List[ir.DocumentRecord]
-    ) -> Optional[List[ir.DocumentRecord]]:
-        ...
+    ) -> Optional[List[ir.DocumentRecord]]: ...
 
 
 class SampleHydrator(SampleTransform):
@@ -146,27 +137,31 @@ class PairwiseTransformAdapter(PairwiseSampler):
 
         return PairwiseRecord(topics[0], docs[0], docs[1])
 
-    def pairwise_iter(self) -> Iterator[PairwiseRecord]:
-        iterator = self.sampler.pairwise_iter()
+    def as_dataset(self) -> ShardedIterableDataset:
+        """Returns the inner sampler's dataset (ID-only records).
 
-        return SerializableIteratorTransform(
-            SkippingIterator.make_serializable(iterator), self.transform_record
-        )
+        For lightweight transforms like SamplePrefixAdding, wraps with
+        TransformDataset. For hydration (SampleHydrator), the transform is
+        deferred to collate time via get_collate_fn().
+        """
+        inner_dataset = self.sampler.as_dataset()
 
-    def transform_records(self, records: PairwiseRecords) -> PairwiseRecords:
-        if topics := self.adapter.transform_topics(
-            topic for topic in records.unique_topics
-        ):
-            records.set_unique_topics(topics)
+        # If adapter is NOT a hydrator (e.g., SamplePrefixAdding),
+        # apply it as a per-record transform
+        if not isinstance(self.adapter, SampleHydrator):
+            return TransformDataset(inner_dataset, self.transform_record)
 
-        if documents := self.adapter.transform_documents(
-            document for document in records.unique_documents
-        ):
-            records.set_unique_documents(documents)
-        return records
+        # For hydrators, return ID-only dataset; hydration happens at collate time
+        return inner_dataset
 
-    def pairwise_batch_iter(self, size) -> SerializableIterator[PairwiseRecords, Any]:
-        iterator = self.sampler.pairwise_batch_iter(size)
-        return SerializableIteratorTransform(
-            SkippingIterator.make_serializable(iterator), self.transform_records
-        )
+    def get_collate_fn(self, base_collate):
+        """Returns a collate function, wrapping with hydration if needed."""
+        from xpm_torch.collate import HydratingCollate
+
+        # Chain: inner sampler may wrap with its own collate
+        base_collate = self.sampler.get_collate_fn(base_collate)
+
+        if isinstance(self.adapter, SampleHydrator):
+            return HydratingCollate(base_collate, self.adapter)
+
+        return base_collate

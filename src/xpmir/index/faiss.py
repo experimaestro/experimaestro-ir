@@ -20,7 +20,6 @@ from xpmir.utils.utils import batchiter, foreach
 from xpmir.documents.samplers import DocumentSampler
 from xpmir.context import Context, Hook, InitializationHook
 
-import logging
 logger = logging.getLogger(__name__)
 
 try:

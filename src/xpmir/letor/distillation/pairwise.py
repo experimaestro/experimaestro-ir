@@ -5,18 +5,16 @@ from torch import nn
 from torch.functional import Tensor
 from experimaestro import Config, Param, field
 from xpmir.letor.records import (
-    DocumentRecord,
     PairwiseRecord,
     PairwiseRecords,
 )
 from xpm_torch.trainers import TrainerContext, LossTrainer
-from xpm_torch.losses import Loss 
+from xpm_torch.losses import Loss
 
-from xpmir.utils.utils import foreach
 from .samplers import DistillationPairwiseSampler, PairwiseDistillationSample
-from xpmir.utils.iter import MultiprocessSerializableIterator
 import numpy as np
 from xpmir.rankers import AbstractModuleScorer
+from xpm_torch.collate import distillation_pairwise_collate
 
 
 class DistillationPairwiseLoss(Config, nn.Module):
@@ -116,13 +114,12 @@ class DistillationPairwiseTrainer(LossTrainer):
         self.lossfn.initialize(self.model)
         for loss in context.hooks(DistillationPairwiseLoss):
             loss.initialize(self.model)
-        
-        self.sampler.initialize(random)
-        self.sampler_iter = self.sampler.pairwise_iter()
 
-        self.sampler_iter = MultiprocessSerializableIterator(
-            self.sampler.pairwise_batch_iter(self.batch_size)
-        )
+        self.sampler.initialize(random)
+
+        dataset = self.sampler.as_dataset()
+        collate_fn = self.sampler.get_collate_fn(distillation_pairwise_collate)
+        self._create_dataloader(dataset, collate_fn)
 
     def train_batch(self, samples: List[PairwiseDistillationSample]):
         # Builds records and teacher score matrix
@@ -140,7 +137,7 @@ class DistillationPairwiseTrainer(LossTrainer):
             teacher_scores[ix, 1] = sample.documents[1].score
 
         # Get the next batch and compute the scores for each query/document
-        #TODO debug : out should be of shape [2* len(records)], not the case for now
+        # TODO debug : out should be of shape [2* len(records)], not the case for now
         scores = self.model(records, self.context).reshape(2, len(records)).T
 
         if torch.isnan(scores).any() or torch.isinf(scores).any():

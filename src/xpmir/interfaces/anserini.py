@@ -34,7 +34,6 @@ from xpmir.rankers import Retriever, ScoredDocument, document_cache
 from xpmir.rankers.standard import BM25, QLDirichlet, Model
 from xpmir.utils.utils import Handler, StreamGenerator, needs_java
 
-import logging
 logger = logging.getLogger(__name__)
 
 pyserini_java = needs_java(11)

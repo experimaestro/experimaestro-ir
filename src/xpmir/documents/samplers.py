@@ -1,13 +1,12 @@
 from abc import ABC, abstractmethod
-from typing import Optional, Tuple, Iterator, Any
+from typing import Optional, Tuple, Iterator
 from experimaestro import Param, Config
-import torch
 import numpy as np
 from datamaestro_text.data.ir import DocumentStore, TextItem, create_record
 from xpm_torch import Random
-from xpm_torch.utils.iter import RandomSerializableIterator, SerializableIterator
+from xpm_torch.datasets import ShardedIterableDataset, InfiniteDataset
 
-from xpmir.letor.records import DocumentRecord, PairwiseRecord, ProductRecords
+from xpmir.letor.records import DocumentRecord, PairwiseRecord
 from xpmir.letor.samplers import BatchwiseSampler, PairwiseSampler
 
 
@@ -130,50 +129,37 @@ class RandomSpanSampler(BatchwiseSampler, PairwiseSampler):
 
         return (text[start1:end1], text[start2:end2])
 
-    def pairwise_iter(self) -> SerializableIterator[PairwiseRecord, Any]:
-        def iter(random: np.random.RandomState):
-            iter = self.documents.iter_sample(lambda m: random.randint(0, m))
+    def _pairwise_record_iter(self) -> Iterator[PairwiseRecord]:
+        """Infinite iterator yielding PairwiseRecords from random document spans."""
+        doc_iter = self.documents.iter_sample(lambda m: self.random.randint(0, m))
 
-            while True:
-                record_pos_qry = next(iter)
-                text_pos_qry = record_pos_qry[TextItem].text
-                spans_pos_qry = self.get_text_span(text_pos_qry, random)
+        while True:
+            record_pos_qry = next(doc_iter)
+            text_pos_qry = record_pos_qry[TextItem].text
+            spans_pos_qry = self.get_text_span(text_pos_qry, self.random)
 
-                record_neg = next(iter)
-                text_neg = record_neg[TextItem].text
-                spans_neg = self.get_text_span(text_neg, random)
+            record_neg = next(doc_iter)
+            text_neg = record_neg[TextItem].text
+            spans_neg = self.get_text_span(text_neg, self.random)
 
-                if not (spans_pos_qry and spans_neg):
-                    continue
+            if not (spans_pos_qry and spans_neg):
+                continue
 
-                yield PairwiseRecord(
-                    create_record(text=spans_pos_qry[0]),
-                    create_record(text=spans_pos_qry[1]),
-                    create_record(text=spans_neg[random.randint(0, 2)]),
-                )
+            yield PairwiseRecord(
+                create_record(text=spans_pos_qry[0]),
+                create_record(text=spans_pos_qry[1]),
+                create_record(text=spans_neg[self.random.randint(0, 2)]),
+            )
 
-        return RandomSerializableIterator(self.random, iter)
+    def as_dataset(self) -> ShardedIterableDataset:
+        """Returns a dataset that yields infinite random span pairwise records."""
 
-    def batchwise_iter(
-        self, batch_size: int
-    ) -> SerializableIterator[ProductRecords, Any]:
-        def iterator(random: np.random.RandomState):
-            # Pre-compute relevance matrix
-            relevances = torch.diag(torch.ones(batch_size, dtype=torch.float))
+        class _RandomSpanDataset(ShardedIterableDataset):
+            def __init__(self, sampler):
+                super().__init__()
+                self.sampler = sampler
 
-            iter = self.documents.iter_sample(lambda m: random.randint(0, m))
+            def iter_shard(self, shard_id, num_shards):
+                yield from self.sampler._pairwise_record_iter()
 
-            while True:
-                batch = ProductRecords()
-                while len(batch) < batch_size:
-                    record = next(iter)
-                    text = record.text
-                    res = self.get_text_span(text, random)
-                    if not res:
-                        continue
-                    batch.add_topics(create_record(text=res[0]))
-                    batch.add_documents(create_record(text=res[1]))
-                batch.set_relevances(relevances)
-                yield batch
-
-        return RandomSerializableIterator(self.random, iterator)
+        return InfiniteDataset(_RandomSpanDataset(self))

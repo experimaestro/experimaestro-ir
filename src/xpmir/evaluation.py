@@ -8,7 +8,6 @@ import pandas as pd
 from pathlib import Path
 from typing import DefaultDict, Dict, List, Protocol, Union, Optional
 import ir_measures
-from lightning import Fabric
 
 from experimaestro import (
     Task,
@@ -41,7 +40,6 @@ from xpmir.metrics import evaluator
 from xpmir.rankers import Retriever
 from experimaestro.launchers import Launcher
 
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -168,13 +166,15 @@ class Evaluate(BaseEvaluation, Task):
     topic_wrapper: Param[Optional[TopicWrapper]] = None
     """Topic extractor"""
 
-    fabric_config: Meta[FabricConfiguration] = field(default_factory=FabricConfiguration.C)
+    fabric_config: Meta[FabricConfiguration] = field(
+        default_factory=FabricConfiguration.C
+    )
     """Runtime configuration, managed by Fabric"""
 
     def execute(self):
         self.retriever.initialize()
-        
-        #instanciate the Fabirc object
+
+        # instanciate the Fabirc object
         fabric = self.fabric_config.get_instance()
         fabric.launch()
 
@@ -184,7 +184,7 @@ class Evaluate(BaseEvaluation, Task):
             setattr(self.retriever, name, fabric.setup(module))
             getattr(self.retriever, name).to(fabric.device)
             # TODO - this should NOT be necessary and may cause problems later...
-            
+
             logger.info(f"Using device {fabric.device} for {name}")
 
         run = get_run(self.retriever, self.dataset)
@@ -283,9 +283,9 @@ class Evaluations:
         )
         tags.sort()
 
-        assert (
-            len(tags) > 0
-        ), "No tags found, please tag your evaluations to convert results to dataframe"
+        assert len(tags) > 0, (
+            "No tags found, please tag your evaluations to convert results to dataframe"
+        )
 
         # Get all the results and metrics
         to_process = []
@@ -411,9 +411,9 @@ class EvaluationsCollection:
             this changes the experiment ID.
         """
         if model_id is not None and not overwrite:
-            assert (
-                model_id not in self.per_model
-            ), f"Model with ID `{model_id}` was already evaluated"
+            assert model_id not in self.per_model, (
+                f"Model with ID `{model_id}` was already evaluated"
+            )
 
         results = []
         for key, evaluations in self.collection.items():

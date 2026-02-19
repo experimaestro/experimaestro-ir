@@ -1,7 +1,7 @@
 import io
 import json
 from pathlib import Path
-from typing import Iterator, List, Tuple, Dict, Any
+from typing import Iterator, List, Tuple, Dict
 import numpy as np
 from datamaestro.record import Record
 from datamaestro_text.data.ir import (
@@ -20,13 +20,10 @@ from datamaestro_text.data.ir import (
 from experimaestro import Param, tqdm, Task, Annotated, pathgenerator
 from experimaestro.annotations import cache
 from functools import cached_property
-import torch
 from xpmir.rankers import ScoredDocument
 from xpmir.datasets.adapters import TextStore
 from xpmir.letor.records import (
-    BatchwiseRecords,
     PairwiseRecords,
-    ProductRecords,
     PairwiseRecord,
     PointwiseRecord,
     TopicRecord,
@@ -34,18 +31,11 @@ from xpmir.letor.records import (
 from xpmir.rankers import Retriever, Scorer
 from xpm_torch import Sampler
 
-from xpm_torch.utils.iter import (
-    RandomSerializableIterator,
-    SerializableIterator,
-    SerializableIteratorAdapter,
-    SkippingIterator,
-    RandomStateSerializableAdaptor,
-    InfiniteSkippingIterator,
-    iterable_of,
-)
+from xpm_torch.datasets import ShardedIterableDataset, LineFileDataset, InfiniteDataset
 from datamaestro_text.interfaces.plaintext import read_tsv
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -53,60 +43,21 @@ logger = logging.getLogger(__name__)
 
 
 class PointwiseSampler(Sampler):
-    def pointwise_iter(self) -> SerializableIterator[PointwiseRecord, Any]:
-        """Iterable over pointwise records"""
-        raise NotImplementedError(f"{self.__class__} should implement PointwiseRecord")
+    pass
 
 
 class PairwiseSampler(Sampler):
     """Abstract class for pairwise samplers which output a set of (query,
     positive, negative) triples"""
 
-    def pairwise_iter(self) -> SerializableIterator[PairwiseRecord, Any]:
-        """Iterate over batches of size (# of queries) batch_size
-
-        Args:
-            batch_size: Number of queries per batch
-        """
-        raise NotImplementedError(f"{self.__class__} should implement __iter__")
-
-    def pairwise_batch_iter(self, size) -> SerializableIterator[PairwiseRecords, Any]:
-        """Batchwise iterator
-
-        Can be subclassed by some classes to be more efficient"""
-
-        class BatchIterator(SerializableIterator):
-            def __init__(self, sampler: PairwiseSampler):
-                self.iter = sampler.pairwise_iter()
-
-            def state_dict(self):
-                return self.iter.state_dict()
-
-            def load_state_dict(self, state):
-                self.iter.load_state_dict(state)
-
-            def __next__(self):
-                batch = PairwiseRecords()
-                for _, record in zip(range(size), self.iter):
-                    batch.add(record)
-                return batch
-
-        return BatchIterator(self)
+    pass
 
 
 class BatchwiseSampler(Sampler):
     """Base class for batchwise samplers, that provide for each question a list
     of documents"""
 
-    def batchwise_iter(
-        self, batch_size: int
-    ) -> SerializableIterator[BatchwiseRecords, Any]:
-        """Iterate over batches of size (# of queries) batch_size
-
-        Args:
-            batch_size: Number of queries per batch
-        """
-        raise NotImplementedError(f"{self.__class__} should implement __iter__")
+    pass
 
 
 # --- Real instances
@@ -156,7 +107,6 @@ class ModelBasedSampler(Sampler):
             tmprunpath = runpath.with_suffix(".tmp")
 
             with tmprunpath.open("wt") as fp:
-
                 # Read the assessments
                 self.logger.info("Reading assessments")
                 assessments: Dict[str, Dict[str, float]] = {}
@@ -305,18 +255,18 @@ class PointwiseModelBasedSampler(PointwiseSampler, ModelBasedSampler):
             else:
                 yield self.prepare(self.neg_records[self.random.randint(0, nneg)])
 
-    def pointwise_iter(self) -> SerializableIterator[PointwiseRecord, Any]:
-        npos = len(self.pos_records)
-        nneg = len(self.neg_records)
+    def as_dataset(self) -> ShardedIterableDataset:
+        """Returns a dataset that yields infinite random pointwise records."""
 
-        def iter(random):
-            while True:
-                if self.random.random() < self.relevant_ratio:
-                    yield self.prepare(self.pos_records[self.random.randint(0, npos)])
-                else:
-                    yield self.prepare(self.neg_records[self.random.randint(0, nneg)])
+        class _PointwiseDataset(ShardedIterableDataset):
+            def __init__(self, sampler):
+                super().__init__()
+                self.sampler = sampler
 
-        return RandomSerializableIterator(self.random, iter)
+            def iter_shard(self, shard_id, num_shards):
+                yield from self.sampler.record_iter()
+
+        return InfiniteDataset(_PointwiseDataset(self))
 
 
 class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
@@ -342,19 +292,30 @@ class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
             text = document[TextItem].text
         return document
 
-    def pairwise_iter(self) -> SerializableIterator[PairwiseRecord, Any]:
-        def iter(random):
-            while True:
-                title, positives, negatives = self.topics[
-                    random.randint(0, len(self.topics))
-                ]
-                yield PairwiseRecord(
-                    create_record(text=title),
-                    self.sample(positives),
-                    self.sample(negatives),
-                )
+    def _record_iter(self) -> Iterator[PairwiseRecord]:
+        """Infinite iterator over pairwise records."""
+        while True:
+            title, positives, negatives = self.topics[
+                self.random.randint(0, len(self.topics))
+            ]
+            yield PairwiseRecord(
+                create_record(text=title),
+                self.sample(positives),
+                self.sample(negatives),
+            )
 
-        return RandomSerializableIterator(self.random, iter)
+    def as_dataset(self) -> ShardedIterableDataset:
+        """Returns a dataset that yields infinite random pairwise records."""
+
+        class _PairwiseDataset(ShardedIterableDataset):
+            def __init__(self, sampler):
+                super().__init__()
+                self.sampler = sampler
+
+            def iter_shard(self, shard_id, num_shards):
+                yield from self.sampler._record_iter()
+
+        return InfiniteDataset(_PairwiseDataset(self))
 
 
 class PairwiseInBatchNegativesSampler(BatchwiseSampler):
@@ -367,29 +328,21 @@ class PairwiseInBatchNegativesSampler(BatchwiseSampler):
         super().initialize(random)
         self.sampler.initialize(random)
 
-    def batchwise_iter(
-        self, batch_size: int
-    ) -> SerializableIterator[BatchwiseRecords, Any]:
-        def iter(pair_iter):
-            # Pre-compute relevance matrix (query x document)
-            relevances = torch.cat(
-                (torch.eye(batch_size), torch.zeros(batch_size, batch_size)), 1
-            )
+    def as_dataset(self) -> ShardedIterableDataset:
+        """Returns the inner sampler's dataset.
 
-            while True:
-                batch = ProductRecords()
-                positives = []
-                negatives = []
-                for _, record in zip(range(batch_size), pair_iter):
-                    batch.add_topics(record.query)
-                    positives.append(record.positive)
-                    negatives.append(record.negative)
-                batch.add_documents(*positives)
-                batch.add_documents(*negatives)
-                batch.set_relevances(relevances)
-                yield batch
+        In-batch negative construction moves to batchwise_collate.
+        """
+        return self.sampler.as_dataset()
 
-        return SerializableIteratorAdapter(self.sampler.pairwise_iter(), iter)
+    def get_collate_fn(self, base_collate=None):
+        """Returns the batchwise collate function.
+
+        If the inner sampler supports hydration, wraps with HydratingCollate.
+        """
+        from xpm_torch.collate import batchwise_collate
+
+        return self.sampler.get_collate_fn(batchwise_collate)
 
 
 class TripletBasedSampler(PairwiseSampler):
@@ -398,12 +351,24 @@ class TripletBasedSampler(PairwiseSampler):
     source: Param[TrainingTriplets]
     """Triplets"""
 
-    def pairwise_iter(self) -> SerializableIterator[PairwiseRecord, Any]:
-        iterator = (
-            PairwiseRecord(topic, pos, neg) for topic, pos, neg in self.source.iter()
-        )
+    def as_dataset(self) -> ShardedIterableDataset:
+        """Returns a dataset wrapping the triplet source."""
 
-        return SkippingIterator(iterator)
+        # Wrap the triplet source: we use the source's iter() and wrap with SkippingIterator-like
+        # Since TrainingTriplets doesn't expose a file path, we use an indexed approach
+        # by collecting all triplets. For very large sources this may need a file-based approach.
+        class _TripletIterableDataset(ShardedIterableDataset):
+            def __init__(self, source):
+                super().__init__()
+                self.source = source
+
+            def iter_shard(self, shard_id, num_shards):
+                # Iterate once through data, yielding every num_shards-th item
+                for i, (topic, pos, neg) in enumerate(self.source.iter()):
+                    if i % num_shards == shard_id:
+                        yield PairwiseRecord(topic, pos, neg)
+
+        return InfiniteDataset(_TripletIterableDataset(self.source))
 
 
 class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
@@ -422,54 +387,49 @@ class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
     negative_algo: Param[str] = "random"
     """The algo to sample the negatives, default value is random"""
 
-    def pairwise_iter(self) -> SkippingIterator[PairwiseRecord]:
-        class _Iterator(
-            RandomStateSerializableAdaptor[SerializableIterator[PairwiseSample]]
-        ):
-            def __init__(
-                self,
-                iterator: SerializableIterator[PairwiseSample],
-                random: np.random.RandomState,
-                negative_algo: str,
-                documents: DocumentStore,
-            ):
-                super().__init__(iterator)
-                self.random = random
-                self.negative_algo = negative_algo
-                self.documents = documents
+    def _sample_record(self, sample: PairwiseSample) -> PairwiseRecord:
+        """Convert a PairwiseSample to a PairwiseRecord by sampling pos/neg."""
+        possible_algos = sample.negatives.keys()
 
-            def __next__(self):
-                sample = next(self.iterator)  # type: PairwiseSample
-                possible_algos = sample.negatives.keys()
+        assert self.negative_algo in possible_algos or self.negative_algo == "random"
 
-                assert (
-                    self.negative_algo in possible_algos
-                    or self.negative_algo == "random"
+        pos = sample.positives[self.random.randint(len(sample.positives))]
+        qry = sample.topics[self.random.randint(len(sample.topics))]
+
+        if self.negative_algo == "random":
+            while True:
+                neg_id = self.documents.docid_internal2external(
+                    self.random.randint(0, self.documents.documentcount)
                 )
+                if neg_id != pos.id:
+                    break
+            neg = create_record(id=neg_id)
+        else:
+            negatives = sample.negatives[self.negative_algo]
+            neg = negatives[self.random.randint(len(negatives))]
 
-                pos = sample.positives[self.random.randint(len(sample.positives))]
-                qry = sample.topics[self.random.randint(len(sample.topics))]
+        return PairwiseRecord(qry.as_record(), DocumentRecord(pos), DocumentRecord(neg))
 
-                if self.negative_algo == "random":
-                    # choose the random negatives
-                    while True:
-                        neg_id = self.documents.docid_internal2external(
-                            self.random.randint(0, self.documents.documentcount)
-                        )
-                        if neg_id != pos.id:
-                            break
-                    neg = create_record(id=neg_id)
-                else:
-                    negatives = sample.negatives[self.negative_algo]
-                    neg = negatives[self.random.randint(len(negatives))]
+    def as_dataset(self) -> ShardedIterableDataset:
+        """Returns a dataset that yields infinite random pairwise records."""
+        from xpm_torch.datasets import TransformDataset
 
-                return PairwiseRecord(
-                    qry.as_record(), DocumentRecord(pos), DocumentRecord(neg)
-                )
+        class _PairwiseSampleDataset(ShardedIterableDataset):
+            def __init__(self, dataset):
+                super().__init__()
+                self.dataset = dataset
 
-        base = InfiniteSkippingIterator(iterable_of(lambda: self.dataset.iter()))
+            def iter_shard(self, shard_id, num_shards):
+                for i, sample in enumerate(self.dataset.iter()):
+                    if i % num_shards == shard_id:
+                        yield sample
 
-        return _Iterator(base, self.random, self.negative_algo, self.documents)
+        return InfiniteDataset(
+            TransformDataset(
+                _PairwiseSampleDataset(self.dataset),
+                self._sample_record,
+            )
+        )
 
 
 # --- Dataloader
@@ -537,21 +497,24 @@ class JSONLPairwiseSampleDataset(PairwiseSampleDataset):
 
 # A class for loading the data, need to move the other places.
 class PairwiseSamplerFromTSV(PairwiseSampler):
-
     pairwise_samples_path: Param[Path]
     """The path which stores the existing triplets"""
 
-    def pairwise_iter(self) -> SerializableIterator[PairwiseRecord, Any]:
-        def iter() -> Iterator[PairwiseSample]:
-            for triplet in read_tsv(self.pairwise_samples_path):
-                q_id, pos_id, pos_score, neg_id, neg_score = triplet
-                yield PairwiseRecord(
-                    Record(IDItem(q_id)),
-                    Record(IDItem(pos_id), ScoredItem(pos_score)),
-                    Record(IDItem(neg_id), ScoredItem(neg_score)),
-                )
+    def _parse_tsv_line(self, line: str) -> PairwiseRecord:
+        """Parse a TSV line into a PairwiseRecord."""
+        parts = line.split("\t")
+        q_id, pos_id, pos_score, neg_id, neg_score = parts
+        return PairwiseRecord(
+            Record(IDItem(q_id)),
+            Record(IDItem(pos_id), ScoredItem(pos_score)),
+            Record(IDItem(neg_id), ScoredItem(neg_score)),
+        )
 
-        return SkippingIterator(iter)
+    def as_dataset(self) -> ShardedIterableDataset:
+        """Returns a LineFileDataset for the TSV pairwise samples."""
+        return InfiniteDataset(
+            LineFileDataset(self.pairwise_samples_path, self._parse_tsv_line)
+        )
 
 
 # A class for loading the data, need to move the other places.
@@ -730,7 +693,6 @@ class TeacherModelBasedHardNegativesTripletSampler(Task, Sampler):
         # make the tqdm progressing wrt one record, not a batch of records
         with self.hard_negative_triplet.open("wt") as fp:
             for batch in tqdm(self.iter_batches()):
-
                 # scores in shape: [batch_size, 2]
                 self.teacher_model.eval()
                 scores = self.teacher_model(batch)

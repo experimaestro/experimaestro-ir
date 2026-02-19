@@ -3,6 +3,7 @@ from typing import List, Optional
 from attrs import evolve
 import torch
 from experimaestro import Param
+from xpm_torch.utils.utils import foreach
 from xpmir.letor.records import TopicRecord, DocumentRecord
 from xpmir.neural import DualRepresentationScorer, QueriesRep, DocsRep
 
@@ -13,6 +14,7 @@ from xpm_torch.trainers import TrainingHook
 from xpm_torch.metrics import ScalarMetric
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -196,6 +198,7 @@ class FlopsRegularizer(DualVectorListener):
     .. math::
         FLOPS(x) = \left( \frac{1}{d} \sum_{i=1}^d |x_i| \right)^2
     """
+
     lambda_q: Param[float]
     """Lambda for queries"""
 

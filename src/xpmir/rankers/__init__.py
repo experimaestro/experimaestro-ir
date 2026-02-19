@@ -17,7 +17,6 @@ from typing import (
 import torch
 import torch.nn as nn
 import attrs
-from lightning import Fabric
 from experimaestro import Param, Config, Meta, field
 from datamaestro_text.data.ir import (
     Documents,
@@ -45,6 +44,7 @@ if TYPE_CHECKING:
     from xpmir.evaluation import RetrieverFactory
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -181,8 +181,7 @@ class RandomScorer(Scorer):
 
 
 class AbstractModuleScorerCall(Protocol):
-    def __call__(self, inputs: "BaseRecords", info: Optional[TrainerContext]):
-        ...
+    def __call__(self, inputs: "BaseRecords", info: Optional[TrainerContext]): ...
 
 
 class AbstractModuleScorer(Scorer, Module):
@@ -219,7 +218,6 @@ class AbstractModuleScorer(Scorer, Module):
     def compute(
         self, topic: TopicRecord, scored_documents: Iterable[ScoredDocument]
     ) -> List[ScoredDocument]:
-
         # Prepare the inputs and call the model
         inputs = ProductRecords()
         inputs.add_topics(topic)
@@ -319,7 +317,6 @@ class AbstractTwoStageRetriever(Retriever):
         self.retriever.initialize()
         self._batcher = self.batcher.initialize(self.batchsize)
         self.scorer.initialize(ModuleInitMode.DEFAULT.to_options())
-
 
 
 class TwoStageRetriever(AbstractTwoStageRetriever):
@@ -434,8 +431,7 @@ T = TypeVar("T")
 
 
 class DocumentsFunction(Protocol, Generic[KWARGS, ARGS, T]):
-    def __call__(self, documents: Documents, *args: ARGS, **kwargs: KWARGS) -> T:
-        ...
+    def __call__(self, documents: Documents, *args: ARGS, **kwargs: KWARGS) -> T: ...
 
 
 def document_cache(fn: DocumentsFunction[KWARGS, ARGS, T]):

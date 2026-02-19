@@ -1,5 +1,5 @@
 import re
-from typing import Iterator, NamedTuple, Protocol, Tuple
+from typing import Iterator, Tuple
 
 
 def basictokenizer(text: str) -> Iterator[Tuple[str, int, int]]:

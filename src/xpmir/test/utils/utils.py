@@ -91,7 +91,7 @@ class SparseRandomTextEncoder(TextEncoder):
 
     def __post_init__(self):
         super().__init__()
-        if not (self.dim, self.sparsity) in SparseRandomTextEncoder.MAPS:
+        if (self.dim, self.sparsity) not in SparseRandomTextEncoder.MAPS:
             SparseRandomTextEncoder.MAPS[(self.dim, self.sparsity)] = defaultdict(
                 VectorGenerator(self.dim, self.sparsity)
             )
@@ -106,8 +106,11 @@ class SparseRandomTextEncoder(TextEncoder):
     def forward(self, texts: List[str]) -> torch.Tensor:
         """Returns a matrix encoding the provided texts"""
 
-        tensors = [self.map[check_str(
-            text[TextItem].text if isinstance(text, Record) else text
-        )].unsqueeze(0) for text in texts]
+        tensors = [
+            self.map[
+                check_str(text[TextItem].text if isinstance(text, Record) else text)
+            ].unsqueeze(0)
+            for text in texts
+        ]
 
         return RepresentationOutput(torch.cat(tensors))
