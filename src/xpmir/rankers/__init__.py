@@ -202,9 +202,6 @@ class AbstractModuleScorer(Scorer, Module):
         super().__init__()
         self._initialized = False
 
-    def __str__(self):
-        return f"scorer {self.__class__.__qualname__}"
-
     def __initialize__(self, options: ModuleInitOptions):
         """Initialize a learnable scorer
 
