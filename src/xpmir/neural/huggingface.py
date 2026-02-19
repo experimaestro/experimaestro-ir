@@ -30,6 +30,15 @@ class HFCrossScorer(AbstractModuleScorer):
     def __post_init__(self):
         self.config = AutoConfig.from_pretrained(self.hf_id)
 
+        if self.max_length is None:
+            original_max = self.config.max_position_embeddings
+            self.logger.info(f"No max_length specified for {self.hf_id}, using model's original max_position_embeddings: {original_max}")
+            self.max_length = original_max
+        else:            
+            if self.max_length > self.config.max_position_embeddings:
+                self.logger.warning(f"Specified max_length {self.max_length} exceeds model's max_position_embeddings {self.config.max_position_embeddings}. Capping to model's maximum.")
+                self.max_length = self.config.max_position_embeddings
+        
         #ensure that num_labels is one for a Cross-encoder
         if hasattr(self.config, "num_labels"):
             self.config.num_labels = 1
@@ -37,7 +46,7 @@ class HFCrossScorer(AbstractModuleScorer):
             self.logger.warning("no 'num_labels param found in config, check that classifier outputs one label")
 
         self.model = AutoModelForSequenceClassification.from_pretrained(
-            self.hf_id, config=self.config
+            self.hf_id, config=self.config, dtype=torch.float32,
         )
 
         if self.hf_id == "microsoft/MiniLM-L12-H384-uncased":

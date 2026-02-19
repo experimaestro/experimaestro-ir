@@ -119,14 +119,6 @@ class Scorer(Config, Initializable, EasyLogger, ABC):
         """Score all documents with respect to the topic"""
         ...
 
-    def eval(self):
-        """Put the model in inference/evaluation mode"""
-        pass
-
-    def to(self, device):
-        """Move the scorer to another device"""
-        pass
-
     def getRetriever(
         self,
         retriever: "Retriever",
@@ -213,17 +205,6 @@ class AbstractModuleScorer(Scorer, Module):
     def __str__(self):
         return f"scorer {self.__class__.__qualname__}"
 
-    def eval(self):
-        """Put the model in training mode"""
-        self.train(False)
-
-    def to(self, device):
-        """
-        Move the scorer to another device. 
-        Set to explictly use the to() method of the parent's class Module.
-        """
-        return Module.to(self, device)
-
     def __initialize__(self, options: ModuleInitOptions):
         """Initialize a learnable scorer
 
@@ -249,7 +230,7 @@ class AbstractModuleScorer(Scorer, Module):
         inputs.add_documents(*[sd.document for sd in scored_documents])
 
         with torch.no_grad():
-            scores = self(inputs, None).cpu().numpy()
+            scores = self(inputs, None).cpu().float().numpy()
 
         # Returns the scored documents
         scoredDocuments = []
