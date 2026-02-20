@@ -26,14 +26,15 @@ from experimaestro import (
     tqdm,
     Constant,
 )
-from datamaestro_text.data.ir import DocumentRecord, DocumentStore
+from datamaestro_text.data.ir import IDTextRecord, DocumentStore
 from xpm_torch import Module
 from xpm_torch.learner import ModuleInitMode
 from xpm_torch.batchers import Batcher
 
 from xpmir.utils.utils import batchiter
 from xpmir.text.encoders import TextEncoderBase, TextsRepresentationOutput, InputType
-from xpmir.rankers import Retriever, TopicRecord, ScoredDocument
+from datamaestro_text.data.ir import TextRecord
+from xpmir.rankers import Retriever, ScoredDocument
 from xpmir.utils.iter import MultiprocessIterator
 from xpmir.utils.multiprocessing import StoppableQueue, available_cpus
 from xpm_torch.configuration import FabricConfiguration
@@ -244,7 +245,7 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
     @staticmethod
     def device_execute(
         fabric_instance: Fabric,
-        iter_batches: Iterator[List[Tuple[int, DocumentRecord]]],
+        iter_batches: Iterator[List[Tuple[int, IDTextRecord]]],
         encoder,
         batcher,
         batch_size,
@@ -293,7 +294,7 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
 
     @staticmethod
     def encode_documents(
-        batch: List[Tuple[int, DocumentRecord]],
+        batch: List[Tuple[int, IDTextRecord]],
         encoder: TextEncoderBase[InputType, TextsRepresentationOutput],
         queue: "Queue[EncodedDocument]",
     ):
@@ -440,7 +441,7 @@ class SparseRetriever(Retriever, Generic[InputType]):
         results = asyncio.run(aio_process())
         return results
 
-    def retrieve(self, query: TopicRecord, top_k=None) -> List[ScoredDocument]:
+    def retrieve(self, query: TextRecord, top_k=None) -> List[ScoredDocument]:
         """Search with document-at-a-time (DAAT) strategy
 
         :param top_k: Overrides the default top-K value

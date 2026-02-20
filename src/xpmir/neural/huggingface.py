@@ -4,12 +4,12 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer, Auto
 
 from experimaestro import Param
 from xpm_torch.learner import TrainerContext
-from datamaestro_text.data.ir import TextItem
 from xpmir.text import TokenizedTexts
 
 from xpmir.letor.records import BaseRecords
 from xpmir.rankers import AbstractModuleScorer
 from xpm_torch.utils import to_device
+
 
 class HFCrossScorer(AbstractModuleScorer):
     """Load a cross scorer model from the huggingface"""
@@ -32,26 +32,38 @@ class HFCrossScorer(AbstractModuleScorer):
 
         if self.max_length is None:
             original_max = self.config.max_position_embeddings
-            self.logger.info(f"No max_length specified for {self.hf_id}, using model's original max_position_embeddings: {original_max}")
+            self.logger.info(
+                f"No max_length specified for {self.hf_id}, using model's original max_position_embeddings: {original_max}"
+            )
             self.max_length = original_max
-        else:            
+        else:
             if self.max_length > self.config.max_position_embeddings:
-                self.logger.warning(f"Specified max_length {self.max_length} exceeds model's max_position_embeddings {self.config.max_position_embeddings}. Capping to model's maximum.")
+                self.logger.warning(
+                    f"Specified max_length {self.max_length} exceeds model's max_position_embeddings {self.config.max_position_embeddings}. Capping to model's maximum."
+                )
                 self.max_length = self.config.max_position_embeddings
-        
-        #ensure that num_labels is one for a Cross-encoder
+
+        # ensure that num_labels is one for a Cross-encoder
         if hasattr(self.config, "num_labels"):
             self.config.num_labels = 1
         else:
-            self.logger.warning("no 'num_labels param found in config, check that classifier outputs one label")
+            self.logger.warning(
+                "no 'num_labels param found in config, check that classifier outputs one label"
+            )
 
         self.model = AutoModelForSequenceClassification.from_pretrained(
-            self.hf_id, config=self.config, dtype=torch.float32,
+            self.hf_id,
+            config=self.config,
+            dtype=torch.float32,
         )
 
         if self.hf_id == "microsoft/MiniLM-L12-H384-uncased":
-            self.logger.warning("Enforcing lower_case to True for microsoft/MiniLM-L12-H384-uncased")
-            self.tokenizer = AutoTokenizer.from_pretrained(self.hf_id, do_lower_case=True)
+            self.logger.warning(
+                "Enforcing lower_case to True for microsoft/MiniLM-L12-H384-uncased"
+            )
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                self.hf_id, do_lower_case=True
+            )
         else:
             self.tokenizer = AutoTokenizer.from_pretrained(self.hf_id)
 
@@ -63,11 +75,21 @@ class HFCrossScorer(AbstractModuleScorer):
     ) -> TokenizedTexts:
         """Transform the text to tokens by using the tokenizer"""
         # determine per-side token limits (instance params take precedence)
-        q_max = self.max_query_length if getattr(self, "max_query_length", None) is not None else None
-        d_max = self.max_doc_length if getattr(self, "max_doc_length", None) is not None else None
+        q_max = (
+            self.max_query_length
+            if getattr(self, "max_query_length", None) is not None
+            else None
+        )
+        d_max = (
+            self.max_doc_length
+            if getattr(self, "max_doc_length", None) is not None
+            else None
+        )
 
         # Batch-truncate queries and documents separately to avoid N tokenizer calls.
-        def _batch_truncate(texts: Sequence[str], max_tokens: Optional[int]) -> List[str]:
+        def _batch_truncate(
+            texts: Sequence[str], max_tokens: Optional[int]
+        ) -> List[str]:
             """Truncate a list of texts to at most `max_tokens` tokens each and decode back to strings.
 
             If `max_tokens` is None, returns the original texts as a list.
@@ -84,10 +106,12 @@ class HFCrossScorer(AbstractModuleScorer):
                 return_token_type_ids=False,
             )
             ids = enc["input_ids"]
-            return self.tokenizer.batch_decode(ids, skip_special_tokens=True, clean_up_tokenization_spaces=True)
+            return self.tokenizer.batch_decode(
+                ids, skip_special_tokens=True, clean_up_tokenization_spaces=True
+            )
 
-        queries = [q[TextItem].text for q in input_records.queries]
-        docs = [d[TextItem].text for d in input_records.documents]
+        queries = [q["text_item"].text for q in input_records.queries]
+        docs = [d["text_item"].text for d in input_records.documents]
 
         truncated_queries = _batch_truncate(queries, q_max)
         truncated_docs = _batch_truncate(docs, d_max)
@@ -117,7 +141,7 @@ class HFCrossScorer(AbstractModuleScorer):
             r.get("attention_mask", None),
             r.get("token_type_ids", None),  # if r["token_type_ids"] else None
         )
-    
+
     def batch_tokenize_v2(
         self,
         input_records: BaseRecords,
@@ -126,11 +150,19 @@ class HFCrossScorer(AbstractModuleScorer):
     ) -> TokenizedTexts:
         """Transform the text to tokens by using the tokenizer"""
         # determine per-side token limits (instance params take precedence)
-        q_max = self.max_query_length if getattr(self, "max_query_length", None) is not None else None
-        d_max = self.max_doc_length if getattr(self, "max_doc_length", None) is not None else None
+        q_max = (
+            self.max_query_length
+            if getattr(self, "max_query_length", None) is not None
+            else None
+        )
+        d_max = (
+            self.max_doc_length
+            if getattr(self, "max_doc_length", None) is not None
+            else None
+        )
 
-        queries = [q[TextItem].text for q in input_records.queries]
-        docs = [d[TextItem].text for d in input_records.documents]
+        queries = [q["text_item"].text for q in input_records.queries]
+        docs = [d["text_item"].text for d in input_records.documents]
 
         # compute combined max length (respect model maximum)
         combined_limit = self.tokenizer.model_max_length
@@ -156,12 +188,20 @@ class HFCrossScorer(AbstractModuleScorer):
         q_ids_list = enc_q["input_ids"]
         d_ids_list = enc_d["input_ids"]
 
-        cls_id = self.tokenizer.cls_token_id or self.tokenizer.convert_tokens_to_ids(self.tokenizer.cls_token)
-        sep_id = self.tokenizer.sep_token_id or self.tokenizer.convert_tokens_to_ids(self.tokenizer.sep_token)
+        cls_id = self.tokenizer.cls_token_id or self.tokenizer.convert_tokens_to_ids(
+            self.tokenizer.cls_token
+        )
+        sep_id = self.tokenizer.sep_token_id or self.tokenizer.convert_tokens_to_ids(
+            self.tokenizer.sep_token
+        )
         pad_id = (
             self.tokenizer.pad_token_id
             if getattr(self.tokenizer, "pad_token_id", None) is not None
-            else (self.tokenizer.eos_token_id if getattr(self.tokenizer, "eos_token_id", None) is not None else 0)
+            else (
+                self.tokenizer.eos_token_id
+                if getattr(self.tokenizer, "eos_token_id", None) is not None
+                else 0
+            )
         )
 
         built_inputs: List[List[int]] = []
@@ -229,14 +269,12 @@ class HFCrossScorer(AbstractModuleScorer):
         )
 
     def forward(self, inputs: BaseRecords, info: TrainerContext = None):
-
         tokenized = self.batch_tokenize(inputs, maxlen=self.max_length, mask=True)
         # strange that some existing models on the huggingface don't use the token_type
         with torch.set_grad_enabled(torch.is_grad_enabled()):
             result = self.model(
                 tokenized.ids,
-                token_type_ids= to_device(tokenized.token_type_ids, self.device),
-                attention_mask= to_device(tokenized.mask, self.device),
+                token_type_ids=to_device(tokenized.token_type_ids, self.device),
+                attention_mask=to_device(tokenized.mask, self.device),
             ).logits  # Tensor[float] of length records size
         return result
-

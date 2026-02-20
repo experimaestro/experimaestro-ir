@@ -12,13 +12,12 @@ import numpy as np
 
 from experimaestro import Config, Meta, Param
 from datamaestro.data import File
-from datamaestro_text.data.ir.base import (
-    DocumentRecord,
-    ScoredItem,
+from datamaestro_text.data.ir import (
+    IDRecord,
+    TextRecord,
     SimpleTextItem,
-    IDItem,
-    create_record,
 )
+from xpmir.rankers import ScoredDocument
 from datamaestro_text.data.ir import AdhocAssessments
 from xpm_torch.datasets import (
     LineFileDataset,
@@ -82,19 +81,23 @@ class PairwiseDistillationSamplesTSV(PairwiseDistillationSamples, File):
         row = next(reader)
 
         if self.with_queryid:
-            query = create_record(id=row[2])
+            query = IDRecord(id=row[2])
         else:
-            query = create_record(text=row[2])
+            query = TextRecord(text_item=SimpleTextItem(row[2]))
 
         if self.with_docid:
             documents = (
-                DocumentRecord(IDItem(row[3]), ScoredItem(float(row[0]))),
-                DocumentRecord(IDItem(row[4]), ScoredItem(float(row[1]))),
+                ScoredDocument(IDRecord(id=row[3]), float(row[0])),
+                ScoredDocument(IDRecord(id=row[4]), float(row[1])),
             )
         else:
             documents = (
-                DocumentRecord(SimpleTextItem(row[3]), ScoredItem(float(row[0]))),
-                DocumentRecord(SimpleTextItem(row[4]), ScoredItem(float(row[1]))),
+                ScoredDocument(
+                    TextRecord(text_item=SimpleTextItem(row[3])), float(row[0])
+                ),
+                ScoredDocument(
+                    TextRecord(text_item=SimpleTextItem(row[4])), float(row[1])
+                ),
             )
 
         return PairwiseDistillationSample(query, documents)
@@ -170,16 +173,18 @@ class ListwiseDistillationSamplesTSV(ListwiseDistillationSamples, File):
     def _build_group(self, query_key: str, rows: list) -> ListwiseDistillationSample:
         """Build a ListwiseDistillationSample from grouped TREC lines."""
         if self.with_queryid:
-            query_record = create_record(id=query_key)
+            query_record = IDRecord(id=query_key)
         else:
-            query_record = create_record(text=query_key)
+            query_record = TextRecord(text_item=SimpleTextItem(query_key))
 
         documents = []
         for row in rows:
             if self.with_docid:
-                doc = DocumentRecord(IDItem(row[2]), ScoredItem(float(row[4])))
+                doc = ScoredDocument(IDRecord(id=row[2]), float(row[4]))
             else:
-                doc = DocumentRecord(SimpleTextItem(row[2]), ScoredItem(float(row[4])))
+                doc = ScoredDocument(
+                    TextRecord(text_item=SimpleTextItem(row[2])), float(row[4])
+                )
             documents.append(doc)
 
         return ListwiseDistillationSample(query_record, documents)

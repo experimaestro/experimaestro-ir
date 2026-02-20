@@ -5,8 +5,7 @@ import pytest
 import torch
 from collections import defaultdict
 from experimaestro import Constant
-from datamaestro_text.data.ir import TextItem, create_record
-from datamaestro.record import Record
+from datamaestro_text.data.ir import TextRecord, IDTextRecord, SimpleTextItem
 from xpmir.index import Index
 from xpmir.learning import Random, ModuleInitMode
 from xpmir.neural.dual import CosineDense, DotDense
@@ -42,7 +41,9 @@ class TestTokenizer(Tokenizer):
             return tokid
 
 
-class RandomTokensEncoder(TokenizedTextEncoderBase[Record, TokensRepresentationOutput]):
+class RandomTokensEncoder(
+    TokenizedTextEncoderBase[TextRecord, TokensRepresentationOutput]
+):
     DIMENSION = 7
     MAX_WORDS = 100
 
@@ -61,10 +62,10 @@ class RandomTokensEncoder(TokenizedTextEncoderBase[Record, TokensRepresentationO
     def pad_tokenid(self) -> int:
         return 0
 
-    def forward(self, records: List[Record], options=None):
+    def forward(self, records: List[TextRecord], options=None):
         options = options or TokenizerOptions()
         tok_texts = self.tokenizer.batch_tokenize(
-            [record[TextItem].text for record in records],
+            [record["text_item"].text for record in records],
             maxlen=options.max_length,
             mask=True,
         )
@@ -171,14 +172,14 @@ def cross_scorer():
 # ---
 
 QUERIES = [
-    create_record(text="purple cat"),
-    create_record(text="yellow house"),
+    TextRecord(text_item=SimpleTextItem("purple cat")),
+    TextRecord(text_item=SimpleTextItem("yellow house")),
 ]
 DOCUMENTS = [
-    create_record(id="1", text="the cat sat on the mat"),
-    create_record(id="2", text="the purple car"),
-    create_record(id="3", text="my little dog"),
-    create_record(id="4", text="the truck was on track"),
+    IDTextRecord(id="1", text_item=SimpleTextItem("the cat sat on the mat")),
+    IDTextRecord(id="2", text_item=SimpleTextItem("the purple car")),
+    IDTextRecord(id="3", text_item=SimpleTextItem("my little dog")),
+    IDTextRecord(id="4", text_item=SimpleTextItem("the truck was on track")),
 ]
 
 
@@ -250,7 +251,7 @@ def test_forward_consistency(modelfactory, inputfactoriescouple):
             outputs.append(model(input, None))
             maps.append(
                 {
-                    (qr[TextItem].text, dr[TextItem].text): ix
+                    (qr["text_item"].text, dr["text_item"].text): ix
                     for ix, (qr, dr) in enumerate(zip(input.queries, input.documents))
                 }
             )
@@ -260,6 +261,6 @@ def test_forward_consistency(modelfactory, inputfactoriescouple):
     for key in inter:
         s1 = outputs[0][maps[0][key]].item()
         s2 = outputs[1][maps[1][key]].item()
-        assert s1 == pytest.approx(
-            s2, abs=1e-6
-        ), f"{s1} different from {s2} in {outputs[0]}, {outputs[1]}"
+        assert s1 == pytest.approx(s2, abs=1e-6), (
+            f"{s1} different from {s2} in {outputs[0]}, {outputs[1]}"
+        )

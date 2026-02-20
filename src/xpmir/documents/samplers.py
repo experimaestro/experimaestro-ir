@@ -2,11 +2,16 @@ from abc import ABC, abstractmethod
 from typing import Optional, Tuple, Iterator
 from experimaestro import Param, Config
 import numpy as np
-from datamaestro_text.data.ir import DocumentStore, TextItem, create_record
+from datamaestro_text.data.ir import (
+    DocumentStore,
+    IDTextRecord,
+    TextRecord,
+    SimpleTextItem,
+)
 from xpm_torch import Random
 from xpm_torch.datasets import ShardedIterableDataset, InfiniteDataset
 
-from xpmir.letor.records import DocumentRecord, PairwiseRecord
+from xpmir.letor.records import PairwiseRecord
 from xpmir.letor.samplers import BatchwiseSampler, PairwiseSampler
 
 
@@ -16,11 +21,11 @@ class DocumentSampler(Config, ABC):
     documents: Param[DocumentStore]
 
     @abstractmethod
-    def __call__(self) -> Tuple[Optional[int], Iterator[DocumentRecord]]:
+    def __call__(self) -> Tuple[Optional[int], Iterator[IDTextRecord]]:
         """Returns an indicative number of samples and an iterator"""
         raise NotImplementedError()
 
-    def __iter__(self) -> Iterator[DocumentRecord]:
+    def __iter__(self) -> Iterator[IDTextRecord]:
         """Shorthand method that directly returns an iterator"""
         _, iter = self()
         return iter
@@ -38,7 +43,7 @@ class HeadDocumentSampler(DocumentSampler):
     max_ratio: Param[float] = 0
     """Maximum ratio of documents (if 0, no limit)"""
 
-    def __call__(self) -> Tuple[int, Iterator[DocumentRecord]]:
+    def __call__(self) -> Tuple[int, Iterator[IDTextRecord]]:
         count = (self.max_ratio or 1) * self.documents.documentcount
 
         if self.max_count > 0:
@@ -91,8 +96,8 @@ class RandomSpanSampler(BatchwiseSampler, PairwiseSampler):
     and negative ones coming from others
 
     Allows to (pre)-train as in co-condenser:
-        L. Gao and J. Callan, “Unsupervised Corpus Aware Language Model
-        Pre-training for Dense Passage Retrieval,” arXiv:2108.05540 [cs],
+        L. Gao and J. Callan, "Unsupervised Corpus Aware Language Model
+        Pre-training for Dense Passage Retrieval," arXiv:2108.05540 [cs],
         Aug. 2021, Accessed: Sep. 17, 2021. [Online].
         http://arxiv.org/abs/2108.05540
     """
@@ -135,20 +140,22 @@ class RandomSpanSampler(BatchwiseSampler, PairwiseSampler):
 
         while True:
             record_pos_qry = next(doc_iter)
-            text_pos_qry = record_pos_qry[TextItem].text
+            text_pos_qry = record_pos_qry["text_item"].text
             spans_pos_qry = self.get_text_span(text_pos_qry, self.random)
 
             record_neg = next(doc_iter)
-            text_neg = record_neg[TextItem].text
+            text_neg = record_neg["text_item"].text
             spans_neg = self.get_text_span(text_neg, self.random)
 
             if not (spans_pos_qry and spans_neg):
                 continue
 
             yield PairwiseRecord(
-                create_record(text=spans_pos_qry[0]),
-                create_record(text=spans_pos_qry[1]),
-                create_record(text=spans_neg[self.random.randint(0, 2)]),
+                TextRecord(text_item=SimpleTextItem(spans_pos_qry[0])),
+                TextRecord(text_item=SimpleTextItem(spans_pos_qry[1])),
+                TextRecord(
+                    text_item=SimpleTextItem(spans_neg[self.random.randint(0, 2)])
+                ),
             )
 
     def as_dataset(self) -> ShardedIterableDataset:

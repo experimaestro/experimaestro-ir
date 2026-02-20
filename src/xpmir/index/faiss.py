@@ -5,13 +5,13 @@ https://github.com/facebookresearch/faiss
 
 from pathlib import Path
 from typing import Callable, Iterator, List, Optional, Tuple
-from datamaestro_text.data.ir.base import TopicRecord
+from datamaestro_text.data.ir import TextRecord
 from experimaestro import Config, initializer, PathGenerator
 import torch
 import numpy as np
 from experimaestro import Meta, Task, Param, tqdm, field
 import logging
-from datamaestro_text.data.ir import DocumentStore, TextItem
+from datamaestro_text.data.ir import DocumentStore
 from xpmir.rankers import Retriever, ScoredDocument
 from xpm_torch.batchers import Batcher
 from xpmir.text.encoders import TextEncoder
@@ -170,7 +170,7 @@ class IndexBackedFaiss(FaissIndex, Task):
         with torch.no_grad():
             for batch in batchiter(self.batchsize, doc_iter):
                 batcher.process(
-                    [document[TextItem].text for document in batch],
+                    [document["text_item"].text for document in batch],
                     self.index_documents,
                     index,
                 )
@@ -215,11 +215,11 @@ class FaissRetriever(Retriever):
         self._index = faiss.read_index(str(self.index.faiss_index))
         logger.info("FAISS retriever: initialized")
 
-    def retrieve(self, query: TopicRecord) -> List[ScoredDocument]:
+    def retrieve(self, query: TextRecord) -> List[ScoredDocument]:
         """Retrieves a documents, returning a list sorted by decreasing score"""
         with torch.no_grad():
             self.encoder.eval()  # pass the model to the evaluation model
-            encoded_query = self.encoder([query[TextItem].text]).value
+            encoded_query = self.encoder([query["text_item"].text]).value
             if self.index.normalize:
                 encoded_query /= encoded_query.norm(2)
 

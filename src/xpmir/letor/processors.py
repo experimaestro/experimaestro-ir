@@ -9,11 +9,9 @@ from abc import ABC, abstractmethod
 from typing import TypeVar, Generic, List, Optional
 
 from experimaestro import Config, Param
-from datamaestro_text.data.ir import DocumentStore, IDItem
-from datamaestro_text.data.ir.base import create_record
+from datamaestro_text.data.ir import DocumentStore, IDTextRecord, SimpleTextItem
 from xpmir.datasets.adapters import TextStore
 from xpmir.rankers import ScoredDocument
-from datamaestro_text.data.ir.base import ScoredItem
 
 SampleT = TypeVar("SampleT")
 DocIn = TypeVar("DocIn")
@@ -95,14 +93,15 @@ class StoreHydrator(
         if self.documentstore is None:
             return docs
         # Extract IDs, hydrate, preserve scores if present
-        hydrated = self.documentstore.documents_ext([d[IDItem].id for d in docs])
-        # Preserve ScoredItem if present on original docs
+        ids = [
+            d.document["id"] if isinstance(d, ScoredDocument) else d["id"] for d in docs
+        ]
+        hydrated = self.documentstore.documents_ext(ids)
         result = []
         for orig, new_doc in zip(docs, hydrated):
-            try:
-                score = orig[ScoredItem].score
-                result.append(ScoredDocument(new_doc, score))
-            except (KeyError, TypeError):
+            if isinstance(orig, ScoredDocument):
+                result.append(ScoredDocument(new_doc, orig.score))
+            else:
                 result.append(new_doc)
         return result
 
@@ -110,7 +109,7 @@ class StoreHydrator(
         if self.querystore is None:
             return queries
         return [
-            create_record(id=q[IDItem].id, text=self.querystore[q[IDItem].id])
+            IDTextRecord(id=q["id"], text_item=SimpleTextItem(self.querystore[q["id"]]))
             for q in queries
         ]
 

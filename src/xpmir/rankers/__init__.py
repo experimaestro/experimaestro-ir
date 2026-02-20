@@ -21,10 +21,10 @@ from experimaestro import Param, Config, Meta, field
 from datamaestro_text.data.ir import (
     Documents,
     DocumentStore,
-    create_record,
-    IDItem,
+    IDTextRecord,
+    TextRecord,
+    SimpleTextItem,
 )
-from datamaestro_text.data.ir.base import DocumentRecord
 from xpm_torch.utils.utils import Initializable
 from xpm_torch.utils.logging import EasyLogger
 from xpm_torch.optim import ModuleInitMode, ModuleInitOptions
@@ -33,7 +33,6 @@ from xpm_torch.batchers import Batcher
 from xpm_torch.learner import TrainerContext
 
 from xpmir.letor.records import (
-    TopicRecord,
     BaseRecords,
     PairwiseRecord,
     PairwiseRecords,
@@ -52,8 +51,8 @@ logger = logging.getLogger(__name__)
 class ScoredDocument:
     """A data structure that associated a score with a document"""
 
-    document: DocumentRecord
-    """The document"""
+    document: dict
+    """The document (IDRecord, TextRecord, or IDTextRecord)"""
 
     score: float
     """The associated score"""
@@ -94,27 +93,31 @@ class Scorer(Config, Initializable, EasyLogger, ABC):
 
     def rsv(
         self,
-        topic: Union[str, TopicRecord],
+        topic: Union[str, IDTextRecord],
         documents: Union[List[ScoredDocument], ScoredDocument, str, List[str]],
     ) -> List[ScoredDocument]:
         # Convert into document records
         if isinstance(documents, str):
-            documents = [ScoredDocument(create_record(text=documents), None)]
+            documents = [
+                ScoredDocument(TextRecord(text_item=SimpleTextItem(documents)), None)
+            ]
         elif isinstance(documents[0], str):
             documents = [
-                ScoredDocument(create_record(text=scored_document), None)
+                ScoredDocument(
+                    TextRecord(text_item=SimpleTextItem(scored_document)), None
+                )
                 for scored_document in documents
             ]
 
         # Convert into topic record
         if isinstance(topic, str):
-            topic = create_record(text=topic)
+            topic = TextRecord(text_item=SimpleTextItem(topic))
 
         return self.compute(topic, documents)
 
     @abstractmethod
     def compute(
-        self, topic: TopicRecord, documents: Iterable[ScoredDocument]
+        self, topic: IDTextRecord, documents: Iterable[ScoredDocument]
     ) -> List[ScoredDocument]:
         """Score all documents with respect to the topic"""
         ...
@@ -171,7 +174,7 @@ class RandomScorer(Scorer):
     """The random number generator"""
 
     def compute(
-        self, record: TopicRecord, scored_documents: Iterable[ScoredDocument]
+        self, record: IDTextRecord, scored_documents: Iterable[ScoredDocument]
     ) -> List[ScoredDocument]:
         result = []
         random = self.random.state
@@ -216,7 +219,7 @@ class AbstractModuleScorer(Scorer, Module):
         return self
 
     def compute(
-        self, topic: TopicRecord, scored_documents: Iterable[ScoredDocument]
+        self, topic: IDTextRecord, scored_documents: Iterable[ScoredDocument]
     ) -> List[ScoredDocument]:
         # Prepare the inputs and call the model
         inputs = ProductRecords()
@@ -262,7 +265,7 @@ class Retriever(Config, ABC):
         raise NotImplementedError()
 
     def retrieve_all(
-        self, queries: Dict[str, TopicRecord]
+        self, queries: Dict[str, IDTextRecord]
     ) -> Dict[str, List[ScoredDocument]]:
         """Retrieves for a set of documents
 
@@ -280,7 +283,7 @@ class Retriever(Config, ABC):
         return results
 
     @abstractmethod
-    def retrieve(self, record: TopicRecord) -> List[ScoredDocument]:
+    def retrieve(self, record: IDTextRecord) -> List[ScoredDocument]:
         """Retrieves documents, returning a list sorted by decreasing score
 
         if `content` is true, includes the document full text
@@ -331,7 +334,7 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
     ):
         scoredDocuments.extend(self.scorer.rsv(query, batch))
 
-    def retrieve(self, record: TopicRecord):
+    def retrieve(self, record: IDTextRecord):
         # Calls the retriever
         scoredDocuments = self.retriever.retrieve(record)
 
@@ -366,7 +369,7 @@ class DuoTwoStageRetriever(AbstractTwoStageRetriever):
         """
         scoredDocuments.extend(self.rsv(query, batch))
 
-    def retrieve(self, query: TopicRecord):
+    def retrieve(self, query: IDTextRecord):
         """call the _retrieve function by using the batcher and do an
         aggregation of all the scores
         """
@@ -410,7 +413,7 @@ class DuoTwoStageRetriever(AbstractTwoStageRetriever):
 
     def rsv(
         self,
-        record: TopicRecord,
+        record: IDTextRecord,
         documents: List[Tuple[ScoredDocument, ScoredDocument]],
     ) -> List[float]:
         """Given the query and documents in tuple
@@ -468,8 +471,8 @@ class RetrieverHydrator(Retriever):
     def initialize(self):
         return self.retriever.initialize()
 
-    def retrieve(self, record: TopicRecord) -> List[ScoredDocument]:
+    def retrieve(self, record: IDTextRecord) -> List[ScoredDocument]:
         return [
-            ScoredDocument(self.store.document_ext(sd.document[IDItem].id), sd.score)
+            ScoredDocument(self.store.document_ext(sd.document["id"]), sd.score)
             for sd in self.retriever.retrieve(record)
         ]

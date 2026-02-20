@@ -2,7 +2,6 @@ import pytest
 import torch
 import numpy as np
 from pathlib import Path
-from datamaestro_text.data.ir import TextItem, IDItem
 from experimaestro import ObjectStore
 from experimaestro.xpmutils import DirectoryContext
 from xpmir.index.sparse import SparseRetriever, SparseRetrieverIndexBuilder
@@ -40,7 +39,7 @@ class SparseIndex:
 
         self.document_store = builder_instance.documents
         self.x_docs = builder_instance.encoder(
-            [d[TextItem].text for d in self.document_store.documents.values()]
+            [d["text_item"].text for d in self.document_store.documents.values()]
         ).value
 
         # Check index
@@ -68,12 +67,12 @@ def test_sparse_indexation(sparse_index: SparseIndex):
 
         sparse_index.index_instance.initialize(False)
         for jx, posting in enumerate(sparse_index.index_instance.index.postings(ix)):
-            assert (
-                posting.docid == nz[jx]
-            ), f"Error for posting {jx} of term {ix} (docid)"
-            assert (
-                x[nz[jx]] == posting.value
-            ), f"Error for posting {jx} of term {ix} (value)"
+            assert posting.docid == nz[jx], (
+                f"Error for posting {jx} of term {ix} (docid)"
+            )
+            assert x[nz[jx]] == posting.value, (
+                f"Error for posting {jx} of term {ix} (value)"
+            )
 
             jx += 1
 
@@ -102,7 +101,7 @@ def test_sparse_retrieve(sparse_index: SparseIndex, retriever):
         document = sparse_index.document_store.document_int(ix)
 
         # Use the retriever
-        scoredDocuments = retriever.retrieve(document[TextItem].text)
+        scoredDocuments = retriever.retrieve(document["text_item"].text)
         # scoredDocuments.sort(reverse=True)
         # scoredDocuments = scoredDocuments[:retriever.topk]
 
@@ -112,7 +111,7 @@ def test_sparse_retrieve(sparse_index: SparseIndex, retriever):
         indices = sorted.indices[: retriever.topk]
         expected = list(indices.numpy())
 
-        observed = [int(sd.document[IDItem].id) for sd in scoredDocuments]
+        observed = [int(sd.document["id"]) for sd in scoredDocuments]
         expected_scores = sorted.values[: retriever.topk].numpy()
         observed_scores = np.array([float(sd.score) for sd in scoredDocuments])
 
@@ -140,8 +139,8 @@ def test_sparse_retrieve_all(retriever):
     for key, query in queries.items():
         query_results = retriever.retrieve(query)
 
-        observed = [d.document[IDItem].id for d in all_results[key]]
-        expected = [d.document[IDItem].id for d in query_results]
+        observed = [d.document["id"] for d in all_results[key]]
+        expected = [d.document["id"] for d in query_results]
         assert observed == expected
 
         observed_scores = [d.score for d in all_results[key]]

@@ -1,21 +1,25 @@
 from abc import ABC, abstractmethod
 from typing import Optional, List
 from experimaestro import Config, Param
-import datamaestro_text.data.ir.base as ir
-from datamaestro_text.data.ir import DocumentStore, IDItem
+from datamaestro_text.data.ir import (
+    DocumentStore,
+    IDTextRecord,
+    TextRecord,
+    SimpleTextItem,
+)
 from xpmir.datasets.adapters import TextStore
 
 
 class SampleTransform(Config, ABC):
     @abstractmethod
     def transform_topics(
-        self, topics: List[ir.TopicRecord]
-    ) -> Optional[List[ir.TopicRecord]]: ...
+        self, topics: List[IDTextRecord]
+    ) -> Optional[List[IDTextRecord]]: ...
 
     @abstractmethod
     def transform_documents(
-        self, documents: List[ir.DocumentRecord]
-    ) -> Optional[List[ir.DocumentRecord]]: ...
+        self, documents: List[IDTextRecord]
+    ) -> Optional[List[IDTextRecord]]: ...
 
 
 class SampleHydrator(SampleTransform):
@@ -27,20 +31,20 @@ class SampleHydrator(SampleTransform):
     querystore: Param[Optional[TextStore]]
     """The store for query texts if needed"""
 
-    def transform_topics(self, topics: List[ir.TopicRecord]):
+    def transform_topics(self, topics: List[IDTextRecord]):
         if self.querystore is None:
             return None
         return [
-            ir.create_record(
-                id=topic[IDItem].id, text=self.querystore[topic[IDItem].id]
+            IDTextRecord(
+                id=topic["id"], text_item=SimpleTextItem(self.querystore[topic["id"]])
             )
             for topic in topics
         ]
 
-    def transform_documents(self, documents: List[ir.DocumentRecord]):
+    def transform_documents(self, documents: List[IDTextRecord]):
         if self.documentstore is None:
             return None
-        return self.documentstore.documents_ext([d[IDItem].id for d in documents])
+        return self.documentstore.documents_ext([d["id"] for d in documents])
 
 
 class SamplePrefixAdding(SampleTransform):
@@ -53,35 +57,54 @@ class SamplePrefixAdding(SampleTransform):
     """The prefix for the document"""
 
     def transform_topics(
-        self, topics: List[ir.TopicRecord]
-    ) -> Optional[List[ir.TopicRecord]]:
+        self, topics: List[IDTextRecord]
+    ) -> Optional[List[IDTextRecord]]:
         if self.query_prefix == "" or len(topics) == 0:
             return None
 
-        if isinstance(topics[0], ir.GenericTopic):
+        if "id" in topics[0]:
             return [
-                ir.GenericTopic(topic[IDItem].id, self.query_prefix + topic.text)
+                IDTextRecord(
+                    id=topic["id"],
+                    text_item=SimpleTextItem(
+                        self.query_prefix + topic["text_item"].text
+                    ),
+                )
                 for topic in topics
             ]
-        elif isinstance(topics[0], ir.TextTopic):
-            return [ir.TextTopic(self.query_prefix + topic.text) for topic in topics]
+        else:
+            return [
+                TextRecord(
+                    text_item=SimpleTextItem(
+                        self.query_prefix + topic["text_item"].text
+                    )
+                )
+                for topic in topics
+            ]
 
     def transform_documents(
-        self, documents: List[ir.DocumentRecord]
-    ) -> Optional[List[ir.DocumentRecord]]:
+        self, documents: List[IDTextRecord]
+    ) -> Optional[List[IDTextRecord]]:
         if self.document_prefix == "" or len(documents) == 0:
             return None
 
-        if isinstance(documents[0], ir.GenericDocument):
+        if "id" in documents[0]:
             return [
-                ir.GenericDocument(
-                    document[IDItem].id, self.document_prefix + document.text
+                IDTextRecord(
+                    id=document["id"],
+                    text_item=SimpleTextItem(
+                        self.document_prefix + document["text_item"].text
+                    ),
                 )
                 for document in documents
             ]
-        elif isinstance(documents[0], ir.TextDocument):
+        else:
             return [
-                ir.TextDocument(self.document_prefix + document.text)
+                TextRecord(
+                    text_item=SimpleTextItem(
+                        self.document_prefix + document["text_item"].text
+                    )
+                )
                 for document in documents
             ]
 
@@ -92,14 +115,12 @@ class SampleTransformList(SampleTransform):
     adapters: Param[List[SampleTransform]]
     """The list of sample transform to be applied"""
 
-    def transform_topics(self, topics: List[ir.TopicRecord]) -> List[ir.TopicRecord]:
+    def transform_topics(self, topics: List[IDTextRecord]) -> List[IDTextRecord]:
         for adapter in self.adapters:
             topics = adapter.transform_topics(topics) or topics
         return topics
 
-    def transform_documents(
-        self, documents: List[ir.DocumentRecord]
-    ) -> List[ir.DocumentRecord]:
+    def transform_documents(self, documents: List[IDTextRecord]) -> List[IDTextRecord]:
         for adapter in self.adapters:
             documents = adapter.transform_documents(documents) or documents
         return documents

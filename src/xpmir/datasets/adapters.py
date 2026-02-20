@@ -1,4 +1,4 @@
-from typing import Iterable, Iterator, List, Optional, Set, Union, Type
+from typing import Iterable, Iterator, List, Optional, Set, Union
 from pathlib import Path
 from experimaestro import (
     Param,
@@ -11,15 +11,12 @@ from experimaestro import (
 )
 from functools import cached_property
 from datamaestro_text.data.ir import (
-    IDItem,
-    TextItem,
     Adhoc,
     AdhocAssessments,
-    DocumentRecord,
+    IDTextRecord,
     DocumentStore,
     Documents,
     Topics,
-    TopicRecord,
 )
 
 from datamaestro_text.data.ir.trec import TrecAdhocAssessments
@@ -28,6 +25,7 @@ from xpmir.rankers import Retriever
 from xpmir.misc import IDList, FileIDList
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -40,17 +38,11 @@ class AbstractTopicFold(Topics):
     def iter(self):
         ids = set(self.ids)
         for topic in self.topics.iter():
-            if topic[IDItem].id in ids:
+            if topic["id"] in ids:
                 yield topic
-
-    @property
-    def topic_recordtype(self) -> Type[TopicRecord]:
-        """The class for topics"""
-        return self.topics.topic_recordtype
 
     def __validate__(self) -> None:
         super().__validate__()
-        assert self.topics.topic_recordtype.has(IDItem)
 
 
 class TopicFold(AbstractTopicFold):
@@ -118,9 +110,9 @@ class ConcatFold(Task):
 
     def task_outputs(self, dep) -> Adhoc:
         dataset_document_id = set(dataset.document.id for dataset in self.datasets)
-        assert (
-            len(dataset_document_id) == 1
-        ), "At the moment only one set of documents supported."
+        assert len(dataset_document_id) == 1, (
+            "At the moment only one set of documents supported."
+        )
         return Adhoc(
             id="",  # No need to have a more specific id since it is generated
             topics=dep(CSVTopics(id="", path=self.topics)),
@@ -139,11 +131,11 @@ class ConcatFold(Task):
         self.topics.parent.mkdir(parents=True, exist_ok=True)
         with self.topics.open("wt") as fp:
             for topic in topics:
-                ids.add(topic[IDItem].id)
+                ids.add(topic["id"])
                 slash_t = "\t"
                 fp.write(
-                    f"""{topic[IDItem].id}\t"""
-                    f"""{topic[TextItem].text.replace(slash_t, ' ')}\n"""
+                    f"""{topic["id"]}\t"""
+                    f"""{topic["text_item"].text.replace(slash_t, " ")}\n"""
                 )
 
         with self.assessments.open("wt") as fp:
@@ -224,14 +216,10 @@ class RandomFold(Task):
 
         # Get topics
         badids = (
-            set(topic[IDItem].id for topic in self.exclude.iter())
-            if self.exclude
-            else set()
+            set(topic["id"] for topic in self.exclude.iter()) if self.exclude else set()
         )
         topics = [
-            topic
-            for topic in self.dataset.topics.iter()
-            if topic[IDItem].id not in badids
+            topic for topic in self.dataset.topics.iter() if topic["id"] not in badids
         ]
         random = np.random.RandomState(self.seed)
         random.shuffle(topics)
@@ -253,8 +241,8 @@ class RandomFold(Task):
         self.topics.parent.mkdir(parents=True, exist_ok=True)
         with self.topics.open("wt") as fp:
             for topic in topics:
-                ids.add(topic[IDItem].id)
-                fp.write(f"""{topic[IDItem].id}\t{topic[TextItem].text}\n""")
+                ids.add(topic["id"])
+                fp.write(f"""{topic["id"]}\t{topic["text_item"].text}\n""")
 
         with self.assessments.open("wt") as fp:
             for qrels in self.dataset.assessments.iter():
@@ -339,14 +327,12 @@ class TopicsFoldGenerator(FileIDList, Task):
 
         # Get topics
         badids = (
-            set(topic[IDItem].id for topic in self.exclude.iter())
-            if self.exclude
-            else set()
+            set(topic["id"] for topic in self.exclude.iter()) if self.exclude else set()
         )
         topics = [
-            topic[IDItem].id
+            topic["id"]
             for topic in self.dataset.topics.iter()
-            if topic[IDItem].id not in badids
+            if topic["id"] not in badids
         ]
         random = np.random.RandomState(self.seed)
         random.shuffle(topics)
@@ -418,7 +404,7 @@ class DocumentSubset(Documents):
     def iter_ids(self):
         yield from self.docids
 
-    def iter(self) -> Iterator[DocumentRecord]:
+    def iter(self) -> Iterator[IDTextRecord]:
         for docid in self.iter_ids():
             return self.base.document_ext(docid)
 
@@ -493,12 +479,12 @@ class RetrieverBasedCollection(Task):
         for topic in tqdm(
             self.dataset.topics.iter(), total=self.dataset.topics.count()
         ):
-            qrels = topics.get(topic[IDItem].id)
+            qrels = topics.get(topic["id"])
             if qrels is None:
                 logger.warning(
                     "Skipping topic %s [%s], (no assessment)",
-                    topic[IDItem].id,
-                    topic[TextItem].text,
+                    topic["id"],
+                    topic["text_item"].text,
                 )
                 continue
 
@@ -521,9 +507,7 @@ class RetrieverBasedCollection(Task):
             # already defined the numbers to retrieve inside the retriever, so
             # don't need to worry about the threshold here
             for retriever in self.retrievers:
-                docids.update(
-                    sd.document[IDItem].id for sd in retriever.retrieve(topic)
-                )
+                docids.update(sd.document["id"] for sd in retriever.retrieve(topic))
 
         # Write the document IDs
         with self.docids_path.open("wt") as fp:
@@ -545,7 +529,7 @@ class MemoryTopicStore(TextStore):
 
     @cached_property
     def store(self):
-        return {topic[IDItem].id: topic[TextItem].text for topic in self.topics.iter()}
+        return {topic["id"]: topic["text_item"].text for topic in self.topics.iter()}
 
     def __getitem__(self, key: str) -> str:
         return self.store[key]

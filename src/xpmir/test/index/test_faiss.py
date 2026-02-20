@@ -4,7 +4,6 @@ from pathlib import Path
 import pytest
 from experimaestro import ObjectStore
 from experimaestro.xpmutils import DirectoryContext
-from datamaestro_text.data.ir import TextItem, IDItem
 from xpmir.documents.samplers import HeadDocumentSampler
 from xpmir.index.faiss import FaissRetriever, IndexBackedFaiss
 from xpmir.test.utils.utils import SampleDocumentStore, SparseRandomTextEncoder
@@ -44,7 +43,7 @@ def test_faiss_indexation(tmp_path: Path, indexspec):
     retriever.initialize()
 
     documents = builder_instance.documents.documents
-    x_docs = retriever.encoder([d[TextItem].text for d in documents.values()]).value
+    x_docs = retriever.encoder([d["text_item"].text for d in documents.values()]).value
     scores = x_docs @ x_docs.T
 
     for ix, document in enumerate(documents.values()):
@@ -53,6 +52,6 @@ def test_faiss_indexation(tmp_path: Path, indexspec):
 
         expected = list(scores[ix].sort(descending=True).indices[:topk].numpy())
         logging.debug("%s vs %s", scores[ix], scoredDocuments)
-        observed = [int(sd.document[IDItem].id) for sd in scoredDocuments]
+        observed = [int(sd.document["id"]) for sd in scoredDocuments]
 
         assert expected == observed

@@ -1,6 +1,5 @@
 from typing import List, Optional, Generic
 from experimaestro import Config, Param
-from datamaestro_text.data.ir import TextItem
 import torch.nn as nn
 import torch
 from xpm_torch.optim import ModuleInitOptions
@@ -105,7 +104,7 @@ class SpladeTextEncoder(TextEncoder):
     def forward(self, texts: List[str]) -> torch.Tensor:
         """Returns a batch x vocab tensor"""
         if not isinstance(texts[0], str):
-            texts = [text[TextItem].text for text in texts]
+            texts = [text["text_item"].text for text in texts]
         tokenized = self.encoder.batch_tokenize(texts, mask=True, maxlen=self.maxlen)
         out = self.model(tokenized)
         return TextsRepresentationOutput(out, tokenized)
@@ -158,9 +157,9 @@ class SpladeTextEncoderV2(
         # Adds the aggregation head right away - this could allows
         # optimization e.g. for the Max aggregation method
         output_embeddings = self.encoder.model.get_output_embeddings()
-        assert isinstance(
-            output_embeddings, nn.Linear
-        ), f"Cannot handle output embeddings of class {output_embeddings.__cls__}"
+        assert isinstance(output_embeddings, nn.Linear), (
+            f"Cannot handle output embeddings of class {output_embeddings.__cls__}"
+        )
         self.encoder.model.set_output_embeddings(IdentityWithBias())
 
         self.aggregation = self.aggregation.get_output_module(output_embeddings)

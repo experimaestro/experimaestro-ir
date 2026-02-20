@@ -1,7 +1,5 @@
-from functools import cached_property
 from experimaestro import Param
 from typing import Iterator, Tuple
-from datamaestro.record import record_type
 import datamaestro_text.data.ir as ir
 from xpmir.letor.samplers import (
     TrainingTriplets,
@@ -17,24 +15,16 @@ from xpm_torch.datasets import ShardedIterableDataset
 class TripletIterator(TrainingTriplets):
     def iter(
         self,
-    ) -> Iterator[Tuple[ir.TopicRecord, ir.DocumentRecord, ir.DocumentRecord]]:
+    ) -> Iterator[Tuple[ir.IDRecord, ir.IDRecord, ir.IDRecord]]:
         count = 0
 
         while True:
             yield (
-                ir.create_record(id=str(count)),
-                ir.create_record(id=str(2 * count)),
-                ir.create_record(id=str(2 * count + 1)),
+                ir.IDRecord(id=str(count)),
+                ir.IDRecord(id=str(2 * count)),
+                ir.IDRecord(id=str(2 * count + 1)),
             )
             count += 1
-
-    @cached_property
-    def topic_recordtype(self):
-        return record_type(ir.IDItem)
-
-    @cached_property
-    def document_recordtype(self):
-        return record_type(ir.IDItem)
 
 
 class FakeTextStore(TextStore):
@@ -45,8 +35,8 @@ class FakeTextStore(TextStore):
 class FakeDocumentStore(ir.DocumentStore):
     id: Param[str] = ""
 
-    def document_ext(self, docid: str) -> ir.DocumentRecord:
-        return ir.create_record(id=docid, text=f"D{docid}")
+    def document_ext(self, docid: str) -> ir.IDTextRecord:
+        return ir.IDTextRecord(id=docid, text_item=ir.SimpleTextItem(f"D{docid}"))
 
 
 class _PairwiseDataset(ShardedIterableDataset):
@@ -56,9 +46,9 @@ class _PairwiseDataset(ShardedIterableDataset):
         count = 0
         while True:
             yield PairwiseRecord(
-                ir.create_record(id=str(count)),
-                ir.create_record(id=str(2 * count)),
-                ir.create_record(id=str(2 * count + 1)),
+                ir.IDRecord(id=str(count)),
+                ir.IDRecord(id=str(2 * count)),
+                ir.IDRecord(id=str(2 * count + 1)),
             )
             count += 1
 
@@ -72,9 +62,9 @@ def test_store_hydrator_process_batch():
 
     records = [
         PairwiseRecord(
-            ir.create_record(id=str(n)),
-            ir.create_record(id=str(2 * n)),
-            ir.create_record(id=str(2 * n + 1)),
+            ir.IDRecord(id=str(n)),
+            ir.IDRecord(id=str(2 * n)),
+            ir.IDRecord(id=str(2 * n + 1)),
         )
         for n in range(5)
     ]
@@ -82,9 +72,9 @@ def test_store_hydrator_process_batch():
     hydrated = hydrator.process_batch(records)
     assert len(hydrated) == 5
     for n, record in enumerate(hydrated):
-        assert record.query[ir.TextItem].text == f"T{n}"
-        assert record.positive[ir.TextItem].text == f"D{2 * n}"
-        assert record.negative[ir.TextItem].text == f"D{2 * n + 1}"
+        assert record.query["text_item"].text == f"T{n}"
+        assert record.positive["text_item"].text == f"D{2 * n}"
+        assert record.negative["text_item"].text == f"D{2 * n + 1}"
 
 
 def test_buffered_processing_dataset():
@@ -100,9 +90,9 @@ def test_buffered_processing_dataset():
     count = 0
     for record in dataset:
         n = count
-        assert record.query[ir.TextItem].text == f"T{n}"
-        assert record.positive[ir.TextItem].text == f"D{2 * n}"
-        assert record.negative[ir.TextItem].text == f"D{2 * n + 1}"
+        assert record.query["text_item"].text == f"T{n}"
+        assert record.positive["text_item"].text == f"D{2 * n}"
+        assert record.negative["text_item"].text == f"D{2 * n + 1}"
         count += 1
         if count >= 10:
             break

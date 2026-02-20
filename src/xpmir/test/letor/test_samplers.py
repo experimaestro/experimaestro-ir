@@ -1,4 +1,3 @@
-from datamaestro.record import record_type
 import pytest
 import numpy as np
 from typing import Iterator, Tuple
@@ -18,16 +17,15 @@ from xpmir.documents.samplers import RandomSpanSampler
 class MyTrainingTriplets(TrainingTriplets):
     def iter(
         self,
-    ) -> Iterator[Tuple[ir.TopicRecord, ir.DocumentRecord, ir.DocumentRecord]]:
+    ) -> Iterator[Tuple[ir.TextRecord, ir.IDTextRecord, ir.IDTextRecord]]:
         count = 0
 
         while True:
-            yield ir.create_record(text=f"q{count}"), ir.create_record(
-                id=1, text=f"doc+{count}"
-            ), ir.create_record(id=2, text=f"doc-{count}")
-
-    topic_recordtype = record_type(ir.IDItem, ir.SimpleTextItem)
-    document_recordtype = record_type(ir.SimpleTextItem)
+            yield (
+                ir.TextRecord(text_item=ir.SimpleTextItem(f"q{count}")),
+                ir.IDTextRecord(id=1, text_item=ir.SimpleTextItem(f"doc+{count}")),
+                ir.IDTextRecord(id=2, text_item=ir.SimpleTextItem(f"doc-{count}")),
+            )
 
 
 def test_serializing_tripletbasedsampler():
@@ -53,9 +51,9 @@ def test_serializing_tripletbasedsampler():
     iter = sampler.pairwise_iter()
     iter.load_state_dict(data)
     for _, record, expected in zip(range(10), iter, samples):
-        assert expected.query[ir.TextItem].text == record.query[ir.TextItem].text
-        assert expected.positive[ir.TextItem].text == record.positive[ir.TextItem].text
-        assert expected.negative[ir.TextItem].text == record.negative[ir.TextItem].text
+        assert expected.query["text_item"].text == record.query["text_item"].text
+        assert expected.positive["text_item"].text == record.positive["text_item"].text
+        assert expected.negative["text_item"].text == record.negative["text_item"].text
 
 
 class GeneratedDocuments(ir.Documents):
@@ -101,8 +99,11 @@ class FakeDocumentStore(ir.DocumentStore):
     def documentcount(self):
         return 10
 
-    def document_int(self, internal_docid: int) -> ir.DocumentRecord:
-        return ir.create_record(id=str(internal_docid), text=f"D{internal_docid} " * 10)
+    def document_int(self, internal_docid: int) -> ir.IDTextRecord:
+        return ir.IDTextRecord(
+            id=str(internal_docid),
+            text_item=ir.SimpleTextItem(f"D{internal_docid} " * 10),
+        )
 
 
 def test_pairwise_randomspansampler():
@@ -121,6 +122,6 @@ def test_pairwise_randomspansampler():
 
     for s1, s2, _ in zip(iter1, iter2, range(10)):
         # check that they are the same with same random state
-        assert s1.query[ir.TextItem].text == s2.query[ir.TextItem].text
-        assert s1.positive[ir.TextItem].text == s2.positive[ir.TextItem].text
-        assert s1.negative[ir.TextItem].text == s2.negative[ir.TextItem].text
+        assert s1.query["text_item"].text == s2.query["text_item"].text
+        assert s1.positive["text_item"].text == s2.positive["text_item"].text
+        assert s1.negative["text_item"].text == s2.negative["text_item"].text
