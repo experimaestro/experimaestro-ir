@@ -118,8 +118,7 @@ class DistillationPairwiseTrainer(LossTrainer):
         self.sampler.initialize(random)
 
         dataset = self.sampler.as_dataset()
-        collate_fn = self.sampler.get_collate_fn(distillation_pairwise_collate)
-        self._create_dataloader(dataset, collate_fn)
+        self._create_dataloader(dataset, distillation_pairwise_collate)
 
     def train_batch(self, samples: List[PairwiseDistillationSample]):
         # Builds records and teacher score matrix

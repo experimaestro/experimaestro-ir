@@ -7,6 +7,7 @@ from datamaestro_text.data.ir import (
     create_record,
 )
 from typing import (
+    Generic,
     Iterable,
     List,
     Optional,
@@ -15,23 +16,28 @@ from typing import (
     Union,
 )
 
+DocT = TypeVar("DocT")
+DocT2 = TypeVar("DocT2")
+QueryT = TypeVar("QueryT")
+QueryT2 = TypeVar("QueryT2")
 
-class PointwiseRecord:
+
+class PointwiseRecord(Generic[DocT, QueryT]):
     """A record from a pointwise sampler"""
 
     # The query
-    topic: TopicRecord
+    topic: QueryT
 
     # The document
-    document: DocumentRecord
+    document: DocT
 
     # The relevance
     relevance: Optional[float]
 
     def __init__(
         self,
-        topic: TopicRecord,
-        document: DocumentRecord,
+        topic: QueryT,
+        document: DocT,
         relevance: Optional[float] = None,
     ):
         self.topic = topic
@@ -41,6 +47,18 @@ class PointwiseRecord:
     @property
     def query(self):
         return self.topic
+
+    def get_queries(self) -> List[QueryT]:
+        return [self.topic]
+
+    def with_queries(self, qs: "List[QueryT2]") -> "PointwiseRecord[DocT, QueryT2]":
+        return PointwiseRecord(qs[0], self.document, self.relevance)
+
+    def get_documents(self) -> List[DocT]:
+        return [self.document]
+
+    def with_documents(self, ds: "List[DocT2]") -> "PointwiseRecord[DocT2, QueryT]":
+        return PointwiseRecord(self.topic, ds[0], self.relevance)
 
 
 RT = TypeVar("RT")
@@ -150,19 +168,29 @@ class PointwiseRecords(BaseRecords[PointwiseRecord]):
         return records
 
 
-class PairwiseRecord:
+class PairwiseRecord(Generic[DocT, QueryT]):
     """A pairwise record is composed of a query, a positive and a negative document"""
 
-    query: TopicRecord
-    positive: DocumentRecord
-    negative: DocumentRecord
+    query: QueryT
+    positive: DocT
+    negative: DocT
 
-    def __init__(
-        self, query: TopicRecord, positive: DocumentRecord, negative: DocumentRecord
-    ):
+    def __init__(self, query: QueryT, positive: DocT, negative: DocT):
         self.query = query
         self.positive = positive
         self.negative = negative
+
+    def get_queries(self) -> List[QueryT]:
+        return [self.query]
+
+    def with_queries(self, qs: "List[QueryT2]") -> "PairwiseRecord[DocT, QueryT2]":
+        return PairwiseRecord(qs[0], self.positive, self.negative)
+
+    def get_documents(self) -> List[DocT]:
+        return [self.positive, self.negative]
+
+    def with_documents(self, ds: "List[DocT2]") -> "PairwiseRecord[DocT2, QueryT]":
+        return PairwiseRecord(self.query, ds[0], ds[1])
 
 
 class PairwiseRecordWithTarget(PairwiseRecord):
@@ -210,9 +238,9 @@ class PairwiseRecords(BaseRecords):
         return itertools.chain(self._topics, self._topics)
 
     def set_unique_topics(self, topics: List[TopicRecord]):
-        assert len(topics) == len(
-            self._topics
-        ), f"Number of topics do not match ({len(topics)} vs {len(self._topics)})"
+        assert len(topics) == len(self._topics), (
+            f"Number of topics do not match ({len(topics)} vs {len(self._topics)})"
+        )
         self._topics = topics
 
     def set_unique_documents(self, documents: List[DocumentRecord]):
@@ -289,18 +317,30 @@ class PairwiseRecordsWithTarget(PairwiseRecords):
         return PairwiseRecordWithTarget(
             self._topics[ix], self.positives[ix], self.negatives[ix], self.target[ix]
         )
-    
-class ListwiseRecord:
+
+
+class ListwiseRecord(Generic[DocT, QueryT]):
     """A listwise record is composed of a query and a list of documents"""
 
-    query: TopicRecord
-    documents: List[DocumentRecord]
+    query: QueryT
+    documents: List[DocT]
 
-    def __init__(
-        self, query: TopicRecord, documents: List[DocumentRecord]
-    ):
+    def __init__(self, query: QueryT, documents: List[DocT]):
         self.query = query
         self.documents = documents
+
+    def get_queries(self) -> List[QueryT]:
+        return [self.query]
+
+    def with_queries(self, qs: "List[QueryT2]") -> "ListwiseRecord[DocT, QueryT2]":
+        return ListwiseRecord(qs[0], self.documents)
+
+    def get_documents(self) -> List[DocT]:
+        return self.documents
+
+    def with_documents(self, ds: "List[DocT2]") -> "ListwiseRecord[DocT2, QueryT]":
+        return ListwiseRecord(self.query, list(ds))
+
 
 class ListwiseRecords(BaseRecords):
     """Listwise records of queries associated with lists of documents"""
@@ -310,7 +350,6 @@ class ListwiseRecords(BaseRecords):
 
     # The list of documents per query
     _documents: List[List[DocumentRecord]]
-
 
     def __init__(self):
         self._topics = []
@@ -325,9 +364,9 @@ class ListwiseRecords(BaseRecords):
         return itertools.chain(self._topics, self._topics)
 
     def set_unique_topics(self, topics: List[TopicRecord]):
-        assert len(topics) == len(
-            self._topics
-        ), f"Number of topics do not match ({len(topics)} vs {len(self._topics)})"
+        assert len(topics) == len(self._topics), (
+            f"Number of topics do not match ({len(topics)} vs {len(self._topics)})"
+        )
         self._topics = topics
 
     def set_unique_documents(self, documents: List[DocumentRecord]):
@@ -348,6 +387,7 @@ class ListwiseRecords(BaseRecords):
     def pairs(self):
         indices = list(range(len(self._topics)))
         return indices * 2, list(range(2 * len(self._documents)))
+
     def __len__(self):
         return len(self._topics)
 
@@ -355,11 +395,7 @@ class ListwiseRecords(BaseRecords):
         if isinstance(ix, slice):
             records = ListwiseRecords()
             for i in range(ix.start, min(ix.stop, len(self._topics)), ix.step or 1):
-                records.add(
-                    ListwiseRecord(
-                        self._topics[i], self._documents[i]
-                    )
-                )
+                records.add(ListwiseRecord(self._topics[i], self._documents[i]))
             return records
 
         return ListwiseRecord(self._topics[ix], self._documents[ix])

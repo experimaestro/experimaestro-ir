@@ -335,15 +335,6 @@ class PairwiseInBatchNegativesSampler(BatchwiseSampler):
         """
         return self.sampler.as_dataset()
 
-    def get_collate_fn(self, base_collate=None):
-        """Returns the batchwise collate function.
-
-        If the inner sampler supports hydration, wraps with HydratingCollate.
-        """
-        from xpm_torch.collate import batchwise_collate
-
-        return self.sampler.get_collate_fn(batchwise_collate)
-
 
 class TripletBasedSampler(PairwiseSampler):
     """Sampler based on a triplet source"""

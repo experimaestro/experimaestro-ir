@@ -1,17 +1,18 @@
 import logging
+from dataclasses import dataclass
 from typing import (
+    Generic,
     Iterable,
     Iterator,
-    NamedTuple,
     Tuple,
     List,
+    TypeVar,
 )
 import numpy as np
 
 from experimaestro import Config, Meta, Param
 from datamaestro.data import File
 from datamaestro_text.data.ir.base import (
-    TopicRecord,
     DocumentRecord,
     ScoredItem,
     SimpleTextItem,
@@ -27,16 +28,36 @@ from xpm_torch.datasets import (
 )
 
 from xpm_torch.base import Sampler
-from xpmir.letor.samplers.hydrators import SampleHydrator
-from xpmir.rankers import ScoredDocument
+
+DocT = TypeVar("DocT")
+DocT2 = TypeVar("DocT2")
+QueryT = TypeVar("QueryT")
+QueryT2 = TypeVar("QueryT2")
 
 
-class PairwiseDistillationSample(NamedTuple):
-    query: TopicRecord
+@dataclass
+class PairwiseDistillationSample(Generic[DocT, QueryT]):
+    query: QueryT
     """The query"""
 
-    documents: Tuple[DocumentRecord, DocumentRecord]
+    documents: Tuple[DocT, DocT]
     """Positive/negative document with teacher scores"""
+
+    def get_queries(self) -> List[QueryT]:
+        return [self.query]
+
+    def with_queries(
+        self, qs: "List[QueryT2]"
+    ) -> "PairwiseDistillationSample[DocT, QueryT2]":
+        return PairwiseDistillationSample(qs[0], self.documents)
+
+    def get_documents(self) -> List[DocT]:
+        return list(self.documents)
+
+    def with_documents(
+        self, ds: "List[DocT2]"
+    ) -> "PairwiseDistillationSample[DocT2, QueryT]":
+        return PairwiseDistillationSample(self.query, tuple(ds))
 
 
 class PairwiseDistillationSamples(Config, Iterable[PairwiseDistillationSample]):
@@ -44,45 +65,6 @@ class PairwiseDistillationSamples(Config, Iterable[PairwiseDistillationSample]):
 
     def __iter__(self) -> Iterator[PairwiseDistillationSample]:
         raise NotImplementedError()
-
-    def get_collate_fn(self, base_collate):
-        """Returns a collate function. Subclasses can override to wrap with
-        hydration. Default returns base_collate unchanged."""
-        return base_collate
-
-
-class PairwiseHydrator(PairwiseDistillationSamples, SampleHydrator):
-    """Hydrate ID-based samples with document and/or query content"""
-
-    samples: Param[PairwiseDistillationSamples]
-    """The distillation samples without texts for query and documents"""
-
-    def transform(self, sample: PairwiseDistillationSample):
-        topic, documents = sample.query, sample.documents
-
-        if transformed := self.transform_topics([topic]):
-            topic = transformed[0]
-
-        if transformed := self.transform_documents(documents):
-            documents = tuple(
-                ScoredDocument(d, sd[ScoredItem].score)
-                for d, sd in zip(transformed, sample.documents)
-            )
-
-        return PairwiseDistillationSample(topic, documents)
-
-    def as_dataset(self) -> ShardedIterableDataset:
-        """Returns the inner dataset (ID-only records).
-
-        Hydration is handled at collate time via get_collate_fn().
-        """
-        return self.samples.as_dataset()
-
-    def get_collate_fn(self, base_collate):
-        """Returns a HydratingCollate wrapping base_collate with this adapter's stores."""
-        from xpm_torch.collate import HydratingCollate
-
-        return HydratingCollate(base_collate, self)
 
 
 class PairwiseDistillationSamplesTSV(PairwiseDistillationSamples, File):
@@ -134,22 +116,35 @@ class DistillationPairwiseSampler(Sampler):
         """Returns the underlying dataset for use with StatefulDataLoader."""
         return self.samples.as_dataset()
 
-    def get_collate_fn(self, base_collate):
-        """Returns the collate function, with hydration if samples support it."""
-        return self.samples.get_collate_fn(base_collate)
-
 
 #######
 # LISTWISE Distillation datasets samplers
 ######
 
 
-class ListwiseDistillationSample(NamedTuple):
-    query: TopicRecord
+@dataclass
+class ListwiseDistillationSample(Generic[DocT, QueryT]):
+    query: QueryT
     """The query"""
 
-    documents: List[DocumentRecord]
+    documents: List[DocT]
     """List of documents with their ranking position"""
+
+    def get_queries(self) -> List[QueryT]:
+        return [self.query]
+
+    def with_queries(
+        self, qs: "List[QueryT2]"
+    ) -> "ListwiseDistillationSample[DocT, QueryT2]":
+        return ListwiseDistillationSample(qs[0], self.documents)
+
+    def get_documents(self) -> List[DocT]:
+        return self.documents
+
+    def with_documents(
+        self, ds: "List[DocT2]"
+    ) -> "ListwiseDistillationSample[DocT2, QueryT]":
+        return ListwiseDistillationSample(self.query, list(ds))
 
 
 class ListwiseDistillationSamples(Config, Iterable[ListwiseDistillationSample]):
@@ -157,45 +152,6 @@ class ListwiseDistillationSamples(Config, Iterable[ListwiseDistillationSample]):
 
     def __iter__(self) -> Iterator[ListwiseDistillationSample]:
         raise NotImplementedError()
-
-    def get_collate_fn(self, base_collate):
-        """Returns a collate function. Subclasses can override to wrap with
-        hydration. Default returns base_collate unchanged."""
-        return base_collate
-
-
-class ListwiseHydrator(ListwiseDistillationSamples, SampleHydrator):
-    """Hydrate ID-based samples with document and/or query content"""
-
-    samples: Param[ListwiseDistillationSamples]
-    """The distillation samples without texts for query and documents"""
-
-    def transform(self, sample: ListwiseDistillationSample):
-        topic, documents = sample.query, sample.documents
-
-        if transformed := self.transform_topics([topic]):
-            topic = transformed[0]
-
-        if transformed := self.transform_documents(documents):
-            documents = list(
-                ScoredDocument(d, sd[ScoredItem].score)
-                for d, sd in zip(transformed, sample.documents)
-            )
-
-        return ListwiseDistillationSample(topic, documents)
-
-    def as_dataset(self) -> ShardedIterableDataset:
-        """Returns the inner dataset (ID-only records).
-
-        Hydration is handled at collate time via get_collate_fn().
-        """
-        return self.samples.as_dataset()
-
-    def get_collate_fn(self, base_collate):
-        """Returns a HydratingCollate wrapping base_collate with this adapter's stores."""
-        from xpm_torch.collate import HydratingCollate
-
-        return HydratingCollate(base_collate, self)
 
 
 class ListwiseDistillationSamplesTSV(ListwiseDistillationSamples, File):
@@ -264,10 +220,6 @@ class DistillationListwiseSampler(Sampler):
     def as_dataset(self) -> ShardedIterableDataset:
         """Returns the underlying dataset for use with StatefulDataLoader."""
         return self.samples.as_dataset()
-
-    def get_collate_fn(self, base_collate):
-        """Returns the collate function, with hydration if samples support it."""
-        return self.samples.get_collate_fn(base_collate)
 
 
 class DistillationNegativesSampler(DistillationListwiseSampler):

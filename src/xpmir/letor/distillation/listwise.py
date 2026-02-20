@@ -208,8 +208,7 @@ class DistillationListwiseTrainer(LossTrainer):
         self.sampler.initialize(random)
 
         dataset = self.sampler.as_dataset()
-        collate_fn = self.sampler.get_collate_fn(distillation_listwise_collate)
-        self._create_dataloader(dataset, collate_fn)
+        self._create_dataloader(dataset, distillation_listwise_collate)
 
     def train_batch(self, samples: List[DistillationListwiseSampler]):
         # Builds records and teacher score matrix
