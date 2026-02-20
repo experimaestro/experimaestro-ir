@@ -99,9 +99,6 @@ class DistillationKLLoss(DistillationPairwiseLoss):
 class DistillationPairwiseTrainer(LossTrainer):
     """Pairwise trainer for distillation"""
 
-    sampler: Param[DistillationPairwiseSampler] = field(overrides=True)
-    """The sampler"""
-
     lossfn: Param[DistillationPairwiseLoss]
     """The distillation pairwise batch function"""
 
@@ -136,7 +133,6 @@ class DistillationPairwiseTrainer(LossTrainer):
             teacher_scores[ix, 1] = sample.documents[1].score
 
         # Get the next batch and compute the scores for each query/document
-        # TODO debug : out should be of shape [2* len(records)], not the case for now
         scores = self.model(records, self.context).reshape(2, len(records)).T
 
         if torch.isnan(scores).any() or torch.isinf(scores).any():

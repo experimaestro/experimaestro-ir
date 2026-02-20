@@ -165,7 +165,7 @@ def msmarco_v1_tests(dev_test_size: int = 0, only_judged=False):
 
 
 @lru_cache
-def msmarco_hofstaetter_ensemble_hard_negatives() -> DistillationPairwiseSampler:
+def msmarco_hofstaetter_ensemble_hard_negatives() -> SamplerAdapter:
     """Hard negatives from Hofstätter et al. (2020)
 
     Hard negatives trained by distillation with cross-encoder Improving
@@ -191,7 +191,7 @@ def msmarco_hofstaetter_ensemble_hard_negatives() -> DistillationPairwiseSampler
 
 
 @lru_cache
-def msmarco_rankdistillm_colbert_top50() -> DistillationListwiseSampler:
+def msmarco_rankdistillm_colbert_top50() -> SamplerAdapter:
     """Distillation data from RankZephyr reranking ColBERTv2 top 50 on 10k queries of MSMARCO
 
     Rank-DistiLLM: Closing the Effectiveness Gap Between Cross-Encoders and LLMs for Passage
@@ -217,7 +217,7 @@ def msmarco_rankdistillm_colbert_top50() -> DistillationListwiseSampler:
 
 
 @lru_cache
-def msmarco_colbertv2_annotated(passages_per_query: int) -> DistillationListwiseSampler:
+def msmarco_colbertv2_annotated(passages_per_query: int) -> SamplerAdapter:
     """Top 500 passages for all queries that have at least one relevance judgement
     in the MS MARCO training query set retrieved by ColBERTv2
 
