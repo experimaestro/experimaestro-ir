@@ -189,9 +189,6 @@ class ListwiseSoftmaxCrossEntropy(DistillationListwiseLoss):
 class DistillationListwiseTrainer(LossTrainer):
     """Listwise trainer for distillation"""
 
-    sampler: Param[DistillationListwiseSampler] = field(overrides=True)
-    """The sampler"""
-
     lossfn: Param[DistillationListwiseLoss]
     """The distillation pairwise batch function"""
 
