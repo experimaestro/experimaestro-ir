@@ -75,6 +75,9 @@ class BaseRecords(List[RT]):
     documents: Iterable[IDTextRecord]
     is_product = False
 
+    def __repr__(self):
+        return f"<{self.__class__.__name__}(count={len(self)})>"
+
     @property
     def unique_topics(self) -> Iterable[IDTextRecord]:
         return self.topics

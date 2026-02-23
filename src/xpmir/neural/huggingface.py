@@ -1,5 +1,6 @@
 from typing import List, Sequence, Tuple, Optional
 import torch
+import torch.nn.functional as F
 from transformers import AutoModelForSequenceClassification, AutoTokenizer, AutoConfig
 
 from experimaestro import Param
@@ -28,6 +29,10 @@ class HFCrossScorer(AbstractModuleScorer):
     """maximum number of tokens for the document side"""
 
     def __post_init__(self):
+
+        assert self.max_doc_length > 0, "max_doc_length is not set"
+        assert self.max_query_length > 0, "max_query_length is not set"
+
         self.config = AutoConfig.from_pretrained(self.hf_id)
 
         if self.max_length is None:
@@ -145,131 +150,118 @@ class HFCrossScorer(AbstractModuleScorer):
     def batch_tokenize_v2(
         self,
         input_records: BaseRecords,
-        maxlen=None,
-        mask=False,
+        maxlen: Optional[int] = None,
+        mask: bool = False,
     ) -> TokenizedTexts:
-        """Transform the text to tokens by using the tokenizer"""
-        # determine per-side token limits (instance params take precedence)
-        q_max = (
-            self.max_query_length
-            if getattr(self, "max_query_length", None) is not None
-            else None
-        )
-        d_max = (
-            self.max_doc_length
-            if getattr(self, "max_doc_length", None) is not None
-            else None
-        )
+        """Tokenize (query, document) pairs with per-side length limits.
+
+        Compatible with fast tokenizers (TokenizersBackend) 
+        Special tokens are inserted manually from the tokenizer's vocabulary.
+        """
+        q_max: Optional[int] = getattr(self, "max_query_length", None)
+        d_max: Optional[int] = getattr(self, "max_doc_length", None)
 
         queries = [q["text_item"].text for q in input_records.queries]
-        docs = [d["text_item"].text for d in input_records.documents]
+        docs    = [d["text_item"].text for d in input_records.documents]
 
-        # compute combined max length (respect model maximum)
-        combined_limit = self.tokenizer.model_max_length
+        # ------------------------------------------------------------------ #
+        # Special token IDs (BERT-style: [CLS] q [SEP] d [SEP])              #
+        # ------------------------------------------------------------------ #
+        tok = self.tokenizer
+        cls_id = tok.cls_token_id   # [CLS]
+        sep_id = tok.sep_token_id   # [SEP]
+        pad_id = tok.pad_token_id
+        num_special = 3  # [CLS] + [SEP] + [SEP]
+
+        # Verify the tokenizer has the tokens we expect
+        assert cls_id is not None and sep_id is not None, (
+            "Tokenizer must define cls_token and sep_token for pair encoding."
+        )
+
+
+        # Combined sequence length cap                                       #
+        combined_limit = tok.model_max_length  # 8192 for ettin
         if maxlen is not None:
             combined_limit = min(maxlen, combined_limit)
         if q_max is not None and d_max is not None:
-            combined_limit = min(combined_limit, q_max + d_max)
+            combined_limit = min(combined_limit, q_max + d_max + num_special)
 
-        # Encode without special tokens and with per-side truncation
-        enc_q = self.tokenizer(
-            queries,
-            add_special_tokens=False,
-            truncation=(q_max is not None),
-            max_length=q_max,
-        )
-        enc_d = self.tokenizer(
-            docs,
-            add_special_tokens=False,
-            truncation=(d_max is not None),
-            max_length=d_max,
-        )
+        content_limit = combined_limit - num_special  # tokens available for text
 
-        q_ids_list = enc_q["input_ids"]
-        d_ids_list = enc_d["input_ids"]
-
-        cls_id = self.tokenizer.cls_token_id or self.tokenizer.convert_tokens_to_ids(
-            self.tokenizer.cls_token
-        )
-        sep_id = self.tokenizer.sep_token_id or self.tokenizer.convert_tokens_to_ids(
-            self.tokenizer.sep_token
-        )
-        pad_id = (
-            self.tokenizer.pad_token_id
-            if getattr(self.tokenizer, "pad_token_id", None) is not None
-            else (
-                self.tokenizer.eos_token_id
-                if getattr(self.tokenizer, "eos_token_id", None) is not None
-                else 0
+        def _encode(texts: List[str], max_tokens: Optional[int]) -> List[torch.Tensor]:
+            enc = tok(
+                texts,
+                add_special_tokens=False,
+                truncation=max_tokens is not None,
+                max_length=max_tokens or tok.model_max_length,
+                padding=False,
+                return_attention_mask=False,
+                return_token_type_ids=False,
+                return_tensors=None,          # keep as List[List[int]] — lengths differ
             )
-        )
+            # Convert each sample to a 1-D tensor individually (lengths vary)
+            return [torch.tensor(ids, dtype=torch.long) for ids in enc["input_ids"]]
 
-        built_inputs: List[List[int]] = []
-        lengths: List[int] = []
-        for q_ids, d_ids in zip(q_ids_list, d_ids_list):
-            # assemble with special tokens
-            # desired: [CLS] q_ids [SEP] d_ids [SEP]
-            total_len = 1 + len(q_ids) + 1 + len(d_ids) + 1
-            if total_len > combined_limit:
-                overflow = total_len - combined_limit
-                # prefer truncating document side first
-                if len(d_ids) > overflow:
-                    d_ids = d_ids[: len(d_ids) - overflow]
-                else:
-                    # drop all doc tokens and remove remaining from query
-                    needed = overflow - len(d_ids)
-                    d_ids = []
-                    if needed >= len(q_ids):
-                        q_ids = []
-                    else:
-                        q_ids = q_ids[: len(q_ids) - needed]
+        query_tensors = _encode(queries, q_max)
+        doc_tensors   = _encode(docs,   d_max)
 
-            inp = [cls_id] + q_ids + [sep_id] + d_ids + [sep_id]
-            built_inputs.append(inp)
-            lengths.append(len(inp))
+        
+        # Assemble [CLS] q [SEP] d [SEP], respecting combined_limit
+        cls = torch.tensor([cls_id], dtype=torch.long)
+        sep = torch.tensor([sep_id], dtype=torch.long)
 
-        # pad to batch max length (bounded by combined_limit)
-        batch_max = min(combined_limit, max(lengths) if lengths else 0)
-        padded_inputs: List[List[int]] = []
-        attention_masks: List[List[int]] = []
-        token_type_ids_batch: List[List[int]] = []
-        for inp in built_inputs:
-            if len(inp) > batch_max:
-                seq = inp[:batch_max]
-            else:
-                seq = inp + [pad_id] * (batch_max - len(inp))
-            padded_inputs.append(seq)
-            attention_masks.append([1 if i < len(inp) else 0 for i in range(batch_max)])
+        sequences: List[torch.Tensor] = []
+        lengths:   List[int]          = []
 
-            # token_type_ids: 0 for [CLS] + query + first [SEP], 1 for doc + final [SEP]
-            # compute split point: index of first sep (after query)
-            try:
-                first_sep = inp.index(sep_id)
-            except ValueError:
-                first_sep = 1 + len(q_ids_list[0])  # fallback
-            ttypes: List[int] = []
-            for i in range(batch_max):
-                if i <= first_sep:
-                    ttypes.append(0)
-                else:
-                    ttypes.append(1)
-            token_type_ids_batch.append(ttypes)
+        for q_ids, d_ids in zip(query_tensors, doc_tensors):
+            # Trim doc if combined still overflows
+            overflow = (q_ids.size(0) + d_ids.size(0)) - content_limit
+            if overflow > 0:
+                d_ids = d_ids[:max(0, d_ids.size(0) - overflow)]
 
-        ids_tensor = torch.tensor(padded_inputs, dtype=torch.long).to(self.device)
+            seq = torch.cat([cls, q_ids, sep, d_ids, sep]) 
+            sequences.append(seq)
+            lengths.append(seq.size(0))
+
+        # Pad to max length in batch using F.pad (no Python list building)
+        max_len = max(lengths)
+        input_ids = torch.stack([
+            F.pad(seq, (0, max_len - seq.size(0)), value=pad_id)
+            for seq in sequences
+        ])  # (B, max_len)
+
         lengths_tensor = torch.tensor(lengths, dtype=torch.long)
-        attention_mask_tensor = torch.tensor(attention_masks, dtype=torch.long)
-        token_type_ids_tensor = torch.tensor(token_type_ids_batch, dtype=torch.long)
+
+        attention_mask = (
+            torch.arange(max_len).unsqueeze(0) < lengths_tensor.unsqueeze(1)
+        ).long() if mask else None  # (B, max_len)
+
+        # token_type_ids: 0 for [CLS]+q+[SEP], 1 for d+[SEP]
+        token_type_ids = torch.stack([
+            F.pad(
+                torch.ones(len(d) + 1, dtype=torch.long),   # doc segment
+                (max_len - len(d) - 1, 0),                   # pad left with 0s (query side)
+                value=0,
+            )
+            for d, length in zip(doc_tensors, lengths)
+            # Flip: build from right so query side is naturally 0
+        ])
+        
+        q_lengths = torch.tensor([q.size(0) + 2 for q in query_tensors])  # +[CLS]+[SEP]
+        token_type_ids = (
+            torch.arange(max_len).unsqueeze(0) >= q_lengths.unsqueeze(1)
+        ).long()  # 0 for query side, 1 for doc side
 
         return TokenizedTexts(
             None,
-            ids_tensor,
-            lengths_tensor,
-            attention_mask_tensor if mask else None,
-            token_type_ids_tensor,
+            to_device(input_ids, self.device),
+            torch.tensor(lengths),          # pre-padding per-sample lengths
+            to_device(attention_mask,self.device),
+            to_device(token_type_ids,self.device),
         )
 
     def forward(self, inputs: BaseRecords, info: TrainerContext = None):
-        tokenized = self.batch_tokenize(inputs, maxlen=self.max_length, mask=True)
+        tokenized = self.batch_tokenize_v2(inputs, maxlen=self.max_length, mask=True)
         # strange that some existing models on the huggingface don't use the token_type
         with torch.set_grad_enabled(torch.is_grad_enabled()):
             result = self.model(
