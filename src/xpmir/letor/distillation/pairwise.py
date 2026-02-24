@@ -1,7 +1,8 @@
 import sys
-from typing import List, Union, Tuple
+from typing import List
 import torch
-from torch import nn, Tensor
+from torch import nn
+from torch.functional import Tensor
 from experimaestro import Config, Param, field
 from xpmir.letor.records import (
     PairwiseRecord,
@@ -124,8 +125,8 @@ class DistillationPairwiseTrainer(LossTrainer):
             records.add(
                 PairwiseRecord(
                     sample.query,
-                    sample.documents[0].document,
-                    sample.documents[1].document,
+                    sample.documents[0].document, #positive
+                    sample.documents[1].document, #negative
                 )
             )
             teacher_scores[ix, 0] = sample.documents[0].score

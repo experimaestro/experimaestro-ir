@@ -25,10 +25,10 @@ from datamaestro_text.data.ir import (
     TextRecord,
     SimpleTextItem,
 )
+from xpm_torch import Module, ModuleContainer, Random
+from xpm_torch.optim import ModuleInitMode, ModuleInitOptions
 from xpm_torch.utils.utils import Initializable
 from xpm_torch.utils.logging import EasyLogger
-from xpm_torch.optim import ModuleInitMode, ModuleInitOptions
-from xpm_torch import Module, Random
 from xpm_torch.batchers import Batcher
 from xpm_torch.learner import TrainerContext
 
@@ -58,7 +58,7 @@ class ScoredDocument:
     """The associated score"""
 
     def __repr__(self):
-        return f"document({self.document}, {self.score})"
+        return f"ScoredDocument(document=({self.document}), score={self.score})"
 
     def __lt__(self, other):
         return self.score < other.score
@@ -251,7 +251,7 @@ class DuoLearnableScorer(AbstractModuleScorer):
         raise NotImplementedError(f"abstract __call__ in {self.__class__}")
 
 
-class Retriever(Config, ABC):
+class Retriever(Config, ModuleContainer, ABC):
     """A retriever is a model to return top-scored documents given a query"""
 
     store: Param[Optional[DocumentStore]] = None
@@ -319,6 +319,7 @@ class AbstractTwoStageRetriever(Retriever):
     def initialize(self):
         self.retriever.initialize()
         self._batcher = self.batcher.initialize(self.batchsize)
+        #TODO this will crash if Scorer is not a Module
         self.scorer.initialize(ModuleInitMode.DEFAULT.to_options())
 
 

@@ -169,22 +169,16 @@ class Evaluate(BaseEvaluation, Task):
         default_factory=FabricConfiguration.C
     )
     """Runtime configuration, managed by Fabric"""
-    
+
     def execute(self):
         self.retriever.initialize()
 
         # instanciate the Fabirc object
-        fabric = self.fabric_config.get_instance()
+        fabric = self.fabric_config.get_Fabric()
         fabric.launch()
 
-        # find children of retriver that are Modules, and wrap them with fabric for device management
-        modules = find_module_attributes(self.retriever)
-        for name, module in modules.items():
-            setattr(self.retriever, name, fabric.setup(module))
-            getattr(self.retriever, name).to(fabric.device)
-            # TODO - this should NOT be necessary and may cause problems later...
-
-            logger.info(f"Using device {fabric.device} for {name}")
+        # Wrap all necessary children with fabric
+        self.retriever.setup_with_fabric(fabric)
 
         run = get_run(self.retriever, self.dataset)
         self._execute(run, self.dataset.assessments)
