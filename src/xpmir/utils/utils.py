@@ -201,27 +201,3 @@ class needs_java(SubmitHook):
 
     def process(self, job: Job, launcher: Launcher):
         job.environ["JAVA_HOME"] = find_java_home(self.version)
-
-
-class Initializable:
-    """Base class for all initializable (but just once)"""
-
-    def initialize(self, *args, **kwargs):
-        """Main initialization
-
-        Calls :py:meth:`__initialize__` once (using :py:meth:`__initialize__`)
-        """
-        if not self._initialized:
-            self._initialized = True
-            self.__initialize__(*args, **kwargs)
-        self._initialized = True
-
-    def __init__(self):
-        self._initialized = False
-
-    def __initialize__(self, *args, **kwargs):
-        """Initialize the object
-
-        Parameters depend on the actual class
-        """
-        pass
