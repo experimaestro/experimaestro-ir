@@ -15,8 +15,18 @@ from xpm_torch.losses import Loss
 from .samplers import DistillationListwiseSampler
 import numpy as np
 from xpmir.rankers import AbstractModuleScorer
-from xpm_torch.collate import distillation_listwise_collate
+from xpmir.letor.records import (
+    PairwiseRecord,
+    PairwiseRecords,
+    ProductRecords,
+)
 
+
+def distillation_listwise_collate(records: list) -> list:
+    """Identity collate for listwise distillation samples."""
+    return records
+
+### Losses
 
 class DistillationListwiseLoss(Config, nn.Module):
     """The abstract loss for listwise distillation"""
@@ -184,6 +194,7 @@ class ListwiseSoftmaxCrossEntropy(DistillationListwiseLoss):
         loss = -torch.logsumexp(term, dim=-1).sum() / student_scores.shape[0]
         return loss
 
+### Trainer 
 
 class DistillationListwiseTrainer(LossTrainer):
     """Listwise trainer for distillation"""

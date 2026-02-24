@@ -1,5 +1,6 @@
 import sys
-from typing import List
+from typing import List, Tuple
+import numpy as np
 import torch
 from torch import nn
 from torch.functional import Tensor
@@ -12,10 +13,13 @@ from xpm_torch.trainers import TrainerContext, LossTrainer
 from xpm_torch.losses import Loss
 
 from .samplers import DistillationPairwiseSampler, PairwiseDistillationSample
-import numpy as np
-from xpmir.rankers import AbstractModuleScorer
-from xpm_torch.collate import distillation_pairwise_collate
 
+from xpmir.rankers import AbstractModuleScorer
+from xpmir.letor.records import (
+    PairwiseRecord,
+    PairwiseRecords,
+    ProductRecords,
+)
 
 class DistillationPairwiseLoss(Config, nn.Module):
     """The abstract loss for pairwise distillation"""
@@ -96,6 +100,23 @@ class DistillationKLLoss(DistillationPairwiseLoss):
         return self.loss(local_scores, teacher_scores).sum(dim=1).mean(dim=0)
 
 
+def distillation_pairwise_collate(samples: List[PairwiseDistillationSample]) -> Tuple[PairwiseRecords, Tensor]:
+    """Collate function for Distillation Pairwise trainer"""
+    teacher_scores = torch.empty(len(samples), 2)
+    records = PairwiseRecords()
+    for ix, sample in enumerate(samples):
+        records.add(
+            PairwiseRecord(
+                sample.query,
+                sample.documents[0].document, #positive
+                sample.documents[1].document, #negative
+            )
+        )
+        teacher_scores[ix, 0] = sample.documents[0].score
+        teacher_scores[ix, 1] = sample.documents[1].score
+
+    return records, teacher_scores
+
 class DistillationPairwiseTrainer(LossTrainer):
     """Pairwise trainer for distillation"""
 
@@ -115,25 +136,14 @@ class DistillationPairwiseTrainer(LossTrainer):
         self.sampler.initialize(random)
 
         dataset = self.sampler.as_dataset()
-        self._create_dataloader(dataset, distillation_pairwise_collate)
+        self._create_dataloader(dataset, collate_fn=distillation_pairwise_collate)
 
-    def train_batch(self, samples: List[PairwiseDistillationSample]):
+    def train_batch(self, inputs: Tuple[PairwiseRecords, Tensor]):
         # Builds records and teacher score matrix
-        teacher_scores = torch.empty(len(samples), 2)
-        records = PairwiseRecords()
-        for ix, sample in enumerate(samples):
-            records.add(
-                PairwiseRecord(
-                    sample.query,
-                    sample.documents[0].document, #positive
-                    sample.documents[1].document, #negative
-                )
-            )
-            teacher_scores[ix, 0] = sample.documents[0].score
-            teacher_scores[ix, 1] = sample.documents[1].score
-
+        records, teacher_scores = inputs
+       
         # Get the next batch and compute the scores for each query/document
-        scores = self.model(records, self.context).reshape(2, len(records)).T
+        scores = self.model(records, info=self.context).reshape(2, len(records)).T
 
         if torch.isnan(scores).any() or torch.isinf(scores).any():
             self.logger.error(
@@ -144,3 +154,5 @@ class DistillationPairwiseTrainer(LossTrainer):
         # Call the losses (distillation, pairwise and pointwise)
         teacher_scores = teacher_scores.to(scores.device)
         self.lossfn.process(scores, teacher_scores, self.context)
+
+

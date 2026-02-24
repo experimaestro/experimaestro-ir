@@ -93,6 +93,12 @@ class BaseRecords(List[RT]):
         """Deprecated: use topics"""
         return self.topics
 
+    def to(self, device):
+        """Moves the records to a device (e.g. for the relevance matrix in ProductRecords)
+        Default implementation does nothing, but can be implemented by specific records that have tensors as attributes (e.g. ProductRecords)
+        """
+        return self
+    
     def pairs(self) -> Tuple[Iterable[int], Iterable[int]]:
         """Returns two iterators (over queries and documents)
 
