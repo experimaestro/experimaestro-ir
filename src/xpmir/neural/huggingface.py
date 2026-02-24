@@ -153,10 +153,18 @@ class HFCrossScorer(AbstractModuleScorer):
         maxlen: Optional[int] = None,
         mask: bool = False,
     ) -> TokenizedTexts:
-        """Tokenize (query, document) pairs with per-side length limits.
+        """Tokenize (query, document) pairs with maxlen for each side.
 
-        Compatible with fast tokenizers (TokenizersBackend) 
         Special tokens are inserted manually from the tokenizer's vocabulary.
+        in BERT-style: [CLS] Q [SEP] D [SEP]
+        Compatible with fast tokenizers (TokenizersBackend) 
+
+        Args:
+            input_records: BaseRecords containing queries and documents
+            maxlen: Optional combined max length for the entire sequence (overrides model max if set)
+            mask: Whether to return attention masks
+        Returns:
+            TokenizedTexts with input_ids, lengths, attention_mask, and token_type_ids
         """
         q_max: Optional[int] = getattr(self, "max_query_length", None)
         d_max: Optional[int] = getattr(self, "max_doc_length", None)
@@ -164,9 +172,7 @@ class HFCrossScorer(AbstractModuleScorer):
         queries = [q["text_item"].text for q in input_records.queries]
         docs    = [d["text_item"].text for d in input_records.documents]
 
-        # ------------------------------------------------------------------ #
-        # Special token IDs (BERT-style: [CLS] q [SEP] d [SEP])              #
-        # ------------------------------------------------------------------ #
+        # Special token IDs (BERT-style= [CLS] q [SEP] d [SEP])              #
         tok = self.tokenizer
         cls_id = tok.cls_token_id   # [CLS]
         sep_id = tok.sep_token_id   # [SEP]
@@ -177,7 +183,6 @@ class HFCrossScorer(AbstractModuleScorer):
         assert cls_id is not None and sep_id is not None, (
             "Tokenizer must define cls_token and sep_token for pair encoding."
         )
-
 
         # Combined sequence length cap                                       #
         combined_limit = tok.model_max_length  # 8192 for ettin
@@ -205,7 +210,6 @@ class HFCrossScorer(AbstractModuleScorer):
         query_tensors = _encode(queries, q_max)
         doc_tensors   = _encode(docs,   d_max)
 
-        
         # Assemble [CLS] q [SEP] d [SEP], respecting combined_limit
         cls = torch.tensor([cls_id], dtype=torch.long)
         sep = torch.tensor([sep_id], dtype=torch.long)

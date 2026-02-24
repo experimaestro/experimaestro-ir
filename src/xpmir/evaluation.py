@@ -169,7 +169,7 @@ class Evaluate(BaseEvaluation, Task):
         default_factory=FabricConfiguration.C
     )
     """Runtime configuration, managed by Fabric"""
-
+    
     def execute(self):
         self.retriever.initialize()
 

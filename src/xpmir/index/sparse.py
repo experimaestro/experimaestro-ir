@@ -28,6 +28,7 @@ from experimaestro import (
 )
 from datamaestro_text.data.ir import IDTextRecord, DocumentStore
 from xpm_torch import Module
+from xpm_torch.configuration import FabricConfiguration
 from xpm_torch.learner import ModuleInitMode
 from xpm_torch.batchers import Batcher
 
@@ -37,7 +38,6 @@ from datamaestro_text.data.ir import TextRecord
 from xpmir.rankers import Retriever, ScoredDocument
 from xpmir.utils.iter import MultiprocessIterator
 from xpmir.utils.multiprocessing import StoppableQueue, available_cpus
-from xpm_torch.configuration import FabricConfiguration
 import impact_index
 
 logger = logging.getLogger(__name__)
@@ -339,11 +339,6 @@ class SparseRetriever(Retriever, Generic[InputType]):
     """Whether the index should be fully loaded in memory (otherwise, uses
     virtual memory)"""
 
-    fabric_config: Meta[FabricConfiguration] = field(
-        default_factory=FabricConfiguration.C
-    )
-    """Runtime configuration, managed by Fabric"""
-
     def initialize(self):
         super().initialize()
         logger.info("Initializing the encoder")
@@ -352,24 +347,7 @@ class SparseRetriever(Retriever, Generic[InputType]):
         self.index.initialize(self.in_memory)
 
         logger.info("Moving everything to Fabric")
-        # instanciate the Fabirc object
-        fabric = self.fabric_config.get_instance()
-        fabric.launch()
-
-        # TODO - this should NOT be necessary and may cause problems later...
-        self.encoder.to(fabric.device)
-        logger.info(f"Using device {fabric.device}")
-
-        # find children of retriver that are Modules, and wrap them with fabric for device management
-        # modules = find_module_attributes(self.encoder)
-
-        # for name, module in modules.items():
-        #     setattr(self.encoder, name, fabric.setup(module))
-        #     # TODO - this should NOT be necessary and may cause problems later...
-        #     getattr(self.encoder, name).to(fabric.device)
-
-        #     logger.info(f"Using device {fabric.device} for {name}")
-
+      
     def retrieve_all(
         self, queries: Dict[str, InputType]
     ) -> Dict[str, List[ScoredDocument]]:
