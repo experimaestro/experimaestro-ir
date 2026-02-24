@@ -77,6 +77,7 @@ class HFCrossScorer(AbstractModuleScorer):
         input_records: BaseRecords,
         maxlen=None,
         mask=False,
+        device=None,
     ) -> TokenizedTexts:
         """Transform the text to tokens by using the tokenizer"""
         # determine per-side token limits (instance params take precedence)
@@ -141,10 +142,14 @@ class HFCrossScorer(AbstractModuleScorer):
         )
         return TokenizedTexts(
             None,
-            r["input_ids"].to(self.device),
+            r["input_ids"].to(device or self.device),
             r["length"],
-            r.get("attention_mask", None),
-            r.get("token_type_ids", None),  # if r["token_type_ids"] else None
+            r.get("attention_mask", None).to(device or self.device)
+            if r.get("attention_mask", None) is not None
+            else None,
+            r.get("token_type_ids", None).to(device or self.device)
+            if r.get("token_type_ids", None) is not None
+            else None,
         )
 
     def batch_tokenize_v2(
@@ -152,17 +157,19 @@ class HFCrossScorer(AbstractModuleScorer):
         input_records: BaseRecords,
         maxlen: Optional[int] = None,
         mask: bool = False,
+        device=None,
     ) -> TokenizedTexts:
         """Tokenize (query, document) pairs with maxlen for each side.
 
         Special tokens are inserted manually from the tokenizer's vocabulary.
-        in BERT-style: [CLS] Q [SEP] D [SEP]
+        in BERT-style: [CLS] Q [SEP] d [SEP]
         Compatible with fast tokenizers (TokenizersBackend) 
 
         Args:
             input_records: BaseRecords containing queries and documents
             maxlen: Optional combined max length for the entire sequence (overrides model max if set)
             mask: Whether to return attention masks
+            device: Device to move the tensors to (defaults to model device)
         Returns:
             TokenizedTexts with input_ids, lengths, attention_mask, and token_type_ids
         """
@@ -241,36 +248,46 @@ class HFCrossScorer(AbstractModuleScorer):
         ).long() if mask else None  # (B, max_len)
 
         # token_type_ids: 0 for [CLS]+q+[SEP], 1 for d+[SEP]
-        token_type_ids = torch.stack([
-            F.pad(
-                torch.ones(len(d) + 1, dtype=torch.long),   # doc segment
-                (max_len - len(d) - 1, 0),                   # pad left with 0s (query side)
-                value=0,
-            )
-            for d, length in zip(doc_tensors, lengths)
-            # Flip: build from right so query side is naturally 0
-        ])
-        
         q_lengths = torch.tensor([q.size(0) + 2 for q in query_tensors])  # +[CLS]+[SEP]
         token_type_ids = (
             torch.arange(max_len).unsqueeze(0) >= q_lengths.unsqueeze(1)
         ).long()  # 0 for query side, 1 for doc side
 
+        dest_device = device or self.device
         return TokenizedTexts(
             None,
-            to_device(input_ids, self.device),
+            to_device(input_ids, dest_device),
             torch.tensor(lengths),          # pre-padding per-sample lengths
-            to_device(attention_mask,self.device),
-            to_device(token_type_ids,self.device),
+            to_device(attention_mask, dest_device) if attention_mask is not None else None,
+            to_device(token_type_ids, dest_device) if token_type_ids is not None else None,
         )
 
-    def forward(self, inputs: BaseRecords, info: TrainerContext = None):
-        tokenized = self.batch_tokenize_v2(inputs, maxlen=self.max_length, mask=True)
+    def get_tokenizer_fn(self):
+        """Returns a detached CPU tokenizer function."""
+        # Capture only what's needed for tokenization
+        max_length = self.max_length
+
+        def tokenize_fn(input_records: BaseRecords) -> TokenizedTexts:
+            # If it's a tuple (e.g. from distillation collate), take the first element     
+            return self.batch_tokenize_v2(
+                input_records,
+                maxlen=max_length,
+                mask=True,
+                device=torch.device("cpu"),
+            )
+
+        return tokenize_fn
+
+    def forward(self, inputs: BaseRecords, tokenized: Optional[TokenizedTexts] = None, info: TrainerContext = None):
+        if tokenized is None:
+            tokenized = self.batch_tokenize_v2(inputs, maxlen=self.max_length, mask=True)
+
         # strange that some existing models on the huggingface don't use the token_type
         with torch.set_grad_enabled(torch.is_grad_enabled()):
             result = self.model(
-                tokenized.ids,
+                to_device(tokenized.ids, self.device),
                 token_type_ids=to_device(tokenized.token_type_ids, self.device),
                 attention_mask=to_device(tokenized.mask, self.device),
             ).logits  # Tensor[float] of length records size
         return result
+

@@ -1,8 +1,7 @@
 import sys
-from typing import List
+from typing import List, Union, Tuple
 import torch
-from torch import nn
-from torch.functional import Tensor
+from torch import nn, Tensor
 from experimaestro import Config, Param, field
 import torch.nn.functional as F
 from xpmir.rankers import ScorerOutputType
