@@ -161,7 +161,7 @@ class HFCrossScorer(AbstractModuleScorer):
         self,
         input_records: BaseRecords,
         maxlen=None,
-        mask=False,
+        mask=True,
     ) -> TokenizedTexts:
         """A version of batch_tokenize that is compatible with torch.compile (no Python list building)"""
         # For now, we just call the original batch_tokenize, but this can be optimized later if needed.
@@ -186,7 +186,7 @@ class HFCrossScorer(AbstractModuleScorer):
             q_max=self.max_query_length,
             d_max=self.max_doc_length,
             maxlen=self.max_length,
-            mask=False,
+            mask=True,
         )
         return tokenize_fn
 
@@ -207,8 +207,8 @@ class HFCrossScorer(AbstractModuleScorer):
             # but ensures compatibility if the model is used outside of fabric
             result = self.model(
                 to_device(tokenized.ids, self.device),
-                token_type_ids=to_device(tokenized.token_type_ids, self.device),
                 attention_mask=to_device(tokenized.mask, self.device),
+                token_type_ids=to_device(tokenized.token_type_ids, self.device),
             ).logits  # Tensor[float] of length records size
         return result
 
@@ -219,7 +219,7 @@ def hf_cross_scorer_tokenize(
     q_max: Optional[int] = None,
     d_max: Optional[int] = None,
     maxlen: Optional[int] = None,
-    mask: bool = False,
+    mask: bool = True,
 ) -> TokenizedTexts:
     """Tokenize (query, document) pairs with maxlen for each side.
     Standalone function for potential use outside of the HFCrossScorer module 

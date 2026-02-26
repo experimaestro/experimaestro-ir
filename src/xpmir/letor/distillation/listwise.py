@@ -1,10 +1,12 @@
 import sys
 from typing import List, Union, Tuple
+from typing_extensions import ReadOnly, TypedDict
 import torch
 from torch import nn, Tensor
 from experimaestro import Config, Param, field
 import torch.nn.functional as F
 from xpmir.rankers import ScorerOutputType
+from xpmir.text import TokenizedTexts
 from xpmir.letor.records import (
     PointwiseRecord,
     PointwiseRecords,
@@ -12,7 +14,7 @@ from xpmir.letor.records import (
 from xpm_torch.trainers import TrainerContext, LossTrainer
 from xpm_torch.losses import Loss
 
-from .samplers import DistillationListwiseSampler
+from .samplers import DistillationListwiseSampler, ListwiseDistillationSample
 import numpy as np
 from xpmir.rankers import AbstractModuleScorer
 from xpmir.letor.records import (
@@ -21,10 +23,25 @@ from xpmir.letor.records import (
     ProductRecords,
 )
 
+class DistillationListwiseInputs(TypedDict):
+    records: ReadOnly[PointwiseRecords]
+    tokenized_records: ReadOnly[TokenizedTexts]
+    teacher_scores: ReadOnly[Tensor]
 
-def distillation_listwise_collate(records: list) -> list:
-    """Identity collate for listwise distillation samples."""
-    return records
+def distillation_listwise_collate(samples: List[ListwiseDistillationSample]) -> DistillationListwiseInputs:
+    """Collate function for Distillation Listwise trainer"""
+    teacher_scores = torch.empty(len(samples), len(samples[0].documents))
+    records = PointwiseRecords()
+    for ix, sample in enumerate(samples):
+        for doc in sample.documents:
+            records.add(PointwiseRecord(sample.query, doc.document, doc.score))
+        teacher_scores[ix] = torch.tensor([doc.score for doc in sample.documents])
+
+    return DistillationListwiseInputs(
+        records=records,
+        tokenized_records=None,
+        teacher_scores=teacher_scores
+    )
 
 ### Losses
 
@@ -215,23 +232,33 @@ class DistillationListwiseTrainer(LossTrainer):
         self.sampler.initialize(random)
 
         dataset = self.sampler.as_dataset()
-        self._create_dataloader(dataset, distillation_listwise_collate)
 
-    def train_batch(self, samples: List[DistillationListwiseSampler]):
+        # if we can extract the tokenization function from model, we wrap the collate with it.
+        if hasattr(self.model, "get_tokenizer_fn"):
+            tokenization_fn = self.model.get_tokenizer_fn()
+            def collate_fn_with_tokenization(samples: List[ListwiseDistillationSample]) -> DistillationListwiseInputs:
+                inputs = distillation_listwise_collate(samples)
+                inputs["tokenized_records"] = tokenization_fn(inputs["records"])
+                return inputs
+            collate_fn = collate_fn_with_tokenization
+        else:
+            collate_fn = distillation_listwise_collate
+
+        self._create_dataloader(dataset, collate_fn=collate_fn)
+
+    def train_batch(self, inputs: DistillationListwiseInputs):
         # Builds records and teacher score matrix
-        teacher_scores = torch.empty(len(samples), len(samples[0].documents))
-        records = PointwiseRecords()
-        for ix, sample in enumerate(samples):
-            for doc in sample.documents:
-                records.add(PointwiseRecord(sample.query, doc.document, doc.score))
-            teacher_scores[ix] = torch.tensor([doc.score for doc in sample.documents])
+        records, teacher_scores, tokenized_records = inputs["records"], inputs["teacher_scores"], inputs.get("tokenized_records")
 
         # Get the next batch and compute the scores for each query/document
-        scores = self.model(records, self.context)
+        if tokenized_records is not None:
+            scores = self.model(records, tokenized=tokenized_records, info=self.context)
+        else:
+            scores = self.model(records, self.context)
 
         if torch.isnan(scores).any() or torch.isinf(scores).any():
             self.logger.error(
-                "nan or inf relevance score detected. Aborting (pairwise distillation)."
+                "nan or inf relevance score detected. Aborting (listwise distillation)."
             )
             sys.exit(1)
 
