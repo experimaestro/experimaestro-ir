@@ -239,8 +239,11 @@ def hf_cross_scorer_tokenize(
     Returns:
         TokenizedTexts with input_ids, lengths, attention_mask, and token_type_ids
     """
-    queries = [q["text_item"].text for q in input_records.queries]
-    docs = [d["text_item"].text for d in input_records.documents]
+    #get indexes of query/document pairs from the records
+    ix_qs, ix_ds =  input_records.pairs()
+        
+    queries = [input_records.unique_topics[i]['text_item'].text for i in ix_qs]
+    docs = [input_records.unique_documents[i]['text_item'].text for i in ix_ds]
 
     # Special token IDs (BERT-style= [CLS] q [SEP] d [SEP])              #
     cls_id = tokenizer.cls_token_id  # [CLS]

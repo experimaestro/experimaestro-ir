@@ -12,8 +12,29 @@ from typing import (
     Optional,
     Tuple,
     TypeVar,
+    TypedDict,
     Union,
 )
+from typing_extensions import ReadOnly
+
+
+## TypeddDicts
+
+class ScoreRecord(TypedDict):
+    """A record with just a score"""
+
+    score: ReadOnly[float]
+
+
+class ScoreDocumentRecord(IDTextRecord, ScoreRecord):
+    """A record with an ID, a text item and a score"""
+
+    pass
+
+
+
+
+## Dataclasses / generics
 
 DocT = TypeVar("DocT")
 DocT2 = TypeVar("DocT2")
@@ -59,9 +80,7 @@ class PointwiseRecord(Generic[DocT, QueryT]):
     def with_documents(self, ds: "List[DocT2]") -> "PointwiseRecord[DocT2, QueryT]":
         return PointwiseRecord(self.topic, ds[0], self.relevance)
 
-
 RT = TypeVar("RT")
-
 
 class BaseRecords(List[RT]):
     """Base records just exposes iterables on (query, document) pairs
@@ -79,14 +98,15 @@ class BaseRecords(List[RT]):
         return f"<{self.__class__.__name__}(count={len(self)})>"
 
     @property
-    def unique_topics(self) -> Iterable[IDTextRecord]:
-        return self.topics
+    def unique_topics(self) -> List[IDTextRecord]:
+
+        return list(self.topics)
 
     unique_queries = unique_topics
 
     @property
-    def unique_documents(self) -> Iterable[IDTextRecord]:
-        return self.documents
+    def unique_documents(self) -> List[IDTextRecord]:
+        return list(self.documents)
 
     @property
     def queries(self):
@@ -274,6 +294,8 @@ class PairwiseRecords(BaseRecords):
         return itertools.chain(self.positives, self.negatives)
 
     def pairs(self):
+        """Returns the list of query/document indices for which we should compute the score, or None if all (cartesian product). This method should be
+        used with `unique_topics`"""
         indices = list(range(len(self._topics)))
         return indices * 2, list(range(2 * len(self.positives)))
 
@@ -496,7 +518,7 @@ class ProductRecords(BatchwiseRecords):
                 yield d
 
     @property
-    def unique_documents(self):
+    def unique_documents(self) -> Iterable[IDTextRecord]:
         return self._documents
 
     def pairs(self) -> Tuple[Iterable[int], Iterable[int]]:
