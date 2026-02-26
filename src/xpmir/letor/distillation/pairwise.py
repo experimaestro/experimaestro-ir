@@ -1,5 +1,6 @@
 import sys
-from typing import List, Tuple
+from typing import List, Tuple, TypedDict
+from typing_extensions import ReadOnly
 import numpy as np
 import torch
 from torch import nn
@@ -14,12 +15,15 @@ from xpm_torch.losses import Loss
 
 from .samplers import DistillationPairwiseSampler, PairwiseDistillationSample
 
+from xpmir.text import TokenizedTexts
 from xpmir.rankers import AbstractModuleScorer
 from xpmir.letor.records import (
+    ScoreDocumentRecord,
     PairwiseRecord,
     PairwiseRecords,
     ProductRecords,
 )
+
 
 class DistillationPairwiseLoss(Config, nn.Module):
     """The abstract loss for pairwise distillation"""
@@ -100,8 +104,22 @@ class DistillationKLLoss(DistillationPairwiseLoss):
         return self.loss(local_scores, teacher_scores).sum(dim=1).mean(dim=0)
 
 
-def distillation_pairwise_collate(samples: List[PairwiseDistillationSample]) -> Tuple[PairwiseRecords, Tensor]:
-    """Collate function for Distillation Pairwise trainer"""
+class DistillationPairwiseInputs(TypedDict):
+    """A record with just a text item"""
+
+    records: ReadOnly[PairwiseRecords]
+    tokenized_records: ReadOnly[TokenizedTexts]
+    teacher_scores: ReadOnly[Tensor]
+
+
+def distillation_pairwise_collate(
+    samples: List[PairwiseDistillationSample],
+) -> DistillationPairwiseInputs:
+    """Collate function for Distillation Pairwise trainer
+    Args: 
+        samples: List of pairwise distillation samples
+        transform_records: A function to transform the records before feeding them to the model.
+    """
     teacher_scores = torch.empty(len(samples), 2)
     records = PairwiseRecords()
     for ix, sample in enumerate(samples):
@@ -115,7 +133,11 @@ def distillation_pairwise_collate(samples: List[PairwiseDistillationSample]) -> 
         teacher_scores[ix, 0] = sample.documents[0].score
         teacher_scores[ix, 1] = sample.documents[1].score
 
-    return records, teacher_scores
+    return DistillationPairwiseInputs(
+        records=records,
+        tokenized_records=None,
+        teacher_scores=teacher_scores
+    )
 
 class DistillationPairwiseTrainer(LossTrainer):
     """Pairwise trainer for distillation"""
@@ -136,14 +158,29 @@ class DistillationPairwiseTrainer(LossTrainer):
         self.sampler.initialize(random)
 
         dataset = self.sampler.as_dataset()
-        self._create_dataloader(dataset, collate_fn=distillation_pairwise_collate)
 
-    def train_batch(self, inputs: Tuple[PairwiseRecords, Tensor]):
+        #if we can extract the tokenization function from model, we wrap the collate with it. 
+        if hasattr(self.model, "get_tokenizer_fn"):
+            tokenization_fn = self.model.get_tokenizer_fn()
+            def collate_fn_with_tokenization(samples: List[PairwiseDistillationSample]) -> DistillationPairwiseInputs:
+                inputs = distillation_pairwise_collate(samples)
+                inputs["tokenized_records"] = tokenization_fn(inputs["records"])
+                return inputs
+            collate_fn = collate_fn_with_tokenization
+        else:
+            collate_fn = distillation_pairwise_collate
+
+        self._create_dataloader(dataset, collate_fn=collate_fn)
+
+    def train_batch(self, inputs: DistillationPairwiseInputs):
         # Builds records and teacher score matrix
-        records, teacher_scores = inputs
-       
-        # Get the next batch and compute the scores for each query/document
-        scores = self.model(records, info=self.context).reshape(2, len(records)).T
+        records, teacher_scores, tokenized_records = inputs["records"], inputs["teacher_scores"], inputs["tokenized_records"]
+        # teacher_scores_ = torch.empty(len(records), 2)
+        # for ix, record in enumerate(records):
+        #     teacher_scores_[ix, 0] = record.positive_document["score"]
+        #     teacher_scores_[ix, 1] = record.negative_document["score"]
+        # Get the next batch and compute the scores for each query/document pair
+        scores = self.model(records, tokenized=tokenized_records, info=self.context).reshape(2, len(records)).T
 
         if torch.isnan(scores).any() or torch.isinf(scores).any():
             self.logger.error(
@@ -152,7 +189,5 @@ class DistillationPairwiseTrainer(LossTrainer):
             sys.exit(1)
 
         # Call the losses (distillation, pairwise and pointwise)
-        teacher_scores = teacher_scores.to(scores.device)
+        teacher_scores = teacher_scores.to(scores.device) #no op with fabric but ensures that the teacher scores are on the same device as the student scores
         self.lossfn.process(scores, teacher_scores, self.context)
-
-
