@@ -230,8 +230,13 @@ class DistillationListwiseSampler(Sampler):
 
 
 class DistillationNegativesSampler(DistillationListwiseSampler):
-    """Samples only `passages_per_query` documents per query, skips query if no relevant document retrieved"""
-
+    """Samples only `passages_per_query` documents per query, skips query if no relevant document retrieved
+     - Needs the relevances judgements to ensure sampling one positive and (passages_per_query - 1) negatives per query
+     - Uses ScoredDocument to store Relevance Labels, 
+        - WARNING: ignores eventual scores from original Dataset.
+    """
+    
+    samples: Param[ListwiseDistillationSamplesTSVWithAnnotations]
     passages_per_query: Param[int] = field(default=8)
 
     def _sample_docs(self, item):
@@ -241,26 +246,25 @@ class DistillationNegativesSampler(DistillationListwiseSampler):
 
         for doc in item.documents:
             if doc.document["id"] in qrel:
-                positives.append(doc)
+                positives.append(ScoredDocument(doc.document, score=1))
             else:
-                negatives.append(doc)
+                negatives.append(ScoredDocument(doc.document, score=0))
 
         if not positives:  # this will be skipped by TransformDataset.iter_shard
             return
 
         # if we have positives, return one per positive doc
-        for pos in positives:
-            sampled_negatives = [
-                negatives[idx]
-                for idx in self.random.choice(
-                    len(negatives), self.passages_per_query - 1
-                )
-            ]
-
-            # return positive document fist and then
-            yield ListwiseDistillationSample(
-                query=item.query, documents=[pos] + sampled_negatives
+        sampled_negatives = [
+            negatives[idx]
+            for idx in self.random.choice(
+                len(negatives), self.passages_per_query - 1
             )
+        ]
+
+        # return positive document fist and then
+        return ListwiseDistillationSample(
+            query=item.query, documents=[positives[0]] + sampled_negatives
+        )
 
     def initialize(self, random: Optional[np.random.RandomState]):
         super().initialize(random)
