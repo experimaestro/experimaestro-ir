@@ -6,7 +6,7 @@ The result is a new Sampler with potentially different doc/query types.
 
 from typing import TypeVar, List, Iterator, Any, Dict
 
-from experimaestro import Param
+from experimaestro import Param, field
 from xpm_torch.base import Sampler
 from xpm_torch.datasets import ShardedIterableDataset
 from xpmir.letor.processors import RecordsProcessor
@@ -63,7 +63,7 @@ class SamplerAdapter(Sampler):
 
     sampler: Param[Sampler]
     processors: Param[List[RecordsProcessor]]
-    buffer_size: Param[int] = 64
+    buffer_size: Param[int] = field(default=64)
 
     def initialize(self, random):
         super().initialize(random)

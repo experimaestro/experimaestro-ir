@@ -234,7 +234,7 @@ def msmarco_colbertv2_annotated(passages_per_query: int) -> SamplerAdapter:
 
     # Generate a sampler from the samples, hydrating with stores
     raw_sampler = DistillationNegativesSampler.C(
-        samples=train_ranks_distil, sampling_k=passages_per_query
+        samples=train_ranks_distil, passages_per_query=passages_per_query
     )
     hydrator = StoreHydrator.C(
         documentstore=prepare_collection("irds.msmarco-passage.documents"),

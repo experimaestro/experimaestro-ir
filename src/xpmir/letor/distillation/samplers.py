@@ -1,6 +1,8 @@
-import logging
+import logging, random
+import hashlib
 from dataclasses import dataclass
 from typing import (
+    Optional,
     Generic,
     Iterable,
     Iterator,
@@ -10,7 +12,7 @@ from typing import (
 )
 import numpy as np
 
-from experimaestro import Config, Meta, Param
+from experimaestro import Config, Meta, Param, field
 from datamaestro.data import File
 from datamaestro_text.data.ir import (
     IDRecord,
@@ -24,6 +26,7 @@ from xpm_torch.datasets import (
     QueryGroupedFileDataset,
     InfiniteDataset,
     ShardedIterableDataset,
+    TransformDataset,
 )
 
 from xpm_torch.base import Sampler
@@ -203,7 +206,6 @@ class ListwiseDistillationSamplesTSV(ListwiseDistillationSamples, File):
 
 class ListwiseDistillationSamplesTSVWithAnnotations(ListwiseDistillationSamplesTSV):
     qrels: Param[AdhocAssessments]
-    sampling_k: Param[int] = 8
 
     def __post_init__(self):
         self.qrels_dict = {}
@@ -219,7 +221,7 @@ class DistillationListwiseSampler(Sampler):
 
     samples: Param[ListwiseDistillationSamples]
 
-    def initialize(self, random: np.random.RandomState):
+    def initialize(self, random: Optional[np.random.RandomState]):
         super().initialize(random)
 
     def as_dataset(self) -> ShardedIterableDataset:
@@ -228,9 +230,41 @@ class DistillationListwiseSampler(Sampler):
 
 
 class DistillationNegativesSampler(DistillationListwiseSampler):
-    """An in-batch negative sampler constructed from a listwise one"""
+    """Samples only `passages_per_query` documents per query, skips query if no relevant document retrieved"""
 
-    sampling_k: Param[int] = 8
+    passages_per_query: Param[int] = field(default=8)
 
-    def initialize(self, random: np.random.RandomState):
+    def _sample_docs(self, item):
+        qrel = self.samples.qrels_dict.get(item.query["id"], set())
+        negatives = []
+        positives = []
+
+        for doc in item.documents:
+            if doc.document["id"] in qrel:
+                positives.append(doc)
+            else:
+                negatives.append(doc)
+
+        if not positives:  # this will be skipped by TransformDataset.iter_shard
+            return
+
+        # if we have positives, return one per positive doc
+        for pos in positives:
+            sampled_negatives = [
+                negatives[idx]
+                for idx in self.random.choice(
+                    len(negatives), self.passages_per_query - 1
+                )
+            ]
+
+            # return positive document fist and then
+            yield ListwiseDistillationSample(
+                query=item.query, documents=[pos] + sampled_negatives
+            )
+
+    def initialize(self, random: Optional[np.random.RandomState]):
         super().initialize(random)
+
+    def as_dataset(self) -> ShardedIterableDataset:
+        """Returns the underlying dataset for use with StatefulDataLoader."""
+        return TransformDataset(self.samples.as_dataset(), transform=self._sample_docs)

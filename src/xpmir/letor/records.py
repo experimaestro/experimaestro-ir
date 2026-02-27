@@ -113,7 +113,7 @@ class BaseRecords(List[RT]):
         """Deprecated: use topics"""
         return self.topics
 
-    def to(self, device):
+    def to(self, *args, **kwargs):
         """Moves the records to a device (e.g. for the relevance matrix in ProductRecords)
         Default implementation does nothing, but can be implemented by specific records that have tensors as attributes (e.g. ProductRecords)
         """
