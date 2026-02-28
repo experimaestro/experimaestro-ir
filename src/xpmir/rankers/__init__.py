@@ -22,10 +22,11 @@ from experimaestro import Param, Config, Meta, field
 from datamaestro_text.data.ir import (
     Documents,
     DocumentStore,
-    create_record,
-    IDItem,
+    IDTextRecord,
+    SimpleTextItem,
 )
-from datamaestro_text.data.ir.base import DocumentRecord
+
+DocumentRecord = IDTextRecord
 from xpm_torch.utils.utils import Initializable
 from xpm_torch.utils.logging import EasyLogger
 from xpm_torch.optim import ModuleInitMode, ModuleInitOptions
@@ -99,16 +100,16 @@ class Scorer(Config, Initializable, EasyLogger, ABC):
     ) -> List[ScoredDocument]:
         # Convert into document records
         if isinstance(documents, str):
-            documents = [ScoredDocument(create_record(text=documents), None)]
+            documents = [ScoredDocument({"text_item": SimpleTextItem(documents)}, None)]
         elif isinstance(documents[0], str):
             documents = [
-                ScoredDocument(create_record(text=scored_document), None)
+                ScoredDocument({"text_item": SimpleTextItem(scored_document)}, None)
                 for scored_document in documents
             ]
 
         # Convert into topic record
         if isinstance(topic, str):
-            topic = create_record(text=topic)
+            topic = {"text_item": SimpleTextItem(topic)}
 
         return self.compute(topic, documents)
 
@@ -474,6 +475,6 @@ class RetrieverHydrator(Retriever):
 
     def retrieve(self, record: TopicRecord) -> List[ScoredDocument]:
         return [
-            ScoredDocument(self.store.document_ext(sd.document[IDItem].id), sd.score)
+            ScoredDocument(self.store.document_ext(sd.document["id"]), sd.score)
             for sd in self.retriever.retrieve(record)
         ]

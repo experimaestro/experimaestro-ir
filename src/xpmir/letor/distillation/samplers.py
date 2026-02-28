@@ -13,13 +13,11 @@ import numpy as np
 from experimaestro import Config, Meta, Param
 from datamaestro.data import File
 from datamaestro_text.data.ir.base import (
-    TopicRecord,
-    DocumentRecord,
-    ScoredItem,
+    IDTextRecord,
     SimpleTextItem,
-    IDItem,
-    create_record,
 )
+
+TopicRecord = DocumentRecord = IDTextRecord
 from datamaestro_text.data.ir import AdhocAssessments
 from xpm_torch.utils.iter import (
     InfiniteSkippingIterator,
@@ -64,7 +62,7 @@ class PairwiseHydrator(PairwiseDistillationSamples, SampleHydrator):
 
         if transformed := self.transform_documents(documents):
             documents = tuple(
-                ScoredDocument(d, sd[ScoredItem].score)
+                ScoredDocument(d, sd["score"])
                 for d, sd in zip(transformed, sample.documents)
             )
 
@@ -93,23 +91,19 @@ class PairwiseDistillationSamplesTSV(PairwiseDistillationSamples, File):
             with self.path.open("rt") as fp:
                 for row in csv.reader(fp, delimiter="\t"):
                     if self.with_queryid:
-                        query = create_record(id=row[2])
+                        query = {"id": row[2]}
                     else:
-                        query = create_record(text=row[2])
+                        query = {"text_item": SimpleTextItem(row[2])}
 
                     if self.with_docid:
                         documents = (
-                            DocumentRecord(IDItem(row[3]), ScoredItem(float(row[0]))),
-                            DocumentRecord(IDItem(row[4]), ScoredItem(float(row[1]))),
+                            {"id": row[3], "score": float(row[0])},
+                            {"id": row[4], "score": float(row[1])},
                         )
                     else:
                         documents = (
-                            DocumentRecord(
-                                SimpleTextItem(row[3]), ScoredItem(float(row[0]))
-                            ),
-                            DocumentRecord(
-                                SimpleTextItem(row[4]), ScoredItem(float(row[1]))
-                            ),
+                            {"text_item": SimpleTextItem(row[3]), "score": float(row[0])},
+                            {"text_item": SimpleTextItem(row[4]), "score": float(row[1])},
                         )
 
                     yield PairwiseDistillationSample(query, documents)
@@ -220,7 +214,7 @@ class ListwiseHydrator(ListwiseDistillationSamples, SampleHydrator):
 
         if transformed := self.transform_documents(documents):
             documents = list(
-                ScoredDocument(d, sd[ScoredItem].score)
+                ScoredDocument(d, sd["score"])
                 for d, sd in zip(transformed, sample.documents)
             )
 
@@ -269,9 +263,9 @@ class ListwiseDistillationSamplesTSV(ListwiseDistillationSamples, File):
                     if current_q is None:
                         current_q = qkey
                         current_query_record = (
-                            create_record(id=qkey)
+                            {"id": qkey}
                             if self.with_queryid
-                            else create_record(text=qkey)
+                            else {"text_item": SimpleTextItem(qkey)}
                         )
 
                     if qkey != current_q or (self.top_k and len(documents) >= int(self.top_k)):
@@ -280,16 +274,16 @@ class ListwiseDistillationSamplesTSV(ListwiseDistillationSamples, File):
                         # reset for new block (may be new query or another block for same query)
                         current_q = qkey
                         current_query_record = (
-                            create_record(id=qkey)
+                            {"id": qkey}
                             if self.with_queryid
-                            else create_record(text=qkey)
+                            else {"text_item": SimpleTextItem(qkey)}
                         )
                         documents = []
 
                     if self.with_docid:
-                        doc = DocumentRecord(IDItem(row[2]), ScoredItem(float(row[4])))
+                        doc = {"id": row[2], "score": float(row[4])}
                     else:
-                        doc = DocumentRecord(SimpleTextItem(row[2]), ScoredItem(float(row[4])))
+                        doc = {"text_item": SimpleTextItem(row[2]), "score": float(row[4])}
 
                     documents.append(doc)
 
@@ -339,9 +333,9 @@ class ListwiseDistillationSamplesTSVWithAnnotations(ListwiseDistillationSamplesT
                     if current_q is None:
                         current_q = qkey
                         current_query_record = (
-                            create_record(id=qkey)
+                            {"id": qkey}
                             if self.with_queryid
-                            else create_record(text=qkey)
+                            else {"text_item": SimpleTextItem(qkey)}
                         )
 
                     if qkey != current_q or (self.top_k and len(documents) >= int(self.top_k)):
@@ -353,21 +347,21 @@ class ListwiseDistillationSamplesTSVWithAnnotations(ListwiseDistillationSamplesT
                         # reset for new block (may be new query or another block for same query)
                         current_q = qkey
                         current_query_record = (
-                            create_record(id=qkey)
+                            {"id": qkey}
                             if self.with_queryid
-                            else create_record(text=qkey)
+                            else {"text_item": SimpleTextItem(qkey)}
                         )
                         documents = []
                         rel = []
 
                     # determine relevance by raw doc id membership (qrel is a set of doc ids)
-                    relevance = ScoredItem(1) if row[2] in qrel else ScoredItem(0)
+                    score = 1.0 if row[2] in qrel else 0.0
                     if self.with_docid:
-                        doc = DocumentRecord(IDItem(row[2]), relevance)
+                        doc = {"id": row[2], "score": score}
                     else:
-                        doc = DocumentRecord(SimpleTextItem(row[2]), relevance)
+                        doc = {"text_item": SimpleTextItem(row[2]), "score": score}
 
-                    if relevance.score > 0:
+                    if score > 0:
                         rel.append(doc)
                     else:
                         documents.append(doc)

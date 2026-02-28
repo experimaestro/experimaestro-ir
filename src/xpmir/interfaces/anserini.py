@@ -16,11 +16,11 @@ from experimaestro import Param, progress
 from datamaestro_text.data.ir import (
     DocumentStore,
     TextItem,
-    IDItem,
-    TopicRecord,
-    create_record,
-    InternalIDItem,
+    IDTextRecord,
+    SimpleTextItem,
 )
+
+TopicRecord = IDTextRecord
 import datamaestro_text.data.ir.csv as ir_csv
 from datamaestro_text.data.ir.trec import (
     Documents,
@@ -141,8 +141,8 @@ class IndexCollection(Index, Task):
                     # Generate document
                     json.dump(
                         {
-                            "id": document[IDItem].id,
-                            "contents": document[TextItem].text,
+                            "id": document["id"],
+                            "contents": document["text_item"].text,
                         },
                         out,
                     )
@@ -308,7 +308,7 @@ class AnseriniRetriever(Retriever):
     def retrieve(self, record: TopicRecord) -> List[ScoredDocument]:
         # see
         # https://github.com/castorini/anserini/blob/master/src/main/java/io/anserini/search/SimpleSearcher.java
-        hits = self.searcher.search(record[TextItem].text, k=self.k)
+        hits = self.searcher.search(record["text_item"].text, k=self.k)
         store = self.get_store()
 
         # Batch retrieve documents
@@ -322,11 +322,14 @@ class AnseriniRetriever(Retriever):
 
         return [
             ScoredDocument(
-                create_record(
-                    InternalIDItem(hit.lucene_docid),
-                    id=hit.docid,
-                    text=getattr(hit, "contents", None),
-                ),
+                {
+                    "id": hit.docid,
+                    **(
+                        {"text_item": SimpleTextItem(contents)}
+                        if (contents := getattr(hit, "contents", None))
+                        else {}
+                    ),
+                },
                 hit.score,
             )
             for hit in hits

@@ -1,17 +1,14 @@
-from typing import List, Optional, Generic
+from typing import Optional, Generic
 from experimaestro import Config, Param
-from datamaestro_text.data.ir import TextItem
 import torch.nn as nn
 import torch
 from xpm_torch.optim import ModuleInitOptions
-from xpmir.text.huggingface import (
-    OneHotHuggingFaceEncoder,
-    TransformerTokensEncoderWithMLMOutput,
-)
+from xpmir.text.huggingface.encoders import OneHotHuggingFaceEncoder
 from xpmir.text import TokenizerOptions
 from xpmir.text.huggingface import HFTokenizerBase
+from xpmir.text.huggingface.tokenizers import HFTokenizer, HFTokenizerAdapter
+from xpmir.text.adapters import TopicTextConverter
 from xpmir.text.encoders import (
-    TextEncoder,
     TextEncoderBase,
     InputType as EncoderInputType,
     TextsRepresentationOutput,
@@ -64,79 +61,23 @@ class AggregationModule(nn.Module):
         return self.aggregation(self.linear(input), mask)
 
 
-class SpladeTextEncoderModel(nn.Module):
-    def __init__(
-        self, encoder: TransformerTokensEncoderWithMLMOutput, aggregation: Aggregation
-    ):
-        super().__init__()
-        self.encoder = encoder
-        self.aggregation = aggregation
-
-    def forward(self, tokenized):
-        # We stock all the outputs in order to get the embedding matrix
-        # Here as the automodel is not the same as the normal AutoModel,
-        # So here the output has the attribute logits, the w_ij in the paper
-        # which is of shape (bs, len(texts), vocab_size)
-        out = self.encoder(tokenized, all_outputs=True)
-        out = self.aggregation(out.logits, tokenized.mask)
-        return out
-
-
-class SpladeTextEncoder(TextEncoder):
-    """Splade model
-
-    It is only a text encoder since the we use `xpmir.neural.dual.DotDense`
-    as the scorer class
-    """
-
-    encoder: Param[TransformerTokensEncoderWithMLMOutput]
-    """The encoder from Hugging Face"""
-
-    aggregation: Param[Aggregation]
-    """How to aggregate the vectors"""
-
-    maxlen: Param[Optional[int]] = None
-    """Max length for texts"""
-
-    def __initialize__(self, options: ModuleInitOptions):
-        self.encoder.initialize(options)
-        self.model = SpladeTextEncoderModel(self.encoder, self.aggregation)
-
-    def forward(self, texts: List[str]) -> torch.Tensor:
-        """Returns a batch x vocab tensor"""
-        if not isinstance(texts[0], str):
-            texts = [text[TextItem].text for text in texts]
-        tokenized = self.encoder.batch_tokenize(texts, mask=True, maxlen=self.maxlen)
-        out = self.model(tokenized)
-        return TextsRepresentationOutput(out, tokenized)
-
-    @property
-    def dimension(self):
-        return self.encoder.model.config.vocab_size
-
-    def static(self):
-        return False
-
-
 class IdentityWithBias(nn.Identity):
-    def __init__(self):
+    def __init__(self, original_linear: nn.Linear = None):
         # So that set_output_embeddings is happy
         super().__init__()
         self.bias = None
+        self.original_linear = original_linear
 
 
-class SpladeTextEncoderV2(
+class SpladeTextEncoder(
     TextEncoderBase[EncoderInputType, TextsRepresentationOutput],
     Generic[EncoderInputType],
 ):
-    # TODO: use "SpladeTextEncoder" identifier until
-    # https://github.com/experimaestro/experimaestro-python/issues/56 is fixed
-    __xpmid__ = str(SpladeTextEncoder.__getxpmtype__().identifier)
+    """Splade model text encoder
 
-    """Splade model text encoder (V2)
-
-    It is only a text encoder since the we use `xpmir.neural.dual.DotDense`
-    as the scorer class. Compared to V1, it uses the new text HF encoder abstractions.
+    It is only a text encoder since the we use `xpmir.neural.dual.DotDense` as
+    the scorer class. Compared to V1, it uses the new text HF encoder
+    abstractions.
     """
 
     tokenizer: Param[HFTokenizerBase[EncoderInputType]]
@@ -155,15 +96,25 @@ class SpladeTextEncoderV2(
         self.encoder.initialize(options)
         self.tokenizer.initialize(options)
 
-        # Adds the aggregation head right away - this could allows
-        # optimization e.g. for the Max aggregation method
+        # Adds the aggregation head right away - this could allow
+        # optimization e.g. for the Max aggregation method.
+        # When the encoder is shared between doc/query encoders, the second
+        # SpladeTextEncoder finds IdentityWithBias already in place — in that
+        # case retrieve the stored original linear.
         output_embeddings = self.encoder.model.get_output_embeddings()
-        assert isinstance(
-            output_embeddings, nn.Linear
-        ), f"Cannot handle output embeddings of class {output_embeddings.__cls__}"
-        self.encoder.model.set_output_embeddings(IdentityWithBias())
+        if isinstance(output_embeddings, IdentityWithBias):
+            # Shared encoder: output embeddings already replaced; reuse original
+            original_linear = output_embeddings.original_linear
+        else:
+            assert isinstance(
+                output_embeddings, nn.Linear
+            ), f"Cannot handle output embeddings of class {output_embeddings.__class__}"
+            original_linear = output_embeddings
+            self.encoder.model.set_output_embeddings(
+                IdentityWithBias(original_linear=original_linear)
+            )
 
-        self.aggregation = self.aggregation.get_output_module(output_embeddings)
+        self.aggregation = self.aggregation.get_output_module(original_linear)
 
     def forward(self, texts: EncoderInputType) -> TextsRepresentationOutput:
         """Returns a batch x vocab tensor"""
@@ -191,19 +142,23 @@ def _splade(
 ):
     # Unlike the cross-encoder, here the encoder returns the whole last layer
     # In the paper we use the DistilBERT-based as the checkpoint
-    encoder = TransformerTokensEncoderWithMLMOutput(model_id=hf_id, trainable=True)
+    encoder = HFMaskedLanguageModel.from_pretrained_id(hf_id)
+    tokenizer = HFTokenizerAdapter.C(
+        tokenizer=HFTokenizer.C(model_id=hf_id),
+        converter=TopicTextConverter.C(),
+    )
 
     # make use the output of the BERT and do an aggregation
-    doc_encoder = SpladeTextEncoder(
-        aggregation=aggregation, encoder=encoder, maxlen=200
+    doc_encoder = SpladeTextEncoder.C(
+        aggregation=aggregation, encoder=encoder, tokenizer=tokenizer, maxlen=200
     )
-    query_encoder = SpladeTextEncoder(
-        aggregation=aggregation, encoder=encoder, maxlen=30
+    query_encoder = SpladeTextEncoder.C(
+        aggregation=aggregation, encoder=encoder, tokenizer=tokenizer, maxlen=30
     )
 
-    return DotDense(
+    return DotDense.C(
         encoder=doc_encoder, query_encoder=query_encoder
-    ), ScheduledFlopsRegularizer(
+    ), ScheduledFlopsRegularizer.C(
         lambda_q=lambda_q,
         lambda_d=lambda_d,
         lambda_warmup_steps=lambda_warmup_steps,
@@ -221,18 +176,20 @@ def _splade_doc(
     # The doc_encoder is the traditional one, and the query encoder return a vector
     # contains only 0 and 1
     # In the paper we use the DistilBERT-based as the checkpoint
-    encoder = TransformerTokensEncoderWithMLMOutput(model_id=hf_id, trainable=True)
-
-    # make use the output of the BERT and do an aggregation
-    doc_encoder = SpladeTextEncoder(
-        aggregation=aggregation, encoder=encoder, maxlen=256
+    encoder = HFMaskedLanguageModel.from_pretrained_id(hf_id)
+    tokenizer = HFTokenizerAdapter.C(
+        tokenizer=HFTokenizer.C(model_id=hf_id),
+        converter=TopicTextConverter.C(),
+    )
+    doc_encoder = SpladeTextEncoder.C(
+        aggregation=aggregation, encoder=encoder, tokenizer=tokenizer, maxlen=200
     )
 
-    query_encoder = OneHotHuggingFaceEncoder(model_id=hf_id, maxlen=30)
+    query_encoder = OneHotHuggingFaceEncoder.C(model_id=hf_id, maxlen=30)
 
-    return DotDense(
+    return DotDense.C(
         encoder=doc_encoder, query_encoder=query_encoder
-    ), ScheduledFlopsRegularizer(
+    ), ScheduledFlopsRegularizer.C(
         lambda_q=lambda_q,
         lambda_d=lambda_d,
         lambda_warmup_steps=lambda_warmup_steps,
@@ -246,7 +203,7 @@ def spladeV1(
     hf_id: str = "distilbert-base-uncased",
 ):
     """Returns the Splade architecture"""
-    return _splade(lambda_q, lambda_d, SumAggregation(), lambda_warmup_steps, hf_id)
+    return _splade(lambda_q, lambda_d, SumAggregation.C(), lambda_warmup_steps, hf_id)
 
 
 def spladeV2_max(
@@ -260,7 +217,7 @@ def spladeV2_max(
     SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval
     (arXiv:2109.10086)
     """
-    return _splade(lambda_q, lambda_d, MaxAggregation(), lambda_warmup_steps, hf_id)
+    return _splade(lambda_q, lambda_d, MaxAggregation.C(), lambda_warmup_steps, hf_id)
 
 
 def spladeV2_doc(
@@ -274,4 +231,44 @@ def spladeV2_doc(
     SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval
     (arXiv:2109.10086)
     """
-    return _splade_doc(lambda_q, lambda_d, MaxAggregation(), lambda_warmup_steps, hf_id)
+    return _splade_doc(lambda_q, lambda_d, MaxAggregation.C(), lambda_warmup_steps, hf_id)
+
+
+def splade_from_pretrained_hf(
+    model_id: str,
+    query_model_id: Optional[str] = None,
+    maxlen: int = 200,
+    query_maxlen: int = 30,
+):
+    """Creates a SPLADE DotDense model from a pre-trained HuggingFace MLM checkpoint.
+
+    :param model_id: The HuggingFace model ID for the document encoder
+    :param query_model_id: Optional separate model ID for the query encoder
+    :param maxlen: Maximum document length
+    :param query_maxlen: Maximum query length
+    """
+    encoder = HFMaskedLanguageModel.from_pretrained_id(model_id)
+    tokenizer = HFTokenizerAdapter.C(
+        tokenizer=HFTokenizer.C(model_id=model_id),
+        converter=TopicTextConverter.C(),
+    )
+
+    doc_encoder = SpladeTextEncoder.C(
+        aggregation=MaxAggregation.C(), encoder=encoder, tokenizer=tokenizer, maxlen=maxlen
+    )
+
+    if query_model_id:
+        query_enc = HFMaskedLanguageModel.from_pretrained_id(query_model_id)
+        query_tok = HFTokenizerAdapter.C(
+            tokenizer=HFTokenizer.C(model_id=query_model_id),
+            converter=TopicTextConverter.C(),
+        )
+        query_encoder = SpladeTextEncoder.C(
+            aggregation=MaxAggregation.C(), encoder=query_enc, tokenizer=query_tok, maxlen=query_maxlen
+        )
+    else:
+        query_encoder = SpladeTextEncoder.C(
+            aggregation=MaxAggregation.C(), encoder=encoder, tokenizer=tokenizer, maxlen=query_maxlen
+        )
+
+    return DotDense.C(encoder=doc_encoder, query_encoder=query_encoder)

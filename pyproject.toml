@@ -21,7 +21,7 @@ classifiers = [
 
 dependencies = [
     # Experimaestro
-    "experimaestro>=2.0.0b6",
+    "experimaestro>=2.0.2",
     "datamaestro>=1.0.1",
     "datamaestro_text>=2025.7.28",
     "ir_datasets",
@@ -34,7 +34,7 @@ dependencies = [
     # Torch addons
     "toma",
     "pytorch-lightning",
-    "xpm-torch",
+    "xpm-torch",  # local submodule: xpm-torch/
 ]
 
 [project.optional-dependencies]
@@ -100,6 +100,10 @@ include = [
     "/src",
     "/README.md",
 ]
+
+[tool.uv.sources]
+xpm-torch = { path = "xpm-torch", editable = true }
+datamaestro_text = { path = "datamaestro-text", editable = true }
 
 [tool.pyright]
 include = ["xpmir"]

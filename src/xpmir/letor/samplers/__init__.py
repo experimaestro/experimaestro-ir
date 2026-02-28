@@ -3,19 +3,15 @@ import json
 from pathlib import Path
 from typing import Iterator, List, Tuple, Dict, Any
 import numpy as np
-from datamaestro.record import Record
 from datamaestro_text.data.ir import (
     Adhoc,
     TrainingTriplets,
     PairwiseSampleDataset,
     PairwiseSample,
-    ScoredItem,
     DocumentStore,
     TextItem,
     SimpleTextItem,
-    create_record,
-    DocumentRecord,
-    IDItem,
+    IDTextRecord,
 )
 from experimaestro import Param, tqdm, Task, Annotated, pathgenerator
 from experimaestro.annotations import cache
@@ -140,7 +136,7 @@ class ModelBasedSampler(Sampler):
         return self._store.document_ext(doc_id)
 
     def document_text(self, doc_id):
-        return self.document(doc_id).text
+        return self.document(doc_id)["text_item"].text
 
     @cache("run")
     def _itertopics(
@@ -176,11 +172,11 @@ class ModelBasedSampler(Sampler):
                 skipped = 0
                 for query in tqdm(queries):
                     q_fp = io.StringIO()
-                    qassessments = assessments.get(query[IDItem].id, None)
+                    qassessments = assessments.get(query["id"], None)
                     if not qassessments:
                         skipped += 1
                         self.logger.warning(
-                            "Skipping topic %s (no assessments)", query[IDItem].id
+                            "Skipping topic %s (no assessments)", query["id"]
                         )
                         continue
 
@@ -189,7 +185,7 @@ class ModelBasedSampler(Sampler):
                     for docno, rel in qassessments.items():
                         if rel > 0:
                             q_fp.write(
-                                f"{query.text if not positives else ''}"
+                                f"{query['text_item'].text if not positives else ''}"
                                 f"\t{docno}\t0.\t{rel}\n"
                             )
                             positives.append((docno, rel, 0))
@@ -197,29 +193,29 @@ class ModelBasedSampler(Sampler):
                     if not positives:
                         self.logger.warning(
                             "Skipping topic %s (no relevant documents)",
-                            query[IDItem].id,
+                            query["id"],
                         )
                         skipped += 1
                         continue
 
                     scoreddocuments: List[ScoredDocument] = self.retriever.retrieve(
-                        query.text
+                        query["text_item"].text
                     )
 
                     negatives = []
                     for rank, sd in enumerate(scoreddocuments):
                         # Get the assessment (assumes not relevant)
-                        rel = qassessments.get(sd.document[IDItem].id, 0)
+                        rel = qassessments.get(sd.document["id"], 0)
                         if rel > 0:
                             continue
 
-                        negatives.append((sd.document[IDItem].id, rel, sd.score))
-                        q_fp.write(f"\t{sd.document[IDItem].id}\t{sd.score}\t{rel}\n")
+                        negatives.append((sd.document["id"], rel, sd.score))
+                        q_fp.write(f"\t{sd.document['id']}\t{sd.score}\t{rel}\n")
 
                     if not negatives:
                         self.logger.warning(
                             "Skipping topic %s (no negatives documents)",
-                            query[IDItem].id,
+                            query["id"],
                         )
                         skipped += 1
                         continue
@@ -229,7 +225,7 @@ class ModelBasedSampler(Sampler):
                     # Write in cache, and yield
                     fp.write(q_fp.getvalue())
                     q_fp.close()
-                    yield query.text, positives, negatives
+                    yield query["text_item"].text, positives, negatives
 
                 # Finally, move the cache file in place...
                 self.logger.info(
@@ -281,8 +277,8 @@ class PointwiseModelBasedSampler(PointwiseSampler, ModelBasedSampler):
         document = self.document_text(sample[1])
 
         return PointwiseRecord(
-            topic=TopicRecord(SimpleTextItem(sample[0])),
-            document=DocumentRecord(document=document),
+            topic={"text_item": SimpleTextItem(sample[0])},
+            document={"text_item": SimpleTextItem(document)},
             relevance=sample[3],
         )
 
@@ -338,8 +334,8 @@ class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
         text = None
         while text is None:
             docid, rel, score = samples[self.random.randint(0, len(samples))]
-            document = self.document(docid).update(ScoredItem(score))
-            text = document[TextItem].text
+            document = {**self.document(docid), "score": score}
+            text = document["text_item"].text
         return document
 
     def pairwise_iter(self) -> SerializableIterator[PairwiseRecord, Any]:
@@ -349,7 +345,7 @@ class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
                     random.randint(0, len(self.topics))
                 ]
                 yield PairwiseRecord(
-                    create_record(text=title),
+                    {"text_item": SimpleTextItem(title)},
                     self.sample(positives),
                     self.sample(negatives),
                 )
@@ -456,16 +452,14 @@ class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
                         neg_id = self.documents.docid_internal2external(
                             self.random.randint(0, self.documents.documentcount)
                         )
-                        if neg_id != pos.id:
+                        if neg_id != pos["id"]:
                             break
-                    neg = create_record(id=neg_id)
+                    neg = {"id": neg_id}
                 else:
                     negatives = sample.negatives[self.negative_algo]
                     neg = negatives[self.random.randint(len(negatives))]
 
-                return PairwiseRecord(
-                    qry.as_record(), DocumentRecord(pos), DocumentRecord(neg)
-                )
+                return PairwiseRecord(qry, pos, neg)
 
         base = InfiniteSkippingIterator(iterable_of(lambda: self.dataset.iter()))
 
@@ -523,13 +517,13 @@ class JSONLPairwiseSampleDataset(PairwiseSampleDataset):
                 positives = []
                 negatives = {}
                 for topic_text in sample["queries"]:
-                    topics.append(create_record(text=topic_text))
+                    topics.append({"text_item": SimpleTextItem(topic_text)})
                 for pos_id in sample["pos_ids"]:
-                    positives.append(create_record(id=pos_id))
+                    positives.append({"id": pos_id})
                 for algo in sample["neg_ids"].keys():
                     negatives[algo] = []
                     for neg_id in sample["neg_ids"][algo]:
-                        negatives[algo].append(create_record(id=neg_id))
+                        negatives[algo].append({"id": neg_id})
                 yield PairwiseSample(
                     topics=topics, positives=positives, negatives=negatives
                 )
@@ -546,9 +540,9 @@ class PairwiseSamplerFromTSV(PairwiseSampler):
             for triplet in read_tsv(self.pairwise_samples_path):
                 q_id, pos_id, pos_score, neg_id, neg_score = triplet
                 yield PairwiseRecord(
-                    Record(IDItem(q_id)),
-                    Record(IDItem(pos_id), ScoredItem(pos_score)),
-                    Record(IDItem(neg_id), ScoredItem(neg_score)),
+                    {"id": q_id},
+                    {"id": pos_id, "score": float(pos_score)},
+                    {"id": neg_id, "score": float(neg_score)},
                 )
 
         return SkippingIterator(iter)
@@ -628,11 +622,11 @@ class ModelBasedHardNegativeSampler(Task, Sampler):
             # available
             skipped = 0
             for query in tqdm(queries):
-                qassessments = assessments.get(query[IDItem].id, None)
+                qassessments = assessments.get(query["id"], None)
                 if not qassessments:
                     skipped += 1
                     self.logger.warning(
-                        "Skipping topic %s (no assessments)", query[IDItem].id
+                        "Skipping topic %s (no assessments)", query["id"]
                     )
                     continue
 
@@ -642,23 +636,23 @@ class ModelBasedHardNegativeSampler(Task, Sampler):
                 scoreddocuments: List[ScoredDocument] = self.retriever.retrieve(query)
 
                 for rank, sd in enumerate(scoreddocuments):
-                    if qassessments.get(sd.document[IDItem].id, 0) > 0:
+                    if qassessments.get(sd.document["id"], 0) > 0:
                         # It is a positive document:
-                        positives.append(sd.document[IDItem].id)
+                        positives.append(sd.document["id"])
                     else:
                         # It is a negative document or
                         # don't exist in assessment
-                        negatives.append(sd.document[IDItem].id)
+                        negatives.append(sd.document["id"])
 
                 if not positives:
                     self.logger.debug(
-                        "Skipping topic %s (no relevant documents)", query[IDItem].id
+                        "Skipping topic %s (no relevant documents)", query["id"]
                     )
                     skipped += 1
                     continue
                 if not negatives:
                     self.logger.debug(
-                        "Skipping topic %s (no negative documents)", query[IDItem].id
+                        "Skipping topic %s (no negative documents)", query["id"]
                     )
                     skipped += 1
                     continue
@@ -666,8 +660,9 @@ class ModelBasedHardNegativeSampler(Task, Sampler):
                 # Write the result to the file
                 positive_str = " ".join(positives)
                 negative_str = " ".join(negatives)
+                qid = query["id"]
                 fp.write(
-                    f"{query[IDItem].id}\tpositives:\t{positive_str}\t"
+                    f"{qid}\tpositives:\t{positive_str}\t"
                     f"negatives:\t{negative_str}"
                 )
 

@@ -55,7 +55,7 @@ class DualRepresentationScorer(AbstractModuleScorer, Generic[QueriesRep, DocsRep
         """Encode a list of texts (document or query)
 
         The return value is model dependent"""
-        return self.encode([record[TextItem].text for record in records])
+        return self.encode([record["text_item"].text for record in records])
 
     def encode_queries(self, records: Iterable[TopicRecord]) -> QueriesRep:
         """Encode a list of texts (document or query)
@@ -64,7 +64,7 @@ class DualRepresentationScorer(AbstractModuleScorer, Generic[QueriesRep, DocsRep
 
         By default, uses `merge`
         """
-        return self.encode([record[TextItem].text for record in records])
+        return self.encode([record["text_item"].text for record in records])
 
     def merge_queries(self, queries: QueriesRep):
         """Merge query batches encoded with `encode_queries`

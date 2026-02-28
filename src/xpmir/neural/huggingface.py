@@ -86,8 +86,8 @@ class HFCrossScorer(AbstractModuleScorer):
             ids = enc["input_ids"]
             return self.tokenizer.batch_decode(ids, skip_special_tokens=True, clean_up_tokenization_spaces=True)
 
-        queries = [q[TextItem].text for q in input_records.queries]
-        docs = [d[TextItem].text for d in input_records.documents]
+        queries = [q["text_item"].text for q in input_records.queries]
+        docs = [d["text_item"].text for d in input_records.documents]
 
         truncated_queries = _batch_truncate(queries, q_max)
         truncated_docs = _batch_truncate(docs, d_max)
@@ -129,8 +129,8 @@ class HFCrossScorer(AbstractModuleScorer):
         q_max = self.max_query_length if getattr(self, "max_query_length", None) is not None else None
         d_max = self.max_doc_length if getattr(self, "max_doc_length", None) is not None else None
 
-        queries = [q[TextItem].text for q in input_records.queries]
-        docs = [d[TextItem].text for d in input_records.documents]
+        queries = [q["text_item"].text for q in input_records.queries]
+        docs = [d["text_item"].text for d in input_records.documents]
 
         # compute combined max length (respect model maximum)
         combined_limit = self.tokenizer.model_max_length

@@ -14,9 +14,11 @@ from xpmir.text.utils import lengthToMask
 T = TypeVar("T")
 
 
-def opt_slice(x: Optional[Sequence[T]], ix: Union[int, slice]) -> Optional[Sequence[T]]:
+def opt_slice(x: Optional[Sequence[T]], ix: Union[int, slice, list]) -> Optional[Sequence[T]]:
     if x is None:
         return None
+    if isinstance(ix, list):
+        return [x[i] for i in ix]
     return x[ix]
 
 class TokenizedTexts(NamedTuple):

@@ -5,7 +5,7 @@ https://github.com/facebookresearch/faiss
 
 from pathlib import Path
 from typing import Callable, Iterator, List, Optional, Tuple
-from datamaestro_text.data.ir.base import TopicRecord
+from datamaestro_text.data.ir.base import IDTextRecord as TopicRecord
 from experimaestro import Config, initializer, PathGenerator
 import torch
 import numpy as np
@@ -13,6 +13,7 @@ from experimaestro import Meta, Task, Param, tqdm, field
 import logging
 from datamaestro_text.data.ir import DocumentStore, TextItem
 from xpmir.rankers import Retriever, ScoredDocument
+from xpm_torch import ModuleInitMode
 from xpm_torch.batchers import Batcher
 from xpmir.text.encoders import TextEncoder
 
@@ -36,7 +37,7 @@ class FaissIndex(Config):
     normalize: Param[bool]
     """Whether vectors should be normalized (L2)"""
 
-    faiss_index: Meta[Path] = field(default_factory=PathGenerator("faiss.dat"))
+    faiss_index: Meta[Path] = field(default_factory=PathGenerator("faiss.dat"), ignore_generated=True)
     """Path to the file containing the index"""
 
     documents: Param[DocumentStore]
@@ -55,9 +56,6 @@ class IndexBackedFaiss(FaissIndex, Task):
 
     batchsize: Meta[int] = 1
     """The batch size used when computing representations of documents"""
-
-    device: Meta[Device] = DEFAULT_DEVICE
-    """The device used by the encoder"""
 
     batcher: Meta[Batcher] = Batcher.C()
     """The way to prepare batches of documents"""
@@ -118,9 +116,6 @@ class IndexBackedFaiss(FaissIndex, Task):
         index.train(sample)
 
     def execute(self):
-        self.device.execute(self._execute)
-
-    def _execute(self, device_information: DeviceInformation):
         # Initialization hooks
         context = Context(hooks=self.hooks)
         foreach(context.hooks(InitializationHook), lambda hook: hook.before(context))
@@ -134,8 +129,7 @@ class IndexBackedFaiss(FaissIndex, Task):
         )
         batcher = self.batcher.initialize(self.batchsize)
 
-        # Change the device of the encoder
-        self.encoder.to(device_information.device).eval()
+        self.encoder.eval()
 
         # Train the index
         if not index.is_trained:
@@ -153,14 +147,10 @@ class IndexBackedFaiss(FaissIndex, Task):
         step_iter.update()
 
         # Index the collection
-        doc_iter = (
-            tqdm(
-                self.documents.iter_documents(),
-                total=self.documents.documentcount,
-                desc="Indexing the collection",
-            )
-            if device_information.main
-            else self.documents.iter_documents()
+        doc_iter = tqdm(
+            self.documents.iter_documents(),
+            total=self.documents.documentcount,
+            desc="Indexing the collection",
         )
 
         # Initialization hooks (after)
@@ -171,7 +161,7 @@ class IndexBackedFaiss(FaissIndex, Task):
         with torch.no_grad():
             for batch in batchiter(self.batchsize, doc_iter):
                 batcher.process(
-                    [document[TextItem].text for document in batch],
+                    [document["text_item"].text for document in batch],
                     self.index_documents,
                     index,
                 )
@@ -220,11 +210,14 @@ class FaissRetriever(Retriever):
         """Retrieves a documents, returning a list sorted by decreasing score"""
         with torch.no_grad():
             self.encoder.eval()  # pass the model to the evaluation model
-            encoded_query = self.encoder([query[TextItem].text]).value
+            encoded_query = self.encoder([query["text_item"].text]).value
             if self.index.normalize:
                 encoded_query /= encoded_query.norm(2)
 
-            values, indices = self._index.search(encoded_query.cpu().numpy(), self.topk)
+            values, indices = self._index.search(
+                np.ascontiguousarray(encoded_query.cpu().numpy(), dtype=np.float32),
+                self.topk,
+            )
             return [
                 ScoredDocument(self.index.documents.document_int(int(ix)), float(value))
                 for ix, value in zip(indices[0], values[0])

@@ -26,7 +26,9 @@ from experimaestro import (
     tqdm,
     Constant,
 )
-from datamaestro_text.data.ir import DocumentRecord, DocumentStore
+from datamaestro_text.data.ir import IDTextRecord, DocumentStore
+
+DocumentRecord = IDTextRecord
 from xpm_torch import Module
 from xpm_torch.learner import ModuleInitMode
 from xpm_torch.batchers import Batcher

@@ -3,7 +3,7 @@ from typing import Optional, Tuple, Iterator, Any
 from experimaestro import Param, Config
 import torch
 import numpy as np
-from datamaestro_text.data.ir import DocumentStore, TextItem, create_record
+from datamaestro_text.data.ir import DocumentStore, TextItem, SimpleTextItem
 from xpm_torch import Random
 from xpm_torch.utils.iter import RandomSerializableIterator, SerializableIterator
 
@@ -136,20 +136,20 @@ class RandomSpanSampler(BatchwiseSampler, PairwiseSampler):
 
             while True:
                 record_pos_qry = next(iter)
-                text_pos_qry = record_pos_qry[TextItem].text
+                text_pos_qry = record_pos_qry["text_item"].text
                 spans_pos_qry = self.get_text_span(text_pos_qry, random)
 
                 record_neg = next(iter)
-                text_neg = record_neg[TextItem].text
+                text_neg = record_neg["text_item"].text
                 spans_neg = self.get_text_span(text_neg, random)
 
                 if not (spans_pos_qry and spans_neg):
                     continue
 
                 yield PairwiseRecord(
-                    create_record(text=spans_pos_qry[0]),
-                    create_record(text=spans_pos_qry[1]),
-                    create_record(text=spans_neg[random.randint(0, 2)]),
+                    {"text_item": SimpleTextItem(spans_pos_qry[0])},
+                    {"text_item": SimpleTextItem(spans_pos_qry[1])},
+                    {"text_item": SimpleTextItem(spans_neg[random.randint(0, 2)])},
                 )
 
         return RandomSerializableIterator(self.random, iter)
@@ -167,12 +167,12 @@ class RandomSpanSampler(BatchwiseSampler, PairwiseSampler):
                 batch = ProductRecords()
                 while len(batch) < batch_size:
                     record = next(iter)
-                    text = record.text
+                    text = record["text_item"].text
                     res = self.get_text_span(text, random)
                     if not res:
                         continue
-                    batch.add_topics(create_record(text=res[0]))
-                    batch.add_documents(create_record(text=res[1]))
+                    batch.add_topics({"text_item": SimpleTextItem(res[0])})
+                    batch.add_documents({"text_item": SimpleTextItem(res[1])})
                 batch.set_relevances(relevances)
                 yield batch
 

@@ -677,7 +677,7 @@ wheels = [
 
 [[package]]
 name = "datamaestro"
-version = "1.6.2"
+version = "1.8.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bitmath" },
@@ -695,24 +695,47 @@ dependencies = [
     { name = "tqdm" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/68/1f/6fe327078e93e03c6d37eb7ba15802caff8d4201a0f78c08aee555cc3792/datamaestro-1.6.2.tar.gz", hash = "sha256:0459d4188c79cfc5388595b232d63a666d6e7b552777fda8cc5df37bfa07deaf", size = 129289, upload-time = "2026-01-01T12:29:10.362Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ae/d1/1a53ea31ebcbfd8a8aa7d14e779ebb9de3ce63b70a0450e75cea5aebb17d/datamaestro-1.8.0.tar.gz", hash = "sha256:c1b4e71fdaead644e3fb03b97543e50105d30e4074975ccd214741b439f0196c", size = 203798, upload-time = "2026-02-03T11:35:26.338Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/35/5d/cfe3b4df03e17d363828e6a45e61ed9497bc1c97a573b4d397aabfd46c11/datamaestro-1.6.2-py3-none-any.whl", hash = "sha256:8142c15b7e9a2fbc575766a57f0ae61219aaefceefbf01a78504a2fbb9ad7084", size = 62872, upload-time = "2026-01-01T12:29:08.611Z" },
+    { url = "https://files.pythonhosted.org/packages/5b/6c/1dfa691e5f4b904813e7685a8f73b1d83153825399e28c43f2cb82f08f9d/datamaestro-1.8.0-py3-none-any.whl", hash = "sha256:5408bd4f7d392609a6b772ba926e9255335f3d1e91a46413c2003f365d62ba33", size = 85316, upload-time = "2026-02-03T11:35:24.462Z" },
 ]
 
 [[package]]
 name = "datamaestro-text"
-version = "2026.1.1"
-source = { registry = "https://pypi.org/simple" }
+source = { editable = "datamaestro-text" }
 dependencies = [
     { name = "attrs" },
     { name = "datamaestro" },
     { name = "experimaestro" },
     { name = "ir-datasets" },
+    { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/bb/2f/16083e1227604facad11d79b3865726e72a08434ebae3ee7f9937279e8e2/datamaestro_text-2026.1.1.tar.gz", hash = "sha256:6b10452e366a1d8905eabb0b78c5ad45d7987033c61fd03d6cf619bf06481f97", size = 64277, upload-time = "2026-01-01T16:49:45.684Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/b0/fe/c01f21e8ff7aa431483b103361a1480f5042055a530ef8bdecda730d06a3/datamaestro_text-2026.1.1-py3-none-any.whl", hash = "sha256:fcb76398dd929711df94aff48763930aee106ba5d9f3f38bb1519815c23eb7ac", size = 94812, upload-time = "2026-01-01T16:49:43.73Z" },
+
+[package.metadata]
+requires-dist = [
+    { name = "attrs" },
+    { name = "datamaestro", specifier = ">=1.8.0" },
+    { name = "experimaestro", specifier = ">=2.0.0" },
+    { name = "ir-datasets", specifier = ">=0.5.8" },
+    { name = "typing-extensions" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "docutils", specifier = ">=0.21.2" },
+    { name = "git-cliff", specifier = ">=2.11.0" },
+    { name = "pytest", specifier = ">=8.4.1" },
+    { name = "ruff", specifier = ">=0.8" },
+    { name = "sphinx", specifier = ">=7" },
+    { name = "sphobjinv", specifier = ">=2.3.1.3" },
+]
+docs = [
+    { name = "datamaestro", specifier = ">=0.8.5" },
+    { name = "myst-parser", specifier = ">=0.18.0" },
+    { name = "sphinx", specifier = ">=8.1.3" },
+    { name = "sphinx-codeautolink", specifier = ">=0.15.0" },
+    { name = "sphinx-rtd-theme", specifier = ">=3.1.0" },
+    { name = "sphinx-toolbox", specifier = ">=4.1.2" },
 ]
 
 [[package]]
@@ -791,7 +814,8 @@ wheels = [
 
 [[package]]
 name = "experimaestro"
-source = { editable = "../experimaestro-python" }
+version = "2.0.2"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "arpeggio" },
     { name = "attrs" },
@@ -803,6 +827,7 @@ dependencies = [
     { name = "httpx" },
     { name = "huggingface-hub" },
     { name = "humanfriendly" },
+    { name = "jinja2" },
     { name = "marshmallow" },
     { name = "omegaconf" },
     { name = "psutil" },
@@ -815,65 +840,15 @@ dependencies = [
     { name = "sortedcontainers" },
     { name = "termcolor" },
     { name = "textual" },
+    { name = "textual-fspicker" },
     { name = "tqdm" },
     { name = "typing-extensions", marker = "python_full_version < '3.12'" },
     { name = "uvicorn", extra = ["standard"] },
     { name = "watchdog" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "arpeggio", specifier = ">=2,<3" },
-    { name = "attrs", specifier = ">=23.1.0,<24" },
-    { name = "click", specifier = ">=8" },
-    { name = "codecarbon", marker = "sys_platform != 'darwin' and extra == 'carbon'", specifier = ">=2.0" },
-    { name = "decorator", specifier = ">=5,<6" },
-    { name = "docstring-parser", specifier = ">=0.15,<1" },
-    { name = "docutils", marker = "extra == 'dev'", specifier = ">=0.18" },
-    { name = "fabric", marker = "extra == 'ssh'", specifier = ">=3" },
-    { name = "fastapi", specifier = ">=0.109,<1" },
-    { name = "filelock", specifier = ">=3.16,<4" },
-    { name = "httpx", specifier = ">=0.26,<1" },
-    { name = "huggingface-hub", specifier = ">0.17" },
-    { name = "humanfriendly", specifier = ">=10" },
-    { name = "marshmallow", specifier = ">=3.20,<4" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.0" },
-    { name = "myst-parser", marker = "extra == 'docs'", specifier = ">=2.0" },
-    { name = "omegaconf", specifier = ">=2.3,<3" },
-    { name = "paramiko", marker = "extra == 'ssh'", specifier = ">=3.3" },
-    { name = "psutil", specifier = ">=7,<8" },
-    { name = "pygments", marker = "extra == 'dev'", specifier = ">=2.15" },
-    { name = "pyparsing", specifier = ">=3.1,<4" },
-    { name = "pyperclip", specifier = ">=1.8,<2" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.4.1" },
-    { name = "pytest-dependency", marker = "extra == 'dev'", specifier = ">=0.6.0" },
-    { name = "pytest-order", marker = "extra == 'dev'", specifier = ">=1.0.0" },
-    { name = "pytest-timeout", marker = "extra == 'dev'", specifier = ">=2.4.0" },
-    { name = "pytools", specifier = ">=2023.1.1,<2024" },
-    { name = "pyyaml", specifier = ">=6.0.1,<7" },
-    { name = "requests", specifier = ">=2.31,<3" },
-    { name = "rpyc", specifier = ">=5,<7" },
-    { name = "sortedcontainers", specifier = ">=2.4,<3" },
-    { name = "sphinx", marker = "extra == 'docs'", specifier = ">=6" },
-    { name = "sphinx-codeautolink", marker = "extra == 'docs'", specifier = ">=0.15" },
-    { name = "sphinx-copybutton", marker = "extra == 'docs'", specifier = ">=0.5" },
-    { name = "sphinx-rtd-theme", marker = "extra == 'docs'", specifier = ">=2.0" },
-    { name = "termcolor", specifier = ">=2.3,<3" },
-    { name = "textual", specifier = ">=6" },
-    { name = "textual-dev", marker = "extra == 'dev'", specifier = ">=1.8.0" },
-    { name = "tqdm", specifier = ">=4.66.1,<5" },
-    { name = "typing-extensions", marker = "python_full_version < '3.12'", specifier = ">=4.2" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.27,<1" },
-    { name = "watchdog", specifier = ">=2" },
-    { name = "zeus", extras = ["apple"], marker = "sys_platform == 'darwin' and extra == 'carbon'", specifier = ">=0.10.0" },
-]
-provides-extras = ["carbon", "dev", "docs", "ssh"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "mkdocs", specifier = ">=1.6.1" },
-    { name = "ruff", specifier = ">=0.8" },
-    { name = "vulture", specifier = ">=2.14" },
+sdist = { url = "https://files.pythonhosted.org/packages/c6/d3/645432b1bdd079976d4691c60416d3dd9a5d1683c6706ae00eb025be19cf/experimaestro-2.0.2.tar.gz", hash = "sha256:463ec5e393a50a3b87c8bb80cb3f0d9de5af6217a4bba3f9d8fec3f0bfe04505", size = 27736004, upload-time = "2026-02-28T08:05:35.842Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c2/50/e73f6534ac8c22e42d71233e3ca7e725a04dc6d9e6d16186034c6fe33fc6/experimaestro-2.0.2-py3-none-any.whl", hash = "sha256:363674c3a50aa3803eb6ca5c26f1c37f64834047359726a9437ab90ef59aaa6a", size = 2899520, upload-time = "2026-02-28T08:05:33.359Z" },
 ]
 
 [[package]]
@@ -939,9 +914,9 @@ test = [
 requires-dist = [
     { name = "attrs" },
     { name = "datamaestro", specifier = ">=1.0.1" },
-    { name = "datamaestro-text", specifier = ">=2025.7.28" },
+    { name = "datamaestro-text", editable = "datamaestro-text" },
     { name = "docstring-parser" },
-    { name = "experimaestro", specifier = ">=2.0.0b6" },
+    { name = "experimaestro", specifier = ">=2.0.2" },
     { name = "impact-index", specifier = "==0.30.*" },
     { name = "ir-datasets" },
     { name = "ir-measures", specifier = ">=0.3.3" },
@@ -953,7 +928,7 @@ requires-dist = [
     { name = "toma" },
     { name = "torch", marker = "extra == 'neural'", specifier = ">=1.12" },
     { name = "transformers", marker = "extra == 'neural'" },
-    { name = "xpm-torch", editable = "../xpm-torch" },
+    { name = "xpm-torch", editable = "xpm-torch" },
 ]
 provides-extras = ["anserini", "neural"]
 
@@ -5202,6 +5177,18 @@ wheels = [
 ]
 
 [[package]]
+name = "textual-fspicker"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "textual" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e8/fd/dc3160123af550838d50a4fa7f62e357d7ad2fc9b4220ead9160661bcd1b/textual_fspicker-1.0.0.tar.gz", hash = "sha256:462608dbe6a14edff679fc6116addcf288f4a79f8e4fffd240f9ce2caaf9e655", size = 16517, upload-time = "2026-02-18T20:02:16.547Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/92/2f/bf13ae8a1f17186a122968c7ba0f18716d63d2fa67a9e6f905a20067c022/textual_fspicker-1.0.0-py3-none-any.whl", hash = "sha256:71c80258f8885a67abf85d68b42ac8defc8226281481717af722346cbc3e0305", size = 24932, upload-time = "2026-02-18T20:02:15.492Z" },
+]
+
+[[package]]
 name = "thinc"
 version = "8.3.10"
 source = { registry = "https://pypi.org/simple" }
@@ -6070,10 +6057,8 @@ wheels = [
 [[package]]
 name = "xpm-torch"
 version = "0.1.0"
-source = { editable = "../xpm-torch" }
+source = { editable = "xpm-torch" }
 dependencies = [
-    { name = "datamaestro" },
-    { name = "datamaestro-text" },
     { name = "experimaestro" },
     { name = "lightning" },
     { name = "tensorboard" },
@@ -6081,9 +6066,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "datamaestro", specifier = ">=1.6.2" },
-    { name = "datamaestro-text", specifier = ">=2026.1.1" },
-    { name = "experimaestro", editable = "../experimaestro-python" },
+    { name = "experimaestro", specifier = ">=1.7.1" },
     { name = "lightning", specifier = ">=2.4" },
     { name = "tensorboard", specifier = ">=2.19.0" },
 ]

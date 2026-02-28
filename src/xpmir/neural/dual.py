@@ -106,14 +106,10 @@ class Dense(DualVectorScorer[QueriesRep, DocsRep]):
         scores = queries.value @ documents.value.T
 
         if info is not None:
-            foreach(
-                info.hooks(DualVectorListener),
-                lambda hook: hook(info, queries, documents),
-            )
-            foreach(
-                info.hooks(DualVectorScorerListener),
-                lambda hook: hook(info, queries, documents, scores),
-            )
+            for hook in info.hooks(DualVectorListener):
+                hook(info, queries, documents)
+            for hook in info.hooks(DualVectorScorerListener):
+                hook(info, queries, documents, scores)
 
         return scores
 
@@ -126,15 +122,23 @@ class Dense(DualVectorScorer[QueriesRep, DocsRep]):
 
         # Apply the dual vector hook
         if info is not None:
-            foreach(
-                info.hooks(DualVectorListener),
-                lambda hook: hook(info, queries, documents),
-            )
-            foreach(
-                info.hooks(DualVectorScorerListener),
-                lambda hook: hook(info, queries, documents, scores),
-            )
+            for hook in info.hooks(DualVectorListener):
+                hook(info, queries, documents)
+            for hook in info.hooks(DualVectorScorerListener):
+                hook(info, queries, documents, scores)
         return scores
+
+    @classmethod
+    def from_pretrained_hf(cls, model_id: str, **kwargs):
+        """Creates a DotDense model from a HuggingFace encoder model
+
+        :param model_id: The HuggingFace model ID
+        :param kwargs: Additional keyword arguments passed to the constructor
+        """
+        from xpmir.text.huggingface.encoders import HFCLSEncoder
+
+        encoder = HFCLSEncoder.from_pretrained_id(model_id)
+        return cls.C(encoder=encoder, **kwargs)
 
     @classmethod
     def from_sentence_transformers(cls, hf_id: str, **kwargs):
@@ -145,10 +149,10 @@ class Dense(DualVectorScorer[QueriesRep, DocsRep]):
 
         :param hf_id: The HuggingFace ID
         """
-        from xpmir.text.huggingface import SentenceTransformerTextEncoder
+        from xpmir.text.huggingface.encoders import SentenceTransformerTextEncoder
 
-        encoder = SentenceTransformerTextEncoder(hf_id)
-        return cls(encoder, **kwargs)
+        encoder = SentenceTransformerTextEncoder.C(model_id=hf_id)
+        return cls.C(encoder=encoder, **kwargs)
 
 
 class CosineDense(Dense):

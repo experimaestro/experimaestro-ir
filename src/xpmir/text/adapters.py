@@ -35,4 +35,4 @@ class TopicTextConverter(Converter[Record, str]):
     """Extracts the text from a topic"""
 
     def __call__(self, input: Record) -> str:
-        return input[TextItem].text
+        return input["text_item"].text

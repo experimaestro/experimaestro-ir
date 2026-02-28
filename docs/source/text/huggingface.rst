@@ -37,46 +37,10 @@ Encoders
 
 .. autoxpmconfig:: xpmir.text.huggingface.encoders.HFTokensEncoder
 .. autoxpmconfig:: xpmir.text.huggingface.encoders.HFCLSEncoder
-
-Legacy
-******
-
-The old huggingface wrappers are listed below for reference, but should not be used
-for future development.
-
-.. currentmodule:: xpmir.text.huggingface
-
-.. autoxpmconfig:: BaseTransformer
-
-Encoders
---------
-
-.. autoxpmconfig:: TransformerEncoder
-.. autoxpmconfig:: TransformerTokensEncoder
-.. autoxpmconfig:: TransformerTextEncoderAdapter
-
-.. autoxpmconfig:: DualTransformerEncoder
-.. autoxpmconfig:: SentenceTransformerTextEncoder
-.. autoxpmconfig:: OneHotHuggingFaceEncoder
-.. autoxpmconfig:: DualDuoBertTransformerEncoder
-
-.. autoxpmconfig:: TransformerVocab
-
-.. autoxpmconfig:: TransformerTokensEncoderWithMLMOutput
-
-
-Tokenizers
-----------
-
-.. autoxpmconfig:: OneHotHuggingFaceEncoder
-.. autoxpmconfig:: HuggingfaceTokenizer
-
-Masked-LM
---------=
-
-.. autoxpmconfig:: MLMEncoder
+.. autoxpmconfig:: xpmir.text.huggingface.encoders.OneHotHuggingFaceEncoder
+.. autoxpmconfig:: xpmir.text.huggingface.encoders.SentenceTransformerTextEncoder
 
 Hooks
 -----
 
-.. autoxpmconfig:: LayerSelector
+.. autoxpmconfig:: xpmir.text.huggingface.encoders.LayerSelector

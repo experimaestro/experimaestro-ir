@@ -11,16 +11,16 @@ from experimaestro import (
 )
 from functools import cached_property
 from datamaestro_text.data.ir import (
-    IDItem,
     TextItem,
     Adhoc,
     AdhocAssessments,
-    DocumentRecord,
+    IDTextRecord,
     DocumentStore,
     Documents,
     Topics,
-    TopicRecord,
 )
+
+TopicRecord = DocumentRecord = IDTextRecord
 
 from datamaestro_text.data.ir.trec import TrecAdhocAssessments
 from datamaestro_text.data.ir.csv import Topics as CSVTopics
@@ -40,17 +40,13 @@ class AbstractTopicFold(Topics):
     def iter(self):
         ids = set(self.ids)
         for topic in self.topics.iter():
-            if topic[IDItem].id in ids:
+            if topic["id"] in ids:
                 yield topic
 
     @property
-    def topic_recordtype(self) -> Type[TopicRecord]:
+    def topic_recordtype(self):
         """The class for topics"""
-        return self.topics.topic_recordtype
-
-    def __validate__(self) -> None:
-        super().__validate__()
-        assert self.topics.topic_recordtype.has(IDItem)
+        return IDTextRecord
 
 
 class TopicFold(AbstractTopicFold):
@@ -139,11 +135,11 @@ class ConcatFold(Task):
         self.topics.parent.mkdir(parents=True, exist_ok=True)
         with self.topics.open("wt") as fp:
             for topic in topics:
-                ids.add(topic[IDItem].id)
+                ids.add(topic["id"])
                 slash_t = "\t"
                 fp.write(
-                    f"""{topic[IDItem].id}\t"""
-                    f"""{topic[TextItem].text.replace(slash_t, ' ')}\n"""
+                    f"""{topic["id"]}\t"""
+                    f"""{topic["text_item"].text.replace(slash_t, ' ')}\n"""
                 )
 
         with self.assessments.open("wt") as fp:
@@ -224,14 +220,14 @@ class RandomFold(Task):
 
         # Get topics
         badids = (
-            set(topic[IDItem].id for topic in self.exclude.iter())
+            set(topic["id"] for topic in self.exclude.iter())
             if self.exclude
             else set()
         )
         topics = [
             topic
             for topic in self.dataset.topics.iter()
-            if topic[IDItem].id not in badids
+            if topic["id"] not in badids
         ]
         random = np.random.RandomState(self.seed)
         random.shuffle(topics)
@@ -253,8 +249,8 @@ class RandomFold(Task):
         self.topics.parent.mkdir(parents=True, exist_ok=True)
         with self.topics.open("wt") as fp:
             for topic in topics:
-                ids.add(topic[IDItem].id)
-                fp.write(f"""{topic[IDItem].id}\t{topic[TextItem].text}\n""")
+                ids.add(topic["id"])
+                fp.write(f"""{topic["id"]}\t{topic["text_item"].text}\n""")
 
         with self.assessments.open("wt") as fp:
             for qrels in self.dataset.assessments.iter():
@@ -339,14 +335,14 @@ class TopicsFoldGenerator(FileIDList, Task):
 
         # Get topics
         badids = (
-            set(topic[IDItem].id for topic in self.exclude.iter())
+            set(topic["id"] for topic in self.exclude.iter())
             if self.exclude
             else set()
         )
         topics = [
-            topic[IDItem].id
+            topic["id"]
             for topic in self.dataset.topics.iter()
-            if topic[IDItem].id not in badids
+            if topic["id"] not in badids
         ]
         random = np.random.RandomState(self.seed)
         random.shuffle(topics)
@@ -493,12 +489,12 @@ class RetrieverBasedCollection(Task):
         for topic in tqdm(
             self.dataset.topics.iter(), total=self.dataset.topics.count()
         ):
-            qrels = topics.get(topic[IDItem].id)
+            qrels = topics.get(topic["id"])
             if qrels is None:
                 logger.warning(
                     "Skipping topic %s [%s], (no assessment)",
-                    topic[IDItem].id,
-                    topic[TextItem].text,
+                    topic["id"],
+                    topic["text_item"].text,
                 )
                 continue
 
@@ -522,7 +518,7 @@ class RetrieverBasedCollection(Task):
             # don't need to worry about the threshold here
             for retriever in self.retrievers:
                 docids.update(
-                    sd.document[IDItem].id for sd in retriever.retrieve(topic)
+                    sd.document["id"] for sd in retriever.retrieve(topic)
                 )
 
         # Write the document IDs
@@ -545,7 +541,7 @@ class MemoryTopicStore(TextStore):
 
     @cached_property
     def store(self):
-        return {topic[IDItem].id: topic[TextItem].text for topic in self.topics.iter()}
+        return {topic["id"]: topic["text_item"].text for topic in self.topics.iter()}
 
     def __getitem__(self, key: str) -> str:
         return self.store[key]

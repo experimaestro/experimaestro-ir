@@ -27,7 +27,6 @@ from datamaestro_text.data.ir import (
     AdhocRunDict,
     Documents,
     AdhocResults,
-    IDItem,
 )
 from datamaestro_text.data.ir.trec import TrecAdhocRun, TrecAdhocResults
 from datamaestro_text.transforms.ir import TopicWrapper
@@ -109,10 +108,10 @@ class BaseEvaluation(Task):
 def get_run(retriever: Retriever, dataset: Adhoc) -> AdhocRunDict:
     """Returns the scored documents for each topic in a dataset"""
     results = retriever.retrieve_all(
-        {topic[IDItem].id: topic for topic in dataset.topics.iter()}
+        {topic["id"]: topic for topic in dataset.topics.iter()}
     )
     return {
-        qid: {sd.document[IDItem].id: sd.score for sd in scoredocs}
+        qid: {sd.document["id"]: sd.score for sd in scoredocs}
         for qid, scoredocs in results.items()
     }
 

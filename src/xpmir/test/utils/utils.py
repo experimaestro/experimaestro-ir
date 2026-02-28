@@ -3,11 +3,9 @@ from collections import OrderedDict, defaultdict
 from typing import ClassVar, Dict, Iterator, List, Tuple, Any
 import torch
 import numpy as np
-from datamaestro.record import Record, record_type
 from datamaestro_text.data.ir import (
-    create_record,
     DocumentStore,
-    InternalIDItem,
+    IDTextRecord,
     SimpleTextItem,
     TextItem,
 )
@@ -25,11 +23,10 @@ class SampleDocumentStore(DocumentStore):
         self.documents = OrderedDict(
             (
                 str(ix),
-                create_record(
-                    InternalIDItem(ix),
-                    id=str(ix),
-                    text=f"Document {ix}",
-                ),
+                {
+                    "id": str(ix),
+                    "text_item": SimpleTextItem(f"Document {ix}"),
+                },
             )
             for ix in range(self.num_docs)
         )
@@ -38,19 +35,15 @@ class SampleDocumentStore(DocumentStore):
     def documentcount(self):
         return len(self.documents)
 
-    def document_int(self, internal_docid: int) -> Record:
+    def document_int(self, internal_docid: int) -> IDTextRecord:
         return self.documents[str(internal_docid)]
 
-    def document_ext(self, docid: str) -> Record:
+    def document_ext(self, docid: str) -> IDTextRecord:
         """Returns the text of the document given its id"""
         return self.documents[docid]
 
-    def iter_documents(self) -> Iterator[Record]:
+    def iter_documents(self) -> Iterator[IDTextRecord]:
         return iter(self.documents.values())
-
-    @cached_property
-    def document_recordtype(self):
-        return record_type(InternalIDItem, SimpleTextItem)
 
     def docid_internal2external(self, docid: int):
         """Converts an internal collection ID (integer) to an external ID"""
@@ -107,7 +100,7 @@ class SparseRandomTextEncoder(TextEncoder):
         """Returns a matrix encoding the provided texts"""
 
         tensors = [self.map[check_str(
-            text[TextItem].text if isinstance(text, Record) else text
+            text["text_item"].text if isinstance(text, dict) else text
         )].unsqueeze(0) for text in texts]
 
         return RepresentationOutput(torch.cat(tensors))
