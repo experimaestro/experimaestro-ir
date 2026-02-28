@@ -30,7 +30,6 @@ from datamaestro_text.data.ir import IDTextRecord, DocumentStore
 
 DocumentRecord = IDTextRecord
 from xpm_torch import Module
-from xpm_torch.learner import ModuleInitMode
 from xpm_torch.batchers import Batcher
 from xpm_torch.optim import find_module_attributes
 
@@ -349,7 +348,7 @@ class SparseRetriever(Retriever, Generic[InputType]):
     def initialize(self):
         super().initialize()
         logger.info("Initializing the encoder")
-        self.encoder.initialize(ModuleInitMode.DEFAULT.to_options(None))
+        self.encoder.initialize()
         logger.info("Initializing the index")
         self.index.initialize(self.in_memory)
 
@@ -574,7 +573,7 @@ class SparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputType]
         fabric = self.fabric_config.get_instance()
         fabric.launch()
 
-        self.encoder.initialize(ModuleInitMode.DEFAULT.to_options(None))
+        self.encoder.initialize()
         
         assert isinstance(self.encoder, Module)
         # find children of retriver that are Modules, and wrap them with fabric for device management

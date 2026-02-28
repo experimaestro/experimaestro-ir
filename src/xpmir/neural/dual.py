@@ -85,10 +85,10 @@ class DualVectorScorer(DualRepresentationScorer[QueriesRep, DocsRep]):
     query_encoder: Param[Optional[TextEncoderBase]]
     """The query encoder (optional, if not defined uses the query_encoder)"""
 
-    def __initialize__(self, options):
-        self.encoder.initialize(options)
+    def __initialize__(self):
+        self.encoder.initialize()
         if self.query_encoder:
-            self.query_encoder.initialize(options)
+            self.query_encoder.initialize()
 
     @property
     def _query_encoder(self):

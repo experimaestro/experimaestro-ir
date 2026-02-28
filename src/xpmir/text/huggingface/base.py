@@ -6,10 +6,9 @@ from pathlib import Path
 from typing import Any, Tuple, Type
 
 import torch.nn as nn
-from experimaestro import Config, Param
+from experimaestro import Config, Param, LightweightTask
 
 from xpm_torch import Module
-from xpm_torch import ModuleInitMode, ModuleInitOptions
 from xpmir.text import TokenizedTexts
 from functools import lru_cache
 
@@ -32,17 +31,23 @@ class HFModelConfig(Config, ABC):
     @abstractmethod
     def __call__(
         self,
-        options: ModuleInitOptions,
-        autoconfig: Type[AutoModel],
-        automodel: Type[AutoConfig],
+        autoconfig: Type[AutoConfig],
+        automodel: Type[AutoModel],
     ) -> Tuple[Any, Any]:
         """Returns a configuration and a model
 
-        :param options: The initiatization options
+        By default creates structure only (from_config). Call
+        :meth:`use_pretrained` to switch to loading pretrained weights.
+
         :param autoconfig: configuration factory
         :param automodel: model factory
         :return: a Tuple (configuration, model)
         """
+        ...
+
+    @abstractmethod
+    def use_pretrained(self):
+        """Switch this config to load pretrained weights on next initialize"""
         ...
 
 
@@ -50,12 +55,11 @@ class HFModelConfigFromId(HFModelConfig):
     model_id: Param[str]
     """HuggingFace Model ID"""
 
-    def get_config(
-        self,
-        options: ModuleInitOptions,
-        autoconfig: Type[AutoModel],
-        automodel: Type[AutoConfig],
-    ):
+    def __post_init__(self):
+        self._create_model = self._from_config
+
+    def _resolve_model_path(self, automodel: Type[AutoModel]):
+        """Resolves the model ID or local path"""
         model_id_or_path = self.model_id
 
         # Use saved models
@@ -73,40 +77,46 @@ class HFModelConfigFromId(HFModelConfig):
                     "Could not find saved model in %s, using HF loading", path
                 )
 
-        # Load the model configuration
-        config = autoconfig.from_pretrained(
-            model_id_or_path,
-            trust_remote_code=True,
-            local_files_only=is_local_files_only(),
-        )
+        return model_id_or_path
 
-        # Return it
-        return config, model_id_or_path
+    def _from_config(self, config, model_id_or_path, automodel):
+        logging.info("Structure-only initialization of HF model")
+        return automodel.from_config(config, trust_remote_code=True)
 
-    def __call__(
-        self,
-        options: ModuleInitOptions,
-        autoconfig: Type[AutoConfig],
-        automodel: Type[AutoModel],
-    ):
-        config, model_id_or_path = self.get_config(options, autoconfig, automodel)
-
-        if options.mode == ModuleInitMode.NONE or options.mode == ModuleInitMode.RANDOM:
-            logging.info("Random initialization of HF model")
-            return config, automodel.from_config(config, trust_remote_code=True)
-
+    def _from_pretrained(self, config, model_id_or_path, automodel):
         logging.info(
-            "Loading model from HF (%s) with model %s.%s",
+            "Loading pretrained model from HF (%s) with %s.%s",
             self.model_id,
             automodel.__module__,
             automodel.__name__,
         )
-        return config, automodel.from_pretrained(
+        return automodel.from_pretrained(
             model_id_or_path,
             config=config,
             trust_remote_code=True,
             local_files_only=is_local_files_only(),
         )
+
+    def __call__(
+        self,
+        autoconfig: Type[AutoConfig],
+        automodel: Type[AutoModel],
+    ):
+        model_id_or_path = self._resolve_model_path(automodel)
+        config = autoconfig.from_pretrained(
+            model_id_or_path,
+            trust_remote_code=True,
+            local_files_only=is_local_files_only(),
+        )
+        return config, self._create_model(config, model_id_or_path, automodel)
+
+    def use_pretrained(self):
+        if self._create_model == self._from_pretrained:
+            logging.warning(
+                "HFModelConfigFromId(%s): use_pretrained called more than once",
+                self.model_id,
+            )
+        self._create_model = self._from_pretrained
 
 
 class HFModel(Module):
@@ -133,16 +143,12 @@ class HFModel(Module):
     def automodel(self):
         return AutoModel
 
-    def __initialize__(self, options: ModuleInitOptions):
-        """Initialize the HuggingFace transformer
-
-        Args:
-            options: loader options
-        """
-        super().__initialize__(options)
+    def __initialize__(self):
+        """Initialize the HuggingFace transformer (structure only)"""
+        super().__initialize__()
 
         self.hf_config, self.model = self.config(
-            options, self.autoconfig, self.automodel
+            self.autoconfig, self.automodel
         )
 
     @property
@@ -171,3 +177,17 @@ class HFMaskedLanguageModel(HFModel):
     @property
     def automodel(self):
         return AutoModelForMaskedLM
+
+
+class LoadFromHFCheckpoint(LightweightTask):
+    """Switches an HFModel's config to load pretrained weights
+
+    This runs as an init_task before the main task's execute(). It switches
+    the config so that when initialize() is later called (e.g. by the Learner),
+    it uses from_pretrained instead of from_config.
+    """
+
+    model: Param[HFModel]
+
+    def execute(self):
+        self.model.config.use_pretrained()

@@ -24,9 +24,9 @@ T = TypeVar("T")
 class Encoder(Module, EasyLogger, ABC):
     """Base class for all word and text encoders"""
 
-    def __initialize__(self, options):
+    def __initialize__(self):
         # Easy and hacky way to get the device
-        super().__initialize__(options)
+        super().__initialize__()
         self._dummy_params = nn.Parameter(torch.Tensor())
 
     def static(self):
@@ -246,10 +246,10 @@ class TokenizedTextEncoder(
     tokenizer: Param[TokenizerBase[InputType, TokenizerOutput]]
     encoder: Param[TokenizedEncoder[TokenizerOutput, EncoderOutput]]
 
-    def __initialize__(self, options):
-        super().__initialize__(options)
-        self.tokenizer.initialize(options)
-        self.encoder.initialize(options)
+    def __initialize__(self):
+        super().__initialize__()
+        self.tokenizer.initialize()
+        self.encoder.initialize()
 
     def forward(
         self, inputs: List[InputType], *args, options: Optional[TokenizerOptions] = None

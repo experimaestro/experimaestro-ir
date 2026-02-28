@@ -7,7 +7,7 @@ from functools import cached_property
 import torch
 import torch.nn as nn
 from experimaestro import Param, Constant
-from xpm_torch import Module, ModuleInitOptions
+from xpm_torch import Module
 from xpm_torch.learner import TrainState
 from xpm_torch.parameters import ParametersIterator
 from xpmir.text.encoders import (
@@ -45,9 +45,9 @@ class HFEncoderBase(Module):
         """
         return cls(model=HFModel.from_pretrained_id(model_id), **kwargs)
 
-    def __initialize__(self, options):
-        super().__initialize__(options)
-        self.model.initialize(options)
+    def __initialize__(self):
+        super().__initialize__()
+        self.model.initialize()
 
     def static(self):
         """Embeddings from transformers are learnable"""
@@ -107,8 +107,8 @@ class SentenceTransformerTextEncoder(TextEncoder):
 
     model_id: Param[str] = "sentence-transformers/all-MiniLM-L6-v2"
 
-    def __initialize__(self, options: ModuleInitOptions):
-        super().__initialize__(options)
+    def __initialize__(self):
+        super().__initialize__()
         from sentence_transformers import SentenceTransformer
 
         self.model = SentenceTransformer(self.model_id)
@@ -129,7 +129,7 @@ class OneHotHuggingFaceEncoder(TextEncoder):
 
     version: Constant[int] = 2
 
-    def __initialize__(self, options: ModuleInitOptions):
+    def __initialize__(self):
         super().__initialize__()
         self._tokenizer = AutoTokenizer.from_pretrained(self.model_id, use_fast=True)
         self.CLS = self._tokenizer.cls_token_id

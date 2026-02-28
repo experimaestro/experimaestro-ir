@@ -13,7 +13,6 @@ from experimaestro import Meta, Task, Param, tqdm, field
 import logging
 from datamaestro_text.data.ir import DocumentStore, TextItem
 from xpmir.rankers import Retriever, ScoredDocument
-from xpm_torch import ModuleInitMode
 from xpm_torch.batchers import Batcher
 from xpmir.text.encoders import TextEncoder
 
@@ -123,7 +122,7 @@ class IndexBackedFaiss(FaissIndex, Task):
         step_iter = tqdm(total=2, desc="Building the FAISS index")
 
         # Initializations
-        self.encoder.initialize(ModuleInitMode.DEFAULT.to_options())
+        self.encoder.initialize()
         index = faiss.index_factory(
             self.encoder.dimension, self.indexspec, faiss.METRIC_INNER_PRODUCT
         )

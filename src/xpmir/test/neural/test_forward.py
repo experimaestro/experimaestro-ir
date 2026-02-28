@@ -5,7 +5,6 @@ import pytest
 import torch
 from collections import defaultdict
 from datamaestro_text.data.ir import TextItem, SimpleTextItem, IDTextRecord
-from xpm_torch import Random, ModuleInitMode
 from xpmir.neural.dual import CosineDense, DotDense
 from xpmir.letor.records import (
     PairwiseRecord,
@@ -44,8 +43,8 @@ class RandomTokensEncoder(TokenizedTextEncoderBase[IDTextRecord, TokensRepresent
     DIMENSION = 7
     MAX_WORDS = 100
 
-    def __initialize__(self, options):
-        super().__initialize__(options)
+    def __initialize__(self):
+        super().__initialize__()
         self.embed = torch.nn.Embedding.from_pretrained(
             torch.randn(RandomTokensEncoder.MAX_WORDS, RandomTokensEncoder.DIMENSION)
         )
@@ -105,8 +104,8 @@ def cosinedense():
 
 
 class DummyDualTextEncoder(DualTextEncoder):
-    def __initialize__(self, options):
-        super().__initialize__(options)
+    def __initialize__(self):
+        super().__initialize__()
         self.cache = defaultdict(lambda: torch.randn(1, 13))
 
     @property
@@ -174,8 +173,7 @@ inputfactories = [pointwise, pairwise, product]
 def test_forward_types(modelfactory, inputfactory):
     """Test that each record type is handled"""
     model = modelfactory()
-    random = Random.C().instance().state
-    model.initialize(ModuleInitMode.RANDOM.to_options(random))
+    model.initialize()
 
     inputs = inputfactory()
 
@@ -193,8 +191,7 @@ def test_forward_types(modelfactory, inputfactory):
 def test_forward_consistency(modelfactory, inputfactoriescouple):
     """Test that outputs are consistent between the different records types"""
     model = modelfactory()
-    random = Random.C().instance().state
-    model.initialize(ModuleInitMode.DEFAULT.to_options(random))
+    model.initialize()
 
     outputs = []
     maps = []

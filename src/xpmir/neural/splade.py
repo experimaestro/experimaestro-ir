@@ -2,7 +2,6 @@ from typing import Optional, Generic
 from experimaestro import Config, Param
 import torch.nn as nn
 import torch
-from xpm_torch.optim import ModuleInitOptions
 from xpmir.text.huggingface.encoders import OneHotHuggingFaceEncoder
 from xpmir.text import TokenizerOptions
 from xpmir.text.huggingface import HFTokenizerBase
@@ -92,9 +91,9 @@ class SpladeTextEncoder(
     maxlen: Param[Optional[int]] = None
     """Max length for texts"""
 
-    def __initialize__(self, options: ModuleInitOptions):
-        self.encoder.initialize(options)
-        self.tokenizer.initialize(options)
+    def __initialize__(self):
+        self.encoder.initialize()
+        self.tokenizer.initialize()
 
         # Adds the aggregation head right away - this could allow
         # optimization e.g. for the Max aggregation method.

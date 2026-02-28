@@ -5,7 +5,6 @@ from functools import cached_property
 import torch
 from experimaestro import Config, Param
 
-from xpm_torch import ModuleInitOptions
 from xpm_torch.utils.utils import Initializable
 
 from xpmir.utils.convert import Converter
@@ -41,7 +40,7 @@ class HFTokenizer(Config, Initializable):
 
     DEFAULT_OPTIONS = TokenizerOptions()
 
-    def __initialize__(self, options: ModuleInitOptions):
+    def __initialize__(self):
         """Initialize the HuggingFace transformer"""
 
         model_id_or_path = self.model_id
@@ -128,9 +127,9 @@ class HFTokenizerBase(TokenizerBase[TokenizerInput, TokenizedTexts]):
     tokenizer: Param[HFTokenizer]
     """The HuggingFace tokenizer"""
 
-    def __initialize__(self, options: ModuleInitOptions):
-        super().__initialize__(options)
-        self.tokenizer.initialize(options)
+    def __initialize__(self):
+        super().__initialize__()
+        self.tokenizer.initialize()
 
     @classmethod
     def from_pretrained_id(cls, hf_id: str, **kwargs):

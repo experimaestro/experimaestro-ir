@@ -29,7 +29,6 @@ from datamaestro_text.data.ir import (
 DocumentRecord = IDTextRecord
 from xpm_torch.utils.utils import Initializable
 from xpm_torch.utils.logging import EasyLogger
-from xpm_torch.optim import ModuleInitMode, ModuleInitOptions
 from xpm_torch import Module, Random
 from xpm_torch.batchers import Batcher
 from xpm_torch.learner import TrainerContext
@@ -86,11 +85,8 @@ class Scorer(Config, Initializable, EasyLogger, ABC):
     outputType: ScorerOutputType = ScorerOutputType.REAL
     """Determines the type of output scalar (log probability, probability, logit) """
 
-    def __initialize__(self, options: ModuleInitOptions):
-        """Initialize the scorer
-
-        :param options: Options for initialization
-        """
+    def __initialize__(self):
+        """Initialize the scorer"""
         pass
 
     def rsv(
@@ -203,18 +199,8 @@ class AbstractModuleScorer(Scorer, Module):
         super().__init__()
         self._initialized = False
 
-    def __initialize__(self, options: ModuleInitOptions):
-        """Initialize a learnable scorer
-
-        Initialization can either be determined by a checkpoint (if set) or
-        otherwise (random or pre-trained checkpoint depending on the models)
-        """
-        # Sets the current random seed
-        if options.random is not None:
-            seed = options.random.randint((2**32) - 1)
-            torch.manual_seed(seed)
-            torch.cuda.manual_seed_all(seed)
-
+    def __initialize__(self):
+        """Initialize a learnable scorer (structure only)"""
         return self
 
     def compute(
@@ -319,7 +305,7 @@ class AbstractTwoStageRetriever(Retriever):
     def initialize(self):
         self.retriever.initialize()
         self._batcher = self.batcher.initialize(self.batchsize)
-        self.scorer.initialize(ModuleInitMode.DEFAULT.to_options())
+        self.scorer.initialize()
 
 
 

@@ -13,8 +13,8 @@ class MeanTextEncoder(TokenizedTextEncoderBase[InputType, RepresentationOutput])
 
     encoder: Param[TokenizedTextEncoderBase[InputType, RepresentationOutput]]
 
-    def __initialize__(self, options):
-        self.encoder.__initialize__(options)
+    def __initialize__(self):
+        self.encoder.__initialize__()
 
     def static(self):
         return self.encoder.static()

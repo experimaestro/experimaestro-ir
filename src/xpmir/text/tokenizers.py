@@ -6,7 +6,6 @@ import re
 import torch
 from experimaestro import Config
 from xpm_torch.utils.utils import Initializable
-from xpm_torch import ModuleInitOptions
 from xpm_torch.utils import to_device
 
 from xpmir.text.utils import lengthToMask
@@ -176,8 +175,8 @@ class TokenizerBase(
 ):
     """Base tokenizer"""
 
-    def __initialize__(self, options: ModuleInitOptions):
-        super().__initialize__(options)
+    def __initialize__(self):
+        super().__initialize__()
 
     @abstractmethod
     def tokenize(
