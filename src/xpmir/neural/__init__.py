@@ -2,9 +2,9 @@ from abc import abstractmethod
 import itertools
 from typing import Iterable, Union, List, Optional, TypeVar, Generic, Sequence
 import torch
-from datamaestro_text.data.ir import TextItem
+from datamaestro_text.data.ir import IDTextRecord
 from xpm_torch.learner import TrainerContext
-from xpmir.letor.records import BaseRecords, ProductRecords, TopicRecord, DocumentRecord
+from xpmir.letor.records import BaseRecords, ProductRecords
 from xpmir.rankers import AbstractModuleScorer
 
 QueriesRep = TypeVar("QueriesRep", bound=Sequence)
@@ -36,12 +36,8 @@ class DualRepresentationScorer(AbstractModuleScorer, Generic[QueriesRep, DocsRep
         pairs = inputs.pairs()
         q_ix, d_ix = pairs
         return self.score_pairs(
-            enc_queries[
-                q_ix
-            ],
-            enc_documents[
-                d_ix
-            ],
+            enc_queries[q_ix],
+            enc_documents[d_ix],
             info,
         ).flatten()
 
@@ -51,13 +47,13 @@ class DualRepresentationScorer(AbstractModuleScorer, Generic[QueriesRep, DocsRep
         The return value is model dependent"""
         raise NotImplementedError()
 
-    def encode_documents(self, records: Iterable[DocumentRecord]) -> DocsRep:
+    def encode_documents(self, records: Iterable[IDTextRecord]) -> DocsRep:
         """Encode a list of texts (document or query)
 
         The return value is model dependent"""
         return self.encode([record["text_item"].text for record in records])
 
-    def encode_queries(self, records: Iterable[TopicRecord]) -> QueriesRep:
+    def encode_queries(self, records: Iterable[IDTextRecord]) -> QueriesRep:
         """Encode a list of texts (document or query)
 
         The return value is model dependent, but should be sequence
@@ -83,9 +79,9 @@ class DualRepresentationScorer(AbstractModuleScorer, Generic[QueriesRep, DocsRep
         - for tensors, uses torch.cat
         - for lists, concatenate all of them
         """
-        assert isinstance(
-            objects, List
-        ), f"Merging can only be done with lists, got {type(objects)}"
+        assert isinstance(objects, List), (
+            f"Merging can only be done with lists, got {type(objects)}"
+        )
 
         # Just returns the only object to merge
         if len(objects) == 1:

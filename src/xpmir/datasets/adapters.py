@@ -1,4 +1,4 @@
-from typing import Iterable, Iterator, List, Optional, Set, Union, Type
+from typing import Iterable, Iterator, List, Optional, Set, Union
 from pathlib import Path
 from experimaestro import (
     Param,
@@ -15,6 +15,7 @@ from datamaestro_text.data.ir import (
     Adhoc,
     AdhocAssessments,
     IDTextRecord,
+    IDTextRecord,
     DocumentStore,
     Documents,
     Topics,
@@ -28,6 +29,7 @@ from xpmir.rankers import Retriever
 from xpmir.misc import IDList, FileIDList
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -43,6 +45,8 @@ class AbstractTopicFold(Topics):
             if topic["id"] in ids:
                 yield topic
 
+    def __validate__(self) -> None:
+        super().__validate__()
     @property
     def topic_recordtype(self):
         """The class for topics"""
@@ -114,9 +118,9 @@ class ConcatFold(Task):
 
     def task_outputs(self, dep) -> Adhoc:
         dataset_document_id = set(dataset.document.id for dataset in self.datasets)
-        assert (
-            len(dataset_document_id) == 1
-        ), "At the moment only one set of documents supported."
+        assert len(dataset_document_id) == 1, (
+            "At the moment only one set of documents supported."
+        )
         return Adhoc(
             id="",  # No need to have a more specific id since it is generated
             topics=dep(CSVTopics(id="", path=self.topics)),
@@ -139,7 +143,7 @@ class ConcatFold(Task):
                 slash_t = "\t"
                 fp.write(
                     f"""{topic["id"]}\t"""
-                    f"""{topic["text_item"].text.replace(slash_t, ' ')}\n"""
+                    f"""{topic["text_item"].text.replace(slash_t, " ")}\n"""
                 )
 
         with self.assessments.open("wt") as fp:
@@ -220,14 +224,10 @@ class RandomFold(Task):
 
         # Get topics
         badids = (
-            set(topic["id"] for topic in self.exclude.iter())
-            if self.exclude
-            else set()
+            set(topic["id"] for topic in self.exclude.iter()) if self.exclude else set()
         )
         topics = [
-            topic
-            for topic in self.dataset.topics.iter()
-            if topic["id"] not in badids
+            topic for topic in self.dataset.topics.iter() if topic["id"] not in badids
         ]
         random = np.random.RandomState(self.seed)
         random.shuffle(topics)
@@ -335,9 +335,7 @@ class TopicsFoldGenerator(FileIDList, Task):
 
         # Get topics
         badids = (
-            set(topic["id"] for topic in self.exclude.iter())
-            if self.exclude
-            else set()
+            set(topic["id"] for topic in self.exclude.iter()) if self.exclude else set()
         )
         topics = [
             topic["id"]
@@ -414,7 +412,7 @@ class DocumentSubset(Documents):
     def iter_ids(self):
         yield from self.docids
 
-    def iter(self) -> Iterator[DocumentRecord]:
+    def iter(self) -> Iterator[IDTextRecord]:
         for docid in self.iter_ids():
             return self.base.document_ext(docid)
 
@@ -517,9 +515,7 @@ class RetrieverBasedCollection(Task):
             # already defined the numbers to retrieve inside the retriever, so
             # don't need to worry about the threshold here
             for retriever in self.retrievers:
-                docids.update(
-                    sd.document["id"] for sd in retriever.retrieve(topic)
-                )
+                docids.update(sd.document["id"] for sd in retriever.retrieve(topic))
 
         # Write the document IDs
         with self.docids_path.open("wt") as fp:

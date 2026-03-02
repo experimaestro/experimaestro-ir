@@ -34,7 +34,6 @@ from xpmir.rankers import Retriever, ScoredDocument, document_cache
 from xpmir.rankers.standard import BM25, QLDirichlet, Model
 from xpmir.utils.utils import Handler, StreamGenerator, needs_java
 
-import logging
 logger = logging.getLogger(__name__)
 
 pyserini_java = needs_java(11)
@@ -305,7 +304,7 @@ class AnseriniRetriever(Retriever):
             return self.index
         return self.store
 
-    def retrieve(self, record: TopicRecord) -> List[ScoredDocument]:
+    def retrieve(self, record: IDTextRecord) -> List[ScoredDocument]:
         # see
         # https://github.com/castorini/anserini/blob/master/src/main/java/io/anserini/search/SimpleSearcher.java
         hits = self.searcher.search(record["text_item"].text, k=self.k)

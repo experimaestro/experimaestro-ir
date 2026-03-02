@@ -21,10 +21,9 @@ from xpmir.letor.distillation.samplers import (
     DistillationNegativesSampler,
     DistillationListwiseSampler,
     DistillationPairwiseSampler,
-    ListwiseHydrator,
-    PairwiseHydrator,
 )
-from xpmir.letor.samplers.hydrators import SampleHydrator, PairwiseTransformAdapter
+from xpmir.letor.samplers.adapters import SamplerAdapter
+from xpmir.letor.processors import StoreHydrator
 
 from xpmir.measures import AP, RR, P, nDCG, Success
 from xpmir.papers import configuration
@@ -105,11 +104,11 @@ def msmarco_v1_docpairs_efficient_sampler(
 
     # Builds the sampler by hydrating documents
     sampler = TripletBasedSampler.C(source=triplets)
-    hydrator = SampleHydrator.C(
+    hydrator = StoreHydrator.C(
         documentstore=prepare_collection("irds.msmarco-passage.documents")
     )
 
-    return PairwiseTransformAdapter.C(sampler=sampler, adapter=hydrator)
+    return SamplerAdapter.C(sampler=sampler, processors=[hydrator])
 
 
 @lru_cache
@@ -166,7 +165,7 @@ def msmarco_v1_tests(dev_test_size: int = 0, only_judged=False):
 
 
 @lru_cache
-def msmarco_hofstaetter_ensemble_hard_negatives() -> DistillationPairwiseSampler:
+def msmarco_hofstaetter_ensemble_hard_negatives() -> SamplerAdapter:
     """Hard negatives from Hofstätter et al. (2020)
 
     Hard negatives trained by distillation with cross-encoder Improving
@@ -175,73 +174,75 @@ def msmarco_hofstaetter_ensemble_hard_negatives() -> DistillationPairwiseSampler
     Mete Sertkan, Allan Hanbury), 2020
     """
     train_triples_distil = prepare_dataset(
-        "com.github.sebastian-hofstaetter." "neural-ranking-kd.msmarco_ensemble_teacher"
+        "com.github.sebastian-hofstaetter.neural-ranking-kd.msmarco_ensemble_teacher"
     )
 
     # Access to topic text
     train_topics = prepare_dataset("irds.msmarco-passage.train.queries")
 
-    # Combine the training triplets with the document and queries texts
-    distillation_samples = PairwiseHydrator.C(
-        samples=train_triples_distil,
+    # Generate a sampler from the samples, hydrating with stores
+    raw_sampler = DistillationPairwiseSampler.C(samples=train_triples_distil)
+    hydrator = StoreHydrator.C(
         documentstore=prepare_collection("irds.msmarco-passage.documents"),
         querystore=MemoryTopicStore.C(topics=train_topics),
     )
 
-    # Generate a sampler from the samples
-    return DistillationPairwiseSampler.C(samples=distillation_samples)
+    return SamplerAdapter.C(sampler=raw_sampler, processors=[hydrator])
 
 
 @lru_cache
-def msmarco_rankdistillm_colbert_top50() -> DistillationListwiseSampler:
+def msmarco_rankdistillm_colbert_top50() -> SamplerAdapter:
     """Distillation data from RankZephyr reranking ColBERTv2 top 50 on 10k queries of MSMARCO
 
-    Rank-DistiLLM: Closing the Effectiveness Gap Between Cross-Encoders and LLMs for Passage 
-    Re-Ranking, (Ferdinand Schlatt, Maik Fröbe, Harrisen Scells, Shengyao Zhuang, Bevan Koopman, 
+    Rank-DistiLLM: Closing the Effectiveness Gap Between Cross-Encoders and LLMs for Passage
+    Re-Ranking, (Ferdinand Schlatt, Maik Fröbe, Harrisen Scells, Shengyao Zhuang, Bevan Koopman,
     Guido Zuccon, Benno Stein, Martin Potthast, Matthias Hagen), 2025
     """
     train_ranks_distil = prepare_dataset(
-        "com.github.webis-de." "rank-distillm.rankzephyr_colbert_10000_sampled_50_annotated"
+        "com.github.webis-de."
+        "rank-distillm.rankzephyr_colbert_10000_sampled_50_annotated"
     )
 
     # Access to topic text
     train_topics = prepare_dataset("irds.msmarco-passage.train.queries")
 
-    # Combine the training triplets with the document and queries texts
-    distillation_samples = ListwiseHydrator.C(
-        samples=train_ranks_distil,
+    # Generate a sampler from the samples, hydrating with stores
+    raw_sampler = DistillationListwiseSampler.C(samples=train_ranks_distil)
+    hydrator = StoreHydrator.C(
         documentstore=prepare_collection("irds.msmarco-passage.documents"),
         querystore=MemoryTopicStore.C(topics=train_topics),
     )
 
-    # Generate a sampler from the samples
-    return DistillationListwiseSampler.C(samples=distillation_samples)
+    return SamplerAdapter.C(sampler=raw_sampler, processors=[hydrator])
+
 
 @lru_cache
-def msmarco_colbertv2_annotated(passages_per_query: int) -> DistillationListwiseSampler:
-    """Top 500 passages for all queries that have at least one relevance judgement 
+def msmarco_colbertv2_annotated(passages_per_query: int) -> SamplerAdapter:
+    """Top 500 passages for all queries that have at least one relevance judgement
     in the MS MARCO training query set retrieved by ColBERTv2
 
-    Rank-DistiLLM: Closing the Effectiveness Gap Between Cross-Encoders and LLMs for Passage 
-    Re-Ranking, (Ferdinand Schlatt, Maik Fröbe, Harrisen Scells, Shengyao Zhuang, Bevan Koopman, 
+    Rank-DistiLLM: Closing the Effectiveness Gap Between Cross-Encoders and LLMs for Passage
+    Re-Ranking, (Ferdinand Schlatt, Maik Fröbe, Harrisen Scells, Shengyao Zhuang, Bevan Koopman,
     Guido Zuccon, Benno Stein, Martin Potthast, Matthias Hagen), 2025
     """
     train_ranks_distil = prepare_dataset(
-        "com.github.webis-de." "rank-distillm.msmarco_colbertv2_annotated"
+        "com.github.webis-de.rank-distillm.msmarco_colbertv2_annotated"
     )
 
     # Access to topic text
     train_topics = prepare_dataset("irds.msmarco-passage.train.queries")
 
-    # Combine the training triplets with the document and queries texts
-    distillation_samples = ListwiseHydrator.C(
-        samples=train_ranks_distil,
+    # Generate a sampler from the samples, hydrating with stores
+    raw_sampler = DistillationNegativesSampler.C(
+        samples=train_ranks_distil, passages_per_query=passages_per_query
+    )
+    hydrator = StoreHydrator.C(
         documentstore=prepare_collection("irds.msmarco-passage.documents"),
         querystore=MemoryTopicStore.C(topics=train_topics),
     )
 
-    # Generate a sampler from the samples
-    return DistillationNegativesSampler.C(samples=distillation_samples, sampling_k=passages_per_query)
+    return SamplerAdapter.C(sampler=raw_sampler, processors=[hydrator])
+
 
 @lru_cache
 def finetuning_validation_dataset(

@@ -2,7 +2,8 @@ from typing import Any, List, Optional, Dict
 from pathlib import Path
 import logging
 import pandas as pd
-import click, io
+import click
+import io
 from functools import cached_property
 import docstring_parser
 

@@ -68,12 +68,12 @@ def test_sparse_indexation(sparse_index: SparseIndex):
 
         sparse_index.index_instance.initialize(False)
         for jx, posting in enumerate(sparse_index.index_instance.index.postings(ix)):
-            assert (
-                posting.docid == nz[jx]
-            ), f"Error for posting {jx} of term {ix} (docid)"
-            assert (
-                x[nz[jx]] == posting.value
-            ), f"Error for posting {jx} of term {ix} (value)"
+            assert posting.docid == nz[jx], (
+                f"Error for posting {jx} of term {ix} (docid)"
+            )
+            assert x[nz[jx]] == posting.value, (
+                f"Error for posting {jx} of term {ix} (value)"
+            )
 
             jx += 1
 

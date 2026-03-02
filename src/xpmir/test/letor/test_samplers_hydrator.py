@@ -1,19 +1,16 @@
-from functools import cached_property
-import itertools
 from experimaestro import Param
 from typing import Iterator, Tuple
 from datamaestro_text.data.ir import IDTextRecord, SimpleTextItem
 import datamaestro_text.data.ir as ir
 from xpmir.letor.samplers import (
     TrainingTriplets,
-    TripletBasedSampler,
 )
 from xpmir.datasets.adapters import TextStore
 
-from xpmir.letor.samplers.hydrators import (
-    SampleHydrator,
-    PairwiseTransformAdapter,
-)
+from xpmir.letor.samplers.adapters import BufferedProcessingDataset
+from xpmir.letor.processors import StoreHydrator
+from xpmir.letor.records import PairwiseRecord
+from xpm_torch.datasets import ShardedIterableDataset
 
 
 class TripletIterator(TrainingTriplets):
@@ -39,27 +36,66 @@ class FakeTextStore(TextStore):
 class FakeDocumentStore(ir.DocumentStore):
     id: Param[str] = ""
 
-    def document_ext(self, docid: str) -> IDTextRecord:
-        return {"id": docid, "text_item": SimpleTextItem(f"D{docid}")}
+    def document_ext(self, docid: str) -> ir.IDTextRecord:
+        return ir.IDTextRecord(id=docid, text_item=ir.SimpleTextItem(f"D{docid}"))
 
 
-def test_pairwise_hydrator():
-    sampler = TripletBasedSampler.C(source=TripletIterator.C(id="test-triplets"))
+class _PairwiseDataset(ShardedIterableDataset):
+    """Simple dataset yielding ID-only PairwiseRecords for testing."""
 
-    hydrator = SampleHydrator.C(
-        querystore=FakeTextStore.C(), documentstore=FakeDocumentStore.C()
-    )
+    def iter_shard(self, shard_id, num_shards):
+        count = 0
+        while True:
+            yield PairwiseRecord(
+                ir.IDRecord(id=str(count)),
+                ir.IDRecord(id=str(2 * count)),
+                ir.IDRecord(id=str(2 * count + 1)),
+            )
+            count += 1
 
-    h_sampler = PairwiseTransformAdapter.C(sampler=sampler, adapter=hydrator)
-    h_sampler.instance()
 
-    for record, n in zip(h_sampler.pairwise_iter(), range(5)):
+def test_store_hydrator_process_batch():
+    """Test that StoreHydrator correctly hydrates a batch of PairwiseRecords."""
+    hydrator = StoreHydrator.C(
+        documentstore=FakeDocumentStore.C(),
+        querystore=FakeTextStore.C(),
+    ).instance()
+
+    records = [
+        PairwiseRecord(
+            ir.IDRecord(id=str(n)),
+            ir.IDRecord(id=str(2 * n)),
+            ir.IDRecord(id=str(2 * n + 1)),
+        )
+        for n in range(5)
+    ]
+
+    hydrated = hydrator.process_batch(records)
+    assert len(hydrated) == 5
+    for n, record in enumerate(hydrated):
         assert record.query["text_item"].text == f"T{n}"
-        assert record.positive["text_item"].text == f"D{2*n}"
-        assert record.negative["text_item"].text == f"D{2*n+1}"
+        assert record.positive["text_item"].text == f"D{2 * n}"
+        assert record.negative["text_item"].text == f"D{2 * n + 1}"
 
-    batch_it = h_sampler.pairwise_batch_iter(3)
-    for record, n in zip(itertools.chain(next(batch_it), next(batch_it)), range(5)):
+
+def test_buffered_processing_dataset():
+    """Test that BufferedProcessingDataset buffers and hydrates correctly."""
+    hydrator = StoreHydrator.C(
+        documentstore=FakeDocumentStore.C(),
+        querystore=FakeTextStore.C(),
+    ).instance()
+
+    inner_dataset = _PairwiseDataset()
+    dataset = BufferedProcessingDataset(inner_dataset, [hydrator], buffer_size=4)
+
+    count = 0
+    for record in dataset:
+        n = count
         assert record.query["text_item"].text == f"T{n}"
-        assert record.positive["text_item"].text == f"D{2*n}"
-        assert record.negative["text_item"].text == f"D{2*n+1}"
+        assert record.positive["text_item"].text == f"D{2 * n}"
+        assert record.negative["text_item"].text == f"D{2 * n + 1}"
+        count += 1
+        if count >= 10:
+            break
+
+    assert count == 10

@@ -45,6 +45,7 @@ def test_faiss_indexation(tmp_path: Path, indexspec):
 
     documents = builder_instance.documents.documents
     x_docs = retriever.encoder([d["text_item"].text for d in documents.values()]).value
+    x_docs = retriever.encoder([d["text_item"].text for d in documents.values()]).value
     scores = x_docs @ x_docs.T
 
     for ix, document in enumerate(documents.values()):
@@ -53,6 +54,7 @@ def test_faiss_indexation(tmp_path: Path, indexspec):
 
         expected = list(scores[ix].sort(descending=True).indices[:topk].numpy())
         logging.debug("%s vs %s", scores[ix], scoredDocuments)
+        observed = [int(sd.document["id"]) for sd in scoredDocuments]
         observed = [int(sd.document["id"]) for sd in scoredDocuments]
 
         assert expected == observed

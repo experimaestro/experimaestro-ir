@@ -62,4 +62,9 @@ Dataset transforms
 Adapters
 ********
 
-.. autoxpmconfig:: xpmir.letor.samplers.hydrators.PairwiseTransformAdapter
+.. autoxpmconfig:: xpmir.letor.samplers.adapters.SamplerAdapter
+
+Processors
+**********
+
+.. autoxpmconfig:: xpmir.letor.processors.StoreHydrator
