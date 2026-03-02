@@ -87,7 +87,6 @@ Sparse Models
 =============
 
 .. autoxpmconfig:: xpmir.neural.splade.SpladeTextEncoder
-.. autoxpmconfig:: xpmir.neural.splade.SpladeTextEncoderV2
 .. autoxpmconfig:: xpmir.neural.splade.Aggregation
 .. autoxpmconfig:: xpmir.neural.splade.MaxAggregation
 .. autoxpmconfig:: xpmir.neural.splade.SumAggregation

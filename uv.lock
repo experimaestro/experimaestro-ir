@@ -814,7 +814,7 @@ wheels = [
 
 [[package]]
 name = "experimaestro"
-version = "2.0.2"
+version = "2.0.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "arpeggio" },
@@ -846,9 +846,9 @@ dependencies = [
     { name = "uvicorn", extra = ["standard"] },
     { name = "watchdog" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c6/d3/645432b1bdd079976d4691c60416d3dd9a5d1683c6706ae00eb025be19cf/experimaestro-2.0.2.tar.gz", hash = "sha256:463ec5e393a50a3b87c8bb80cb3f0d9de5af6217a4bba3f9d8fec3f0bfe04505", size = 27736004, upload-time = "2026-02-28T08:05:35.842Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/35/fb/5d0795857e2d72639cd0c4ad0ea9e213a93a4ca0bcdf927d93329ec59d69/experimaestro-2.0.6.tar.gz", hash = "sha256:47938136beffa31c6d08e66e55db5a889d21b55548f581a33ec1cb28488fbc92", size = 28509190, upload-time = "2026-03-02T06:30:00.008Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c2/50/e73f6534ac8c22e42d71233e3ca7e725a04dc6d9e6d16186034c6fe33fc6/experimaestro-2.0.2-py3-none-any.whl", hash = "sha256:363674c3a50aa3803eb6ca5c26f1c37f64834047359726a9437ab90ef59aaa6a", size = 2899520, upload-time = "2026-02-28T08:05:33.359Z" },
+    { url = "https://files.pythonhosted.org/packages/f0/77/fb43e8ca2be387b2dfa0a1f6eb561b14bf014dad4b86920d5a826c2a2adc/experimaestro-2.0.6-py3-none-any.whl", hash = "sha256:af43d8a54bfc6d15679dd8d15b7e484c7369d310b7f524f359532ed7986b3c29", size = 2962571, upload-time = "2026-03-02T06:29:57.722Z" },
 ]
 
 [[package]]
@@ -916,7 +916,7 @@ requires-dist = [
     { name = "datamaestro", specifier = ">=1.0.1" },
     { name = "datamaestro-text", editable = "datamaestro-text" },
     { name = "docstring-parser" },
-    { name = "experimaestro", specifier = ">=2.0.2" },
+    { name = "experimaestro", specifier = ">=2.0.6" },
     { name = "impact-index", specifier = "==0.30.*" },
     { name = "ir-datasets" },
     { name = "ir-measures", specifier = ">=0.3.3" },
