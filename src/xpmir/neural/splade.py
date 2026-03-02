@@ -1,5 +1,5 @@
 from typing import Optional, Generic
-from experimaestro import Config, Param
+from experimaestro import Config, Param, Path
 import torch.nn as nn
 import torch
 from xpmir.text.huggingface.encoders import OneHotHuggingFaceEncoder
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class Aggregation(Config):
-    """The aggregation function for Splade"""
+    """The aggregation function for SPLADE"""
 
     def get_output_module(self, linear: nn.Module) -> nn.Module:
         return AggregationModule(linear, self)
@@ -29,6 +29,7 @@ class Aggregation(Config):
 class MaxAggregation(Aggregation):
     """Aggregate using a max"""
 
+    @torch.compile()
     def __call__(self, logits, mask):
         # Get the maximum (masking the values)
         values, _ = torch.max(
@@ -51,6 +52,9 @@ class SumAggregation(Aggregation):
 
 
 class AggregationModule(nn.Module):
+    """The aggregation module for SPLADE, which applies a linear layer followed
+    by an aggregation"""
+
     def __init__(self, linear: nn.Linear, aggregation: Aggregation):
         super().__init__()
         self.linear = linear
@@ -91,12 +95,26 @@ class SpladeTextEncoder(
     maxlen: Param[Optional[int]] = None
     """Max length for texts"""
 
+    def customize_hf_serialization(
+        self, hf_serialization: "HFSerialization"
+    ):
+        """Saves the model and tokenizer in a way that they can be loaded back
+        using the HuggingFace Transformers library. This allows to use the model
+        in HuggingFace pipelines, and to share it easily with the community."""
+
+        # TODO: when XPM torch stabilizes
+        raise NotImplementedError
+
     def __initialize__(self):
+        """Module initialization: initializes the encoder and tokenizer, and
+        adds the aggregation head."""
+
         self.encoder.initialize()
         self.tokenizer.initialize()
 
         # Adds the aggregation head right away - this could allow
-        # optimization e.g. for the Max aggregation method.
+        # optimization e.g. for a top-k max aggregation method.
+
         # When the encoder is shared between doc/query encoders, the second
         # SpladeTextEncoder finds IdentityWithBias already in place — in that
         # case retrieve the stored original linear.
@@ -230,7 +248,9 @@ def spladeV2_doc(
     SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval
     (arXiv:2109.10086)
     """
-    return _splade_doc(lambda_q, lambda_d, MaxAggregation.C(), lambda_warmup_steps, hf_id)
+    return _splade_doc(
+        lambda_q, lambda_d, MaxAggregation.C(), lambda_warmup_steps, hf_id
+    )
 
 
 def splade_from_pretrained_hf(
@@ -253,7 +273,10 @@ def splade_from_pretrained_hf(
     )
 
     doc_encoder = SpladeTextEncoder.C(
-        aggregation=MaxAggregation.C(), encoder=encoder, tokenizer=tokenizer, maxlen=maxlen
+        aggregation=MaxAggregation.C(),
+        encoder=encoder,
+        tokenizer=tokenizer,
+        maxlen=maxlen,
     )
 
     if query_model_id:
@@ -263,11 +286,17 @@ def splade_from_pretrained_hf(
             converter=TopicTextConverter.C(),
         )
         query_encoder = SpladeTextEncoder.C(
-            aggregation=MaxAggregation.C(), encoder=query_enc, tokenizer=query_tok, maxlen=query_maxlen
+            aggregation=MaxAggregation.C(),
+            encoder=query_enc,
+            tokenizer=query_tok,
+            maxlen=query_maxlen,
         )
     else:
         query_encoder = SpladeTextEncoder.C(
-            aggregation=MaxAggregation.C(), encoder=encoder, tokenizer=tokenizer, maxlen=query_maxlen
+            aggregation=MaxAggregation.C(),
+            encoder=encoder,
+            tokenizer=tokenizer,
+            maxlen=query_maxlen,
         )
 
     return DotDense.C(encoder=doc_encoder, query_encoder=query_encoder)
