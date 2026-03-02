@@ -1,4 +1,3 @@
-from functools import cached_property
 from collections import OrderedDict, defaultdict
 from typing import ClassVar, Dict, Iterator, List, Tuple, Any
 import torch
@@ -7,7 +6,6 @@ from datamaestro_text.data.ir import (
     DocumentStore,
     IDTextRecord,
     SimpleTextItem,
-    TextItem,
 )
 
 from experimaestro import Param
@@ -84,7 +82,7 @@ class SparseRandomTextEncoder(TextEncoder):
 
     def __post_init__(self):
         super().__init__()
-        if not (self.dim, self.sparsity) in SparseRandomTextEncoder.MAPS:
+        if (self.dim, self.sparsity) not in SparseRandomTextEncoder.MAPS:
             SparseRandomTextEncoder.MAPS[(self.dim, self.sparsity)] = defaultdict(
                 VectorGenerator(self.dim, self.sparsity)
             )

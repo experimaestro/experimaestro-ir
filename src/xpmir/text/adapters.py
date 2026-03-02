@@ -1,8 +1,7 @@
 from typing import List
 
-from datamaestro.record import Record
 from experimaestro import Param
-from datamaestro_text.data.ir import TextItem
+from datamaestro_text.data.ir import TextRecord
 from xpmir.utils.convert import Converter
 
 from .encoders import InputType, RepresentationOutput, TokenizedTextEncoderBase
@@ -31,8 +30,8 @@ class MeanTextEncoder(TokenizedTextEncoderBase[InputType, RepresentationOutput])
         return emb_texts
 
 
-class TopicTextConverter(Converter[Record, str]):
+class TopicTextConverter(Converter[TextRecord, str]):
     """Extracts the text from a topic"""
 
-    def __call__(self, input: Record) -> str:
+    def __call__(self, input: TextRecord) -> str:
         return input["text_item"].text

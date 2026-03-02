@@ -11,7 +11,7 @@ import torch
 import numpy as np
 from experimaestro import Meta, Task, Param, tqdm, field
 import logging
-from datamaestro_text.data.ir import DocumentStore, TextItem
+from datamaestro_text.data.ir import DocumentStore, TextRecord
 from xpmir.rankers import Retriever, ScoredDocument
 from xpm_torch.batchers import Batcher
 from xpmir.text.encoders import TextEncoder
@@ -20,7 +20,6 @@ from xpmir.utils.utils import batchiter, foreach
 from xpmir.documents.samplers import DocumentSampler
 from xpmir.context import Context, Hook, InitializationHook
 
-import logging
 logger = logging.getLogger(__name__)
 
 try:
@@ -205,7 +204,7 @@ class FaissRetriever(Retriever):
         self._index = faiss.read_index(str(self.index.faiss_index))
         logger.info("FAISS retriever: initialized")
 
-    def retrieve(self, query: TopicRecord) -> List[ScoredDocument]:
+    def retrieve(self, query: TextRecord) -> List[ScoredDocument]:
         """Retrieves a documents, returning a list sorted by decreasing score"""
         with torch.no_grad():
             self.encoder.eval()  # pass the model to the evaluation model

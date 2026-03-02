@@ -7,7 +7,6 @@ from typing import (
     List,
     Optional,
     Protocol,
-    Iterable,
     Tuple,
     TypeVar,
 )

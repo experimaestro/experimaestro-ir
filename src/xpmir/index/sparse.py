@@ -26,22 +26,19 @@ from experimaestro import (
     tqdm,
     Constant,
 )
-from datamaestro_text.data.ir import IDTextRecord, DocumentStore
-
-DocumentRecord = IDTextRecord
+from datamaestro_text.data.ir import DocumentRecord, IDTextRecord, DocumentStore
 from xpm_torch import Module
+from xpm_torch.configuration import FabricConfiguration
 from xpm_torch.batchers import Batcher
-from xpm_torch.optim import find_module_attributes
 
 from xpmir.utils.utils import batchiter
 from xpmir.text.encoders import TextEncoderBase, TextsRepresentationOutput, InputType
-from xpmir.rankers import Retriever, TopicRecord, ScoredDocument
+from datamaestro_text.data.ir import TextRecord
+from xpmir.rankers import Retriever, ScoredDocument
 from xpmir.utils.iter import MultiprocessIterator
 from xpmir.utils.multiprocessing import StoppableQueue, available_cpus
-from xpm_torch.configuration import FabricConfiguration
 import impact_index
 
-import logging
 logger = logging.getLogger(__name__)
 
 # --- Index and retriever
@@ -152,7 +149,6 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
         ).detach()
 
         try:
-
             self.device_execute(
                 fabric_instance,
                 iter_batches,
@@ -211,9 +207,9 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
                     logger.debug("Handling range: %s", current)
                     for docid in range(current.start, current.end + 1):
                         encoded = queues[current.rank].get()
-                        assert (
-                            encoded.docid == docid
-                        ), f"Mismatch in document IDs ({encoded.docid} vs {docid})"
+                        assert encoded.docid == docid, (
+                            f"Mismatch in document IDs ({encoded.docid} vs {docid})"
+                        )
 
                         (nonzero_ix,) = encoded.value.nonzero()
                         self.add_encoded_document(docid, encoded, nonzero_ix)
@@ -248,7 +244,7 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
     @staticmethod
     def device_execute(
         fabric_instance: Fabric,
-        iter_batches: Iterator[List[Tuple[int, DocumentRecord]]],
+        iter_batches: Iterator[List[Tuple[int, IDTextRecord]]],
         encoder,
         batcher,
         batch_size,
@@ -297,7 +293,7 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
 
     @staticmethod
     def encode_documents(
-        batch: List[Tuple[int, DocumentRecord]],
+        batch: List[Tuple[int, IDTextRecord]],
         encoder: TextEncoderBase[InputType, TextsRepresentationOutput],
         queue: "Queue[EncodedDocument]",
     ):
@@ -342,9 +338,6 @@ class SparseRetriever(Retriever, Generic[InputType]):
     """Whether the index should be fully loaded in memory (otherwise, uses
     virtual memory)"""
 
-    fabric_config: Meta[FabricConfiguration] = field(default_factory=FabricConfiguration.C)
-    """Runtime configuration, managed by Fabric"""
-
     def initialize(self):
         super().initialize()
         logger.info("Initializing the encoder")
@@ -353,25 +346,7 @@ class SparseRetriever(Retriever, Generic[InputType]):
         self.index.initialize(self.in_memory)
 
         logger.info("Moving everything to Fabric")
-        #instanciate the Fabirc object
-        fabric = self.fabric_config.get_instance()
-        fabric.launch()
-
-        
-        # TODO - this should NOT be necessary and may cause problems later...
-        self.encoder.to(fabric.device)
-        logger.info(f"Using device {fabric.device}")
-
-        # find children of retriver that are Modules, and wrap them with fabric for device management
-        # modules = find_module_attributes(self.encoder)
-        
-        # for name, module in modules.items():
-        #     setattr(self.encoder, name, fabric.setup(module))
-        #     # TODO - this should NOT be necessary and may cause problems later...
-        #     getattr(self.encoder, name).to(fabric.device)
-            
-        #     logger.info(f"Using device {fabric.device} for {name}")
-
+      
     def retrieve_all(
         self, queries: Dict[str, InputType]
     ) -> Dict[str, List[ScoredDocument]]:
@@ -443,7 +418,7 @@ class SparseRetriever(Retriever, Generic[InputType]):
         results = asyncio.run(aio_process())
         return results
 
-    def retrieve(self, query: TopicRecord, top_k=None) -> List[ScoredDocument]:
+    def retrieve(self, query: TextRecord, top_k=None) -> List[ScoredDocument]:
         """Search with document-at-a-time (DAAT) strategy
 
         :param top_k: Overrides the default top-K value
@@ -465,9 +440,9 @@ class SparseRetriever(Retriever, Generic[InputType]):
 
     def __validate__(self):
         # Checks that we are using the right retriever
-        assert isinstance(
-            self, self.index.Retriever
-        ), f"{type(self)} is not an instance of {self.index.Retriever}"
+        assert isinstance(self, self.index.Retriever), (
+            f"{type(self)} is not an instance of {self.index.Retriever}"
+        )
 
 
 class AbstractSparseRetrieverIndex(Config, ABC):
@@ -565,11 +540,13 @@ class SparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputType]
     max_postings: Meta[Optional[int]] = None
     """Number of postings before dumping a term postings to disk"""
 
-    fabric_config: Meta[FabricConfiguration] = field(default_factory=FabricConfiguration.C)
-    """Runtime configuration, managed by Fabric"""  
+    fabric_config: Meta[FabricConfiguration] = field(
+        default_factory=FabricConfiguration.C
+    )
+    """Runtime configuration, managed by Fabric"""
 
     def execute(self):
-        #instanciate the Fabirc object
+        # instanciate the Fabirc object
         fabric = self.fabric_config.get_instance()
         fabric.launch()
 
@@ -577,10 +554,10 @@ class SparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputType]
         
         assert isinstance(self.encoder, Module)
         # find children of retriver that are Modules, and wrap them with fabric for device management
-        
-        self.encoder =  fabric.setup(self.encoder)
+
+        self.encoder = fabric.setup(self.encoder)
         self.encoder.to(fabric.device)
-        
+
         # TODO - this should NOT be necessary and may cause problems later...
         logger.info(f"Using device {fabric.device}")
 

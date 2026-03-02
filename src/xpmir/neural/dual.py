@@ -3,7 +3,8 @@ from typing import List, Optional
 from attrs import evolve
 import torch
 from experimaestro import Param
-from xpmir.letor.records import TopicRecord, DocumentRecord
+from xpm_torch.utils.utils import foreach
+from datamaestro_text.data.ir import IDTextRecord
 from xpmir.neural import DualRepresentationScorer, QueriesRep, DocsRep
 
 from xpmir.text.encoders import TextEncoderBase
@@ -13,6 +14,7 @@ from xpm_torch.trainers import TrainingHook
 from xpm_torch.metrics import ScalarMetric
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -158,13 +160,13 @@ class Dense(DualVectorScorer[QueriesRep, DocsRep]):
 class CosineDense(Dense):
     """Dual model based on cosine similarity."""
 
-    def encode_queries(self, records: List[TopicRecord]):
+    def encode_queries(self, records: List[IDTextRecord]):
         queries = (self.query_encoder or self.encoder)(records)
         return evolve(
             queries, value=queries.value / queries.value.norm(dim=-1, keepdim=True)
         )
 
-    def encode_documents(self, records: List[DocumentRecord]):
+    def encode_documents(self, records: List[IDTextRecord]):
         documents = self.encoder(records)
         return evolve(
             documents,
@@ -179,11 +181,11 @@ class DotDense(Dense):
         super().__validate__()
         assert not self.encoder.static(), "The vocabulary should be learnable"
 
-    def encode_queries(self, records: List[TopicRecord]):
+    def encode_queries(self, records: List[IDTextRecord]):
         """Encode the different queries"""
         return self._query_encoder(records)
 
-    def encode_documents(self, records: List[DocumentRecord]):
+    def encode_documents(self, records: List[IDTextRecord]):
         """Encode the different documents"""
         return self.encoder(records)
 
@@ -200,6 +202,7 @@ class FlopsRegularizer(DualVectorListener):
     .. math::
         FLOPS(x) = \left( \frac{1}{d} \sum_{i=1}^d |x_i| \right)^2
     """
+
     lambda_q: Param[float]
     """Lambda for queries"""
 

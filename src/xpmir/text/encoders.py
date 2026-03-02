@@ -25,17 +25,10 @@ class Encoder(Module, EasyLogger, ABC):
     """Base class for all word and text encoders"""
 
     def __initialize__(self):
-        # Easy and hacky way to get the device
         super().__initialize__()
-        self._dummy_params = nn.Parameter(torch.Tensor())
 
     def static(self):
         return True
-
-    @property
-    def device(self):
-        return self._dummy_params.device
-
 
 @define
 class TokensEncoderOutput:
@@ -112,7 +105,7 @@ InputType = TypeVar("InputType")
 EncoderOutput = TypeVar("EncoderOutput")
 
 
-class TextEncoderBase(Encoder, Generic[InputType, EncoderOutput]):
+class TextEncoderBase(Module, Generic[InputType, EncoderOutput]):
     """Base class for all text encoders"""
 
     __call__: Callable[Tuple["TextEncoderBase", List[InputType]], EncoderOutput]
