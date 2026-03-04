@@ -26,7 +26,6 @@ from datamaestro_text.data.ir import (
     SimpleTextItem,
 )
 from xpm_torch import Module, ModuleContainer, Random
-from xpm_torch.optim import ModuleInitMode, ModuleInitOptions
 from xpm_torch.utils.utils import Initializable
 from xpm_torch.utils.logging import EasyLogger
 from xpm_torch.batchers import Batcher
