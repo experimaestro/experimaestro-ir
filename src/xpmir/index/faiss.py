@@ -6,10 +6,10 @@ https://github.com/facebookresearch/faiss
 from pathlib import Path
 from typing import Callable, Iterator, List, Optional, Tuple
 from datamaestro_text.data.ir.base import TopicRecord
-from experimaestro import Config, initializer
+from experimaestro import Config, initializer, PathGenerator
 import torch
 import numpy as np
-from experimaestro import Annotated, Meta, Task, pathgenerator, Param, tqdm
+from experimaestro import Meta, Task, Param, tqdm, field
 import logging
 from datamaestro_text.data.ir import DocumentStore, TextItem
 from xpmir.rankers import Retriever, ScoredDocument
@@ -40,7 +40,7 @@ class FaissIndex(Config):
     normalize: Param[bool]
     """Whether vectors should be normalized (L2)"""
 
-    faiss_index: Annotated[Path, pathgenerator("faiss.dat")]
+    faiss_index: Meta[Path] = field(default_factory=PathGenerator("faiss.dat"))
     """Path to the file containing the index"""
 
     documents: Param[DocumentStore]
@@ -63,7 +63,7 @@ class IndexBackedFaiss(FaissIndex, Task):
     device: Meta[Device] = DEFAULT_DEVICE
     """The device used by the encoder"""
 
-    batcher: Meta[Batcher] = Batcher()
+    batcher: Meta[Batcher] = Batcher.C()
     """The way to prepare batches of documents"""
 
     hooks: Param[List[Hook]] = []

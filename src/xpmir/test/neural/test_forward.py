@@ -7,7 +7,6 @@ from collections import defaultdict
 from experimaestro import Constant
 from datamaestro_text.data.ir import TextItem, create_record
 from datamaestro.record import Record
-from datamaestro_text.data.ir import TextItem
 from xpmir.index import Index
 from xpmir.learning import Random, ModuleInitMode
 from xpmir.neural.dual import CosineDense, DotDense
@@ -65,7 +64,9 @@ class RandomTokensEncoder(TokenizedTextEncoderBase[Record, TokensRepresentationO
     def forward(self, records: List[Record], options=None):
         options = options or TokenizerOptions()
         tok_texts = self.tokenizer.batch_tokenize(
-            [record[TextItem].text for record in records], maxlen=options.max_length, mask=True
+            [record[TextItem].text for record in records],
+            maxlen=options.max_length,
+            mask=True,
         )
         return TokensRepresentationOutput(self.embed(tok_texts.ids), tok_texts)
 
@@ -104,9 +105,9 @@ def drmm():
     from xpmir.neural.interaction.drmm import Drmm
     from xpmir.neural.interaction.common import CosineSimilarity
 
-    drmm = Drmm(
-        encoder=RandomTokensEncoder(),
-        index=CustomIndex(),
+    drmm = Drmm.C(
+        encoder=RandomTokensEncoder.C(),
+        index=CustomIndex.C(),
         similarity=CosineSimilarity(),
     )
     return drmm.instance()
@@ -118,26 +119,26 @@ def colbert_cos():
     from xpmir.neural.interaction.colbert import Colbert
     from xpmir.neural.interaction.common import CosineSimilarity
 
-    return Colbert(
-        encoder=RandomTokensEncoder(), similarity=CosineSimilarity()
+    return Colbert.C(
+        encoder=RandomTokensEncoder.C(), similarity=CosineSimilarity()
     ).instance()
 
 
 @registermodel
 def dotdense():
     """Dense model factory"""
-    return DotDense(
-        encoder=MeanTextEncoder(encoder=RandomTokensEncoder()),
-        query_encoder=MeanTextEncoder(encoder=RandomTokensEncoder()),
+    return DotDense.C(
+        encoder=MeanTextEncoder.C(encoder=RandomTokensEncoder.C()),
+        query_encoder=MeanTextEncoder.C(encoder=RandomTokensEncoder.C()),
     ).instance()
 
 
 @registermodel
 def cosinedense():
     """Cosine model factory"""
-    return CosineDense(
-        encoder=MeanTextEncoder(encoder=RandomTokensEncoder()),
-        query_encoder=MeanTextEncoder(encoder=RandomTokensEncoder()),
+    return CosineDense.C(
+        encoder=MeanTextEncoder.C(encoder=RandomTokensEncoder.C()),
+        query_encoder=MeanTextEncoder.C(encoder=RandomTokensEncoder.C()),
     ).instance()
 
 
@@ -162,7 +163,7 @@ def cross_scorer():
     """Cross-scorer classifier factory"""
     from xpmir.neural.cross import CrossScorer
 
-    return CrossScorer(max_length=100, encoder=DummyDualTextEncoder()).instance()
+    return CrossScorer.C(max_length=100, encoder=DummyDualTextEncoder.C()).instance()
 
 
 # ---

@@ -1,7 +1,7 @@
 import math
 import numpy as np
 from typing import Optional, List
-from experimaestro import Config, Param, default
+from experimaestro import Config, Param, field
 import torch
 from torch import nn
 from typing_extensions import Annotated
@@ -91,7 +91,7 @@ class Drmm(InteractionScorer):
       Relevance Matching Model for Ad-hoc Retrieval. In CIKM.
     """
 
-    hist: Annotated[CountHistogram, default(LogCountHistogram())]
+    hist: Annotated[CountHistogram] = field(default_factory=LogCountHistogram.C)
     """The histogram type"""
 
     hidden: Param[int] = 5
@@ -100,7 +100,7 @@ class Drmm(InteractionScorer):
     index: Param[Optional[Index]]
     """The index (only used when using IDF to combine)"""
 
-    combine: Annotated[Combination, default(IdfCombination())]
+    combine: Annotated[Combination] = field(default_factory=IdfCombination.C)
     """How to combine the query term scores"""
 
     def __validate__(self):

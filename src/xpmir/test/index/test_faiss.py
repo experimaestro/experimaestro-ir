@@ -23,10 +23,10 @@ def test_faiss_indexation(tmp_path: Path, indexspec):
     objects = ObjectStore()
 
     # Build the FAISS index
-    documents = SampleDocumentStore(num_docs=100)
-    sampler = HeadDocumentSampler(documents=documents, max_ratio=0.5)
-    encoder = SparseRandomTextEncoder(dim=1000, sparsity=0.0)
-    builder = IndexBackedFaiss(
+    documents = SampleDocumentStore.C(num_docs=100)
+    sampler = HeadDocumentSampler.C(documents=documents, max_ratio=0.5)
+    encoder = SparseRandomTextEncoder.C(dim=1000, sparsity=0.0)
+    builder = IndexBackedFaiss.C(
         indexspec=indexspec,
         encoder=encoder,
         normalize=False,
@@ -38,7 +38,7 @@ def test_faiss_indexation(tmp_path: Path, indexspec):
 
     # Retrieve with the index
     topk = 10
-    retriever = FaissRetriever(encoder=encoder, topk=topk, index=builder).instance(
+    retriever = FaissRetriever.C(encoder=encoder, topk=topk, index=builder).instance(
         context=context, objects=objects
     )
     retriever.initialize()
