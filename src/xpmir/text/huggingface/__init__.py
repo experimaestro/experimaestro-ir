@@ -13,4 +13,10 @@ from .encoders import (  # noqa: F401
     SentenceTransformerTextEncoder,
     LayerSelector,
 )
-from .base import HFMaskedLanguageModel  # noqa: F401
+from .base import (  # noqa: F401
+    HFConfig,
+    HFConfigID,
+    HFMaskedLanguageModel,
+    HFModelInitFromID,
+    HFFromCheckpoint,
+)

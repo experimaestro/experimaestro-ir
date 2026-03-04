@@ -13,7 +13,12 @@ from xpmir.text.encoders import (
     TextsRepresentationOutput,
 )
 from xpmir.neural.dual import DotDense, ScheduledFlopsRegularizer
-from xpmir.text.huggingface.base import HFMaskedLanguageModel
+from xpmir.text.huggingface.base import (
+    HFConfigID,
+    HFMaskedLanguageModel,
+    HFModelInitFromID,
+)
+from xpm_torch.module import initialized
 import logging
 
 logger = logging.getLogger(__name__)
@@ -94,14 +99,6 @@ class SpladeTextEncoder(
     maxlen: Param[Optional[int]] = None
     """Max length for texts"""
 
-    def customize_hf_serialization(self, hf_serialization: "HFSerialization"):
-        """Saves the model and tokenizer in a way that they can be loaded back
-        using the HuggingFace Transformers library. This allows to use the model
-        in HuggingFace pipelines, and to share it easily with the community."""
-
-        # TODO: when XPM torch stabilizes
-        raise NotImplementedError
-
     def __initialize__(self):
         """Module initialization: initializes the encoder and tokenizer, and
         adds the aggregation head."""
@@ -112,7 +109,7 @@ class SpladeTextEncoder(
         # Adds the aggregation head right away - this could allow
         # optimization e.g. for a top-k max aggregation method.
 
-        # FIXME: We should ideally not modify the encoder in-place, so that
+        # Note: ideally we should not modify the encoder in-place, so that
         # the HFMaskedLanguageModel remains reusable.
 
         # When the encoder is shared between doc/query encoders, the second
@@ -133,6 +130,7 @@ class SpladeTextEncoder(
 
         self.aggregation = self.aggregation.get_output_module(original_linear)
 
+    @initialized
     def forward(self, texts: EncoderInputType) -> TextsRepresentationOutput:
         """Returns a batch x vocab tensor"""
         tokenized = self.tokenizer.tokenize(
@@ -159,7 +157,8 @@ def _splade(
 ):
     # Unlike the cross-encoder, here the encoder returns the whole last layer
     # In the paper we use the DistilBERT-based as the checkpoint
-    encoder = HFMaskedLanguageModel.from_pretrained_id(hf_id)
+    encoder = HFMaskedLanguageModel.C(config=HFConfigID.C(hf_id=hf_id))
+    init_hf = HFModelInitFromID.C(model=encoder)
     tokenizer = HFTokenizerAdapter.C(
         tokenizer=HFTokenizer.C(model_id=hf_id),
         converter=TopicTextConverter.C(),
@@ -173,12 +172,14 @@ def _splade(
         aggregation=aggregation, encoder=encoder, tokenizer=tokenizer, maxlen=30
     )
 
-    return DotDense.C(
-        encoder=doc_encoder, query_encoder=query_encoder
-    ), ScheduledFlopsRegularizer.C(
-        lambda_q=lambda_q,
-        lambda_d=lambda_d,
-        lambda_warmup_steps=lambda_warmup_steps,
+    return (
+        DotDense.C(encoder=doc_encoder, query_encoder=query_encoder),
+        ScheduledFlopsRegularizer.C(
+            lambda_q=lambda_q,
+            lambda_d=lambda_d,
+            lambda_warmup_steps=lambda_warmup_steps,
+        ),
+        [init_hf],
     )
 
 
@@ -193,7 +194,8 @@ def _splade_doc(
     # The doc_encoder is the traditional one, and the query encoder return a vector
     # contains only 0 and 1
     # In the paper we use the DistilBERT-based as the checkpoint
-    encoder = HFMaskedLanguageModel.from_pretrained_id(hf_id)
+    encoder = HFMaskedLanguageModel.C(config=HFConfigID.C(hf_id=hf_id))
+    init_hf = HFModelInitFromID.C(model=encoder)
     tokenizer = HFTokenizerAdapter.C(
         tokenizer=HFTokenizer.C(model_id=hf_id),
         converter=TopicTextConverter.C(),
@@ -204,12 +206,14 @@ def _splade_doc(
 
     query_encoder = OneHotHuggingFaceEncoder.C(model_id=hf_id, maxlen=30)
 
-    return DotDense.C(
-        encoder=doc_encoder, query_encoder=query_encoder
-    ), ScheduledFlopsRegularizer.C(
-        lambda_q=lambda_q,
-        lambda_d=lambda_d,
-        lambda_warmup_steps=lambda_warmup_steps,
+    return (
+        DotDense.C(encoder=doc_encoder, query_encoder=query_encoder),
+        ScheduledFlopsRegularizer.C(
+            lambda_q=lambda_q,
+            lambda_d=lambda_d,
+            lambda_warmup_steps=lambda_warmup_steps,
+        ),
+        [init_hf],
     )
 
 
@@ -219,7 +223,10 @@ def spladeV1(
     lambda_warmup_steps: int = 0,
     hf_id: str = "distilbert-base-uncased",
 ):
-    """Returns the Splade architecture"""
+    """Returns the Splade architecture
+
+    :returns: (model, regularizer, init_tasks) tuple
+    """
     return _splade(lambda_q, lambda_d, SumAggregation.C(), lambda_warmup_steps, hf_id)
 
 
@@ -233,6 +240,8 @@ def spladeV2_max(
 
     SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval
     (arXiv:2109.10086)
+
+    :returns: (model, regularizer, init_tasks) tuple
     """
     return _splade(lambda_q, lambda_d, MaxAggregation.C(), lambda_warmup_steps, hf_id)
 
@@ -247,6 +256,8 @@ def spladeV2_doc(
 
     SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval
     (arXiv:2109.10086)
+
+    :returns: (model, regularizer, init_tasks) tuple
     """
     return _splade_doc(
         lambda_q, lambda_d, MaxAggregation.C(), lambda_warmup_steps, hf_id
@@ -265,8 +276,10 @@ def splade_from_pretrained_hf(
     :param query_model_id: Optional separate model ID for the query encoder
     :param maxlen: Maximum document length
     :param query_maxlen: Maximum query length
+    :returns: (model, init_tasks) tuple
     """
-    encoder = HFMaskedLanguageModel.from_pretrained_id(model_id)
+    encoder = HFMaskedLanguageModel.C(config=HFConfigID.C(hf_id=model_id))
+    init_tasks = [HFModelInitFromID.C(model=encoder)]
     tokenizer = HFTokenizerAdapter.C(
         tokenizer=HFTokenizer.C(model_id=model_id),
         converter=TopicTextConverter.C(),
@@ -280,7 +293,8 @@ def splade_from_pretrained_hf(
     )
 
     if query_model_id:
-        query_enc = HFMaskedLanguageModel.from_pretrained_id(query_model_id)
+        query_enc = HFMaskedLanguageModel.C(config=HFConfigID.C(hf_id=query_model_id))
+        init_tasks.append(HFModelInitFromID.C(model=query_enc))
         query_tok = HFTokenizerAdapter.C(
             tokenizer=HFTokenizer.C(model_id=query_model_id),
             converter=TopicTextConverter.C(),
@@ -299,4 +313,4 @@ def splade_from_pretrained_hf(
             maxlen=query_maxlen,
         )
 
-    return DotDense.C(encoder=doc_encoder, query_encoder=query_encoder)
+    return DotDense.C(encoder=doc_encoder, query_encoder=query_encoder), init_tasks

@@ -1,14 +1,16 @@
 import logging
 import os
-from abc import ABC, abstractmethod
+from abc import ABC
+from contextlib import nullcontext
 from dataclasses import InitVar
 from pathlib import Path
-from typing import Any, Tuple, Type
+from typing import Generic, Optional, Type, TypeVar
 
 import torch.nn as nn
 from experimaestro import Config, Param, LightweightTask
 
 from xpm_torch import Module
+from xpm_torch.configuration import FabricConfiguration
 from xpmir.text import TokenizedTexts
 from functools import lru_cache
 
@@ -25,115 +27,55 @@ def is_local_files_only():
     return os.environ.get("HF_HUB_OFFLINE", "").lower() in ["1", "true", "on"]
 
 
-class HFModelConfig(Config, ABC):
-    """Base class for all HuggingFace model configurations"""
+def _resolve_model_path(model_id: str, automodel: Type[AutoModel]):
+    """Resolves the model ID or local path, checking XPMIR_TRANSFORMERS_CACHE"""
+    model_id_or_path = model_id
 
-    @abstractmethod
-    def __call__(
-        self,
-        autoconfig: Type[AutoConfig],
-        automodel: Type[AutoModel],
-    ) -> Tuple[Any, Any]:
-        """Returns a configuration and a model
-
-        By default creates structure only (from_config). Call
-        :meth:`use_pretrained` to switch to loading pretrained weights.
-
-        :param autoconfig: configuration factory
-        :param automodel: model factory
-        :return: a Tuple (configuration, model)
-        """
-        ...
-
-    @abstractmethod
-    def use_pretrained(self):
-        """Switch this config to load pretrained weights on next initialize"""
-        ...
-
-
-class HFModelConfigFromId(HFModelConfig):
-    model_id: Param[str]
-    """HuggingFace Model ID"""
-
-    def __post_init__(self):
-        self._create_model = self._from_config
-
-    def _resolve_model_path(self, automodel: Type[AutoModel]):
-        """Resolves the model ID or local path"""
-        model_id_or_path = self.model_id
-
-        # Use saved models
-        if model_path := os.environ.get("XPMIR_TRANSFORMERS_CACHE", None):
-            path = (
-                Path(model_path)
-                / Path(f"{automodel.__module__}.{automodel.__qualname__}")
-                / Path(self.model_id)
-            )
-            if path.is_dir():
-                logging.warning("Using saved model from %s", path)
-                model_id_or_path = path
-            else:
-                logging.warning(
-                    "Could not find saved model in %s, using HF loading", path
-                )
-
-        return model_id_or_path
-
-    def _from_config(self, config, model_id_or_path, automodel):
-        logging.info("Structure-only initialization of HF model")
-        return automodel.from_config(config, trust_remote_code=True)
-
-    def _from_pretrained(self, config, model_id_or_path, automodel):
-        logging.info(
-            "Loading pretrained model from HF (%s) with %s.%s",
-            self.model_id,
-            automodel.__module__,
-            automodel.__name__,
+    if model_path := os.environ.get("XPMIR_TRANSFORMERS_CACHE", None):
+        path = (
+            Path(model_path)
+            / Path(f"{automodel.__module__}.{automodel.__qualname__}")
+            / Path(model_id)
         )
-        return automodel.from_pretrained(
-            model_id_or_path,
-            config=config,
-            trust_remote_code=True,
-            local_files_only=is_local_files_only(),
-        )
+        if path.is_dir():
+            logging.warning("Using saved model from %s", path)
+            model_id_or_path = path
+        else:
+            logging.warning("Could not find saved model in %s, using HF loading", path)
 
-    def __call__(
-        self,
-        autoconfig: Type[AutoConfig],
-        automodel: Type[AutoModel],
-    ):
-        model_id_or_path = self._resolve_model_path(automodel)
-        config = autoconfig.from_pretrained(
-            model_id_or_path,
-            trust_remote_code=True,
-            local_files_only=is_local_files_only(),
-        )
-        return config, self._create_model(config, model_id_or_path, automodel)
-
-    def use_pretrained(self):
-        if self._create_model == self._from_pretrained:
-            logging.warning(
-                "HFModelConfigFromId(%s): use_pretrained called more than once",
-                self.model_id,
-            )
-        self._create_model = self._from_pretrained
+    return model_id_or_path
 
 
-class HFModel(Module):
+class HFConfig(Config):
+    """Base configuration for HuggingFace models"""
+
+    pass
+
+
+class HFConfigID(HFConfig):
+    """Configuration identified by a HuggingFace model ID"""
+
+    hf_id: Param[str]
+    """HuggingFace model ID (e.g. ``distilbert-base-uncased``)"""
+
+
+ConfigT = TypeVar("ConfigT", bound=HFConfig)
+
+
+class HFModel(Module, Generic[ConfigT]):
     """Base transformer class from Huggingface
 
-    The config specifies the architecture
+    Model structure is created during ``__initialize__`` from the
+    :attr:`config` when available.  Pretrained weights can be loaded
+    via init tasks such as :class:`HFModelInitFromID` or
+    :class:`HFFromCheckpoint`.
     """
 
-    config: Param[HFModelConfig]
-    """Model ID from huggingface"""
+    config: Param[ConfigT]
+    """HuggingFace model configuration"""
 
     model: InitVar[AutoModel]
     """The HF model"""
-
-    @classmethod
-    def from_pretrained_id(cls, model_id: str):
-        return cls.C(config=HFModelConfigFromId.C(model_id=model_id))
 
     @property
     def autoconfig(self):
@@ -144,19 +86,27 @@ class HFModel(Module):
         return AutoModel
 
     def __initialize__(self):
-        """Initialize the HuggingFace transformer (structure only)"""
-        super().__initialize__()
-
-        self.hf_config, self.model = self.config(
-            self.autoconfig, self.automodel
-        )
+        """Creates the model structure from config.hf_id (no pretrained weights)"""
+        if isinstance(self.config, HFConfigID):
+            hf_id = self.config.hf_id
+            model_id_or_path = _resolve_model_path(hf_id, self.automodel)
+            hf_config = self.autoconfig.from_pretrained(
+                model_id_or_path,
+                trust_remote_code=True,
+                local_files_only=is_local_files_only(),
+            )
+            self.hf_config = hf_config
+            logging.info(
+                "Creating model structure from config (%s) with %s.%s",
+                hf_id,
+                self.automodel.__module__,
+                self.automodel.__name__,
+            )
+            self.model = self.automodel.from_config(hf_config)
 
     @property
     def contextual_model(self) -> nn.Module:
         """Returns the model that only outputs base representations"""
-
-        # This method needs to be updated to cater for various types of models,
-        # i.e. MLM, classification, etc.
         return self.model
 
     def forward(self, tokenized: TokenizedTexts):
@@ -179,15 +129,98 @@ class HFMaskedLanguageModel(HFModel):
         return AutoModelForMaskedLM
 
 
-class LoadFromHFCheckpoint(LightweightTask):
-    """Switches an HFModel's config to load pretrained weights
+class HFModelInitBase(LightweightTask, ABC):
+    """Base class for initializing HF models"""
 
-    This runs as an init_task before the main task's execute(). It switches
-    the config so that when initialize() is later called (e.g. by the Learner),
-    it uses from_pretrained instead of from_config.
+    model: Param[HFModel[HFConfigID]]
+
+    def __validate__(self):
+        assert isinstance(self.model.config, HFConfigID), (
+            f"model.config must be an HFConfigID, got {type(self.model.config)}"
+        )
+
+    fabric: Param[Optional[FabricConfiguration]]
+    """The fabric configuration to use for initialization. When set, model
+    creation runs inside ``fabric.init_module()`` so that parameters are
+    allocated directly on the target device and dtype.
+    See https://lightning.ai/docs/fabric/stable/advanced/model_init.html
     """
 
-    model: Param[HFModel]
+    def _init_context(self, empty_init: bool):
+        """Returns a context manager for model initialization.
+
+        When ``self.fabric`` is set, returns ``fabric.init_module(empty_init)``;
+        otherwise returns a no-op context.
+
+        :param empty_init: If True, parameters are created on the meta device
+            (no memory allocated). Use True when loading weights from a
+            checkpoint (pretrained / saved), False when random init is needed.
+        """
+        if self.fabric is not None:
+            return self.fabric.get_fabric().init_module(empty_init=empty_init)
+        return nullcontext()
+
+
+class HFModelInitFromID(HFModelInitBase):
+    """Load pretrained weights from a HuggingFace Hub model ID.
+
+    Uses ``model.config.hf_id`` to resolve the model.
+    """
 
     def execute(self):
-        self.model.config.use_pretrained()
+        hf_id = self.model.config.hf_id
+        model_id_or_path = _resolve_model_path(hf_id, self.model.automodel)
+        config = self.model.autoconfig.from_pretrained(
+            model_id_or_path,
+            trust_remote_code=True,
+            local_files_only=is_local_files_only(),
+        )
+        self.model.hf_config = config
+        logging.info(
+            "Loading pretrained model from HF (%s) with %s.%s",
+            hf_id,
+            self.model.automodel.__module__,
+            self.model.automodel.__name__,
+        )
+        with self._init_context(empty_init=True):
+            self.model.model = self.model.automodel.from_pretrained(
+                model_id_or_path,
+                config=config,
+                trust_remote_code=True,
+                local_files_only=is_local_files_only(),
+            )
+        self.model._initialized = True
+
+
+class HFFromCheckpoint(HFModelInitBase):
+    """Load from a local checkpoint.
+
+    Uses ``model.config.hf_id`` for the architecture config, then loads weights
+    from ``checkpoint``.
+    """
+
+    checkpoint: Param[Path]
+    """The checkpoint path to load weights from"""
+
+    def execute(self):
+        hf_id = self.model.config.hf_id
+        model_id_or_path = _resolve_model_path(hf_id, self.model.automodel)
+        config = self.model.autoconfig.from_pretrained(
+            model_id_or_path,
+            trust_remote_code=True,
+            local_files_only=is_local_files_only(),
+        )
+        self.model.hf_config = config
+        logging.info(
+            "Loading model from checkpoint %s (config from %s)",
+            self.checkpoint,
+            hf_id,
+        )
+        with self._init_context(empty_init=True):
+            self.model.model = self.model.automodel.from_pretrained(
+                self.checkpoint,
+                config=config,
+                trust_remote_code=True,
+                local_files_only=is_local_files_only(),
+            )
+        self.model._initialized = True

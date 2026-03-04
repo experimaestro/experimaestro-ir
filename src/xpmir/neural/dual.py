@@ -3,7 +3,6 @@ from typing import List, Optional
 from attrs import evolve
 import torch
 from experimaestro import Param
-from xpm_torch.utils.utils import foreach
 from datamaestro_text.data.ir import IDTextRecord
 from xpmir.neural import DualRepresentationScorer, QueriesRep, DocsRep
 
@@ -132,15 +131,23 @@ class Dense(DualVectorScorer[QueriesRep, DocsRep]):
 
     @classmethod
     def from_pretrained_hf(cls, model_id: str, **kwargs):
-        """Creates a DotDense model from a HuggingFace encoder model
+        """Creates a Dense model from a HuggingFace encoder model
 
         :param model_id: The HuggingFace model ID
         :param kwargs: Additional keyword arguments passed to the constructor
+        :returns: (model, init_tasks) tuple
         """
+        from xpmir.text.huggingface.base import (
+            HFConfigID,
+            HFModel,
+            HFModelInitFromID,
+        )
         from xpmir.text.huggingface.encoders import HFCLSEncoder
 
-        encoder = HFCLSEncoder.from_pretrained_id(model_id)
-        return cls.C(encoder=encoder, **kwargs)
+        hf_model = HFModel.C(config=HFConfigID.C(hf_id=model_id))
+        init_hf = HFModelInitFromID.C(model=hf_model)
+        encoder = HFCLSEncoder.C(model=hf_model, **kwargs)
+        return cls.C(encoder=encoder), [init_hf]
 
     @classmethod
     def from_sentence_transformers(cls, hf_id: str, **kwargs):
