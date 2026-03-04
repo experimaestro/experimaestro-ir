@@ -264,6 +264,32 @@ def spladeV2_doc(
     )
 
 
+def splade_encoder_from_pretrained_hf(
+    model_id: str,
+    maxlen: int = 200,
+):
+    """Creates a SPLADE DotDense model from a pre-trained HuggingFace MLM checkpoint.
+
+    :param model_id: The HuggingFace model ID for the document encoder
+    :param maxlen: Maximum document length
+    :returns: (model, init_tasks) tuple
+    """
+    encoder = HFMaskedLanguageModel.C(config=HFConfigID.C(hf_id=model_id))
+    init_tasks = [HFModelInitFromID.C(model=encoder)]
+    tokenizer = HFTokenizerAdapter.C(
+        tokenizer=HFTokenizer.C(model_id=model_id),
+        converter=TopicTextConverter.C(),
+    )
+
+    splade_encoder = SpladeTextEncoder.C(
+        aggregation=MaxAggregation.C(),
+        encoder=encoder,
+        tokenizer=tokenizer,
+        maxlen=maxlen,
+    )
+    return splade_encoder, init_tasks
+
+
 def splade_from_pretrained_hf(
     model_id: str,
     query_model_id: Optional[str] = None,
