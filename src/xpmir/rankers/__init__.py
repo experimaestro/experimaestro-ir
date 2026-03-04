@@ -302,8 +302,7 @@ class AbstractTwoStageRetriever(Retriever):
     def initialize(self):
         self.retriever.initialize()
         self._batcher = self.batcher.initialize(self.batchsize)
-        #TODO this will crash if Scorer is not a Module
-        self.scorer.initialize(ModuleInitMode.DEFAULT.to_options())
+        self.scorer.initialize()
 
 
 class TwoStageRetriever(AbstractTwoStageRetriever):

@@ -31,7 +31,6 @@ from datamaestro_text.data.ir.trec import TrecAdhocRun, TrecAdhocResults
 from datamaestro_text.transforms.ir import TopicWrapper
 
 from xpm_torch.configuration import FabricConfiguration
-from xpm_torch.optim import find_module_attributes
 
 import xpmir.measures as m
 from xpmir.measures import Measure
@@ -165,9 +164,7 @@ class Evaluate(BaseEvaluation, Task):
     topic_wrapper: Param[Optional[TopicWrapper]] = None
     """Topic extractor"""
 
-    fabric_config: Meta[FabricConfiguration] = field(
-        default_factory=FabricConfiguration.C
-    )
+    fabric_config: Meta[FabricConfiguration] = field(default_factory=FabricConfiguration.C)
     """Runtime configuration, managed by Fabric"""
 
     def execute(self):
