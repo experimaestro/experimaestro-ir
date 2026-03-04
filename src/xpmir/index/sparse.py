@@ -346,7 +346,7 @@ class SparseRetriever(Retriever, Generic[InputType]):
         self.index.initialize(self.in_memory)
 
         logger.info("Moving everything to Fabric")
-      
+
     def retrieve_all(
         self, queries: Dict[str, InputType]
     ) -> Dict[str, List[ScoredDocument]]:
@@ -547,11 +547,11 @@ class SparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputType]
 
     def execute(self):
         # instanciate the Fabirc object
-        fabric = self.fabric_config.get_instance()
+        fabric = self.fabric_config.get_Fabric()
         fabric.launch()
 
         self.encoder.initialize()
-        
+
         assert isinstance(self.encoder, Module)
         # find children of retriver that are Modules, and wrap them with fabric for device management
 

@@ -1,5 +1,5 @@
 from typing import Optional, Generic
-from experimaestro import Config, Param, Path
+from experimaestro import Config, Param
 import torch.nn as nn
 import torch
 from xpmir.text.huggingface.encoders import OneHotHuggingFaceEncoder
@@ -29,7 +29,6 @@ class Aggregation(Config):
 class MaxAggregation(Aggregation):
     """Aggregate using a max"""
 
-    @torch.compile()
     def __call__(self, logits, mask):
         # Get the maximum (masking the values)
         values, _ = torch.max(
@@ -95,9 +94,7 @@ class SpladeTextEncoder(
     maxlen: Param[Optional[int]] = None
     """Max length for texts"""
 
-    def customize_hf_serialization(
-        self, hf_serialization: "HFSerialization"
-    ):
+    def customize_hf_serialization(self, hf_serialization: "HFSerialization"):
         """Saves the model and tokenizer in a way that they can be loaded back
         using the HuggingFace Transformers library. This allows to use the model
         in HuggingFace pipelines, and to share it easily with the community."""
@@ -115,6 +112,9 @@ class SpladeTextEncoder(
         # Adds the aggregation head right away - this could allow
         # optimization e.g. for a top-k max aggregation method.
 
+        # FIXME: We should ideally not modify the encoder in-place, so that
+        # the HFMaskedLanguageModel remains reusable.
+
         # When the encoder is shared between doc/query encoders, the second
         # SpladeTextEncoder finds IdentityWithBias already in place — in that
         # case retrieve the stored original linear.
@@ -123,9 +123,9 @@ class SpladeTextEncoder(
             # Shared encoder: output embeddings already replaced; reuse original
             original_linear = output_embeddings.original_linear
         else:
-            assert isinstance(
-                output_embeddings, nn.Linear
-            ), f"Cannot handle output embeddings of class {output_embeddings.__class__}"
+            assert isinstance(output_embeddings, nn.Linear), (
+                f"Cannot handle output embeddings of class {output_embeddings.__class__}"
+            )
             original_linear = output_embeddings
             self.encoder.model.set_output_embeddings(
                 IdentityWithBias(original_linear=original_linear)

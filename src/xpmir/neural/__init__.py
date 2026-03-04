@@ -19,7 +19,9 @@ class DualRepresentationScorer(AbstractModuleScorer, Generic[QueriesRep, DocsRep
     of cosine/inner products between query and document tokens.
     """
 
-    def forward(self, inputs: BaseRecords, info: Optional[TrainerContext] = None):
+    def forward(
+        self, inputs: BaseRecords, info: Optional[TrainerContext] = None, **kwargs
+    ):
         # Forward to model
         enc_queries = self.encode_queries(list(inputs.unique_queries))
         enc_documents = self.encode_documents(list(inputs.unique_documents))
