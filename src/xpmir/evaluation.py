@@ -164,14 +164,16 @@ class Evaluate(BaseEvaluation, Task):
     topic_wrapper: Param[Optional[TopicWrapper]] = None
     """Topic extractor"""
 
-    fabric_config: Meta[FabricConfiguration] = field(default_factory=FabricConfiguration.C)
+    fabric_config: Meta[FabricConfiguration] = field(
+        default_factory=FabricConfiguration.C
+    )
     """Runtime configuration, managed by Fabric"""
 
     def execute(self):
         self.retriever.initialize()
 
         # instanciate the Fabirc object
-        fabric = self.fabric_config.get_Fabric()
+        fabric = self.fabric_config.get_fabric()
         fabric.launch()
 
         # Wrap all necessary children with fabric

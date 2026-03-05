@@ -540,7 +540,9 @@ class SparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputType]
     max_postings: Meta[Optional[int]] = None
     """Number of postings before dumping a term postings to disk"""
 
-    fabric_config: Meta[FabricConfiguration] = field(default_factory=FabricConfiguration.C)
+    fabric_config: Meta[FabricConfiguration] = field(
+        default_factory=FabricConfiguration.C
+    )
     """Runtime configuration, managed by Fabric"""
 
     def execute(self):

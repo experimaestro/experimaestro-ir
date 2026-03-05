@@ -35,16 +35,6 @@ class HFEncoderBase(Module):
     model: Param[HFModel]
     """A Hugging-Face model"""
 
-    @classmethod
-    def from_pretrained_id(cls, model_id: str, **kwargs):
-        """Returns a new encoder
-
-        :param model_id: The HuggingFace Hub ID
-        :param kwargs: keyword arguments passed to the model constructor
-        :return: A hugging-fasce based encoder
-        """
-        return cls(model=HFModel.from_pretrained_id(model_id), **kwargs)
-
     def __initialize__(self):
         super().__initialize__()
         self.model.initialize()

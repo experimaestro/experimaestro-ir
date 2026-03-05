@@ -104,7 +104,17 @@ class Dense(DualVectorScorer[QueriesRep, DocsRep]):
     """A scorer based on a pair of (query, document) dense vectors"""
 
     def score_product(self, queries, documents, info: Optional[TrainerContext] = None):
-        scores = queries.value @ documents.value.T
+        # Gather the representations across all processes
+        if info is not None and info.fabric is not None:
+            fabric = info.fabric
+            q_all = fabric.all_gather(queries.value, sync_grads=True)
+            d_all = fabric.all_gather(documents.value, sync_grads=True)
+        else:
+            # We should always have access to fabric (even not in trainer mode)
+            q_all = queries.value
+            d_all = documents.value
+
+        scores = q_all @ d_all.T
 
         if info is not None:
             for hook in info.hooks(DualVectorListener):
