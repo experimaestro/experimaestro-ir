@@ -545,7 +545,7 @@ class SparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputType]
 
     def execute(self):
         # instanciate the Fabirc object
-        fabric = self.fabric_config.get_Fabric()
+        fabric = self.fabric_config.get_fabric()
         fabric.launch()
 
         self.encoder.initialize()
