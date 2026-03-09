@@ -252,7 +252,7 @@ class DistillationListwiseTrainer(LossTrainer):
         records, teacher_scores, tokenized_records = inputs["records"], inputs["teacher_scores"], inputs.get("tokenized_records", None)
 
         # Get the next batch and compute the scores for each query/document
-        scores = self.model(records, tokenized=tokenized_records, info=self.context)
+        scores = self.model(records, tokenized=tokenized_records)
         
         if torch.isnan(scores).any() or torch.isinf(scores).any():
             self.logger.error(

@@ -16,7 +16,12 @@ from functools import lru_cache
 
 
 try:
-    from transformers import AutoConfig, AutoModel, AutoModelForMaskedLM
+    from transformers import (
+        AutoConfig,
+        AutoModel,
+        AutoModelForMaskedLM,
+        AutoModelForSequenceClassification,
+    )
 except Exception:
     logging.error("Install huggingface transformers to use these configurations")
     raise
@@ -127,6 +132,16 @@ class HFMaskedLanguageModel(HFModel):
     @property
     def automodel(self):
         return AutoModelForMaskedLM
+
+
+class HFSequenceClassification(HFModel):
+    """HuggingFace model for sequence classification"""
+
+    model: InitVar[AutoModelForSequenceClassification]
+
+    @property
+    def automodel(self):
+        return AutoModelForSequenceClassification
 
 
 class HFModelInitBase(LightweightTask, ABC):
