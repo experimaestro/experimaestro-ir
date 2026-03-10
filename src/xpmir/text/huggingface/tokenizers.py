@@ -1,11 +1,12 @@
 import os
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
-from functools import cached_property
+from functools import cached_property, lru_cache
 import torch
 from experimaestro import Config, Param
 
 from xpm_torch.utils.utils import Initializable
+from xpm_torch.utils.huggingface import get_hf_config
 
 from xpmir.utils.convert import Converter
 from xpmir.text.tokenizers import (
@@ -25,7 +26,14 @@ except Exception:
     logging.error("Install huggingface transformers to use these configurations")
     raise
 
-
+@lru_cache
+def get_default_max_len(model_id:str) -> int:
+    """get default max len from model id if it is in the hf config
+    defaults to 512
+    """ 
+    hf_config = get_hf_config(model_id)
+    return hf_config.get("max_position_embeddings", 512)
+        
 HFTokenizerInput = Union[List[str], List[Tuple[str, str]]]
 
 
@@ -35,10 +43,21 @@ class HFTokenizer(Config, Initializable):
     model_id: Param[str]
     """The tokenizer hugginface ID"""
 
-    max_length: Param[int] = 4096
-    """Maximum length for the tokenizer (can be overridden by the model)"""
+    max_length: Param[Optional[int]]
+    """Maximum length for the tokenizer (can be overridden by the model) default
+    can be set by default using the hf config
+    """
 
     DEFAULT_OPTIONS = TokenizerOptions()
+
+    def __post_init__(self):
+        super().__post_init__()
+        
+        if self.max_length is None:
+            #try to infer it from config
+            self.max_length = get_default_max_len(self.model_id)
+            logger.warning(f"No max_len provided, using default hf: {self.max_length}")
+
 
     def __initialize__(self):
         """Initialize the HuggingFace transformer"""

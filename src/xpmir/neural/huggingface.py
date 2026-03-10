@@ -9,7 +9,7 @@ from xpmir.text import TokenizedTexts
 from xpmir.letor.records import BaseItems
 from xpmir.rankers import AbstractModuleScorer
 from xpm_torch.utils import to_device
-from xpm_torch.utils.huggingface import get_hf_config
+
 from xpmir.text.huggingface.base import (
     HFConfigID,
     HFSequenceClassification,
@@ -34,14 +34,15 @@ class HFQueryDocTokenizer(HFTokenizer):
 
     def __post_init__(self):
         super().__post_init__()
-        # If lengths are not provided, we try to infer them from the HF config
+        
+        # Sanity Check - max len should be set in parent class
+        # Default behavior is doc_max_len = max_len | max_query_len = None 
+       
+        assert isinstance(self.max_length, int)
+        
         if self.max_doc_length is None:
-            #try to infer it from config
-            hf_config = get_hf_config(self.model_id)
-            #get default max length for the model and split it in half for query and doc if not specified
-            default_max_length = hf_config.get("max_position_embeddings", 512)
-            logger.warning(f"No max_len provided, using default hf: {default_max_length}")
-            self.max_doc_length = default_max_length
+            logger.warning(f"No max_docs_len provided, using default max Len: {self.max_length}")
+            self.max_doc_length = self.max_length
 
         if self.max_query_length is None:
             logger.warning(f"No query max len provided, will not truncate queries")
