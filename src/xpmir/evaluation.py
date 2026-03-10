@@ -245,7 +245,7 @@ class Evaluations:
             dataset=self.dataset,
             topic_wrapper=self.topic_wrapper,
             with_run=with_run,
-        )
+        ).tag("dataset", key)
 
         evaluation = task.submit(launcher=launcher, init_tasks=init_tasks)
 
