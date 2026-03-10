@@ -4,7 +4,7 @@ from typing import Iterable, Union, List, Optional, TypeVar, Generic, Sequence
 import torch
 from datamaestro_text.data.ir import IDTextRecord
 from xpm_torch.learner import TrainerContext
-from xpmir.letor.records import BaseRecords, ProductRecords
+from xpmir.letor.records import BaseItems, ProductItems
 from xpmir.rankers import AbstractModuleScorer
 
 QueriesRep = TypeVar("QueriesRep", bound=Sequence)
@@ -20,14 +20,14 @@ class DualRepresentationScorer(AbstractModuleScorer, Generic[QueriesRep, DocsRep
     """
 
     def forward(
-        self, inputs: BaseRecords, info: Optional[TrainerContext] = None, **kwargs
+        self, inputs: BaseItems, info: Optional[TrainerContext] = None, **kwargs
     ):
         # Forward to model
         enc_queries = self.encode_queries(list(inputs.unique_queries))
         enc_documents = self.encode_documents(list(inputs.unique_documents))
 
         # Score product
-        if isinstance(inputs, ProductRecords):
+        if isinstance(inputs, ProductItems):
             return self.score_product(
                 enc_queries,
                 enc_documents,

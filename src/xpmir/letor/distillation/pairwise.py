@@ -7,8 +7,8 @@ from torch import nn
 from torch.functional import Tensor
 from experimaestro import Config, Param, field
 from xpmir.letor.records import (
-    PairwiseRecord,
-    PairwiseRecords,
+    PairwiseItem,
+    PairwiseItems,
 )
 from xpm_torch.trainers import TrainerContext, LossTrainer
 from xpm_torch.losses import Loss
@@ -19,9 +19,9 @@ from xpmir.text import TokenizedTexts
 from xpmir.rankers import AbstractModuleScorer
 from xpmir.letor.records import (
     ScoreDocumentRecord,
-    PairwiseRecord,
-    PairwiseRecords,
-    ProductRecords,
+    PairwiseItem,
+    PairwiseItems,
+    ProductItems,
 )
 
 
@@ -107,7 +107,7 @@ class DistillationKLLoss(DistillationPairwiseLoss):
 class DistillationPairwiseInputs(TypedDict):
     """A record with just a text item"""
 
-    records: ReadOnly[PairwiseRecords]
+    records: ReadOnly[PairwiseItems]
     tokenized_records: ReadOnly[TokenizedTexts]
     teacher_scores: ReadOnly[Tensor]
 
@@ -121,10 +121,10 @@ def distillation_pairwise_collate(
         transform_records: A function to transform the records before feeding them to the model.
     """
     teacher_scores = torch.empty(len(samples), 2)
-    records = PairwiseRecords()
+    records = PairwiseItems()
     for ix, sample in enumerate(samples):
         records.add(
-            PairwiseRecord(
+            PairwiseItem(
                 sample.query,
                 sample.documents[0].document, #positive
                 sample.documents[1].document, #negative

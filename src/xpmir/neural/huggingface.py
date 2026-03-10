@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from experimaestro import Param, LightweightTask
 
 from xpmir.text import TokenizedTexts
-from xpmir.letor.records import BaseRecords
+from xpmir.letor.records import BaseItems
 from xpmir.rankers import AbstractModuleScorer
 from xpm_torch.utils import to_device
 from xpm_torch.utils.huggingface import get_hf_config
@@ -50,7 +50,7 @@ class HFQueryDocTokenizer(HFTokenizer):
         
     def tokenize(
         self,
-        input_records: BaseRecords,
+        input_records: BaseItems,
         options: Optional[TokenizerOptions] = None,
     ) -> TokenizedTexts:
         """Tokenize (query, document) pairs with maxlen for each side."""
@@ -204,7 +204,7 @@ class HFCrossScorer(AbstractModuleScorer):
 
     def batch_tokenize(
         self,
-        input_records: BaseRecords,
+        input_records: BaseItems,
         options: Optional[TokenizerOptions] = None,
     ) -> TokenizedTexts:
         """Transform the text to tokens by using the tokenizer"""
@@ -215,7 +215,7 @@ class HFCrossScorer(AbstractModuleScorer):
 
     def forward(
         self,
-        inputs: BaseRecords,
+        inputs: BaseItems,
         tokenized: Optional[TokenizedTexts] = None,
     ):
         if tokenized is None:

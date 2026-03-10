@@ -8,8 +8,8 @@ import torch.nn.functional as F
 from xpmir.rankers import ScorerOutputType
 from xpmir.text import TokenizedTexts
 from xpmir.letor.records import (
-    PointwiseRecord,
-    PointwiseRecords,
+    PointwiseItem,
+    PointwiseItems,
 )
 from xpm_torch.trainers import TrainerContext, LossTrainer
 from xpm_torch.losses import Loss
@@ -18,9 +18,9 @@ from .samplers import DistillationListwiseSampler, ListwiseDistillationSample
 import numpy as np
 from xpmir.rankers import AbstractModuleScorer
 from xpmir.letor.records import (
-    PairwiseRecord,
-    PairwiseRecords,
-    ProductRecords,
+    PairwiseItem,
+    PairwiseItems,
+    ProductItems,
 )
 
 ### Losses
@@ -194,17 +194,17 @@ class ListwiseSoftmaxCrossEntropy(DistillationListwiseLoss):
 ### Trainer
 
 class DistillationListwiseInputs(TypedDict):
-    records: ReadOnly[PointwiseRecords]
+    records: ReadOnly[PointwiseItems]
     tokenized_records: ReadOnly[TokenizedTexts]
     teacher_scores: ReadOnly[Tensor]
 
 def distillation_listwise_collate(samples: List[ListwiseDistillationSample]) -> DistillationListwiseInputs:
     """Collate function for Distillation Listwise trainer"""
     teacher_scores = torch.empty(len(samples), len(samples[0].documents))
-    records = PointwiseRecords()
+    records = PointwiseItems()
     for ix, sample in enumerate(samples):
         for doc in sample.documents:
-            records.add(PointwiseRecord(sample.query, doc.document, doc.score))
+            records.add(PointwiseItem(sample.query, doc.document, doc.score))
         teacher_scores[ix] = torch.tensor([doc.score for doc in sample.documents])
 
     return DistillationListwiseInputs(

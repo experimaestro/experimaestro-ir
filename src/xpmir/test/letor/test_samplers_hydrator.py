@@ -9,7 +9,7 @@ from xpmir.datasets.adapters import TextStore
 
 from xpmir.letor.samplers.adapters import BufferedProcessingDataset
 from xpmir.letor.processors import StoreHydrator
-from xpmir.letor.records import PairwiseRecord
+from xpmir.letor.records import PairwiseItem
 from xpm_torch.datasets import ShardedIterableDataset
 
 
@@ -41,12 +41,12 @@ class FakeDocumentStore(ir.DocumentStore):
 
 
 class _PairwiseDataset(ShardedIterableDataset):
-    """Simple dataset yielding ID-only PairwiseRecords for testing."""
+    """Simple dataset yielding ID-only PairwiseItems for testing."""
 
     def iter_shard(self, shard_id, num_shards):
         count = 0
         while True:
-            yield PairwiseRecord(
+            yield PairwiseItem(
                 ir.IDRecord(id=str(count)),
                 ir.IDRecord(id=str(2 * count)),
                 ir.IDRecord(id=str(2 * count + 1)),
@@ -55,14 +55,14 @@ class _PairwiseDataset(ShardedIterableDataset):
 
 
 def test_store_hydrator_process_batch():
-    """Test that StoreHydrator correctly hydrates a batch of PairwiseRecords."""
+    """Test that StoreHydrator correctly hydrates a batch of PairwiseItems."""
     hydrator = StoreHydrator.C(
         documentstore=FakeDocumentStore.C(),
         querystore=FakeTextStore.C(),
     ).instance()
 
     records = [
-        PairwiseRecord(
+        PairwiseItem(
             ir.IDRecord(id=str(n)),
             ir.IDRecord(id=str(2 * n)),
             ir.IDRecord(id=str(2 * n + 1)),

@@ -32,10 +32,10 @@ from xpm_torch.batchers import Batcher
 from xpm_torch.learner import TrainerContext
 
 from xpmir.letor.records import (
-    BaseRecords,
-    PairwiseRecord,
-    PairwiseRecords,
-    ProductRecords,
+    BaseItems,
+    PairwiseItem,
+    PairwiseItems,
+    ProductItems,
 )
 
 if TYPE_CHECKING:
@@ -176,7 +176,7 @@ class RandomScorer(Scorer):
 
 
 class AbstractModuleScorerCall(Protocol):
-    def __call__(self, inputs: "BaseRecords", info: Optional[TrainerContext]):
+    def __call__(self, inputs: "BaseItems", info: Optional[TrainerContext]):
         ...
 
 
@@ -205,7 +205,7 @@ class AbstractModuleScorer(Scorer, Module):
         self, topic: IDTextRecord, scored_documents: Iterable[ScoredDocument]
     ) -> List[ScoredDocument]:
         # Prepare the inputs and call the model
-        inputs = ProductRecords()
+        inputs = ProductItems()
         inputs.add_topics(topic)
 
         inputs.add_documents(*[sd.document for sd in scored_documents])
@@ -229,7 +229,7 @@ class AbstractModuleScorer(Scorer, Module):
 class DuoLearnableScorer(AbstractModuleScorer):
     """Base class for models that can score a triplet (query, document 1, document 2)"""
 
-    def forward(self, inputs: "PairwiseRecords", info: Optional[TrainerContext]):
+    def forward(self, inputs: "PairwiseItems", info: Optional[TrainerContext]):
         """Returns scores for pairs of documents (given a query)"""
         raise NotImplementedError(f"abstract __call__ in {self.__class__}")
 
@@ -402,9 +402,9 @@ class DuoTwoStageRetriever(AbstractTwoStageRetriever):
         """Given the query and documents in tuple
         return the score for each triplets
         """
-        inputs = PairwiseRecords()
+        inputs = PairwiseItems()
         for doc1, doc2 in documents:
-            inputs.add(PairwiseRecord(record, doc1, doc2))
+            inputs.add(PairwiseItem(record, doc1, doc2))
 
         with torch.no_grad():
             scores = self.scorer(inputs, None).cpu().float()  # shape (batchsizes)
