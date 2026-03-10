@@ -1,4 +1,3 @@
-import logging
 import os
 from abc import ABC
 from contextlib import nullcontext
@@ -13,6 +12,9 @@ from xpm_torch import Module
 from xpm_torch.configuration import FabricConfiguration
 from xpmir.text import TokenizedTexts
 from functools import lru_cache
+
+import logging
+logger = logging.getLogger(__name__)
 
 
 try:
@@ -138,6 +140,42 @@ class HFSequenceClassification(HFModel):
     """HuggingFace model for sequence classification"""
 
     model: InitVar[AutoModelForSequenceClassification]
+
+    n_labels: Param[int] = 1 
+
+    #override
+    def __initialize__(self):
+        """Creates the model structure from config.hf_id (no pretrained weights)
+        Checks and modifies the config to match "n_labels" 
+        """
+        if isinstance(self.config, HFConfigID):
+            hf_id = self.config.hf_id
+            model_id_or_path = _resolve_model_path(hf_id, self.automodel)
+            hf_config = self.autoconfig.from_pretrained(
+                model_id_or_path,
+                trust_remote_code=True,
+                local_files_only=is_local_files_only(),
+            )
+
+            # ensure that num_labels is one for a Cross-encoder
+            if hasattr(hf_config, "num_labels"):
+                if hf_config.num_labels != self.n_labels:
+                    logger.info(f"hf config 'n_labels' was {hf_config.num_labels}, setting it to {self.n_labels}")
+                hf_config.num_labels = self.n_labels
+
+            else:
+                self.logger.warning(
+                    "no 'num_labels param found in config, check that classifier outputs one label"
+                )
+
+            self.hf_config = hf_config
+            logger.info(
+                "Creating model structure from config (%s) with %s.%s",
+                hf_id,
+                self.automodel.__module__,
+                self.automodel.__name__,
+            )
+            self.model = self.automodel.from_config(hf_config)
 
     @property
     def automodel(self):

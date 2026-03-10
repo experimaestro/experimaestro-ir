@@ -166,7 +166,7 @@ class InitCEFromHFID(HFModelInitBase):
         if hasattr(config, "num_labels"):
             config.num_labels = 1
         else:
-            self.logger.warning(
+            logger.warning(
                 "no 'num_labels param found in config, check that classifier outputs one label"
             )
         self.model.hf_config = config
