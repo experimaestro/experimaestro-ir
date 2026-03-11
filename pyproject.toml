@@ -101,7 +101,7 @@ include = [
 
 [tool.uv.sources]
 xpm-torch = { path = "xpm-torch", editable = true }
-datamaestro-ir = { path = "/Users/bpiwowar/maestros/datamaestro_ir", editable = true }
+datamaestro-ir = { path = "datamaestro-ir", editable = true }
 
 [tool.pyright]
 include = ["xpmir"]

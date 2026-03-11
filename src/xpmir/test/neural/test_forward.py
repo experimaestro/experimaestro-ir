@@ -7,11 +7,11 @@ from collections import defaultdict
 from datamaestro_ir.data import SimpleTextItem, IDTextRecord
 from xpmir.neural.dual import CosineDense, DotDense
 from xpmir.letor.records import (
-    PairwiseRecord,
-    PairwiseRecords,
-    PointwiseRecord,
-    PointwiseRecords,
-    ProductRecords,
+    PairwiseItem,
+    PairwiseItems,
+    PointwiseItem,
+    PointwiseItems,
+    ProductItems,
 )
 from xpmir.text.tokenizers import Tokenizer
 from xpmir.text.encoders import (
@@ -139,27 +139,27 @@ DOCUMENTS = [
 
 def pointwise():
     # Pointwise inputs
-    inputs = PointwiseRecords()
+    inputs = PointwiseItems()
 
     # Implicit order (Q0, D0) (Q1, D0) (Q0, D1) (Q1, D1)
-    inputs.add(PointwiseRecord(QUERIES[0], DOCUMENTS[0], 0.0))
-    inputs.add(PointwiseRecord(QUERIES[0], DOCUMENTS[0], 0.0))
-    inputs.add(PointwiseRecord(QUERIES[1], DOCUMENTS[2], 0.0))
-    inputs.add(PointwiseRecord(QUERIES[1], DOCUMENTS[1], 0.0))
+    inputs.add(PointwiseItem(QUERIES[0], DOCUMENTS[0], 0.0))
+    inputs.add(PointwiseItem(QUERIES[0], DOCUMENTS[0], 0.0))
+    inputs.add(PointwiseItem(QUERIES[1], DOCUMENTS[2], 0.0))
+    inputs.add(PointwiseItem(QUERIES[1], DOCUMENTS[1], 0.0))
     return inputs
 
 
 def pairwise():
     # Implicit order (Q0, D0) (Q1, D0) (Q0, D1) (Q1, D1)
-    inputs = PairwiseRecords()
-    inputs.add(PairwiseRecord(QUERIES[0], DOCUMENTS[0], DOCUMENTS[1]))
-    inputs.add(PairwiseRecord(QUERIES[1], DOCUMENTS[2], DOCUMENTS[3]))
+    inputs = PairwiseItems()
+    inputs.add(PairwiseItem(QUERIES[0], DOCUMENTS[0], DOCUMENTS[1]))
+    inputs.add(PairwiseItem(QUERIES[1], DOCUMENTS[2], DOCUMENTS[3]))
     return inputs
 
 
 def product():
     # Implicit order (Q0, D0) (Q0, D1) (Q1, D0)
-    inputs = ProductRecords()
+    inputs = ProductItems()
     inputs.add_topics(QUERIES[0], QUERIES[1])
     inputs.add_documents(DOCUMENTS[0], DOCUMENTS[1])
 

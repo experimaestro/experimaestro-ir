@@ -702,7 +702,7 @@ wheels = [
 
 [[package]]
 name = "datamaestro-ir"
-source = { editable = "../datamaestro_ir" }
+source = { editable = "datamaestro-ir" }
 dependencies = [
     { name = "attrs" },
     { name = "datamaestro" },
@@ -916,7 +916,7 @@ test = [
 requires-dist = [
     { name = "attrs" },
     { name = "datamaestro", specifier = ">=1.0.1" },
-    { name = "datamaestro-ir", editable = "../datamaestro_ir" },
+    { name = "datamaestro-ir", editable = "datamaestro-ir" },
     { name = "docstring-parser" },
     { name = "experimaestro", specifier = ">=2.0.6" },
     { name = "impact-index", specifier = "==0.30.*" },

@@ -51,12 +51,22 @@ Retrievers
 
 Scores can be used as retrievers through a :py:class:`xpmir.rankers.TwoStageRetriever`
 
+Naming Conventions
+==================
+
+To maintain architectural clarity, the project uses the following naming conventions for data objects:
+
+*   **Records**: Low-level data structures (e.g., `IDTextRecord`, `ScoreRecord`). These are implemented as `TypedDict` and represent raw data or identifiers.
+*   **Samples**: Data-layer objects (e.g., `PairwiseSample`). These are typically found in the data layer (datamaestro) and represent "raw" data containers, often containing multiple candidates or non-hydrated information.
+*   **Items**: Model-ready objects (e.g., `PointwiseItem`, `PairwiseItem`). These are hydrated classes used in the model layer (xpmir), ready to be converted into tensors for training or inference.
+
+
 Samplers
 --------
 
 .. currentmodule:: xpmir.letor.samplers
 
-Samplers provide samples in the form of *records*. They all inherit from:
+Samplers provide model-ready **items**. They all inherit from:
 
 .. autoclass:: SerializableIterator
 
@@ -64,11 +74,12 @@ Samplers provide samples in the form of *records*. They all inherit from:
 .. autoxpmconfig:: ModelBasedSampler
 
 
-Records for training
---------------------
+Items for training
+------------------
 
 .. automodule:: xpmir.letor.records
-   :members: PointwiseRecord, PairwiseRecord
+   :members: PointwiseItem, PairwiseItem, ListwiseItem, BatchwiseItems
+
 
 
 Document samplers

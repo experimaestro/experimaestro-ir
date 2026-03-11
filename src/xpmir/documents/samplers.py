@@ -7,7 +7,7 @@ from datamaestro_ir.data import DocumentStore, SimpleTextItem
 from xpm_torch import Random
 from xpm_torch.utils.iter import RandomSerializableIterator, SerializableIterator
 
-from xpmir.letor.records import DocumentRecord, PairwiseRecord, ProductRecords
+from xpmir.letor.records import DocumentRecord, PairwiseItem, ProductItems
 from xpmir.letor.samplers import BatchwiseSampler, PairwiseSampler
 
 
@@ -130,7 +130,7 @@ class RandomSpanSampler(BatchwiseSampler, PairwiseSampler):
 
         return (text[start1:end1], text[start2:end2])
 
-    def pairwise_iter(self) -> SerializableIterator[PairwiseRecord, Any]:
+    def pairwise_iter(self) -> SerializableIterator[PairwiseItem, Any]:
         def iter(random: np.random.RandomState):
             iter = self.documents.iter_sample(lambda m: random.randint(0, m))
 
@@ -146,7 +146,7 @@ class RandomSpanSampler(BatchwiseSampler, PairwiseSampler):
                 if not (spans_pos_qry and spans_neg):
                     continue
 
-                yield PairwiseRecord(
+                yield PairwiseItem(
                     {"text_item": SimpleTextItem(spans_pos_qry[0])},
                     {"text_item": SimpleTextItem(spans_pos_qry[1])},
                     {"text_item": SimpleTextItem(spans_neg[random.randint(0, 2)])},
@@ -156,7 +156,7 @@ class RandomSpanSampler(BatchwiseSampler, PairwiseSampler):
 
     def batchwise_iter(
         self, batch_size: int
-    ) -> SerializableIterator[ProductRecords, Any]:
+    ) -> SerializableIterator[ProductItems, Any]:
         def iterator(random: np.random.RandomState):
             # Pre-compute relevance matrix
             relevances = torch.diag(torch.ones(batch_size, dtype=torch.float))
@@ -164,7 +164,7 @@ class RandomSpanSampler(BatchwiseSampler, PairwiseSampler):
             iter = self.documents.iter_sample(lambda m: random.randint(0, m))
 
             while True:
-                batch = ProductRecords()
+                batch = ProductItems()
                 while len(batch) < batch_size:
                     record = next(iter)
                     text = record["text_item"].text

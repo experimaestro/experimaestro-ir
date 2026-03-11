@@ -17,9 +17,9 @@ from functools import cached_property
 from xpmir.rankers import ScoredDocument
 from xpmir.datasets.adapters import TextStore
 from xpmir.letor.records import (
-    PairwiseRecords,
-    PairwiseRecord,
-    PointwiseRecord,
+    PairwiseItems,
+    PairwiseItem,
+    PointwiseItem,
 )
 from xpmir.rankers import Retriever, Scorer
 from xpm_torch import Sampler
@@ -223,7 +223,7 @@ class PointwiseModelBasedSampler(PointwiseSampler, ModelBasedSampler):
         assert self.document_text(sample[1]) is not None
         document = self.document_text(sample[1])
 
-        return PointwiseRecord(
+        return PointwiseItem(
             topic={"text_item": SimpleTextItem(sample[0])},
             document={"text_item": SimpleTextItem(document)},
             relevance=sample[3],
@@ -239,7 +239,7 @@ class PointwiseModelBasedSampler(PointwiseSampler, ModelBasedSampler):
 
         return pos_records, neg_records
 
-    def record_iter(self) -> Iterator[PointwiseRecord]:
+    def record_iter(self) -> Iterator[PointwiseItem]:
         npos = len(self.pos_records)
         nneg = len(self.neg_records)
         while True:
@@ -285,13 +285,13 @@ class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
             text = document["text_item"].text
         return ScoredDocument(document, score)
 
-    def _record_iter(self) -> Iterator[PairwiseRecord]:
+    def _record_iter(self) -> Iterator[PairwiseItem]:
         """Infinite iterator over pairwise records."""
         while True:
             title, positives, negatives = self.topics[
                 self.random.randint(0, len(self.topics))
             ]
-            yield PairwiseRecord(
+            yield PairwiseItem(
                 {"text_item": SimpleTextItem(title)},
                 self.sample(positives),
                 self.sample(negatives),
@@ -350,7 +350,7 @@ class TripletBasedSampler(PairwiseSampler):
                 # Iterate once through data, yielding every num_shards-th item
                 for i, (topic, pos, neg) in enumerate(self.source.iter()):
                     if i % num_shards == shard_id:
-                        yield PairwiseRecord(topic, pos, neg)
+                        yield PairwiseItem(topic, pos, neg)
 
         return InfiniteDataset(_TripletIterableDataset(self.source))
 
@@ -371,8 +371,8 @@ class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
     negative_algo: Param[str] = "random"
     """The algo to sample the negatives, default value is random"""
 
-    def _sample_record(self, sample: PairwiseSample) -> PairwiseRecord:
-        """Convert a PairwiseSample to a PairwiseRecord by sampling pos/neg."""
+    def _sample_record(self, sample: PairwiseSample) -> PairwiseItem:
+        """Convert a PairwiseSample to a PairwiseItem by sampling pos/neg."""
         possible_algos = sample.negatives.keys()
 
         assert self.negative_algo in possible_algos or self.negative_algo == "random"
@@ -392,7 +392,7 @@ class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
             negatives = sample.negatives[self.negative_algo]
             neg = negatives[self.random.randint(len(negatives))]
 
-        return PairwiseRecord(qry.as_record(), pos, neg)
+        return PairwiseItem(qry.as_record(), pos, neg)
 
     def as_dataset(self) -> ShardedIterableDataset:
         """Returns a dataset that yields infinite random pairwise records."""
@@ -484,11 +484,11 @@ class PairwiseSamplerFromTSV(PairwiseSampler):
     pairwise_samples_path: Param[Path]
     """The path which stores the existing triplets"""
 
-    def _parse_tsv_line(self, line: str) -> PairwiseRecord:
-        """Parse a TSV line into a PairwiseRecord."""
+    def _parse_tsv_line(self, line: str) -> PairwiseItem:
+        """Parse a TSV line into a PairwiseItem."""
         parts = line.split("\t")
         q_id, pos_id, pos_score, neg_id, neg_score = parts
-        return PairwiseRecord(
+        return PairwiseItem(
             {"id": q_id},
             {"id": pos_id, "score": float(pos_score)},
             {"id": neg_id, "score": float(neg_score)},
@@ -507,11 +507,11 @@ class PairwiseSamplerFromTSV(PairwiseSampler):
 #     pairwise_samples_path: Param[Path]
 #     """The path which stores the existing triplets"""
 
-#     def pairwise_iter(self) -> SerializableIterator[PairwiseRecord, Any]:
+#     def pairwise_iter(self) -> SerializableIterator[PairwiseItem, Any]:
 #         def iter() -> Iterator[PairwiseSample]:
 #             for triplet in read_tsv(self.pairwise_samples_path):
 #                 q_id, pos_id, pos_score, neg_id, neg_score = triplet
-#                 yield PairwiseRecord(
+#                 yield PairwiseItem(
 #                     Record(IDItem(q_id)),
 #                     Record(IDItem(pos_id), ScoredItem(pos_score)),
 #                     Record(IDItem(neg_id), ScoredItem(neg_score)),
@@ -647,7 +647,7 @@ class TeacherModelBasedHardNegativesTripletSampler(Task, Sampler):
             PairwiseSamplerFromTSV(pairwise_samples_path=self.hard_negative_triplet)
         )
 
-    def iter_pairs_with_text(self) -> Iterator[PairwiseRecord]:
+    def iter_pairs_with_text(self) -> Iterator[PairwiseItem]:
         """Add the information of the text back to the records"""
         for record in self.sampler.pairwise_iter():
             record.query.text = self.topic_store[record.query.id]
@@ -659,10 +659,10 @@ class TeacherModelBasedHardNegativesTripletSampler(Task, Sampler):
             )
             yield record
 
-    def iter_batches(self) -> Iterator[PairwiseRecords]:
+    def iter_batches(self) -> Iterator[PairwiseItems]:
         """Return the batch which contains the records"""
         while True:
-            batch = PairwiseRecords()
+            batch = PairwiseItems()
             for _, record in zip(range(self.batch_size), self.iter_pairs_with_text()):
                 batch.add(record)
             yield batch
