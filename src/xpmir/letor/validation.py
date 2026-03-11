@@ -78,6 +78,15 @@ class ValidationListener(LearnerListener):
             "Early stop should be a multiple of the validation interval"
         )
 
+    def get_best_metrics(self) -> Dict[str, Dict[str, float]]:
+        """Returns the best metrics from the info.json file.
+
+        Can be called after the training task has completed.
+        Returns a dict like {"RR@10": {"value": 0.325, "epoch": 42}, ...}
+        """
+        with self.info.open("rt") as fp:
+            return json.load(fp)
+
     def initialize(self, learner: Learner, context: TrainerContext):
         super().initialize(learner, context)
 
