@@ -2,7 +2,6 @@ import pytest
 import torch
 import numpy as np
 from pathlib import Path
-from datamaestro_text.data.ir import TextItem
 from experimaestro import ObjectStore
 from experimaestro.xpmutils import DirectoryContext
 from xpmir.index.sparse import SparseRetriever, SparseRetrieverIndexBuilder

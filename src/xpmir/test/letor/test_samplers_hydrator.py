@@ -1,7 +1,7 @@
 from experimaestro import Param
 from typing import Iterator, Tuple
-from datamaestro_text.data.ir import IDTextRecord, SimpleTextItem
-import datamaestro_text.data.ir as ir
+from datamaestro_ir.data import IDTextRecord
+import datamaestro_ir.data as ir
 from xpmir.letor.samplers import (
     TrainingTriplets,
 )

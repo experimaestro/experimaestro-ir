@@ -1,7 +1,7 @@
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 import torch
-from datamaestro_text.data.ir import Documents
+from datamaestro_ir.data import Documents
 from experimaestro import Meta, Param
 from experimaestro import tqdm
 from xpm_torch.batchers import Batcher

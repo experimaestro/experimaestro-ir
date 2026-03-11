@@ -4,7 +4,7 @@ import itertools
 import pytest
 import torch
 from collections import defaultdict
-from datamaestro_text.data.ir import TextItem, SimpleTextItem, IDTextRecord
+from datamaestro_ir.data import SimpleTextItem, IDTextRecord
 from xpmir.neural.dual import CosineDense, DotDense
 from xpmir.letor.records import (
     PairwiseRecord,
@@ -39,7 +39,9 @@ class MyTokenizer(Tokenizer):
             return tokid
 
 
-class RandomTokensEncoder(TokenizedTextEncoderBase[IDTextRecord, TokensRepresentationOutput]):
+class RandomTokensEncoder(
+    TokenizedTextEncoderBase[IDTextRecord, TokensRepresentationOutput]
+):
     DIMENSION = 7
     MAX_WORDS = 100
 

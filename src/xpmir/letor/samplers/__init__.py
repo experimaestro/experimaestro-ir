@@ -3,15 +3,13 @@ import json
 from pathlib import Path
 from typing import Iterator, List, Tuple, Dict
 import numpy as np
-from datamaestro_text.data.ir import (
+from datamaestro_ir.data import (
     Adhoc,
     TrainingTriplets,
     PairwiseSampleDataset,
     PairwiseSample,
     DocumentStore,
     SimpleTextItem,
-    IDRecord,
-    TextRecord,
 )
 from experimaestro import Param, tqdm, Task, Annotated, pathgenerator
 from experimaestro.annotations import cache
@@ -27,7 +25,7 @@ from xpmir.rankers import Retriever, Scorer
 from xpm_torch import Sampler
 
 from xpm_torch.datasets import ShardedIterableDataset, LineFileDataset, InfiniteDataset
-from datamaestro_text.interfaces.plaintext import read_tsv
+from datamaestro_ir.interfaces.plaintext import read_tsv
 
 import logging
 
@@ -294,10 +292,10 @@ class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
                 self.random.randint(0, len(self.topics))
             ]
             yield PairwiseRecord(
-                    {"text_item": SimpleTextItem(title)},
-                    self.sample(positives),
-                    self.sample(negatives),
-                )
+                {"text_item": SimpleTextItem(title)},
+                self.sample(positives),
+                self.sample(negatives),
+            )
 
     def as_dataset(self) -> ShardedIterableDataset:
         """Returns a dataset that yields infinite random pairwise records."""
@@ -373,7 +371,6 @@ class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
     negative_algo: Param[str] = "random"
     """The algo to sample the negatives, default value is random"""
 
-   
     def _sample_record(self, sample: PairwiseSample) -> PairwiseRecord:
         """Convert a PairwiseSample to a PairwiseRecord by sampling pos/neg."""
         possible_algos = sample.negatives.keys()
@@ -417,6 +414,7 @@ class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
                 self._sample_record,
             )
         )
+
 
 # --- Dataloader
 
@@ -483,7 +481,6 @@ class JSONLPairwiseSampleDataset(PairwiseSampleDataset):
 
 # A class for loading the data, need to move the other places.
 class PairwiseSamplerFromTSV(PairwiseSampler):
-
     pairwise_samples_path: Param[Path]
     """The path which stores the existing triplets"""
 
@@ -492,10 +489,10 @@ class PairwiseSamplerFromTSV(PairwiseSampler):
         parts = line.split("\t")
         q_id, pos_id, pos_score, neg_id, neg_score = parts
         return PairwiseRecord(
-                    {"id": q_id},
-                    {"id": pos_id, "score": float(pos_score)},
-                    {"id": neg_id, "score": float(neg_score)},
-                )
+            {"id": q_id},
+            {"id": pos_id, "score": float(pos_score)},
+            {"id": neg_id, "score": float(neg_score)},
+        )
 
     def as_dataset(self) -> ShardedIterableDataset:
         """Returns a LineFileDataset for the TSV pairwise samples."""
@@ -618,8 +615,7 @@ class ModelBasedHardNegativeSampler(Task, Sampler):
                 negative_str = " ".join(negatives)
                 qid = query["id"]
                 fp.write(
-                    f"{qid}\tpositives:\t{positive_str}\t"
-                    f"negatives:\t{negative_str}"
+                    f"{qid}\tpositives:\t{positive_str}\tnegatives:\t{negative_str}"
                 )
 
         self.logger.info("Processed %d topics (%d skipped)", len(queries), skipped)

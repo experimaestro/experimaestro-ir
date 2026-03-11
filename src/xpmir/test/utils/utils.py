@@ -2,7 +2,7 @@ from collections import OrderedDict, defaultdict
 from typing import ClassVar, Dict, Iterator, List, Tuple, Any
 import torch
 import numpy as np
-from datamaestro_text.data.ir import (
+from datamaestro_ir.data import (
     DocumentStore,
     IDTextRecord,
     SimpleTextItem,
@@ -97,8 +97,11 @@ class SparseRandomTextEncoder(TextEncoder):
     def forward(self, texts: List[str]) -> torch.Tensor:
         """Returns a matrix encoding the provided texts"""
 
-        tensors = [self.map[check_str(
-            text["text_item"].text if isinstance(text, dict) else text
-        )].unsqueeze(0) for text in texts]
+        tensors = [
+            self.map[
+                check_str(text["text_item"].text if isinstance(text, dict) else text)
+            ].unsqueeze(0)
+            for text in texts
+        ]
 
         return RepresentationOutput(torch.cat(tensors))

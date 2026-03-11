@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from typing import TypeVar, Generic, List, Optional
 
 from experimaestro import Config, Param
-from datamaestro_text.data.ir import DocumentStore, IDTextRecord, SimpleTextItem
+from datamaestro_ir.data import DocumentStore, IDTextRecord, SimpleTextItem
 from xpmir.datasets.adapters import TextStore
 from xpmir.rankers import ScoredDocument
 

@@ -10,21 +10,18 @@ from experimaestro import (
     Meta,
 )
 from functools import cached_property
-from datamaestro_text.data.ir import (
-    TextItem,
+from datamaestro_ir.data import (
     Adhoc,
     AdhocAssessments,
-    IDTextRecord,
     IDTextRecord,
     DocumentStore,
     Documents,
     Topics,
 )
 
-TopicRecord = DocumentRecord = IDTextRecord
 
-from datamaestro_text.data.ir.trec import TrecAdhocAssessments
-from datamaestro_text.data.ir.csv import Topics as CSVTopics
+from datamaestro_ir.data.trec import TrecAdhocAssessments
+from datamaestro_ir.data.csv import Topics as CSVTopics
 from xpmir.rankers import Retriever
 from xpmir.misc import IDList, FileIDList
 
@@ -47,6 +44,7 @@ class AbstractTopicFold(Topics):
 
     def __validate__(self) -> None:
         super().__validate__()
+
     @property
     def topic_recordtype(self):
         """The class for topics"""

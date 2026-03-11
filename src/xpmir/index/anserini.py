@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import List, Tuple
 from functools import cached_property
 from experimaestro import Choices, Param, Annotated
-from datamaestro_text.data.ir import AdhocIndex
+from datamaestro_ir.data import AdhocIndex
 
 
 class Index(AdhocIndex):

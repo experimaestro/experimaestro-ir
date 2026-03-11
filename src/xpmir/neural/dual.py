@@ -3,7 +3,7 @@ from typing import List, Optional
 from attrs import evolve
 import torch
 from experimaestro import Param
-from datamaestro_text.data.ir import IDTextRecord
+from datamaestro_ir.data import IDTextRecord
 from xpmir.neural import DualRepresentationScorer, QueriesRep, DocsRep
 
 from xpmir.text.encoders import TextEncoderBase

@@ -1,6 +1,6 @@
 [submodule "xpm-torch"]
 	path = xpm-torch
 	url = git@github.com:experimaestro/xpm-torch.git
-[submodule "datamaestro-text"]
-	path = datamaestro-text
-	url = git@github.com:experimaestro/datamaestro_text.git
+[submodule "datamaestro-ir"]
+	path = datamaestro-ir
+	url = git@github.com:experimaestro/datamaestro_ir.git

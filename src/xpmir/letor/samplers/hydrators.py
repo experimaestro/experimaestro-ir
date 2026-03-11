@@ -1,9 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import Optional, List
 from experimaestro import Config, Param
-import numpy as np
-import datamaestro_text.data.ir.base as ir
-from datamaestro_text.data.ir import DocumentStore, SimpleTextItem
+import datamaestro_ir.data.base as ir
+from datamaestro_ir.data import DocumentStore, SimpleTextItem
 from xpmir.datasets.adapters import TextStore
 
 
@@ -11,14 +10,12 @@ class SampleTransform(Config, ABC):
     @abstractmethod
     def transform_topics(
         self, topics: List[ir.IDTextRecord]
-    ) -> Optional[List[ir.IDTextRecord]]:
-        ...
+    ) -> Optional[List[ir.IDTextRecord]]: ...
 
     @abstractmethod
     def transform_documents(
         self, documents: List[ir.IDTextRecord]
-    ) -> Optional[List[ir.IDTextRecord]]:
-        ...
+    ) -> Optional[List[ir.IDTextRecord]]: ...
 
 
 class SampleHydrator(SampleTransform):

@@ -88,8 +88,8 @@ html_static_path = ["_static"]
 
 
 intersphinx_mapping = {
-    "datamaestro_text": (
-        "https://datamaestro-text.readthedocs.io/en/latest",
+    "datamaestro_ir": (
+        "https://datamaestro-ir.readthedocs.io/en/latest",
         None,
     )  # /objects.inv",
 }

@@ -2,7 +2,7 @@ from abc import abstractmethod
 import itertools
 from typing import Iterable, Union, List, Optional, TypeVar, Generic, Sequence
 import torch
-from datamaestro_text.data.ir import IDTextRecord
+from datamaestro_ir.data import IDTextRecord
 from xpm_torch.learner import TrainerContext
 from xpmir.letor.records import BaseRecords, ProductRecords
 from xpmir.rankers import AbstractModuleScorer

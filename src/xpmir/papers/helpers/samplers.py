@@ -6,12 +6,12 @@ from functools import lru_cache
 from experimaestro import Launcher
 
 from datamaestro import prepare_dataset
-from datamaestro_text.transforms.ir import (
+from datamaestro_ir.transforms import (
     ShuffledTrainingTripletsLines,
     StoreTrainingTripletTopicAdapter,
     StoreTrainingTripletDocumentAdapter,
 )
-from datamaestro_text.data.ir import Documents, Adhoc
+from datamaestro_ir.data import Documents, Adhoc
 
 from xpmir.datasets.adapters import RandomFold
 from xpmir.evaluation import Evaluations, EvaluationsCollection

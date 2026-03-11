@@ -3,7 +3,7 @@ import logging
 import sys
 from itertools import chain
 from attrs import define
-from datamaestro_text.interfaces.trec import write_run_dict
+from datamaestro_ir.interfaces.trec import write_run_dict
 import pandas as pd
 from pathlib import Path
 from typing import DefaultDict, Dict, List, Protocol, Union, Optional
@@ -19,7 +19,7 @@ from experimaestro import (
     tags,
     TagDict,
 )
-from datamaestro_text.data.ir import (
+from datamaestro_ir.data import (
     Adhoc,
     AdhocAssessments,
     AdhocRun,
@@ -27,8 +27,8 @@ from datamaestro_text.data.ir import (
     Documents,
     AdhocResults,
 )
-from datamaestro_text.data.ir.trec import TrecAdhocRun, TrecAdhocResults
-from datamaestro_text.transforms.ir import TopicWrapper
+from datamaestro_ir.data.trec import TrecAdhocRun, TrecAdhocResults
+from datamaestro_ir.transforms import TopicWrapper
 
 from xpm_torch.configuration import FabricConfiguration
 

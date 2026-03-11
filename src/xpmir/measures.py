@@ -1,7 +1,7 @@
 from typing import Optional
 import ir_measures as irm
 from experimaestro import Param
-from datamaestro_text.data.ir import Measure as BaseMeasure
+from datamaestro_ir.data import Measure as BaseMeasure
 
 
 class Measure(BaseMeasure):

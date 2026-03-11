@@ -1,7 +1,7 @@
 from typing import List
 
 from experimaestro import Param
-from datamaestro_text.data.ir import TextRecord
+from datamaestro_ir.data import TextRecord
 from xpmir.utils.convert import Converter
 
 from .encoders import InputType, RepresentationOutput, TokenizedTextEncoderBase

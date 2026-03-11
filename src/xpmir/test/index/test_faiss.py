@@ -4,7 +4,6 @@ from pathlib import Path
 import pytest
 from experimaestro import ObjectStore
 from experimaestro.xpmutils import DirectoryContext
-from datamaestro_text.data.ir import TextItem
 from xpmir.documents.samplers import HeadDocumentSampler
 from xpmir.index.faiss import FaissRetriever, IndexBackedFaiss
 from xpmir.test.utils.utils import SampleDocumentStore, SparseRandomTextEncoder

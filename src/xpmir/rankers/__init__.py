@@ -18,11 +18,10 @@ import torch
 import torch.nn as nn
 import attrs
 from experimaestro import Param, Config, Meta, field
-from datamaestro_text.data.ir import (
+from datamaestro_ir.data import (
     Documents,
     DocumentStore,
     IDTextRecord,
-    TextRecord,
     SimpleTextItem,
 )
 from xpm_torch import Module, ModuleContainer, Random
@@ -176,8 +175,7 @@ class RandomScorer(Scorer):
 
 
 class AbstractModuleScorerCall(Protocol):
-    def __call__(self, inputs: "BaseRecords", info: Optional[TrainerContext]):
-        ...
+    def __call__(self, inputs: "BaseRecords", info: Optional[TrainerContext]): ...
 
 
 class AbstractModuleScorer(Scorer, Module):

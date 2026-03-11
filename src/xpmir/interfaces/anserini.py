@@ -13,16 +13,14 @@ from typing import List, Optional
 from experimaestro import tqdm as xpmtqdm, Task, Meta, field, PathGenerator
 from experimaestro import Param, progress
 
-from datamaestro_text.data.ir import (
+from datamaestro_ir.data import (
     DocumentStore,
-    TextItem,
     IDTextRecord,
     SimpleTextItem,
 )
 
-TopicRecord = IDTextRecord
-import datamaestro_text.data.ir.csv as ir_csv
-from datamaestro_text.data.ir.trec import (
+import datamaestro_ir.data.csv as ir_csv
+from datamaestro_ir.data.trec import (
     Documents,
     Topics,
     TipsterCollection,
@@ -33,6 +31,8 @@ from xpmir.index.anserini import Index
 from xpmir.rankers import Retriever, ScoredDocument, document_cache
 from xpmir.rankers.standard import BM25, QLDirichlet, Model
 from xpmir.utils.utils import Handler, StreamGenerator, needs_java
+
+TopicRecord = IDTextRecord
 
 logger = logging.getLogger(__name__)
 

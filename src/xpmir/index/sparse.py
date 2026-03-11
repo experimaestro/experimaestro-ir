@@ -26,14 +26,14 @@ from experimaestro import (
     tqdm,
     Constant,
 )
-from datamaestro_text.data.ir import IDTextRecord, DocumentStore
+from datamaestro_ir.data import IDTextRecord, DocumentStore
 from xpm_torch import Module
 from xpm_torch.configuration import FabricConfiguration
 from xpm_torch.batchers import Batcher
 
 from xpmir.utils.utils import batchiter
 from xpmir.text.encoders import TextEncoderBase, TextsRepresentationOutput, InputType
-from datamaestro_text.data.ir import TextRecord
+from datamaestro_ir.data import TextRecord
 from xpmir.rankers import Retriever, ScoredDocument
 from xpmir.utils.iter import MultiprocessIterator
 from xpmir.utils.multiprocessing import StoppableQueue, available_cpus

@@ -6,7 +6,7 @@ from typing import Dict, Iterator, List
 from collections import defaultdict
 from numpy import mean
 from experimaestro import Param, pathgenerator, Annotated, field
-from datamaestro_text.data.ir import Adhoc
+from datamaestro_ir.data import Adhoc
 
 from xpm_torch.optim import ModuleLoader
 from xpm_torch.trainers.context import ValidationHook
@@ -74,9 +74,9 @@ class ValidationListener(LearnerListener):
     """The list of the hooks during the validation"""
 
     def __validate__(self):
-        assert (
-            self.early_stop % self.validation_interval == 0
-        ), "Early stop should be a multiple of the validation interval"
+        assert self.early_stop % self.validation_interval == 0, (
+            "Early stop should be a multiple of the validation interval"
+        )
 
     def initialize(self, learner: Learner, context: TrainerContext):
         super().initialize(learner, context)
@@ -212,9 +212,9 @@ class AggregatorValidationListener(LearnerListener):
     """The list of the hooks during the validation"""
 
     def __validate__(self):
-        assert (
-            self.early_stop % self.validation_interval == 0
-        ), "Early stop should be a multiple of the validation interval"
+        assert self.early_stop % self.validation_interval == 0, (
+            "Early stop should be a multiple of the validation interval"
+        )
 
         # Check that all listeners have the same validation interval
         intervals = {listener.validation_interval for listener in self.listeners}
@@ -240,12 +240,10 @@ class AggregatorValidationListener(LearnerListener):
                     f"Reference: {ref_keys}\n"
                     f"Listener {i}: {ks}"
                 )
-            
-        assert self.metrics.keys() == ref_keys, (
-            "The metrics of the aggregator should be the same as "
-            "the listeners"
-        )
 
+        assert self.metrics.keys() == ref_keys, (
+            "The metrics of the aggregator should be the same as the listeners"
+        )
 
     def initialize(self, learner: Learner, context: TrainerContext):
         super().initialize(learner, context)
@@ -341,4 +339,3 @@ class AggregatorValidationListener(LearnerListener):
 
         # Early stopping?
         return self.should_stop()
-    

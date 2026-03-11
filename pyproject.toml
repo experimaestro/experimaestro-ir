@@ -23,7 +23,7 @@ dependencies = [
     # Experimaestro
     "experimaestro>=2.0.6",
     "datamaestro>=1.0.1",
-    "datamaestro_text>=2025.7.28",
+    "datamaestro-ir>=2025.7.28",
     "ir_datasets",
     "docstring_parser",
     "impact-index==0.30.*",
@@ -80,9 +80,6 @@ repository = "https://github.com/bpiwowar/experimaestro-ir"
 [project.scripts]
 xpmir = "xpmir.__main__:main"
 
-[project.entry-points."datamaestro.repositories"]
-ir = "xpmir:Repository"
-
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
@@ -104,7 +101,7 @@ include = [
 
 [tool.uv.sources]
 xpm-torch = { path = "xpm-torch", editable = true }
-datamaestro_text = { path = "datamaestro-text", editable = true }
+datamaestro-ir = { path = "/Users/bpiwowar/maestros/datamaestro_ir", editable = true }
 
 [tool.pyright]
 include = ["xpmir"]

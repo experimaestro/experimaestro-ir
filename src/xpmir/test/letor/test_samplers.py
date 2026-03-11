@@ -2,8 +2,8 @@ import pytest
 import numpy as np
 from typing import Iterator, Tuple
 from experimaestro import Param
-import datamaestro_text.data.ir as ir
-from datamaestro_text.data.ir import IDTextRecord, SimpleTextItem
+import datamaestro_ir.data as ir
+from datamaestro_ir.data import IDTextRecord, SimpleTextItem
 from xpmir.rankers import Retriever
 from xpmir.letor.samplers import (
     TrainingTriplets,
@@ -101,7 +101,10 @@ class FakeDocumentStore(ir.DocumentStore):
         return 10
 
     def document_int(self, internal_docid: int) -> IDTextRecord:
-        return {"id": str(internal_docid), "text_item": SimpleTextItem(f"D{internal_docid} " * 10)}
+        return {
+            "id": str(internal_docid),
+            "text_item": SimpleTextItem(f"D{internal_docid} " * 10),
+        }
 
 
 def test_pairwise_randomspansampler():

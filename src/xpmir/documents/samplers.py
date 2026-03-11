@@ -3,7 +3,7 @@ from typing import Optional, Tuple, Iterator, Any
 from experimaestro import Param, Config
 import torch
 import numpy as np
-from datamaestro_text.data.ir import DocumentStore, TextItem, SimpleTextItem
+from datamaestro_ir.data import DocumentStore, SimpleTextItem
 from xpm_torch import Random
 from xpm_torch.utils.iter import RandomSerializableIterator, SerializableIterator
 

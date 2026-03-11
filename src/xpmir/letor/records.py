@@ -1,13 +1,10 @@
 import torch
 import itertools
-from datamaestro_text.data.ir import (
+from datamaestro_ir.data import (
     IDTextRecord,
-    TextItem,
-    TextRecord,
     SimpleTextItem,
 )
 
-TopicRecord = DocumentRecord = IDTextRecord
 from typing import (
     Generic,
     Iterable,
@@ -21,7 +18,11 @@ from typing import (
 from typing_extensions import ReadOnly
 
 
+TopicRecord = DocumentRecord = IDTextRecord
+
+
 ## TypeddDicts
+
 
 class ScoreRecord(TypedDict):
     """A record with just a score"""
@@ -33,8 +34,6 @@ class ScoreDocumentRecord(IDTextRecord, ScoreRecord):
     """A record with an ID, a text item and a score"""
 
     pass
-
-
 
 
 ## Dataclasses / generics
@@ -83,7 +82,9 @@ class PointwiseRecord(Generic[DocT, QueryT]):
     def with_documents(self, ds: "List[DocT2]") -> "PointwiseRecord[DocT2, QueryT]":
         return PointwiseRecord(self.topic, ds[0], self.relevance)
 
+
 RT = TypeVar("RT")
+
 
 class BaseRecords(List[RT]):
     """Base records just exposes iterables on (query, document) pairs
@@ -102,7 +103,6 @@ class BaseRecords(List[RT]):
 
     @property
     def unique_topics(self) -> List[IDTextRecord]:
-
         return list(self.topics)
 
     unique_queries = unique_topics
@@ -121,7 +121,7 @@ class BaseRecords(List[RT]):
         Default implementation does nothing, but can be implemented by specific records that have tensors as attributes (e.g. ProductRecords)
         """
         return self
-    
+
     def pairs(self) -> Tuple[Iterable[int], Iterable[int]]:
         """Returns two iterators (over queries and documents)
 
@@ -193,9 +193,7 @@ class PointwiseRecords(BaseRecords[PointwiseRecord]):
         relevances: Optional[List[float]] = None,
     ):
         records = PointwiseRecords()
-        records.topics = list(
-            map(lambda t: {"text_item": SimpleTextItem(t)}, topics)
-        )
+        records.topics = list(map(lambda t: {"text_item": SimpleTextItem(t)}, topics))
         records.documents = list(
             map(lambda t: {"text_item": SimpleTextItem(t)}, documents)
         )

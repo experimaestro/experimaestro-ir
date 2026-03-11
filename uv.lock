@@ -677,7 +677,7 @@ wheels = [
 
 [[package]]
 name = "datamaestro"
-version = "1.8.0"
+version = "1.8.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bitmath" },
@@ -695,14 +695,14 @@ dependencies = [
     { name = "tqdm" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ae/d1/1a53ea31ebcbfd8a8aa7d14e779ebb9de3ce63b70a0450e75cea5aebb17d/datamaestro-1.8.0.tar.gz", hash = "sha256:c1b4e71fdaead644e3fb03b97543e50105d30e4074975ccd214741b439f0196c", size = 203798, upload-time = "2026-02-03T11:35:26.338Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/2e/b7/3835a7454d65037be243967656828e433b10958f870dbd97213c7fa62dc4/datamaestro-1.8.3.tar.gz", hash = "sha256:0979c9fe3f82f938d28ede67cad4a31244d8471fe08440d4d2d78c6e94ef5d39", size = 204429, upload-time = "2026-03-09T09:34:19.101Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5b/6c/1dfa691e5f4b904813e7685a8f73b1d83153825399e28c43f2cb82f08f9d/datamaestro-1.8.0-py3-none-any.whl", hash = "sha256:5408bd4f7d392609a6b772ba926e9255335f3d1e91a46413c2003f365d62ba33", size = 85316, upload-time = "2026-02-03T11:35:24.462Z" },
+    { url = "https://files.pythonhosted.org/packages/cc/94/42770cfd9e7148c9f5c37f2ed828cbef7aea5caf95feaba03056a73b31ff/datamaestro-1.8.3-py3-none-any.whl", hash = "sha256:f9d301df158f79c1466b3372c72646b0a854c820384eb682ff081fda3fcecef1", size = 85920, upload-time = "2026-03-09T09:34:17.532Z" },
 ]
 
 [[package]]
-name = "datamaestro-text"
-source = { editable = "datamaestro-text" }
+name = "datamaestro-ir"
+source = { editable = "../datamaestro_ir" }
 dependencies = [
     { name = "attrs" },
     { name = "datamaestro" },
@@ -714,7 +714,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "attrs" },
-    { name = "datamaestro", specifier = ">=1.8.0" },
+    { name = "datamaestro", specifier = ">=1.8.3" },
     { name = "experimaestro", specifier = ">=2.0.0" },
     { name = "ir-datasets", specifier = ">=0.5.8" },
     { name = "typing-extensions" },
@@ -737,6 +737,7 @@ docs = [
     { name = "sphinx-rtd-theme", specifier = ">=3.1.0" },
     { name = "sphinx-toolbox", specifier = ">=4.1.2" },
 ]
+ir = [{ name = "impact-index", specifier = ">=0.32.0" }]
 
 [[package]]
 name = "decorator"
@@ -857,7 +858,7 @@ source = { editable = "." }
 dependencies = [
     { name = "attrs" },
     { name = "datamaestro" },
-    { name = "datamaestro-text" },
+    { name = "datamaestro-ir" },
     { name = "docstring-parser" },
     { name = "experimaestro" },
     { name = "impact-index" },
@@ -915,7 +916,7 @@ test = [
 requires-dist = [
     { name = "attrs" },
     { name = "datamaestro", specifier = ">=1.0.1" },
-    { name = "datamaestro-text", editable = "datamaestro-text" },
+    { name = "datamaestro-ir", editable = "../datamaestro_ir" },
     { name = "docstring-parser" },
     { name = "experimaestro", specifier = ">=2.0.6" },
     { name = "impact-index", specifier = "==0.30.*" },
