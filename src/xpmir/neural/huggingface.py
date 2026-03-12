@@ -240,7 +240,7 @@ def hf_cross_scorer(
     max_doc_length: Optional[int] = None,
 ) -> Tuple[HFCrossScorer, List[LightweightTask]]:
     """Creates an HFCrossScorer model from a pre-trained HuggingFace checkpoint.
-
+    if no max_query_length or max_doc_length is provided, will default to HF config max_length for qeur with no query truncation.
     :param hf_id: The HuggingFace model ID
     :param max_query_length: Maximum query length
     :param max_doc_length: Maximum document length

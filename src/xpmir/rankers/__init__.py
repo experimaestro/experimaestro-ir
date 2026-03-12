@@ -14,6 +14,7 @@ from typing import (
     Union,
     TYPE_CHECKING,
 )
+from lightning_fabric import is_wrapped
 import torch
 import torch.nn as nn
 import attrs
@@ -36,6 +37,10 @@ from xpmir.letor.records import (
     PairwiseItems,
     ProductItems,
 )
+from datamaestro_ir.data.base import (
+    SimpleTextItem,
+    ScoredDocument,
+)
 
 if TYPE_CHECKING:
     from xpmir.evaluation import RetrieverFactory
@@ -43,23 +48,6 @@ if TYPE_CHECKING:
 import logging
 
 logger = logging.getLogger(__name__)
-
-
-@attrs.define()
-class ScoredDocument:
-    """A data structure that associated a score with a document"""
-
-    document: dict
-    """The document (IDRecord, TextRecord, or IDTextRecord)"""
-
-    score: float
-    """The associated score"""
-
-    def __repr__(self):
-        return f"ScoredDocument(document=({self.document}), score={self.score})"
-
-    def __lt__(self, other):
-        return self.score < other.score
 
 
 class ScorerOutputType(Enum):
@@ -190,7 +178,7 @@ class AbstractModuleScorer(Scorer, Module):
     train = nn.Module.train
 
     def __init__(self):
-        self.logger.info(f"Initializing {self.__class__.__name__}")
+        logger.info(f"Initializing {self.__class__.__name__}")
         nn.Module.__init__(self)
         super().__init__()
         self._initialized = False
@@ -244,7 +232,7 @@ class Retriever(Config, ModuleContainer, ABC):
     def collection(self):
         """Returns the document collection object"""
         raise NotImplementedError()
-
+    
     def retrieve_all(
         self, queries: Dict[str, IDTextRecord]
     ) -> Dict[str, List[ScoredDocument]]:
@@ -262,6 +250,18 @@ class Retriever(Config, ModuleContainer, ABC):
         for key, record in tqdm(list(queries.items())):
             results[key] = self.retrieve(record)
         return results
+
+
+    #we need to register the "retrieve" method as a foward method for the fabric, otherwise, it will not be able to call it from other processes
+    def setup_with_fabric(self, fabric):
+        # wraps the encoder with the fabric for device management
+        super().setup_with_fabric(fabric)
+        
+        if is_wrapped(self):
+            logger.debug("self is wrapped with Fabric, marking retrieve as a forward method")
+            self.mark_forward_method('retrieve')
+        else:
+            logger.debug(f"{self.__class__.__name__} is not wrapped with Fabric")
 
     @abstractmethod
     def retrieve(self, record: IDTextRecord) -> List[ScoredDocument]:
