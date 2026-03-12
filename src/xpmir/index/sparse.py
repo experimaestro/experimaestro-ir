@@ -27,7 +27,6 @@ from experimaestro import (
     Constant,
 )
 from datamaestro_ir.data import IDTextRecord, DocumentStore
-from xpm_torch import Module
 from xpm_torch.configuration import FabricConfiguration
 from xpm_torch.batchers import Batcher
 
@@ -115,19 +114,20 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
     max_docs: Param[int] = 0
     """Maximum number of indexed documents"""
 
-    def _execute(self, fabric_instance: Fabric):
+    def _execute(self, fabric: Fabric):
         if mp.get_start_method(allow_none=True) is None:
             mp.set_start_method("spawn")
 
-        max_docs = 0
         if self.max_docs:
             max_docs = min(self.max_docs, self.documents.documentcount or sys.maxsize)
             logger.warning("Limited indexing to %d documents", max_docs)
+        else:
+            max_docs = self.documents.documentcount
 
         closed = mp.Event()
         queues = [
             StoppableQueue(2 * self.batch_size + 1, closed)
-            for _ in range(fabric_instance.world_size)
+            for _ in range(fabric.world_size)
         ]
 
         # Start the index process (thread)
@@ -149,8 +149,8 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
         ).detach()
 
         try:
-            self.device_execute(
-                fabric_instance,
+            fabric.launch(
+                self._device_worker,
                 iter_batches,
                 self.encoder,
                 self.batcher,
@@ -242,49 +242,47 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
                 raise
 
     @staticmethod
-    def device_execute(
-        fabric_instance: Fabric,
+    def _device_worker(
+        fabric: Fabric,
         iter_batches: Iterator[List[Tuple[int, IDTextRecord]]],
         encoder,
         batcher,
         batch_size,
         queues: List[StoppableQueue],
     ):
+        """Encoding worker launched by Fabric (one per device)"""
+        queue = queues[fabric.local_rank]
         try:
-            # Encode all documents
+            encoder.initialize()
+            encoder = fabric.setup(encoder)
+            encoder.eval()
+
             logger.info(
-                "Load the encoder and "
-                f"transfer to the target device {fabric_instance.device}"
+                "Encoding on device %s (rank %d)", fabric.device, fabric.local_rank
             )
 
-            encoder = encoder.to(fabric_instance.device).eval()
-            queue = queues[fabric_instance.local_rank]
             batcher = batcher.initialize(batch_size)
 
-            # Index
             with torch.no_grad():
                 for batch in iter_batches:
-                    # Signals the output range
                     document_range = DocumentRange(
-                        fabric_instance.local_rank, batch[0][0], batch[-1][0]
+                        fabric.local_rank, batch[0][0], batch[-1][0]
                     )
                     logger.debug(
                         "Starting range [%d] %s",
-                        fabric_instance.local_rank,
+                        fabric.local_rank,
                         document_range,
                     )
                     queue.put(document_range)
 
-                    # Outputs the documents
                     batcher.process(
                         batch,
-                        SparseRetrieverIndexBuilder.encode_documents,
+                        AbstractSparseRetrieverIndexBuilder.encode_documents,
                         encoder,
                         queue,
                     )
 
-            # Build the index
-            logger.info("Closing queue %d", fabric_instance.local_rank)
+            logger.info("Closing queue %d", fabric.local_rank)
             queue.put(None)
         except BaseException:
             logging.exception("Got an exception while encoding documents")
@@ -546,22 +544,8 @@ class SparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputType]
     """Runtime configuration, managed by Fabric"""
 
     def execute(self):
-        # instanciate the Fabirc object
         fabric = self.fabric_config.get_fabric()
-        fabric.launch()
-
-        self.encoder.initialize()
-
-        assert isinstance(self.encoder, Module)
-        # find children of retriver that are Modules, and wrap them with fabric for device management
-
-        self.encoder = fabric.setup(self.encoder)
-        self.encoder.to(fabric.device)
-
-        # TODO - this should NOT be necessary and may cause problems later...
-        logger.info(f"Using device {fabric.device}")
-
-        self._execute(fabric_instance=fabric)
+        self._execute(fabric)
 
     def task_outputs(self, dep):
         """Returns a sparse retriever index that can be used by a

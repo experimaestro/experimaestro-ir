@@ -35,6 +35,9 @@ class MaxAggregation(Aggregation):
     """Aggregate using a max"""
 
     def __call__(self, logits, mask):
+        assert logits.shape[:2] == mask.shape[:2], (
+            f"Shape mismatch: logits {logits.shape} vs mask {mask.shape}"
+        )
         # Get the maximum (masking the values)
         values, _ = torch.max(
             torch.relu(logits) * mask.to(logits.device).unsqueeze(-1),
@@ -49,6 +52,9 @@ class SumAggregation(Aggregation):
     """Aggregate using a sum"""
 
     def __call__(self, logits, mask):
+        assert logits.shape[:2] == mask.shape[:2], (
+            f"Shape mismatch: logits {logits.shape} vs mask {mask.shape}"
+        )
         return torch.sum(
             torch.log1p(torch.relu(logits) * mask.to(logits.device).unsqueeze(-1)),
             dim=1,
