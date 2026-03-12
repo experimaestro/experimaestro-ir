@@ -9,7 +9,6 @@ from datamaestro import prepare_dataset
 from datamaestro_ir.transforms import (
     ShuffledTrainingTripletsLines,
     StoreTrainingTripletTopicAdapter,
-    StoreTrainingTripletDocumentAdapter,
 )
 from datamaestro_ir.data import Documents, Adhoc
 
@@ -47,37 +46,6 @@ MEASURES = [AP, P @ 20, nDCG, nDCG @ 10, nDCG @ 20, RR, RR @ 10, Success @ 5]
 
 
 @lru_cache
-def msmarco_v1_docpairs_sampler(
-    *,
-    sample_rate: float = 1.0,
-    sample_max: int = 0,
-    launcher: "Launcher" = None,
-) -> TripletBasedSampler:
-    """Train sampler (deprecated: use msmarco_v1_docpairs_efficient_sampler)
-
-    This uses shuffled pre-computed triplets from MS Marco
-
-    :param sample_rate: Sample rate for the triplets (default 1)
-    """
-    topics = prepare_dataset("irds.msmarco-passage.train.queries")
-    train_triples = prepare_dataset("irds.msmarco-passage.train.docpairs")
-    triplets = ShuffledTrainingTripletsLines.C(
-        seed=123,
-        data=StoreTrainingTripletTopicAdapter.C(data=train_triples, store=topics),
-        sample_rate=sample_rate,
-        sample_max=sample_max,
-        doc_ids=True,
-        topic_ids=False,
-    ).submit(launcher=launcher)
-
-    # Adds the text to the documents
-    triplets = StoreTrainingTripletDocumentAdapter.C(
-        data=triplets, store=prepare_collection("irds.msmarco-passage.documents")
-    )
-    return TripletBasedSampler.C(source=triplets)
-
-
-@lru_cache
 def msmarco_v1_docpairs_efficient_sampler(
     *,
     sample_rate: float = 1.0,
@@ -91,8 +59,8 @@ def msmarco_v1_docpairs_efficient_sampler(
 
     :param sample_rate: Sample rate for the triplets (default 1)
     """
-    topics = prepare_dataset("irds.msmarco-passage.train.queries")
-    train_triples = prepare_dataset("irds.msmarco-passage.train.docpairs")
+    topics = prepare_dataset("com.microsoft.msmarco.passage.train.queries")
+    train_triples = prepare_dataset("com.microsoft.msmarco.passage.train.triples.id")
     triplets = ShuffledTrainingTripletsLines.C(
         seed=seed,
         data=StoreTrainingTripletTopicAdapter.C(data=train_triples, store=topics),
@@ -105,7 +73,7 @@ def msmarco_v1_docpairs_efficient_sampler(
     # Builds the sampler by hydrating documents
     sampler = TripletBasedSampler.C(source=triplets)
     hydrator = StoreHydrator.C(
-        documentstore=prepare_collection("irds.msmarco-passage.documents")
+        documentstore=prepare_collection("com.microsoft.msmarco.passage.documents")
     )
 
     return SamplerAdapter.C(sampler=sampler, processors=[hydrator])
@@ -116,22 +84,22 @@ def msmarco_v1_validation_dataset(
     cfg: ValidationSample, launcher=None, only_judged=False
 ):
     """Sample dev topics to get a validation subset
-    If only_judged = False, use irds.msmarco-passage.dev (by default), which
+    If only_judged = False, use com.microsoft.msmarco.passage.dev` (by default), which
     contains the unassessed.
-    else use irds.msmarco-passage.dev.judged, which only contains the queries
+    else use com.microsoft.msmarco.passage.dev.judged, which only contains the queries
     that have at least one non 0 qrel
     """
     if only_judged:
-        candidate_ds = prepare_collection("irds.msmarco-passage.dev.judged")
+        candidate_ds = prepare_collection("com.microsoft.msmarco.passage.dev.judged")
     else:
-        candidate_ds = prepare_collection("irds.msmarco-passage.dev")
+        candidate_ds = prepare_collection("com.microsoft.msmarco.passage.dev")
 
     return RandomFold.C(
         dataset=candidate_ds,
         seed=cfg.seed,
         fold=0,
         sizes=[cfg.size],
-        exclude=prepare_collection("irds.msmarco-passage.dev.small").topics,
+        exclude=prepare_collection("com.microsoft.msmarco.passage.dev.small").topics,
     ).submit(launcher=launcher)
 
 
@@ -146,17 +114,17 @@ def msmarco_v1_tests(dev_test_size: int = 0, only_judged=False):
     else use the judged only version, which only contains the queries that have
     at least one non 0 qrel
     """
-    v1_devsmall_ds = prepare_collection("irds.msmarco-passage.dev.small")
+    v1_devsmall_ds = prepare_collection("com.microsoft.msmarco.passage.dev.small")
     if dev_test_size > 0:
         (v1_devsmall_ds,) = RandomFold.folds(
             seed=0, sizes=[dev_test_size], dataset=v1_devsmall_ds
         )
     if only_judged:
-        dl19 = prepare_dataset("irds.msmarco-passage.trec-dl-2019.judged")
-        dl20 = prepare_dataset("irds.msmarco-passage.trec-dl-2020.judged")
+        dl19 = prepare_dataset("com.microsoft.msmarco.passage.trec2019.judged")
+        dl20 = prepare_dataset("com.microsoft.msmarco.passage.trec2020.judged")
     else:
-        dl19 = prepare_dataset("irds.msmarco-passage.trec-dl-2019")
-        dl20 = prepare_dataset("irds.msmarco-passage.trec-dl-2020")
+        dl19 = prepare_dataset("com.microsoft.msmarco.passage.trec2019")
+        dl20 = prepare_dataset("com.microsoft.msmarco.passage.trec2020")
     return EvaluationsCollection(
         msmarco_dev=Evaluations(v1_devsmall_ds, MEASURES),
         trec2019=Evaluations(dl19, MEASURES),
@@ -178,12 +146,12 @@ def msmarco_hofstaetter_ensemble_hard_negatives() -> SamplerAdapter:
     )
 
     # Access to topic text
-    train_topics = prepare_dataset("irds.msmarco-passage.train.queries")
+    train_topics = prepare_dataset("com.microsoft.msmarco.passage.train.queries")
 
     # Generate a sampler from the samples, hydrating with stores
     raw_sampler = DistillationPairwiseSampler.C(samples=train_triples_distil)
     hydrator = StoreHydrator.C(
-        documentstore=prepare_collection("irds.msmarco-passage.documents"),
+        documentstore=prepare_collection("com.microsoft.msmarco.passage.documents"),
         querystore=MemoryTopicStore.C(topics=train_topics),
     )
 
@@ -204,12 +172,12 @@ def msmarco_rankdistillm_colbert_top50() -> SamplerAdapter:
     )
 
     # Access to topic text
-    train_topics = prepare_dataset("irds.msmarco-passage.train.queries")
+    train_topics = prepare_dataset("com.microsoft.msmarco.passage.train.queries")
 
     # Generate a sampler from the samples, hydrating with stores
     raw_sampler = DistillationListwiseSampler.C(samples=train_ranks_distil)
     hydrator = StoreHydrator.C(
-        documentstore=prepare_collection("irds.msmarco-passage.documents"),
+        documentstore=prepare_collection("com.microsoft.msmarco.passage.documents"),
         querystore=MemoryTopicStore.C(topics=train_topics),
     )
 
@@ -230,14 +198,14 @@ def msmarco_colbertv2_annotated(passages_per_query: int) -> SamplerAdapter:
     )
 
     # Access to topic text
-    train_topics = prepare_dataset("irds.msmarco-passage.train.queries")
+    train_topics = prepare_dataset("com.microsoft.msmarco.passage.train.queries")
 
     # Generate a sampler from the samples, hydrating with stores
     raw_sampler = DistillationNegativesSampler.C(
         samples=train_ranks_distil, passages_per_query=passages_per_query
     )
     hydrator = StoreHydrator.C(
-        documentstore=prepare_collection("irds.msmarco-passage.documents"),
+        documentstore=prepare_collection("com.microsoft.msmarco.passage.documents"),
         querystore=MemoryTopicStore.C(topics=train_topics),
     )
 
