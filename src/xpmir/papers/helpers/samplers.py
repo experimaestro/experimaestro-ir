@@ -194,7 +194,7 @@ def msmarco_colbertv2_annotated(passages_per_query: int) -> SamplerAdapter:
     Guido Zuccon, Benno Stein, Martin Potthast, Matthias Hagen), 2025
     """
     train_ranks_distil = prepare_dataset(
-        "com.github.webis-de.rank-distillm.msmarco_colbertv2_annotated"
+        "com.github.webis-de.rank-distillm.msmarco.colbertv2.annotated"
     )
 
     # Access to topic text
