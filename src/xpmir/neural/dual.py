@@ -207,6 +207,48 @@ class DotDense(Dense):
         return self.encoder(records)
 
 
+def dual_representation_metrics(
+    info: TrainerContext, queries: torch.Tensor, documents: torch.Tensor
+):
+    """Compute and report sparsity and QD-FLOPS metrics for dual representations"""
+    with torch.no_grad():
+        qdflops_count = (
+            ((queries > 0).sum(0) * (documents > 0).sum(0)).float().mean()
+        ) / queries.shape[1]
+
+        info.metrics.add(ScalarMetric("qdflops_count", qdflops_count.item(), 1))
+        info.metrics.add(
+            ScalarMetric(
+                "sparsity_q",
+                torch.count_nonzero(queries).item()
+                / (queries.shape[0] * queries.shape[1]),
+                len(queries),
+            )
+        )
+        info.metrics.add(
+            ScalarMetric(
+                "sparsity_d",
+                torch.count_nonzero(documents).item()
+                / (documents.shape[0] * documents.shape[1]),
+                len(documents),
+            )
+        )
+
+        # Median activation rate of the top-k most frequent terms
+        for prefix, x in [("q", queries), ("d", documents)]:
+            freq = (x > 0).float().mean(0)
+            top_freq = freq.topk(min(20, freq.shape[0])).values
+            for k in (1, 5, 10, 20):
+                if k <= top_freq.shape[0]:
+                    info.metrics.add(
+                        ScalarMetric(
+                            f"saturation_{prefix}/top{k}",
+                            top_freq[:k].median().item(),
+                            1,
+                        )
+                    )
+
+
 class FlopsRegularizer(DualVectorListener):
     r"""The FLOPS regularizer computes
 
@@ -256,23 +298,7 @@ class FlopsRegularizer(DualVectorListener):
         info.metrics.add(ScalarMetric("flops_q", flops_q.item(), 1))
         info.metrics.add(ScalarMetric("flops_d", flops_d.item(), 1))
 
-        with torch.no_grad():
-            info.metrics.add(
-                ScalarMetric(
-                    "sparsity_q",
-                    torch.count_nonzero(queries).item()
-                    / (queries.shape[0] * queries.shape[1]),
-                    len(q),
-                )
-            )
-            info.metrics.add(
-                ScalarMetric(
-                    "sparsity_d",
-                    torch.count_nonzero(documents).item()
-                    / (documents.shape[0] * documents.shape[1]),
-                    len(d),
-                )
-            )
+        dual_representation_metrics(info, queries, documents)
 
 
 class ScheduledFlopsRegularizer(FlopsRegularizer):
