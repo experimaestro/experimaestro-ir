@@ -71,7 +71,7 @@ class IndexCollection(Index, Task):
     documents: Param[Documents]
     """The documents to index"""
 
-    threads: Meta[int] = 8
+    threads: Meta[int] = field(default=8, ignore_default=True)
     """Number of threads when indexing"""
 
     path: Meta[Path] = field(default_factory=PathGenerator("index"), overrides=True)
@@ -276,7 +276,7 @@ class AnseriniRetriever(Retriever):
 
     index: Param[Index]
     model: Param[Model]
-    k: Param[int] = 1500
+    k: Param[int] = field(default=1500, ignore_default=True)
 
     @cached_property
     def searcher(self):
@@ -355,6 +355,7 @@ def retriever(
     """Function to construct an Anserini retriever"""
     index = index_builder(documents)
 
-    return AnseriniRetriever.C(
-        index=index, k=k or AnseriniRetriever.k, model=model, store=store
-    )
+    kwargs = {"index": index, "model": model, "store": store}
+    if k is not None:
+        kwargs["k"] = k
+    return AnseriniRetriever.C(**kwargs)
