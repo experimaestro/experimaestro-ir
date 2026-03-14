@@ -44,7 +44,28 @@ QueryT = TypeVar("QueryT")
 QueryT2 = TypeVar("QueryT2")
 
 
-class PointwiseItem(Generic[DocT, QueryT]):
+class SampleItem(Generic[DocT, QueryT]):
+    """Base class for sample items with document/query access.
+
+    All item types (pointwise, pairwise, listwise) expose a uniform
+    interface for extracting and replacing documents/queries, enabling
+    generic batch processing in RecordsProcessor.
+    """
+
+    def get_documents(self) -> List[DocT]:
+        raise NotImplementedError
+
+    def with_documents(self, ds: "List[DocT2]") -> "SampleItem[DocT2, QueryT]":
+        raise NotImplementedError
+
+    def get_queries(self) -> List[QueryT]:
+        raise NotImplementedError
+
+    def with_queries(self, qs: "List[QueryT2]") -> "SampleItem[DocT, QueryT2]":
+        raise NotImplementedError
+
+
+class PointwiseItem(SampleItem[DocT, QueryT]):
     """An Item from a pointwise sampler"""
 
     # The query
@@ -199,7 +220,7 @@ class PointwiseItems(BaseItems[PointwiseItem]):
         return records
 
 
-class PairwiseItem(Generic[DocT, QueryT]):
+class PairwiseItem(SampleItem[DocT, QueryT]):
     """A pairwise record is composed of a query, a positive and a negative document"""
 
     query: QueryT
@@ -350,7 +371,7 @@ class PairwiseItemsWithTarget(PairwiseItems):
         )
 
 
-class ListwiseItem(Generic[DocT, QueryT]):
+class ListwiseItem(SampleItem[DocT, QueryT]):
     """A listwise Item is a generic data class composed of a query and a list of documents"""
 
     query: QueryT

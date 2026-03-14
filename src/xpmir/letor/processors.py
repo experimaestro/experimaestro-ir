@@ -11,24 +11,33 @@ from typing import TypeVar, Generic, List, Optional
 from experimaestro import Config, Param
 from datamaestro_ir.data import DocumentStore, IDTextRecord, SimpleTextItem
 from xpmir.datasets.adapters import TextStore
+from xpmir.letor.records import SampleItem
 from xpmir.rankers import ScoredDocument
 
-SampleT = TypeVar("SampleT")
 DocIn = TypeVar("DocIn")
 DocOut = TypeVar("DocOut")
 QueryIn = TypeVar("QueryIn")
 QueryOut = TypeVar("QueryOut")
 
 
-class RecordsProcessor(Config, ABC, Generic[SampleT]):
-    """Processes a batch of samples, returning transformed samples."""
+class RecordsProcessor(Config, ABC, Generic[DocIn, QueryIn, DocOut, QueryOut]):
+    """Processes a batch of SampleItem[DocIn, QueryIn] into
+    SampleItem[DocOut, QueryOut]."""
 
     @abstractmethod
-    def process_batch(self, records: List[SampleT]) -> List[SampleT]: ...
+    def process_batch(
+        self, records: List[SampleItem[DocIn, QueryIn]]
+    ) -> List[SampleItem[DocOut, QueryOut]]: ...
 
 
-class DocumentsProcessor(RecordsProcessor[SampleT], Generic[SampleT, DocIn, DocOut]):
-    """Extracts documents from samples, processes them in batch, puts them back."""
+class DocumentsProcessor(
+    RecordsProcessor[DocIn, QueryIn, DocOut, QueryIn],
+    Generic[DocIn, QueryIn, DocOut],
+):
+    """Extracts documents from samples, processes them in batch, puts them back.
+
+    Queries are unchanged (QueryIn → QueryIn).
+    """
 
     @abstractmethod
     def process_documents(self, documents: List[DocIn]) -> List[DocOut]: ...
@@ -51,8 +60,14 @@ class DocumentsProcessor(RecordsProcessor[SampleT], Generic[SampleT, DocIn, DocO
         return result
 
 
-class QueriesProcessor(RecordsProcessor[SampleT], Generic[SampleT, QueryIn, QueryOut]):
-    """Extracts queries from samples, processes them in batch, puts them back."""
+class QueriesProcessor(
+    RecordsProcessor[DocIn, QueryIn, DocIn, QueryOut],
+    Generic[DocIn, QueryIn, QueryOut],
+):
+    """Extracts queries from samples, processes them in batch, puts them back.
+
+    Documents are unchanged (DocIn → DocIn).
+    """
 
     @abstractmethod
     def process_queries(self, queries: List[QueryIn]) -> List[QueryOut]: ...
@@ -76,8 +91,8 @@ class QueriesProcessor(RecordsProcessor[SampleT], Generic[SampleT, QueryIn, Quer
 
 
 class StoreHydrator(
-    DocumentsProcessor[SampleT, DocIn, DocOut],
-    QueriesProcessor[SampleT, QueryIn, QueryOut],
+    DocumentsProcessor[DocIn, QueryIn, DocOut],
+    QueriesProcessor[DocIn, QueryIn, QueryOut],
 ):
     """Hydrates ID-only records with text from document/query stores.
 

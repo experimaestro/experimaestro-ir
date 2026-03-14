@@ -1,12 +1,10 @@
 from abc import ABC, abstractmethod
-from typing import Optional, Tuple, Iterator, Any
+from typing import Optional, Tuple, Iterator
 from experimaestro import Param, Config
 import torch
 import numpy as np
 from datamaestro_ir.data import DocumentStore, SimpleTextItem
 from xpm_torch import Random
-from xpm_torch.utils.iter import RandomSerializableIterator, SerializableIterator
-
 from xpmir.letor.records import DocumentRecord, PairwiseItem, ProductItems
 from xpmir.letor.samplers import BatchwiseSampler, PairwiseSampler
 
@@ -130,50 +128,44 @@ class RandomSpanSampler(BatchwiseSampler, PairwiseSampler):
 
         return (text[start1:end1], text[start2:end2])
 
-    def pairwise_iter(self) -> SerializableIterator[PairwiseItem, Any]:
-        def iter(random: np.random.RandomState):
-            iter = self.documents.iter_sample(lambda m: random.randint(0, m))
+    def pairwise_iter(self) -> Iterator[PairwiseItem]:
+        random = np.random.RandomState() if self.random is None else self.random.state
+        doc_iter = self.documents.iter_sample(lambda m: random.randint(0, m))
 
-            while True:
-                record_pos_qry = next(iter)
-                text_pos_qry = record_pos_qry["text_item"].text
-                spans_pos_qry = self.get_text_span(text_pos_qry, random)
+        while True:
+            record_pos_qry = next(doc_iter)
+            text_pos_qry = record_pos_qry["text_item"].text
+            spans_pos_qry = self.get_text_span(text_pos_qry, random)
 
-                record_neg = next(iter)
-                text_neg = record_neg["text_item"].text
-                spans_neg = self.get_text_span(text_neg, random)
+            record_neg = next(doc_iter)
+            text_neg = record_neg["text_item"].text
+            spans_neg = self.get_text_span(text_neg, random)
 
-                if not (spans_pos_qry and spans_neg):
+            if not (spans_pos_qry and spans_neg):
+                continue
+
+            yield PairwiseItem(
+                {"text_item": SimpleTextItem(spans_pos_qry[0])},
+                {"text_item": SimpleTextItem(spans_pos_qry[1])},
+                {"text_item": SimpleTextItem(spans_neg[random.randint(0, 2)])},
+            )
+
+    def batchwise_iter(self, batch_size: int) -> Iterator[ProductItems]:
+        random = np.random.RandomState() if self.random is None else self.random.state
+        # Pre-compute relevance matrix
+        relevances = torch.diag(torch.ones(batch_size, dtype=torch.float))
+
+        doc_iter = self.documents.iter_sample(lambda m: random.randint(0, m))
+
+        while True:
+            batch = ProductItems()
+            while len(batch) < batch_size:
+                record = next(doc_iter)
+                text = record["text_item"].text
+                res = self.get_text_span(text, random)
+                if not res:
                     continue
-
-                yield PairwiseItem(
-                    {"text_item": SimpleTextItem(spans_pos_qry[0])},
-                    {"text_item": SimpleTextItem(spans_pos_qry[1])},
-                    {"text_item": SimpleTextItem(spans_neg[random.randint(0, 2)])},
-                )
-
-        return RandomSerializableIterator(self.random, iter)
-
-    def batchwise_iter(
-        self, batch_size: int
-    ) -> SerializableIterator[ProductItems, Any]:
-        def iterator(random: np.random.RandomState):
-            # Pre-compute relevance matrix
-            relevances = torch.diag(torch.ones(batch_size, dtype=torch.float))
-
-            iter = self.documents.iter_sample(lambda m: random.randint(0, m))
-
-            while True:
-                batch = ProductItems()
-                while len(batch) < batch_size:
-                    record = next(iter)
-                    text = record["text_item"].text
-                    res = self.get_text_span(text, random)
-                    if not res:
-                        continue
-                    batch.add_topics({"text_item": SimpleTextItem(res[0])})
-                    batch.add_documents({"text_item": SimpleTextItem(res[1])})
-                batch.set_relevances(relevances)
-                yield batch
-
-        return RandomSerializableIterator(self.random, iterator)
+                batch.add_topics({"text_item": SimpleTextItem(res[0])})
+                batch.add_documents({"text_item": SimpleTextItem(res[1])})
+            batch.set_relevances(relevances)
+            yield batch

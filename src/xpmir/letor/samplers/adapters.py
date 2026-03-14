@@ -51,8 +51,8 @@ class BufferedProcessingDataset(ShardedIterableDataset):
 class SamplerAdapter(Sampler[SampleT]):
     """Wraps a sampler with processors that transform its output.
 
-    Processors run in batches for efficiency (e.g., batch store lookups).
-    The result is a new Sampler with potentially different doc/query types.
+    The adapter takes an input Sampler and applies a chain of
+    RecordsProcessors to transform the samples.
     """
 
     sampler: Param[Sampler]
