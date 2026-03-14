@@ -17,6 +17,7 @@ from functools import cached_property
 from xpmir.rankers import ScoredDocument
 from xpmir.datasets.adapters import TextStore
 from xpmir.letor.records import (
+    BatchwiseItems,
     PairwiseItems,
     PairwiseItem,
     PointwiseItem,
@@ -34,23 +35,9 @@ logger = logging.getLogger(__name__)
 
 # --- Base classes for samplers
 
-
-class PointwiseSampler(Sampler):
-    pass
-
-
-class PairwiseSampler(Sampler):
-    """Abstract class for pairwise samplers which output a set of (query,
-    positive, negative) triples"""
-
-    pass
-
-
-class BatchwiseSampler(Sampler):
-    """Base class for batchwise samplers, that provide for each question a list
-    of documents"""
-
-    pass
+PointwiseSampler = Sampler[PointwiseItem]
+PairwiseSampler = Sampler[PairwiseItem]
+BatchwiseSampler = Sampler[BatchwiseItems]
 
 
 # --- Real instances
@@ -206,7 +193,7 @@ class ModelBasedSampler(Sampler):
                 yield oldtitle, positives, negatives
 
 
-class PointwiseModelBasedSampler(PointwiseSampler, ModelBasedSampler):
+class PointwiseModelBasedSampler(ModelBasedSampler, PointwiseSampler):
     relevant_ratio: Param[float] = 0.5
     """The target relevance ratio"""
 
@@ -262,7 +249,7 @@ class PointwiseModelBasedSampler(PointwiseSampler, ModelBasedSampler):
         return InfiniteDataset(_PointwiseDataset(self))
 
 
-class PairwiseModelBasedSampler(PairwiseSampler, ModelBasedSampler):
+class PairwiseModelBasedSampler(ModelBasedSampler, PairwiseSampler):
     """A pairwise sampler based on a retrieval model"""
 
     def initialize(self, random: np.random.RandomState):

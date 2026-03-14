@@ -4,18 +4,12 @@ Processors run in batches for efficiency (e.g., batch store lookups).
 The result is a new Sampler with potentially different doc/query types.
 """
 
-from typing import TypeVar, List, Iterator, Any, Dict
+from typing import List, Iterator, Any, Dict
 
 from experimaestro import Param, field
-from xpm_torch.base import Sampler
+from xpm_torch.base import Sampler, SampleT
 from xpm_torch.datasets import ShardedIterableDataset
 from xpmir.letor.processors import RecordsProcessor
-
-SampleT = TypeVar("SampleT")
-DocT = TypeVar("DocT")
-QueryT = TypeVar("QueryT")
-DocT2 = TypeVar("DocT2")
-QueryT2 = TypeVar("QueryT2")
 
 
 class BufferedProcessingDataset(ShardedIterableDataset):
@@ -54,7 +48,7 @@ class BufferedProcessingDataset(ShardedIterableDataset):
         self.inner.load_state_dict(state)
 
 
-class SamplerAdapter(Sampler):
+class SamplerAdapter(Sampler[SampleT]):
     """Wraps a sampler with processors that transform its output.
 
     Processors run in batches for efficiency (e.g., batch store lookups).
