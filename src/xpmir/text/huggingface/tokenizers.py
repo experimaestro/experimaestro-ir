@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple, Union
 from functools import cached_property, lru_cache
 import torch
-from experimaestro import Config, Param
+from experimaestro import field, Config, Param
 
 from xpm_torch.utils.utils import Initializable
 from xpm_torch.utils.huggingface import get_hf_config
@@ -18,6 +18,7 @@ from xpmir.text.tokenizers import (
 
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -26,14 +27,16 @@ except Exception:
     logging.error("Install huggingface transformers to use these configurations")
     raise
 
+
 @lru_cache
-def get_default_max_len(model_id:str) -> int:
+def get_default_max_len(model_id: str) -> int:
     """get default max len from model id if it is in the hf config
     defaults to 512
-    """ 
+    """
     hf_config = get_hf_config(model_id)
     return hf_config.get("max_position_embeddings", 512)
-        
+
+
 HFTokenizerInput = Union[List[str], List[Tuple[str, str]]]
 
 
@@ -52,12 +55,11 @@ class HFTokenizer(Config, Initializable):
 
     def __post_init__(self):
         super().__post_init__()
-        
+
         if self.max_length is None:
-            #try to infer it from config
+            # try to infer it from config
             self.max_length = get_default_max_len(self.model_id)
             logger.warning(f"No max_len provided, using default hf: {self.max_length}")
-
 
     def __initialize__(self):
         """Initialize the HuggingFace transformer"""
@@ -162,7 +164,7 @@ class HFTokenizerBase(TokenizerBase[TokenizerInput, TokenizedTexts]):
 
     def id2tok(self, idx: int) -> str:
         return self.tokenizer.id2tok(idx)
-    
+
     def get_vocabulary(self):
         return self.tokenizer.vocab
 
@@ -192,7 +194,7 @@ class HFTokenizerAdapter(HFTokenizerBase[TokenizerInput]):
 class HFListTokenizer(HFTokenizerBase[List[List[str]]]):
     """Process list of texts by separating them by a separator token"""
 
-    separate_index: Param[bool] = 0
+    separate_index: Param[bool] = field(default=0, ignore_default=True)
     """Use a tuple until this index"""
 
     @cached_property

@@ -103,5 +103,17 @@ include = [
 xpm-torch = { path = "xpm-torch", editable = true }
 datamaestro-ir = { path = "datamaestro-ir", editable = true }
 
+[tool.pytest.ini_options]
+markers = [
+    "dependency: mark test dependencies (deselected when dependency fails)",
+]
+filterwarnings = [
+    "ignore:.*frontend\\.OptionParser.*:DeprecationWarning",
+    "ignore:.*frontend\\.Option.*:DeprecationWarning",
+    "ignore:builtin type Swig:DeprecationWarning",
+    "ignore:.*ambiguous default value:DeprecationWarning:experimaestro",
+    "ignore:.*resources as decorators is deprecated:DeprecationWarning",
+]
+
 [tool.pyright]
 include = ["xpmir"]

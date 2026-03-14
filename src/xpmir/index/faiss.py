@@ -53,13 +53,13 @@ class IndexBackedFaiss(FaissIndex, Task):
     encoder: Param[TextEncoder]
     """Encoder for document texts"""
 
-    batchsize: Meta[int] = 1
+    batchsize: Meta[int] = field(default=1, ignore_default=True)
     """The batch size used when computing representations of documents"""
 
-    batcher: Meta[Batcher] = Batcher.C()
+    batcher: Meta[Batcher] = field(default=Batcher.C(), ignore_default=True)
     """The way to prepare batches of documents"""
 
-    hooks: Param[List[Hook]] = []
+    hooks: Param[List[Hook]] = field(default=[], ignore_default=True)
     """An optional list of hooks"""
 
     indexspec: Param[str]

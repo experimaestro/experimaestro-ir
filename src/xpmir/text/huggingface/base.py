@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Generic, Optional, Type, TypeVar
 
 import torch.nn as nn
-from experimaestro import Config, Param, LightweightTask
+from experimaestro import field, Config, Param, LightweightTask
 
 from xpm_torch import Module
 from xpm_torch.configuration import FabricConfiguration
@@ -14,6 +14,7 @@ from xpmir.text import TokenizedTexts
 from functools import lru_cache
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -141,12 +142,12 @@ class HFSequenceClassification(HFModel):
 
     model: InitVar[AutoModelForSequenceClassification]
 
-    n_labels: Param[int] = 1 
+    n_labels: Param[int] = field(default=1, ignore_default=True)
 
-    #override
+    # override
     def __initialize__(self):
         """Creates the model structure from config.hf_id (no pretrained weights)
-        Checks and modifies the config to match "n_labels" 
+        Checks and modifies the config to match "n_labels"
         """
         if isinstance(self.config, HFConfigID):
             hf_id = self.config.hf_id
@@ -160,7 +161,9 @@ class HFSequenceClassification(HFModel):
             # ensure that num_labels is one for a Cross-encoder
             if hasattr(hf_config, "num_labels"):
                 if hf_config.num_labels != self.n_labels:
-                    logger.info(f"hf config 'n_labels' was {hf_config.num_labels}, setting it to {self.n_labels}")
+                    logger.info(
+                        f"hf config 'n_labels' was {hf_config.num_labels}, setting it to {self.n_labels}"
+                    )
                 hf_config.num_labels = self.n_labels
 
             else:

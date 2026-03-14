@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Optional, List
-from experimaestro import Config, Param
+from experimaestro import field, Config, Param
 import datamaestro_ir.data.base as ir
 from datamaestro_ir.data import DocumentStore, SimpleTextItem
 from xpmir.datasets.adapters import TextStore
@@ -47,10 +47,10 @@ class SampleHydrator(SampleTransform):
 class SamplePrefixAdding(SampleTransform):
     """Transform the query and documents by adding the prefix"""
 
-    query_prefix: Param[str] = ""
+    query_prefix: Param[str] = field(default="", ignore_default=True)
     """The prefix for the query"""
 
-    document_prefix: Param[str] = ""
+    document_prefix: Param[str] = field(default="", ignore_default=True)
     """The prefix for the document"""
 
     def transform_topics(

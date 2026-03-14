@@ -43,7 +43,7 @@ class ValidationListener(LearnerListener):
     stop.
     """
 
-    metrics: Param[Dict[str, bool]] = {"map": True}
+    metrics: Param[Dict[str, bool]] = field(default={"map": True}, ignore_default=True)
     """Dictionary whose keys are the metrics to record, and boolean
             values whether the best performance checkpoint should be kept for
             the associated metric ([parseable by ir-measures](https://ir-measur.es/))"""
@@ -54,7 +54,7 @@ class ValidationListener(LearnerListener):
     retriever: Param[Retriever]
     """The retriever for validation"""
 
-    warmup: Param[int] = -1
+    warmup: Param[int] = field(default=-1, ignore_default=True)
     """How many epochs before actually computing the metric"""
 
     bestpath: Annotated[Path, pathgenerator("best")]
@@ -63,14 +63,14 @@ class ValidationListener(LearnerListener):
     info: Annotated[Path, pathgenerator("info.json")]
     """Path to the JSON file that contains the metric values at each epoch"""
 
-    validation_interval: Param[int] = 1
+    validation_interval: Param[int] = field(default=1, ignore_default=True)
     """Epochs between each validation"""
 
-    early_stop: Param[int] = 0
+    early_stop: Param[int] = field(default=0, ignore_default=True)
     """Number of epochs without improvement after which we stop learning.
     Should be a multiple of validation_interval or 0 (no early stopping)"""
 
-    hooks: Param[List[ValidationHook]] = []
+    hooks: Param[List[ValidationHook]] = field(default=[], ignore_default=True)
     """The list of the hooks during the validation"""
 
     def __validate__(self):
@@ -196,12 +196,12 @@ class AggregatorValidationListener(LearnerListener):
     listeners: Param[List[ValidationListener]]
     """The list of validation listeners to aggregate"""
 
-    metrics: Param[Dict[str, bool]] = {"map": True}
+    metrics: Param[Dict[str, bool]] = field(default={"map": True}, ignore_default=True)
     """Dictionary whose keys are the metrics to record, and boolean
     values whether the best performance checkpoint should be kept for
     the associated metric ([parseable by ir-measures](https://ir-measur.es/))"""
 
-    warmup: Param[int] = -1
+    warmup: Param[int] = field(default=-1, ignore_default=True)
     """How many epochs before actually computing the metric"""
 
     bestpath: Annotated[Path, pathgenerator("best")]
@@ -210,14 +210,14 @@ class AggregatorValidationListener(LearnerListener):
     info: Annotated[Path, pathgenerator("info.json")]
     """Path to the JSON file that contains the metric values at each epoch"""
 
-    validation_interval: Param[int] = 1
+    validation_interval: Param[int] = field(default=1, ignore_default=True)
     """Epochs between each validation"""
 
-    early_stop: Param[int] = 0
+    early_stop: Param[int] = field(default=0, ignore_default=True)
     """Number of epochs without improvement after which we stop learning.
     Should be a multiple of validation_interval or 0 (no early stopping)"""
 
-    hooks: Param[List[ValidationHook]] = []
+    hooks: Param[List[ValidationHook]] = field(default=[], ignore_default=True)
     """The list of the hooks during the validation"""
 
     def __validate__(self):

@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import List, Optional
 from attrs import evolve
 import torch
-from experimaestro import Param
+from experimaestro import field, Param
 from datamaestro_ir.data import IDTextRecord
 from xpmir.neural import DualRepresentationScorer, QueriesRep, DocsRep
 
@@ -308,13 +308,13 @@ class ScheduledFlopsRegularizer(FlopsRegularizer):
     ```lambda_warmup_steps```, and then remains constant
     """
 
-    min_lambda_q: Param[float] = 0
+    min_lambda_q: Param[float] = field(default=0, ignore_default=True)
     """Min value for the lambda_q before it increase"""
 
-    min_lambda_d: Param[float] = 0
+    min_lambda_d: Param[float] = field(default=0, ignore_default=True)
     """Min value for the lambda_d before it increase"""
 
-    lambda_warmup_steps: Param[int] = 0
+    lambda_warmup_steps: Param[int] = field(default=0, ignore_default=True)
     """The warmup steps for the lambda"""
 
     def quadratic_ratio(self, step):

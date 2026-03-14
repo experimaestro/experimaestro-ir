@@ -1,5 +1,5 @@
 import sys
-from typing import List, Union, Tuple
+from typing import List
 from typing_extensions import ReadOnly, TypedDict
 import torch
 from torch import nn, Tensor
@@ -14,21 +14,17 @@ from xpmir.letor.records import (
 from xpm_torch.trainers import TrainerContext, LossTrainer
 from xpm_torch.losses import Loss
 
-from .samplers import DistillationListwiseSampler, ListwiseDistillationSample
+from .samplers import ListwiseDistillationSample
 import numpy as np
 from xpmir.rankers import AbstractModuleScorer
-from xpmir.letor.records import (
-    PairwiseItem,
-    PairwiseItems,
-    ProductItems,
-)
 
 ### Losses
+
 
 class DistillationListwiseLoss(Config, nn.Module):
     """The abstract loss for listwise distillation"""
 
-    weight: Param[float] = 1.0
+    weight: Param[float] = field(default=1.0, ignore_default=True)
     NAME = "?"
 
     def initialize(self, ranker: AbstractModuleScorer):
@@ -191,14 +187,19 @@ class ListwiseSoftmaxCrossEntropy(DistillationListwiseLoss):
         loss = -torch.logsumexp(term, dim=-1).sum() / student_scores.shape[0]
         return loss
 
+
 ### Trainer
+
 
 class DistillationListwiseInputs(TypedDict):
     records: ReadOnly[PointwiseItems]
     tokenized_records: ReadOnly[TokenizedTexts]
     teacher_scores: ReadOnly[Tensor]
 
-def distillation_listwise_collate(samples: List[ListwiseDistillationSample]) -> DistillationListwiseInputs:
+
+def distillation_listwise_collate(
+    samples: List[ListwiseDistillationSample],
+) -> DistillationListwiseInputs:
     """Collate function for Distillation Listwise trainer"""
     teacher_scores = torch.empty(len(samples), len(samples[0].documents))
     records = PointwiseItems()
@@ -208,9 +209,7 @@ def distillation_listwise_collate(samples: List[ListwiseDistillationSample]) -> 
         teacher_scores[ix] = torch.tensor([doc.score for doc in sample.documents])
 
     return DistillationListwiseInputs(
-        records=records,
-        tokenized_records=None,
-        teacher_scores=teacher_scores
+        records=records, tokenized_records=None, teacher_scores=teacher_scores
     )
 
 
@@ -237,10 +236,14 @@ class DistillationListwiseTrainer(LossTrainer):
         # if we can extract the tokenization function from model, we wrap the collate with it.
         if hasattr(self.model, "get_tokenizer_fn"):
             tokenization_fn = self.model.get_tokenizer_fn()
-            def collate_fn_with_tokenization(samples: List[ListwiseDistillationSample]) -> DistillationListwiseInputs:
+
+            def collate_fn_with_tokenization(
+                samples: List[ListwiseDistillationSample],
+            ) -> DistillationListwiseInputs:
                 inputs = distillation_listwise_collate(samples)
                 inputs["tokenized_records"] = tokenization_fn(inputs["records"])
                 return inputs
+
             collate_fn = collate_fn_with_tokenization
         else:
             collate_fn = distillation_listwise_collate
@@ -249,11 +252,15 @@ class DistillationListwiseTrainer(LossTrainer):
 
     def train_batch(self, inputs: DistillationListwiseInputs):
         # Builds records and teacher score matrix
-        records, teacher_scores, tokenized_records = inputs["records"], inputs["teacher_scores"], inputs.get("tokenized_records", None)
+        records, teacher_scores, tokenized_records = (
+            inputs["records"],
+            inputs["teacher_scores"],
+            inputs.get("tokenized_records", None),
+        )
 
         # Get the next batch and compute the scores for each query/document
         scores = self.model(records, tokenized=tokenized_records)
-        
+
         if torch.isnan(scores).any() or torch.isinf(scores).any():
             self.logger.error(
                 "nan or inf relevance score detected. Aborting (listwise distillation)."

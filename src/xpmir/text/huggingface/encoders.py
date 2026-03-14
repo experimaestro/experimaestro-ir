@@ -6,7 +6,7 @@ from functools import cached_property
 
 import torch
 import torch.nn as nn
-from experimaestro import Param, Constant
+from experimaestro import field, Param, Constant
 from xpm_torch import Module
 from xpm_torch.learner import TrainState
 from xpm_torch.parameters import ParametersIterator
@@ -95,7 +95,9 @@ class HFCLSEncoder(
 class SentenceTransformerTextEncoder(TextEncoder):
     """A Sentence Transformers text encoder"""
 
-    model_id: Param[str] = "sentence-transformers/all-MiniLM-L6-v2"
+    model_id: Param[str] = field(
+        default="sentence-transformers/all-MiniLM-L6-v2", ignore_default=True
+    )
 
     def __initialize__(self):
         super().__initialize__()
@@ -111,10 +113,10 @@ class OneHotHuggingFaceEncoder(TextEncoder):
     """A tokenizer which encodes the tokens into 0 and 1 vector
     1 represents the text contains the token and 0 otherwise"""
 
-    model_id: Param[str] = "bert-base-uncased"
+    model_id: Param[str] = field(default="bert-base-uncased", ignore_default=True)
     """Model ID from huggingface"""
 
-    maxlen: Param[Optional[int]] = None
+    maxlen: Param[Optional[int]] = field(default=None, ignore_default=True)
     """Max length for texts"""
 
     version: Constant[int] = 2
@@ -166,19 +168,21 @@ class LayerSelector(ParametersIterator):
     """This class can be used to pick some of the transformer layers"""
 
     # For freezing everything except the embeddings
-    re_layer: Param[str] = r"""(?:encoder|transformer)\.layer\.(\d+)\."""
+    re_layer: Param[str] = field(
+        default=r"""(?:encoder|transformer)\.layer\.(\d+)\.""", ignore_default=True
+    )
 
     transformer: Param[HFModel]
     """The model for which layers are selected"""
 
-    pick_layers: Param[int] = 0
+    pick_layers: Param[int] = field(default=0, ignore_default=True)
     """Counting from the first processing layers (can be negative, i.e. -1 meaning
     until the last layer excluded, etc. / 0 means no layer)"""
 
-    select_embeddings: Param[bool] = False
+    select_embeddings: Param[bool] = field(default=False, ignore_default=True)
     """Whether to pick the embeddings layer"""
 
-    select_feed_forward: Param[bool] = False
+    select_feed_forward: Param[bool] = field(default=False, ignore_default=True)
     """Whether to pick the feed forward of Transformer layers"""
 
     def __post_init__(self):

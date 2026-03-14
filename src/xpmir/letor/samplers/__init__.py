@@ -11,7 +11,7 @@ from datamaestro_ir.data import (
     DocumentStore,
     SimpleTextItem,
 )
-from experimaestro import Param, tqdm, Task, Annotated, pathgenerator
+from experimaestro import field, Param, tqdm, Task, Annotated, pathgenerator
 from experimaestro.annotations import cache
 from functools import cached_property
 from xpmir.rankers import ScoredDocument
@@ -194,7 +194,7 @@ class ModelBasedSampler(Sampler):
 
 
 class PointwiseModelBasedSampler(ModelBasedSampler, PointwiseSampler):
-    relevant_ratio: Param[float] = 0.5
+    relevant_ratio: Param[float] = field(default=0.5, ignore_default=True)
     """The target relevance ratio"""
 
     def initialize(self, random):
@@ -355,7 +355,7 @@ class PairwiseDatasetTripletBasedSampler(PairwiseSampler):
     """The dataset which contains the generated queries with its positives and
     negatives"""
 
-    negative_algo: Param[str] = "random"
+    negative_algo: Param[str] = field(default="random", ignore_default=True)
     """The algo to sample the negatives, default value is random"""
 
     def _sample_record(self, sample: PairwiseSample) -> PairwiseItem:

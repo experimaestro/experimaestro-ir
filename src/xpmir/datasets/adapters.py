@@ -1,6 +1,7 @@
 from typing import Iterable, Iterator, List, Optional, Set, Union
 from pathlib import Path
 from experimaestro import (
+    field,
     Param,
     Config,
     Task,
@@ -370,7 +371,7 @@ class DocumentSubset(Documents):
     docids_path: Meta[Path]
     """Path to the file containing the document IDs"""
 
-    in_memory: Meta[bool] = False
+    in_memory: Meta[bool] = field(default=False, ignore_default=True)
     """Whether to load the dataset in memory"""
 
     def __len__(self):
@@ -439,7 +440,7 @@ class RetrieverBasedCollection(Task):
     First get all the document based on the assessment then add the retrieved ones.
     """
 
-    relevance_threshold: Param[float] = 0
+    relevance_threshold: Param[float] = field(default=0, ignore_default=True)
     """Relevance threshold"""
 
     dataset: Param[Adhoc]
@@ -448,10 +449,10 @@ class RetrieverBasedCollection(Task):
     retrievers: Param[List[Retriever]]
     """Rankers"""
 
-    keepRelevant: Param[bool] = True
+    keepRelevant: Param[bool] = field(default=True, ignore_default=True)
     """Keep documents judged relevant"""
 
-    keepNotRelevant: Param[bool] = False
+    keepNotRelevant: Param[bool] = field(default=False, ignore_default=True)
     """Keep documents judged not relevant"""
 
     docids_path: Annotated[Path, pathgenerator("docids.txt")]

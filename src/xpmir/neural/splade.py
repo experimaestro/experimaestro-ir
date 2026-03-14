@@ -1,5 +1,5 @@
 from typing import Optional, Generic
-from experimaestro import Config, Param
+from experimaestro import field, Config, Param
 import torch.nn as nn
 import torch
 from xpmir.text.huggingface.encoders import OneHotHuggingFaceEncoder
@@ -102,7 +102,7 @@ class SpladeTextEncoder(
     aggregation: Param[Aggregation]
     """How to aggregate the vectors"""
 
-    maxlen: Param[Optional[int]] = None
+    maxlen: Param[Optional[int]] = field(default=None, ignore_default=True)
     """Max length for texts"""
 
     def __initialize__(self):

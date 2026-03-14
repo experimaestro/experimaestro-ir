@@ -1,12 +1,12 @@
 from abc import ABC, abstractmethod
 from typing import Optional, Tuple, Iterator
-from experimaestro import Param, Config
+from experimaestro import field, Param, Config
 import torch
 import numpy as np
 from datamaestro_ir.data import DocumentStore, SimpleTextItem
 from xpm_torch import Random
 from xpmir.letor.records import DocumentRecord, PairwiseItem, ProductItems
-from xpmir.letor.samplers import BatchwiseSampler, PairwiseSampler
+from xpm_torch import Sampler
 
 
 class DocumentSampler(Config, ABC):
@@ -31,10 +31,10 @@ class HeadDocumentSampler(DocumentSampler):
     if max_count is 0, it iterates over all documents
     """
 
-    max_count: Param[int] = 0
+    max_count: Param[int] = field(default=0, ignore_default=True)
     """Maximum number of documents (if 0, no limit)"""
 
-    max_ratio: Param[float] = 0
+    max_ratio: Param[float] = field(default=0, ignore_default=True)
     """Maximum ratio of documents (if 0, no limit)"""
 
     def __call__(self) -> Tuple[int, Iterator[DocumentRecord]]:
@@ -57,10 +57,10 @@ class RandomDocumentSampler(DocumentSampler):
     Either max_count or max_ratio should be non null
     """
 
-    max_count: Param[int] = 0
+    max_count: Param[int] = field(default=0, ignore_default=True)
     """Maximum number of documents (if 0, no limit)"""
 
-    max_ratio: Param[float] = 0
+    max_ratio: Param[float] = field(default=0, ignore_default=True)
     """Maximum ratio of documents (if 0, no limit)"""
 
     random: Param[Optional[Random]]
@@ -77,7 +77,7 @@ class RandomDocumentSampler(DocumentSampler):
 
     def iter(self, count) -> Iterator[str]:
         """Iterate over the documents"""
-        state = np.random.RandomState() if self.random is None else self.random.state
+        state = self.random if self.random is not None else np.random.RandomState()
         docids = state.choice(
             np.arange(self.documents.documentcount), size=count, replace=False
         )
@@ -85,7 +85,7 @@ class RandomDocumentSampler(DocumentSampler):
             yield self.documents.document_int(int(docid))
 
 
-class RandomSpanSampler(BatchwiseSampler, PairwiseSampler):
+class RandomSpanSampler(Sampler):
     """This sampler uses positive samples coming from the same documents
     and negative ones coming from others
 
@@ -99,7 +99,7 @@ class RandomSpanSampler(BatchwiseSampler, PairwiseSampler):
     documents: Param[DocumentStore]
     """The document store to use"""
 
-    max_spansize: Param[int] = 1000
+    max_spansize: Param[int] = field(default=1000, ignore_default=True)
     """Maximum span size in number of characters"""
 
     def get_text_span(self, text, random):
@@ -129,7 +129,7 @@ class RandomSpanSampler(BatchwiseSampler, PairwiseSampler):
         return (text[start1:end1], text[start2:end2])
 
     def pairwise_iter(self) -> Iterator[PairwiseItem]:
-        random = np.random.RandomState() if self.random is None else self.random.state
+        random = self.random if self.random is not None else np.random.RandomState()
         doc_iter = self.documents.iter_sample(lambda m: random.randint(0, m))
 
         while True:
@@ -151,7 +151,7 @@ class RandomSpanSampler(BatchwiseSampler, PairwiseSampler):
             )
 
     def batchwise_iter(self, batch_size: int) -> Iterator[ProductItems]:
-        random = np.random.RandomState() if self.random is None else self.random.state
+        random = self.random if self.random is not None else np.random.RandomState()
         # Pre-compute relevance matrix
         relevances = torch.diag(torch.ones(batch_size, dtype=torch.float))
 

@@ -2,7 +2,7 @@ from typing import Any, Dict, List, Tuple
 
 import torch
 from datamaestro_ir.data import Documents
-from experimaestro import Meta, Param
+from experimaestro import field, Meta, Param
 from experimaestro import tqdm
 from xpm_torch.batchers import Batcher
 
@@ -39,8 +39,8 @@ class FullRetrieverRescorer(Retriever):
     scorer: Param[DualRepresentationScorer]
     """The scorer (a dual representation scorer)"""
 
-    batchsize: Param[int] = 0
-    batcher: Meta[Batcher] = Batcher.C()
+    batchsize: Param[int] = field(default=0, ignore_default=True)
+    batcher: Meta[Batcher] = field(default=Batcher.C(), ignore_default=True)
 
     def initialize(self):
         self.query_batcher = self.batcher.initialize(self.batchsize)

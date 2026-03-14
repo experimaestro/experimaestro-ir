@@ -53,7 +53,9 @@ def get_evaluator(metrics: List[ir_measures.Metric], assessments: AdhocAssessmen
 class BaseEvaluation(Task):
     """Base class for evaluation tasks"""
 
-    measures: Param[List[Measure]] = [m.AP, m.P @ 20, m.nDCG, m.nDCG @ 20, m.RR]
+    measures: Param[List[Measure]] = field(
+        default=[m.AP, m.P @ 20, m.nDCG, m.nDCG @ 20, m.RR], ignore_default=True
+    )
     """List of metrics"""
 
     aggregated: Annotated[Path, pathgenerator("aggregated.txt")]
@@ -62,7 +64,7 @@ class BaseEvaluation(Task):
     detailed: Annotated[Path, pathgenerator("detailed.dat")]
     """Path for detailed results"""
 
-    with_run: Param[bool] = False
+    with_run: Param[bool] = field(default=False, ignore_default=True)
     """Saves the run together with the evaluation"""
 
     run_path: Annotated[Path, pathgenerator("run.txt")]
@@ -161,7 +163,9 @@ class Evaluate(BaseEvaluation, Task):
     retriever: Param[Retriever]
     """The retriever to evaluate"""
 
-    topic_wrapper: Param[Optional[TopicWrapper]] = None
+    topic_wrapper: Param[Optional[TopicWrapper]] = field(
+        default=None, ignore_default=True
+    )
     """Topic extractor"""
 
     fabric_config: Meta[FabricConfiguration] = field(

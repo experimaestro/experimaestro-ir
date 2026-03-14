@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import List, Tuple
 from functools import cached_property
-from experimaestro import Choices, Param, Annotated
+from experimaestro import field, Choices, Param, Annotated
 from datamaestro_ir.data import AdhocIndex
 
 
@@ -19,10 +19,10 @@ class Index(AdhocIndex):
     """
 
     path: Param[Path]
-    storePositions: Param[bool] = False
-    storeDocvectors: Param[bool] = False
-    storeRaw: Param[bool] = False
-    storeContents: Param[bool] = False
+    storePositions: Param[bool] = field(default=False, ignore_default=True)
+    storeDocvectors: Param[bool] = field(default=False, ignore_default=True)
+    storeRaw: Param[bool] = field(default=False, ignore_default=True)
+    storeContents: Param[bool] = field(default=False, ignore_default=True)
     stemmer: Annotated[str, Choices(["porter", "krovetz", "none"])] = "porter"
 
     _index_reader = None

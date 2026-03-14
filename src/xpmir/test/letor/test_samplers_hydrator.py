@@ -1,4 +1,4 @@
-from experimaestro import Param
+from experimaestro import field, Param
 from typing import Iterator, Tuple
 from datamaestro_ir.data import IDTextRecord
 import datamaestro_ir.data as ir
@@ -34,7 +34,7 @@ class FakeTextStore(TextStore):
 
 
 class FakeDocumentStore(ir.DocumentStore):
-    id: Param[str] = ""
+    id: Param[str] = field(default="", ignore_default=True)
 
     def document_ext(self, docid: str) -> ir.IDTextRecord:
         return ir.IDTextRecord(id=docid, text_item=ir.SimpleTextItem(f"D{docid}"))

@@ -1,6 +1,6 @@
 from typing import Optional
 import ir_measures as irm
-from experimaestro import Param
+from experimaestro import field, Param
 from datamaestro_ir.data import Measure as BaseMeasure
 
 
@@ -10,7 +10,7 @@ class Measure(BaseMeasure):
     identifier: Param[str]
     """main identifier"""
 
-    rel: Param[int] = 1
+    rel: Param[int] = field(default=1, ignore_default=True)
     """minimum relevance score to be considered relevant (inclusive)"""
 
     cutoff: Param[Optional[int]]

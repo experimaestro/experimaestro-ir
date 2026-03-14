@@ -8,13 +8,13 @@ from datamaestro_ir.data import (
     SimpleTextItem,
 )
 
-from experimaestro import Param
+from experimaestro import field, Param
 from xpmir.text.encoders import TextEncoder, RepresentationOutput
 
 
 class SampleDocumentStore(DocumentStore):
-    id: Param[str] = ""
-    num_docs: Param[int] = 200
+    id: Param[str] = field(default="", ignore_default=True)
+    num_docs: Param[int] = field(default=200, ignore_default=True)
 
     def __post_init__(self):
         # Generate all the documents
@@ -78,7 +78,7 @@ class SparseRandomTextEncoder(TextEncoder):
 
     map: Dict[str, torch.Tensor]
     dim: Param[int]
-    sparsity: Param[float] = 0.0
+    sparsity: Param[float] = field(default=0.0, ignore_default=True)
 
     def __post_init__(self):
         super().__init__()

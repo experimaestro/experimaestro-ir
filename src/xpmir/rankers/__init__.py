@@ -17,7 +17,6 @@ from typing import (
 from lightning_fabric import is_wrapped
 import torch
 import torch.nn as nn
-import attrs
 from experimaestro import Param, Config, Meta, field
 from datamaestro_ir.data import (
     Documents,
@@ -38,7 +37,6 @@ from xpmir.letor.records import (
     ProductItems,
 )
 from datamaestro_ir.data.base import (
-    SimpleTextItem,
     ScoredDocument,
 )
 
@@ -223,7 +221,7 @@ class DuoLearnableScorer(AbstractModuleScorer):
 class Retriever(Config, ModuleContainer, ABC):
     """A retriever is a model to return top-scored documents given a query"""
 
-    store: Param[Optional[DocumentStore]] = None
+    store: Param[Optional[DocumentStore]] = field(default=None, ignore_default=True)
     """Give the document store associated with this retriever"""
 
     def initialize(self):
@@ -232,7 +230,7 @@ class Retriever(Config, ModuleContainer, ABC):
     def collection(self):
         """Returns the document collection object"""
         raise NotImplementedError()
-    
+
     def retrieve_all(
         self, queries: Dict[str, IDTextRecord]
     ) -> Dict[str, List[ScoredDocument]]:
@@ -251,15 +249,16 @@ class Retriever(Config, ModuleContainer, ABC):
             results[key] = self.retrieve(record)
         return results
 
-
-    #we need to register the "retrieve" method as a foward method for the fabric, otherwise, it will not be able to call it from other processes
+    # we need to register the "retrieve" method as a foward method for the fabric, otherwise, it will not be able to call it from other processes
     def setup_with_fabric(self, fabric):
         # wraps the encoder with the fabric for device management
         super().setup_with_fabric(fabric)
-        
+
         if is_wrapped(self):
-            logger.debug("self is wrapped with Fabric, marking retrieve as a forward method")
-            self.mark_forward_method('retrieve')
+            logger.debug(
+                "self is wrapped with Fabric, marking retrieve as a forward method"
+            )
+            self.mark_forward_method("retrieve")
         else:
             logger.debug(f"{self.__class__.__name__} is not wrapped with Fabric")
 
@@ -291,7 +290,7 @@ class AbstractTwoStageRetriever(Retriever):
     top_k: Param[Optional[int]]
     """The number of returned documents (if None, returns all the documents)"""
 
-    batchsize: Meta[int] = 0
+    batchsize: Meta[int] = field(default=0, ignore_default=True)
     """The batch size for the re-ranker"""
 
     batcher: Meta[Batcher] = field(default_factory=Batcher.C)

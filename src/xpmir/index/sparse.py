@@ -111,7 +111,7 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
     version: Constant[int] = 3
     """Version 3 of the index"""
 
-    max_docs: Param[int] = 0
+    max_docs: Param[int] = field(default=0, ignore_default=True)
     """Maximum number of indexed documents"""
 
     def _execute(self, fabric: Fabric):
@@ -332,7 +332,7 @@ class SparseRetriever(Retriever, Generic[InputType]):
     batchsize: Meta[int]
     """Size of batches (when using retrieve_all)"""
 
-    in_memory: Meta[bool] = False
+    in_memory: Meta[bool] = field(default=False, ignore_default=True)
     """Whether the index should be fully loaded in memory (otherwise, uses
     virtual memory)"""
 
@@ -525,17 +525,17 @@ class SparseRetrieverIndex(AbstractSparseRetrieverIndex):
 
 
 class SparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputType]):
-    in_memory: Meta[bool] = False
+    in_memory: Meta[bool] = field(default=False, ignore_default=True)
     """Whether the index should be fully loaded in memory (otherwise, uses
     virtual memory)"""
 
     index_path: Meta[Path] = field(default_factory=PathGenerator("index"))
 
-    checkpoint_frequency: Meta[int] = 0
+    checkpoint_frequency: Meta[int] = field(default=0, ignore_default=True)
     """Checkpoint frequency (allows recovery at the cost of writing some
     information to disk)"""
 
-    max_postings: Meta[Optional[int]] = None
+    max_postings: Meta[Optional[int]] = field(default=None, ignore_default=True)
     """Number of postings before dumping a term postings to disk"""
 
     fabric_config: Meta[FabricConfiguration] = field(
