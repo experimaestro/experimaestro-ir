@@ -566,6 +566,9 @@ class SparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputType]
         options.checkpoint_frequency = self.checkpoint_frequency
         if self.max_postings is not None:
             options.in_memory_threshold = self.max_postings
+        else:
+            # Default to 128 for effective block-max pruning in search
+            options.in_memory_threshold = 128
 
         # and create the index builder
         self.indexer = impact_index.IndexBuilder(str(self.index_path), options)

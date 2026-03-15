@@ -4,7 +4,7 @@ import logging
 import shutil
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from experimaestro import (
     Config,
@@ -24,6 +24,9 @@ import impact_index
 
 logger = logging.getLogger(__name__)
 
+# Default batch size for parallel text analysis
+DEFAULT_BATCH_SIZE = 10000
+
 
 class BOWSparseRetrieverIndex(Config):
     """A bag-of-words index with BM25 scoring
@@ -37,12 +40,6 @@ class BOWSparseRetrieverIndex(Config):
 
     index_path: Meta[Path]
     """Path to the index directory"""
-
-    stemmer: Param[Optional[str]] = field(default=None, ignore_default=True)
-    """Stemmer to use (e.g. 'snowball')"""
-
-    language: Param[Optional[str]] = field(default=None, ignore_default=True)
-    """Language for stemming (e.g. 'english')"""
 
     def initialize(self, in_memory: bool, model: Model):
         """Initialize the index with scoring model
@@ -60,11 +57,9 @@ class BOWSparseRetrieverIndex(Config):
 
         self.scored_index = index.with_scoring(scoring, doc_meta)
 
-        # Load analyzer for query tokenization
-        self._analyzer = impact_index.TextAnalyzer.load(
-            str(self.index_path.absolute()),
-            stemmer=self.stemmer,
-            language=self.language,
+        # Auto-load analyzer from saved config (stemmer, stop words, etc.)
+        self._analyzer = impact_index.TextAnalyzer.from_index(
+            str(self.index_path.absolute())
         )
 
     def analyze_query(self, text: str) -> Dict[int, float]:
@@ -73,7 +68,7 @@ class BOWSparseRetrieverIndex(Config):
 
     def retrieve(self, query: Dict[int, float], top_k: int) -> List[ScoredDocument]:
         results = []
-        for sd in self.scored_index.search_wand(query, top_k):
+        for sd in self.scored_index.search_maxscore(query, top_k):
             results.append(
                 ScoredDocument(
                     self.documents.document_int(sd.docid),
@@ -125,47 +120,66 @@ class BOWSparseRetrieverIndexBuilder(Task):
 
     Uses impact_index.BOWIndexBuilder to tokenize documents and store
     term frequencies + document lengths for BM25 scoring.
+
+    Defaults match Lucene/Pyserini's EnglishAnalyzer pipeline:
+    - Porter stemmer (original, not Snowball/Porter2)
+    - English stop words (33-word Lucene default)
+    - UAX#29 tokenization with English possessive filter
+    - Block size 128 for effective block-max pruning
     """
 
     documents: Param[DocumentStore]
     """Set of documents to index"""
 
-    stemmer: Param[Optional[str]] = field(default=None, ignore_default=True)
-    """Stemmer to use (e.g. 'snowball')"""
+    stemmer: Param[str] = field(default="porter", ignore_default=True)
+    """Stemmer: 'porter' (Lucene-compatible), 'snowball' (Porter2), or 'none'"""
 
-    language: Param[Optional[str]] = field(default=None, ignore_default=True)
-    """Language for stemming (e.g. 'english')"""
+    language: Param[str] = field(default="english", ignore_default=True)
+    """Language for stemming and stop words"""
 
-    batch_size: Param[int] = field(default=1000, ignore_default=True)
-    """Batch size for progress reporting"""
+    stop_words: Param[bool] = field(default=True, ignore_default=True)
+    """Whether to filter stop words (uses Lucene defaults for the language)"""
+
+    batch_size: Param[int] = field(default=DEFAULT_BATCH_SIZE, ignore_default=True)
+    """Batch size for parallel text analysis"""
 
     max_docs: Param[int] = field(default=0, ignore_default=True)
     """Maximum number of indexed documents (0 = all)"""
 
+    in_memory_threshold: Param[int] = field(default=128, ignore_default=True)
+    """Block size for posting lists (128 = optimal for block-max pruning)"""
+
     index_path: Meta[Path] = field(default_factory=PathGenerator("index"))
     """Path to store the index"""
 
-    version: Constant[int] = 1
-    """Version of the BOW index"""
+    version: Constant[int] = 2
+    """Version 2: Porter stemmer, stop words, batch indexing"""
 
     def execute(self):
         if self.index_path.is_dir():
             shutil.rmtree(self.index_path)
         self.index_path.mkdir(parents=True, exist_ok=True)
 
-        kwargs = {"dtype": "int32"}
-        if self.stemmer is not None:
-            kwargs["stemmer"] = self.stemmer
-        if self.language is not None:
-            kwargs["language"] = self.language
+        # Setup builder options
+        options = impact_index.BuilderOptions()
+        options.in_memory_threshold = self.in_memory_threshold
 
-        builder = impact_index.BOWIndexBuilder(str(self.index_path), **kwargs)
+        builder = impact_index.BOWIndexBuilder(
+            str(self.index_path),
+            options=options,
+            dtype="int32",
+            stemmer=self.stemmer,
+            language=self.language,
+            stop_words=self.stop_words,
+        )
 
         max_docs = self.documents.documentcount
         if self.max_docs:
             max_docs = min(self.max_docs, max_docs or sys.maxsize)
             logger.warning("Limited indexing to %d documents", max_docs)
 
+        # Batch indexing with parallel text analysis
+        batch = []
         with tqdm(
             total=max_docs,
             unit="documents",
@@ -175,8 +189,14 @@ class BOWSparseRetrieverIndexBuilder(Task):
                 if self.max_docs and docid >= max_docs:
                     break
                 text = doc["text_item"].text
-                builder.add_text(docid, text)
-                pb.update()
+                batch.append((docid, text))
+                if len(batch) >= self.batch_size:
+                    builder.add_texts(batch)
+                    pb.update(len(batch))
+                    batch = []
+            if batch:
+                builder.add_texts(batch)
+                pb.update(len(batch))
 
         logger.info("Building the index")
         builder.build(False)
@@ -184,16 +204,9 @@ class BOWSparseRetrieverIndexBuilder(Task):
 
     def task_outputs(self, dep):
         """Returns a BOW index that can be used by a BOWRetriever"""
-        kwargs = {}
-        if self.stemmer is not None:
-            kwargs["stemmer"] = self.stemmer
-        if self.language is not None:
-            kwargs["language"] = self.language
-
         return dep(
             BOWSparseRetrieverIndex.C(
                 index_path=self.index_path,
                 documents=self.documents,
-                **kwargs,
             )
         )
