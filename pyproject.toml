@@ -26,7 +26,7 @@ dependencies = [
     "datamaestro-ir>=2025.7.28",
     "ir_datasets",
     "docstring_parser",
-    "impact-index>=1.0.0",
+    "impact-index>=1.2.0",
     "omegaconf>=2.2",
     "attrs",
     # Information retrieval libraries
