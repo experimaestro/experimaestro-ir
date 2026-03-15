@@ -48,19 +48,16 @@ class BOWSparseRetrieverIndex(Config):
         :param model: The scoring model (BM25)
         """
         index = impact_index.Index.load(str(self.index_path.absolute()), in_memory)
-        doc_meta = impact_index.DocMetadata.load(str(self.index_path.absolute()))
 
         if isinstance(model, BM25):
             scoring = impact_index.BM25Scoring(k1=model.k1, b=model.b)
         else:
             raise ValueError(f"Unsupported model type: {type(model)}")
 
-        self.scored_index = index.with_scoring(scoring, doc_meta)
+        self.scored_index = index.with_scoring(scoring)
 
-        # Auto-load analyzer from saved config (stemmer, stop words, etc.)
-        self._analyzer = impact_index.TextAnalyzer.from_index(
-            str(self.index_path.absolute())
-        )
+        # Auto-load analyzer from the index
+        self._analyzer = index.analyzer()
 
     def analyze_query(self, text: str) -> Dict[int, float]:
         """Tokenize and stem a query string into term IDs"""
