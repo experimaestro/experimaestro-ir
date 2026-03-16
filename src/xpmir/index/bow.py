@@ -149,8 +149,11 @@ class BOWSparseRetrieverIndexBuilder(Task):
     index_path: Meta[Path] = field(default_factory=PathGenerator("index"))
     """Path to store the index"""
 
-    version: Constant[int] = 2
-    """Version 2: Porter stemmer, stop words, batch indexing"""
+    compress: Param[bool] = field(default=True, ignore_default=True)
+    """Whether to compress the index after building (default: True)"""
+
+    version: Constant[int] = 3
+    """Version 3: Porter stemmer, stop words, batch indexing, compression by default"""
 
     def execute(self):
         if self.index_path.is_dir():
@@ -198,6 +201,19 @@ class BOWSparseRetrieverIndexBuilder(Task):
         logger.info("Building the index")
         builder.build(False)
         logger.info("BOW index built")
+
+        if self.compress:
+            logger.info("Compressing the index")
+            raw_index = impact_index.Index.load(str(self.index_path), False)
+            compressed_path = self.index_path.with_name(
+                self.index_path.name + "_compressed"
+            )
+            raw_index.compress(str(compressed_path))
+
+            # Replace uncompressed index with compressed one
+            shutil.rmtree(self.index_path)
+            compressed_path.rename(self.index_path)
+            logger.info("Index compressed")
 
     def task_outputs(self, dep):
         """Returns a BOW index that can be used by a BOWRetriever"""

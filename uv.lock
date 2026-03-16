@@ -919,7 +919,7 @@ requires-dist = [
     { name = "datamaestro-ir", editable = "datamaestro-ir" },
     { name = "docstring-parser" },
     { name = "experimaestro", specifier = ">=2.0.6" },
-    { name = "impact-index", specifier = ">=1.0.0" },
+    { name = "impact-index", specifier = ">=1.2.0" },
     { name = "ir-datasets" },
     { name = "ir-measures", specifier = ">=0.3.3" },
     { name = "omegaconf", specifier = ">=2.2" },
@@ -1493,13 +1493,30 @@ wheels = [
 
 [[package]]
 name = "impact-index"
-version = "1.0.0"
+version = "1.2.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/06/1c/95e1baca8e1f95617628996e6911fd809aa2ed64da38bff5a6c533246a98/impact_index-1.0.0.tar.gz", hash = "sha256:787dbe17a6941449f819250f365c1f14579fbda7ffac18dbf989e86911afb8c2", size = 1109517, upload-time = "2026-03-14T09:43:51.848Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7f/2c/192e57d3923e882950ab50bac7a8155f93bd4fa040fd347f7d535e7318f5/impact_index-1.2.0.tar.gz", hash = "sha256:877640bfd71558c312480bd5818a2cb8e419ffd03d0656e817a9e2664f357b07", size = 1165781, upload-time = "2026-03-15T20:19:42.883Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1b/76/65d1cfb4aa6560adc3164353cd57aee29de35feb73f89c7252617c00db3e/impact_index-1.0.0-cp314-cp314-macosx_10_12_x86_64.whl", hash = "sha256:e77d70c905c6e72c50021c0375be5ebaec5b6d05b916b0ccf1a30601bb118a25", size = 2079309, upload-time = "2026-03-14T09:43:45.576Z" },
-    { url = "https://files.pythonhosted.org/packages/6e/bd/413bdc08c0497c36700b2f46d99a12109389609f7d7e6ff783b0abbe34d6/impact_index-1.0.0-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:8074225a8b4a916f752344b35f6f7bea2a851ab439fa3902c5acd610c58c424f", size = 1903772, upload-time = "2026-03-14T09:43:47.348Z" },
-    { url = "https://files.pythonhosted.org/packages/59/7f/fa9cdb0b66531fabef8a68d9b830a03769247029bcb7ba71ef2017207246/impact_index-1.0.0-cp314-cp314-win_amd64.whl", hash = "sha256:47471b7c63e45896acfdcf63c12a5aa34e37e32447f716f9afe1f7ddb640d51d", size = 1752274, upload-time = "2026-03-14T09:43:48.911Z" },
+    { url = "https://files.pythonhosted.org/packages/c7/61/fed5b9b3860a6867e15596c9490998e106b1075e03ca7a4d780827edd92c/impact_index-1.2.0-cp310-cp310-macosx_10_12_x86_64.whl", hash = "sha256:9e96687d0d30220737e06140f28d495c9c4ec9f05c34a6ec5d2c0504a2f61ac3", size = 2380974, upload-time = "2026-03-15T20:19:09.31Z" },
+    { url = "https://files.pythonhosted.org/packages/e7/20/67225f8b069c47b7960bf81de547081a862ab896c88ab92e2378cb870abb/impact_index-1.2.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:bd8dcf8703953f77e48d87fd5e25c8ca943bcacb07c8c0dd176bb2800f39535f", size = 2196439, upload-time = "2026-03-15T20:19:11.047Z" },
+    { url = "https://files.pythonhosted.org/packages/58/ff/3268fb52bf38cd2382c6a17bebe5a7484e99d8b44c3f6445febe09268f0e/impact_index-1.2.0-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:0d79f8a1266fb378ada5c61cc9cb3e8247993b9af9abf9bd6a7d6b950a4fe79b", size = 2638406, upload-time = "2026-03-15T20:19:12.454Z" },
+    { url = "https://files.pythonhosted.org/packages/5b/f3/be40a9ea985d98eda6d2218e36b1e8fe05d7fc0108e73357282d5524360b/impact_index-1.2.0-cp310-cp310-win_amd64.whl", hash = "sha256:296e03361abcb7cfe9e174f9bd097b7e36daebfdd6cd5dbed7935ab3838aea36", size = 2008798, upload-time = "2026-03-15T20:19:14.125Z" },
+    { url = "https://files.pythonhosted.org/packages/a8/69/9b6d2508cea3f68e06dfce9be973b69917ba2fa8e1b0d0b9ec895968c762/impact_index-1.2.0-cp311-cp311-macosx_10_12_x86_64.whl", hash = "sha256:7e43e4b651e5081d16fb8dcd2a8ca6daff9ab4cbdaab555c11c1a135b0e53922", size = 2381142, upload-time = "2026-03-15T20:19:15.532Z" },
+    { url = "https://files.pythonhosted.org/packages/7b/ea/6731ad219953ee268897903c57db6ce5f39c7633bce55d32ff77fc97879e/impact_index-1.2.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:5d8badb5e677392032e373ac7420e25f13872ed317dc94ca9c3a57a17d118fd5", size = 2196802, upload-time = "2026-03-15T20:19:16.871Z" },
+    { url = "https://files.pythonhosted.org/packages/59/55/f3ff6a4924b2857200472b45e06f8beb9550bc772b939689128a14ca82d6/impact_index-1.2.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:09a2da6572611be246d9221df549d36a2d5a0f7b2d7d89e5d72249b4a4bbfe95", size = 2638352, upload-time = "2026-03-15T20:19:18.426Z" },
+    { url = "https://files.pythonhosted.org/packages/1b/36/b55b3817a6ae1e86baf94248931e1c5d0b9853283f0bb9fe98c565385b5b/impact_index-1.2.0-cp311-cp311-win_amd64.whl", hash = "sha256:d40df481ba70d47826bb88706e9335d25d001b8f9711e0ee7e034133cf0e19e9", size = 2008841, upload-time = "2026-03-15T20:19:20.303Z" },
+    { url = "https://files.pythonhosted.org/packages/06/0a/1102667cd7a587dc85740d728497132268360f9f35e4fbbcf929b7d8dfd4/impact_index-1.2.0-cp312-cp312-macosx_10_12_x86_64.whl", hash = "sha256:131b3acff9c0ae1284371ac4bebbdff05cfbe1a5cf135c1fda99e63410de49cc", size = 2376217, upload-time = "2026-03-15T20:19:22.45Z" },
+    { url = "https://files.pythonhosted.org/packages/03/18/f974d834b6886bb2218a890f36fb5dd5c9f04667d65dc5fc06c79f4a82ea/impact_index-1.2.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:b118f3b7bf1493ba3b15a7b38612a81ca000268f7b5928c3081b9f0702afb5d1", size = 2194081, upload-time = "2026-03-15T20:19:24.438Z" },
+    { url = "https://files.pythonhosted.org/packages/70/78/80bc283a09452e91a523000f9284231f5ca6e5115cda656a0784d949e9a2/impact_index-1.2.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:02496228169d2c2d64ef2a302a3b396b616f81533f9db4ae25de8fb935860e48", size = 2636994, upload-time = "2026-03-15T20:19:26.148Z" },
+    { url = "https://files.pythonhosted.org/packages/95/e3/e8171a2d9fa5c887be0d863f0f90488c7b94eff2f6be986b7dbd3cf422b1/impact_index-1.2.0-cp312-cp312-win_amd64.whl", hash = "sha256:d33d3e1bd6ee9049431d1b845e8c082646316ac3c3038abb98e4d51d7e18d0fc", size = 2010885, upload-time = "2026-03-15T20:19:27.876Z" },
+    { url = "https://files.pythonhosted.org/packages/e9/39/8f94a7b20f80bfdfa4c53cf06299351c284ca75925b1c3ed5683e35a96c8/impact_index-1.2.0-cp313-cp313-macosx_10_12_x86_64.whl", hash = "sha256:19a2d3523460d8c6eecf132719a857e42ae9adbece08870d442ee66e1d0399cc", size = 2375238, upload-time = "2026-03-15T20:19:29.556Z" },
+    { url = "https://files.pythonhosted.org/packages/03/15/8fa86d873c8c2a565654b167278f7df541482a4d78243ce38f4ff13872b5/impact_index-1.2.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:6e7f2dfd061f04210ff368d086baf0d1b319cadf951eeba80e7ce28ff381e435", size = 2192909, upload-time = "2026-03-15T20:19:31.396Z" },
+    { url = "https://files.pythonhosted.org/packages/6a/b3/e2d0d8cfacae70da6fbaa3b9fa3bb509a43070a4c50a38922be79775cf2f/impact_index-1.2.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:cb71666e2d06a4ccbd37624d5a36a183420586c0fa802812c2bfc2dbe5367aa9", size = 2636057, upload-time = "2026-03-15T20:19:33.085Z" },
+    { url = "https://files.pythonhosted.org/packages/13/86/dd2380fa7e394839d6e36f2cd81200a3052559f0bc7db57d65f30b1ae936/impact_index-1.2.0-cp313-cp313-win_amd64.whl", hash = "sha256:e33d5a16e1d7f9c81bbed8752e0ce78202fb3fdd96d8c65261a7d8e15e2df416", size = 2010646, upload-time = "2026-03-15T20:19:34.838Z" },
+    { url = "https://files.pythonhosted.org/packages/5c/04/78b48d30f90df324177ec5da97bbf029d0ae2c8988a497258ca7dc382a6e/impact_index-1.2.0-cp314-cp314-macosx_10_12_x86_64.whl", hash = "sha256:06c1d90e71c33c25e7f8129cfa81c4d92421561d6aef2add23ca7e97b577e601", size = 2378405, upload-time = "2026-03-15T20:19:36.743Z" },
+    { url = "https://files.pythonhosted.org/packages/9b/42/0c2cd663dfd3e1e6645ae00ada52b616ff8928af2ec74476a976651431aa/impact_index-1.2.0-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:c53f335c3a1a08fbde7453a35383624addef9743d88bcdbfabf395ee19efb40e", size = 2194625, upload-time = "2026-03-15T20:19:38.17Z" },
+    { url = "https://files.pythonhosted.org/packages/3c/3e/f14bbefc02375399a25aa6c6a2850fd167a9c5ca2d0933aad7e29c156d94/impact_index-1.2.0-cp314-cp314-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:787619b112e071e342f1d1f89d9bfb7663b939107b9b3b805cdcbfcf34a90ef8", size = 2634967, upload-time = "2026-03-15T20:19:39.483Z" },
+    { url = "https://files.pythonhosted.org/packages/e5/ec/f4d7b9fa0114f9173164a5aea653761981ea04b9f2d3eee866851ab89f2e/impact_index-1.2.0-cp314-cp314-win_amd64.whl", hash = "sha256:efcfd1426ababc015ed4537d0f82ab4230c3ab9d3f86e199f66af8810e5317c2", size = 2012365, upload-time = "2026-03-15T20:19:41.042Z" },
 ]
 
 [[package]]
