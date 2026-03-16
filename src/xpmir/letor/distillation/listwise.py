@@ -5,14 +5,13 @@ import torch
 from torch import nn, Tensor
 from experimaestro import Config, Param, field
 import torch.nn.functional as F
-from xpmir.rankers import ScorerOutputType
 from xpmir.text import TokenizedTexts
 from xpmir.letor.records import (
     PointwiseItem,
     PointwiseItems,
 )
 from xpm_torch.trainers import TrainerContext, LossTrainer
-from xpm_torch.losses import Loss
+from xpm_torch.losses import Loss, ModuleOutputType
 
 from .samplers import ListwiseDistillationSample
 import numpy as np
@@ -166,9 +165,9 @@ class ListwiseSoftmaxCrossEntropy(DistillationListwiseLoss):
     def initialize(self, ranker: AbstractModuleScorer):
         super().initialize(ranker)
         self.normalize = {
-            ScorerOutputType.REAL: lambda x: F.log_softmax(x, -1),
-            ScorerOutputType.LOG_PROBABILITY: lambda x: x,
-            ScorerOutputType.PROBABILITY: lambda x: x.log(),
+            ModuleOutputType.REAL: lambda x: F.log_softmax(x, -1),
+            ModuleOutputType.LOG_PROBABILITY: lambda x: x,
+            ModuleOutputType.PROBABILITY: lambda x: x.log(),
         }[ranker.outputType]
 
     def compute(
