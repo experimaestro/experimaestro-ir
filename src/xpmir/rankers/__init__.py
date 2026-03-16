@@ -1,7 +1,6 @@
 # This package contains all rankers
 from abc import ABC, abstractmethod
 from experimaestro import tqdm
-from enum import Enum
 from typing import (
     Dict,
     Generic,
@@ -29,7 +28,7 @@ from xpm_torch.utils.utils import Initializable
 from xpm_torch.utils.logging import EasyLogger
 from xpm_torch.batchers import Batcher
 from xpm_torch.learner import TrainerContext
-
+from xpm_torch.losses import ModuleOutputType
 from xpmir.letor.records import (
     BaseItems,
     PairwiseItem,
@@ -48,24 +47,13 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class ScorerOutputType(Enum):
-    REAL = 0
-    """An unbounded scalar value"""
-
-    LOG_PROBABILITY = 1
-    """A log probability, bounded by 0"""
-
-    PROBABILITY = 2
-    """A probability, in ]0,1["""
-
-
 class Scorer(Config, Initializable, EasyLogger, ABC):
     """Query-document scorer
 
     A model able to give a score to a list of documents given a query
     """
 
-    outputType: ScorerOutputType = ScorerOutputType.REAL
+    outputType: ModuleOutputType = ModuleOutputType.REAL
     """Determines the type of output scalar (log probability, probability, logit) """
 
     def __initialize__(self):
