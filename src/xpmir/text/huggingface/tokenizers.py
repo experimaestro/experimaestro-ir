@@ -37,7 +37,7 @@ def get_default_max_len(model_id: str) -> int:
     return hf_config.get("max_position_embeddings", 512)
 
 
-HFTokenizerInput = Union[List[str], List[Tuple[str, str]]]
+HFTokenizerInput = Union[str, List[str], List[Tuple[str, str]]]
 
 
 class HFTokenizer(Config, Initializable):
