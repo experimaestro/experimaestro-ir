@@ -28,7 +28,6 @@ For the development version, you can:
 ## What's inside?
 
 - Collection management (using datamaestro)
-    - Interface for the [IR datasets library](https://ir-datasets.com/)
     - Splitting IR datasets
     - Shuffling training triplets
 - Representation
