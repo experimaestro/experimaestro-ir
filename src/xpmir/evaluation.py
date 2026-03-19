@@ -190,7 +190,7 @@ class Evaluate(BaseEvaluation, Task):
 class RetrieverFactory(Protocol):
     """Generates a retriever for a given dataset"""
 
-    def __call__(self, dataset: Documents) -> Retriever: ...
+    def __call__(self, dataset: Documents, key:str = None) -> Retriever: ...
 
 
 class Evaluations:
@@ -232,16 +232,7 @@ class Evaluations:
         :param retriever: the retriever (or the retriever factory)
         """
         if not isinstance(retriever, Retriever):
-            kwargs = {}
-            sig = inspect.signature(retriever)
-            kw_only = set(
-                name
-                for name, p in sig.parameters.items()
-                if p.kind == inspect.Parameter.KEYWORD_ONLY
-            )
-            if "key" in kw_only:
-                kwargs["key"] = key
-            retriever = retriever(self.dataset.documents, **kwargs)
+            retriever = retriever(self.dataset.documents, key=key)
 
         task = Evaluate.C(
             retriever=retriever,

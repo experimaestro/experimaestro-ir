@@ -117,6 +117,7 @@ def scorer_retriever(
     *,
     retrievers: "RetrieverFactory",
     scorer: Scorer,
+    key:str=None,
     **kwargs,
 ):
     """Helper function that returns a two stage retriever. This is useful
@@ -129,7 +130,7 @@ def scorer_retriever(
     """
     assert retrievers is not None, "The retrievers have not been given"
     assert scorer is not None, "The scorer has not been given"
-    return scorer.getRetriever(retrievers(documents), **kwargs)
+    return scorer.getRetriever(retrievers(documents, key=key), **kwargs)
 
 
 class RandomScorer(Scorer):
