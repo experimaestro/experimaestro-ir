@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import List, Optional
 from attrs import evolve
 import torch
@@ -205,6 +206,23 @@ class DotDense(Dense):
     def encode_documents(self, records: List[IDTextRecord]):
         """Encode the different documents"""
         return self.encoder(records)
+
+    def save_model(self, path: Path):
+        """Save sub-encoders independently to subdirectories."""
+        path.mkdir(parents=True, exist_ok=True)
+        self.encoder.save_model(path / "encoder")
+        if self.query_encoder is not None and self.query_encoder is not self.encoder:
+            self._query_encoder.save_model(path / "query_encoder")
+
+    def load_model(self, path: Path):
+        """Load sub-encoders from subdirectories, with backward compat."""
+        if (path / "encoder").exists():
+            self.encoder.load_model(path / "encoder")
+            if (path / "query_encoder").exists() and self.query_encoder is not None:
+                self._query_encoder.load_model(path / "query_encoder")
+        else:
+            # Backward compat: flat state_dict
+            super().load_model(path)
 
 
 def dual_representation_metrics(

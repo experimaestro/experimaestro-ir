@@ -713,7 +713,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "attrs" },
-    { name = "datamaestro", specifier = ">=1.8.3" },
+    { name = "datamaestro", specifier = ">=1.9.3" },
     { name = "experimaestro", specifier = ">=2.0.0" },
     { name = "typing-extensions" },
 ]
@@ -6116,6 +6116,7 @@ source = { editable = "xpm-torch" }
 dependencies = [
     { name = "experimaestro" },
     { name = "lightning" },
+    { name = "safetensors" },
     { name = "setuptools" },
     { name = "tensorboard" },
     { name = "torchdata" },
@@ -6125,6 +6126,7 @@ dependencies = [
 requires-dist = [
     { name = "experimaestro", specifier = ">=2.0.7" },
     { name = "lightning", specifier = ">=2.4" },
+    { name = "safetensors", specifier = ">=0.4" },
     { name = "setuptools", specifier = "<82.0" },
     { name = "tensorboard", specifier = ">=2.19.0" },
     { name = "torchdata", specifier = ">=0.10" },

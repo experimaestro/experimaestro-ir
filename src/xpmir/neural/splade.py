@@ -1,3 +1,5 @@
+import copy
+from pathlib import Path
 from typing import Optional, Generic
 from experimaestro import field, Config, Param
 import torch.nn as nn
@@ -145,6 +147,33 @@ class SpladeTextEncoder(
 
         value = self.aggregation(self.encoder(tokenized).logits, tokenized.mask)
         return TextsRepresentationOutput(value, tokenized)
+
+    def save_model(self, path: Path):
+        """Save the HF model in standard pretrained format (safetensors + config + tokenizer)."""
+        path.mkdir(parents=True, exist_ok=True)
+        hf_model = self.encoder.model
+        # Shallow copy to restore output embeddings without affecting the live model
+        model_copy = copy.copy(hf_model)
+        model_copy._modules = dict(model_copy._modules)
+        model_copy.set_output_embeddings(self.aggregation.linear)
+        model_copy.save_pretrained(path)
+        self.tokenizer.tokenizer.tokenizer.save_pretrained(path)
+
+    def load_model(self, path: Path):
+        """Load from HF pretrained format, or fall back to safetensors/pth."""
+        config_path = path / "config.json"
+        if config_path.exists():
+            from transformers import AutoModelForMaskedLM
+
+            loaded = AutoModelForMaskedLM.from_pretrained(path)
+            output_linear = loaded.get_output_embeddings()
+            loaded.set_output_embeddings(
+                IdentityWithBias(original_linear=output_linear)
+            )
+            self.encoder.model = loaded
+            self.aggregation.linear = output_linear
+        else:
+            super().load_model(path)
 
     @property
     def dimension(self):
