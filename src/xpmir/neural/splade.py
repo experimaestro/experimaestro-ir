@@ -15,13 +15,13 @@ from xpmir.text.encoders import (
     TextsRepresentationOutput,
 )
 from xpmir.neural.dual import DotDense, ScheduledFlopsRegularizer
-from xpmir.neural.sentence_transformers import SentenceTransformerModelMixin
+from xpmir.neural.sentence_transformers import SentenceTransformerLoaderMixin
 from xpmir.text.huggingface.base import (
     HFConfigID,
     HFMaskedLanguageModel,
     HFModelInitFromID,
 )
-from xpm_torch.module import initialized
+from xpm_torch.module import initialized, ModuleLoader
 import logging
 
 logger = logging.getLogger(__name__)
@@ -184,13 +184,25 @@ class SpladeTextEncoder(
         return False
 
 
-class SpladeScorer(SentenceTransformerModelMixin, DotDense):
+class SpladeModuleLoader(SentenceTransformerLoaderMixin, ModuleLoader):
+    """ModuleLoader that adds ST SparseEncoder configs on Hub export.
+
+    Inherits :class:`~xpmir.neural.sentence_transformers.SentenceTransformerLoaderMixin`
+    which provides :meth:`write_hub_extras` and :meth:`hub_readme_extra`.
+    These are only called during HF Hub export, not during checkpoint saving.
+    """
+
+
+class SpladeScorer(DotDense):
     """DotDense subclass for SPLADE models.
 
-    Inherits :class:`~xpmir.neural.sentence_transformers.SentenceTransformerModelMixin`
-    to write ST SparseEncoder config files and README instructions
+    Overrides :meth:`loader_config` to return :class:`SpladeModuleLoader`,
+    which writes ST SparseEncoder config files and README instructions
     when exporting to HuggingFace Hub.
     """
+
+    def loader_config(self, path: Path) -> SpladeModuleLoader:
+        return SpladeModuleLoader.C(value=self, path=path)
 
 
 def _splade(

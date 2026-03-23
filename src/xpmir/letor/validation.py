@@ -28,7 +28,8 @@ class ValidationModuleLoader(LightweightTask):
     """Wrapper around a ModuleLoader for validation checkpoints.
 
     Holds validation metadata (listener, key) and delegates loading
-    to the inner loader (produced by ``Module.loader_config``).
+    and Hub export hooks to the inner loader (produced by
+    ``Module.loader_config``).
     """
 
     loader: Param[ModuleLoader]
@@ -48,6 +49,12 @@ class ValidationModuleLoader(LightweightTask):
 
     def execute(self):
         self.loader.execute()
+
+    def write_hub_extras(self, save_directory):
+        self.loader.write_hub_extras(save_directory)
+
+    def hub_readme_extra(self) -> str:
+        return self.loader.hub_readme_extra()
 
 
 class ValidationListener(LearnerListener):

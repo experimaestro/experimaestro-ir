@@ -1,29 +1,30 @@
-"""Mixin for models compatible with the sentence-transformers library.
+"""Mixin for ModuleLoader subclasses that produce sentence-transformers
+compatible checkpoints on HuggingFace Hub export.
 
-Models that inherit from :class:`SentenceTransformerModelMixin` will
-automatically write sentence-transformers config files when exported
-to HuggingFace Hub, and include ST loading instructions in the README.
+Loaders that inherit from :class:`SentenceTransformerLoaderMixin` will
+automatically write ST config files via
+:meth:`~xpm_torch.module.ModuleLoader.write_hub_extras` and append ST
+loading instructions via
+:meth:`~xpm_torch.module.ModuleLoader.hub_readme_extra`.
 """
 
 import json
 from pathlib import Path
 
 
-class SentenceTransformerModelMixin:
-    """Mixin that adds sentence-transformers compatibility on HF Hub export.
+class SentenceTransformerLoaderMixin:
+    """Mixin for ModuleLoader subclasses that adds sentence-transformers
+    compatibility on HF Hub export.
 
-    Provides :meth:`write_hub_extras` to write ST config files and
-    :meth:`hub_readme_extra` to append ST loading instructions to the README.
-
-    Subclasses should set :attr:`st_model_type` (default: ``"SparseEncoder"``)
+    Subclasses can set :attr:`st_model_type` (default: ``"SparseEncoder"``)
     and :attr:`st_similarity` (default: ``"dot"``).
     """
 
     st_model_type: str = "SparseEncoder"
-    """The sentence-transformers model type (e.g. ``"SparseEncoder"``)."""
+    """The sentence-transformers model type."""
 
     st_similarity: str = "dot"
-    """The similarity function name (e.g. ``"dot"``, ``"cosine"``)."""
+    """The similarity function name."""
 
     def write_hub_extras(self, save_directory: Path):
         """Write sentence-transformers config files for HF Hub export."""
