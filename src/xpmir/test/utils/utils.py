@@ -9,7 +9,12 @@ from datamaestro_ir.data import (
 )
 
 from experimaestro import field, Param
-from xpmir.text.encoders import TextEncoderBase, TextsRepresentationOutput
+from xpmir.text.encoders import (
+    RepresentationOutput,
+    TextEncoder,
+    TextEncoderBase,
+    TextsRepresentationOutput,
+)
 
 
 class SampleDocumentStore(DocumentStore):
@@ -105,3 +110,33 @@ class SparseRandomTextEncoder(TextEncoderBase[str, TextsRepresentationOutput]):
         ]
 
         return TextsRepresentationOutput(torch.cat(tensors), tokenized=None)
+
+
+class DenseRandomTextEncoder(TextEncoder):
+    """Random text encoder returning dense torch.Tensor (for FAISS tests)."""
+
+    MAPS: ClassVar[Dict[Tuple[int, float], Dict[str, torch.Tensor]]] = {}
+
+    map: Dict[str, torch.Tensor]
+    dim: Param[int]
+
+    def __post_init__(self):
+        super().__init__()
+        if (self.dim, 0.0) not in DenseRandomTextEncoder.MAPS:
+            DenseRandomTextEncoder.MAPS[(self.dim, 0.0)] = defaultdict(
+                VectorGenerator(self.dim, 0.0)
+            )
+        self.map = DenseRandomTextEncoder.MAPS[(self.dim, 0.0)]
+
+    @property
+    def dimension(self):
+        return self.dim
+
+    def forward(self, texts: List[str]) -> RepresentationOutput:
+        tensors = [
+            self.map[
+                check_str(text["text_item"].text if isinstance(text, dict) else text)
+            ].unsqueeze(0)
+            for text in texts
+        ]
+        return RepresentationOutput(torch.cat(tensors))
