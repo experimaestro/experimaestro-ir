@@ -6,7 +6,7 @@ import torch
 from experimaestro import field, Config, Param
 
 from xpm_torch.utils.utils import Initializable
-from xpm_torch.utils.huggingface import get_hf_config
+from xpm_torch.huggingface import get_hf_config
 
 from xpmir.utils.convert import Converter
 from xpmir.text.tokenizers import (

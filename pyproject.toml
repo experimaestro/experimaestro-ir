@@ -54,6 +54,7 @@ documentation = [
     "Sphinx>6",
     "myst-parser",
     "mock",
+    "sphinx-codeautolink>=0.15",
     "sphinx-toolbox",
     "sphinx-rtd-theme>=3",
     "sphobjinv"

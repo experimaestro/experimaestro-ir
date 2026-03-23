@@ -109,6 +109,16 @@ class IRExperimentHelper(LearningExperimentHelper):
             self.xp.wait()
 
             if isinstance(results, PaperResults) and self.xp.run_mode == RunMode.NORMAL:
+                # Save serializable results for later CLI upload
+                try:
+                    training_results = results.to_training_results()
+                    self.xp.save(training_results, "xpm-torch-models")
+                except Exception:
+                    logging.warning(
+                        "Could not save training results for CLI upload",
+                        exc_info=True,
+                    )
+
                 if upload_to_hub is not None:
                     if configuration.title == "" and configuration.description == "":
                         doc = docstring_parser.parse(self.callable.__doc__)

@@ -5,7 +5,7 @@ import numpy as np
 from typing import Dict, Iterator, List
 from collections import defaultdict
 from numpy import mean
-from experimaestro import Param, pathgenerator, Annotated, field
+from experimaestro import LightweightTask, Param, pathgenerator, Annotated, field
 from datamaestro_ir.data import Adhoc
 
 from xpm_torch.optim import ModuleLoader
@@ -24,8 +24,15 @@ from xpmir.rankers import Retriever
 logger = logging.getLogger(__name__)
 
 
-class ValidationModuleLoader(ModuleLoader):
-    """Specializes the validation listener"""
+class ValidationModuleLoader(LightweightTask):
+    """Wrapper around a ModuleLoader for validation checkpoints.
+
+    Holds validation metadata (listener, key) and delegates loading
+    to the inner loader (produced by ``Module.loader_config``).
+    """
+
+    loader: Param[ModuleLoader]
+    """The actual loader (from loader_config)"""
 
     listener: Param["LearnerListener"] = field(ignore_generated=True)
     """The listener (kept there to change the validation loader identifier based
@@ -33,6 +40,14 @@ class ValidationModuleLoader(ModuleLoader):
 
     key: Param[str]
     """The key for this listener"""
+
+    @property
+    def value(self):
+        """The model config (delegates to the inner loader)."""
+        return self.loader.value
+
+    def execute(self):
+        self.loader.execute()
 
 
 class ValidationListener(LearnerListener):
@@ -113,10 +128,9 @@ class ValidationListener(LearnerListener):
         return {
             key: dep(
                 ValidationModuleLoader.C(
-                    value=learner.model,
+                    loader=learner.model.loader_config(self.bestpath / key),
                     listener=self,
                     key=key,
-                    path=self.bestpath / key / TrainState.MODEL_PATH,
                 )
             )
             for key, store in self.metrics.items()
@@ -279,10 +293,9 @@ class AggregatorValidationListener(LearnerListener):
         return {
             key: dep(
                 ValidationModuleLoader.C(
-                    value=learner.model,
+                    loader=learner.model.loader_config(self.bestpath / key),
                     listener=self,
                     key=key,
-                    path=self.bestpath / key / TrainState.MODEL_PATH,
                 )
             )
             for key, store in self.metrics.items()

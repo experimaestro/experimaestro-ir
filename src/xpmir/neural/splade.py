@@ -1,4 +1,5 @@
 import copy
+import json
 from pathlib import Path
 from typing import Optional, Generic
 from experimaestro import field, Config, Param
@@ -183,6 +184,93 @@ class SpladeTextEncoder(
         return False
 
 
+class SpladeScorer(DotDense):
+    """DotDense subclass for SPLADE models.
+
+    Provides :meth:`write_hub_extras` to write sentence-transformers
+    SparseEncoder config files when exporting to HuggingFace Hub.
+    """
+
+    def write_hub_extras(self, save_directory: Path):
+        """Write ST SparseEncoder config files for HF Hub export.
+
+        Called by :class:`~xpmir.models.XPMIRHFHub` after serialization.
+        """
+        # Read vocab_size from the saved encoder config
+        model_dir = save_directory / "model"
+        encoder_dir = (
+            model_dir / "encoder" if (model_dir / "encoder").exists() else model_dir
+        )
+        config_path = encoder_dir / "config.json"
+        vocab_size = None
+        if config_path.exists():
+            with open(config_path) as f:
+                vocab_size = json.load(f).get("vocab_size")
+
+        has_query_encoder = (model_dir / "query_encoder").exists()
+
+        # modules.json
+        if has_query_encoder:
+            modules = [
+                {
+                    "idx": 0,
+                    "name": "0",
+                    "path": "encoder",
+                    "type": "sentence_transformers.models.SparseEncoder",
+                },
+            ]
+        else:
+            modules = [
+                {
+                    "idx": 0,
+                    "name": "0",
+                    "path": "",
+                    "type": "sentence_transformers.models.SparseEncoder",
+                },
+                {
+                    "idx": 1,
+                    "name": "1_SpladePooling",
+                    "path": "1_SpladePooling",
+                    "type": "sentence_transformers.models.SpladePooling",
+                },
+            ]
+
+        (save_directory / "modules.json").write_text(json.dumps(modules, indent=2))
+
+        # config_sentence_transformers.json
+        st_config = {
+            "prompts": {},
+            "default_prompt_name": None,
+            "similarity_fn_name": "dot",
+            "model_type": "SparseEncoder",
+        }
+        (save_directory / "config_sentence_transformers.json").write_text(
+            json.dumps(st_config, indent=2)
+        )
+
+        # sentence_bert_config.json (for compat)
+        sb_config = {
+            "max_seq_length": 256,
+            "do_lower_case": False,
+        }
+        (save_directory / "sentence_bert_config.json").write_text(
+            json.dumps(sb_config, indent=2)
+        )
+
+        if not has_query_encoder:
+            # Symmetric model: add SpladePooling config
+            pooling_dir = save_directory / "1_SpladePooling"
+            pooling_dir.mkdir(exist_ok=True)
+            pooling_config = {
+                "pooling_strategy": "max",
+                "activation_function": "log1p_relu",
+                "word_embedding_dimension": vocab_size,
+            }
+            (pooling_dir / "config.json").write_text(
+                json.dumps(pooling_config, indent=2)
+            )
+
+
 def _splade(
     lambda_q: float,
     lambda_d: float,
@@ -208,7 +296,7 @@ def _splade(
     )
 
     return (
-        DotDense.C(encoder=doc_encoder, query_encoder=query_encoder),
+        SpladeScorer.C(encoder=doc_encoder, query_encoder=query_encoder),
         ScheduledFlopsRegularizer.C(
             lambda_q=lambda_q,
             lambda_d=lambda_d,
@@ -242,7 +330,7 @@ def _splade_doc(
     query_encoder = OneHotHuggingFaceEncoder.C(model_id=hf_id, maxlen=30)
 
     return (
-        DotDense.C(encoder=doc_encoder, query_encoder=query_encoder),
+        SpladeScorer.C(encoder=doc_encoder, query_encoder=query_encoder),
         ScheduledFlopsRegularizer.C(
             lambda_q=lambda_q,
             lambda_d=lambda_d,

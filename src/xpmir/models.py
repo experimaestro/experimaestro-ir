@@ -10,6 +10,7 @@ from xpm_torch import ModuleLoader
 import importlib
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -34,6 +35,10 @@ class XPMIRHFHub(ExperimaestroHFHub):
     def _save_pretrained(self, save_directory: Union[str, Path]):
         save_directory = Path(save_directory)
         super()._save_pretrained(save_directory)
+
+        # Let the config write format-specific extras (e.g. ST configs)
+        self.config.write_hub_extras(save_directory)
+
         if self.readme:
             (save_directory / "README.md").write_text(self.readme)
 
