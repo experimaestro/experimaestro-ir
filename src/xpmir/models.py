@@ -39,8 +39,13 @@ class XPMIRHFHub(ExperimaestroHFHub):
         # Let the config write format-specific extras (e.g. ST configs)
         self.config.write_hub_extras(save_directory)
 
-        if self.readme:
-            (save_directory / "README.md").write_text(self.readme)
+        # Build README: base content + model-specific extras
+        readme = self.readme or ""
+        extra = self.config.hub_readme_extra()
+        if extra:
+            readme = readme + "\n" + extra if readme else extra
+        if readme:
+            (save_directory / "README.md").write_text(readme)
 
         if self.tb_logs:
             runs_dir = save_directory / "runs"
