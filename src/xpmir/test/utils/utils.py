@@ -9,7 +9,7 @@ from datamaestro_ir.data import (
 )
 
 from experimaestro import field, Param
-from xpmir.text.encoders import TextEncoder, RepresentationOutput
+from xpmir.text.encoders import TextEncoderBase, TextsRepresentationOutput
 
 
 class SampleDocumentStore(DocumentStore):
@@ -72,7 +72,7 @@ def check_str(x: Any):
     return x
 
 
-class SparseRandomTextEncoder(TextEncoder):
+class SparseRandomTextEncoder(TextEncoderBase[str, TextsRepresentationOutput]):
     # A default dict to always return the same embeddings
     MAPS: ClassVar[Dict[Tuple[int, float], Dict[str, torch.Tensor]]] = {}
 
@@ -94,7 +94,7 @@ class SparseRandomTextEncoder(TextEncoder):
     def dimension(self):
         return self.dim
 
-    def forward(self, texts: List[str]) -> torch.Tensor:
+    def forward(self, texts: List[str]) -> TextsRepresentationOutput:
         """Returns a matrix encoding the provided texts"""
 
         tensors = [
@@ -104,4 +104,4 @@ class SparseRandomTextEncoder(TextEncoder):
             for text in texts
         ]
 
-        return RepresentationOutput(torch.cat(tensors))
+        return TextsRepresentationOutput(torch.cat(tensors), tokenized=None)
