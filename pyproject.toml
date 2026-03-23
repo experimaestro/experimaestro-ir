@@ -62,7 +62,8 @@ documentation = [
 test = [
     { include-group = "documentation" },
     "pytest",
-    "faiss-cpu"
+    "faiss-cpu",
+    "ruff>=0.14",
 ]
 dev = [
     "docutils>=0.21.2",
