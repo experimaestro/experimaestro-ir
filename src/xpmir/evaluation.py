@@ -1,4 +1,3 @@
-import inspect
 import logging
 import sys
 from itertools import chain
@@ -190,7 +189,7 @@ class Evaluate(BaseEvaluation, Task):
 class RetrieverFactory(Protocol):
     """Generates a retriever for a given dataset"""
 
-    def __call__(self, dataset: Documents, key:str = None) -> Retriever: ...
+    def __call__(self, dataset: Documents, key: str = None) -> Retriever: ...
 
 
 class Evaluations:

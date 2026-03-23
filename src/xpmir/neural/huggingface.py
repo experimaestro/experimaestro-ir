@@ -1,5 +1,4 @@
-from typing import List, Sequence, Tuple, Optional, Union
-from functools import partial
+from typing import List, Tuple, Optional
 import torch
 import torch.nn.functional as F
 
@@ -15,13 +14,15 @@ from xpmir.text.huggingface.base import (
     HFSequenceClassification,
     HFModelInitBase,
     _resolve_model_path,
-    is_local_files_only
+    is_local_files_only,
 )
 from xpmir.text.huggingface.tokenizers import HFTokenizer
 from xpmir.text.tokenizers import TokenizerOptions
 
 import logging
+
 logger = logging.getLogger(__name__)
+
 
 class HFQueryDocTokenizer(HFTokenizer):
     """Specific tokenizer for Cross-Scorers that handles query and document truncation separately"""
@@ -34,21 +35,23 @@ class HFQueryDocTokenizer(HFTokenizer):
 
     def __post_init__(self):
         super().__post_init__()
-        
+
         # Sanity Check - max len should be set in parent class
-        # Default behavior is doc_max_len = max_len | max_query_len = None 
-       
+        # Default behavior is doc_max_len = max_len | max_query_len = None
+
         assert isinstance(self.max_length, int)
-        
+
         if self.max_doc_length is None:
-            logger.warning(f"No max_docs_len provided, using default max Len: {self.max_length}")
+            logger.warning(
+                f"No max_docs_len provided, using default max Len: {self.max_length}"
+            )
             self.max_doc_length = self.max_length
 
         if self.max_query_length is None:
-            logger.warning(f"No query max len provided, will not truncate queries")
+            logger.warning("No query max len provided, will not truncate queries")
 
         assert isinstance(self.max_doc_length, int)
-        
+
     def tokenize(
         self,
         input_records: BaseItems,
@@ -72,9 +75,9 @@ class HFQueryDocTokenizer(HFTokenizer):
         num_special = 3  # [CLS] + [SEP] + [SEP]
 
         # Verify the tokenizer has the tokens we expect
-        assert (
-            cls_id is not None and sep_id is not None
-        ), "Tokenizer must define cls_token and sep_token for pair encoding."
+        assert cls_id is not None and sep_id is not None, (
+            "Tokenizer must define cls_token and sep_token for pair encoding."
+        )
 
         # Combined sequence length cap
         combined_limit = self.max_length
@@ -156,7 +159,7 @@ class InitCEFromHFID(HFModelInitBase):
     def execute(self):
         hf_id = self.model.config.hf_id
         model_id_or_path = _resolve_model_path(hf_id, self.model.automodel)
-        
+
         config = self.model.autoconfig.from_pretrained(
             model_id_or_path,
             trust_remote_code=True,
@@ -187,6 +190,7 @@ class InitCEFromHFID(HFModelInitBase):
             )
         self.model._initialized = True
 
+
 class HFCrossScorer(AbstractModuleScorer):
     """Load a cross scorer model from the huggingface"""
 
@@ -195,8 +199,6 @@ class HFCrossScorer(AbstractModuleScorer):
 
     tokenizer: Param[HFQueryDocTokenizer]
     """The tokenizer for the cross-scorer"""
-    
-
 
     def __initialize__(self):
         super().__initialize__()

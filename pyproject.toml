@@ -117,5 +117,9 @@ filterwarnings = [
     "ignore:.*resources as decorators is deprecated:DeprecationWarning",
 ]
 
+[tool.ruff]
+# Exclude submodules — they have their own ruff config
+exclude = ["xpm-torch", "datamaestro-ir", "datamaestro-text"]
+
 [tool.pyright]
 include = ["xpmir"]

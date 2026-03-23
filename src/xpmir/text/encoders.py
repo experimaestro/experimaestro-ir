@@ -5,7 +5,6 @@ import sys
 from attrs import define
 from experimaestro import Param
 import torch
-import torch.nn as nn
 
 from xpm_torch import Module
 from xpm_torch.utils.logging import EasyLogger
@@ -29,6 +28,7 @@ class Encoder(Module, EasyLogger, ABC):
 
     def static(self):
         return True
+
 
 @define
 class TokensEncoderOutput:
@@ -220,8 +220,7 @@ class TokenizedTextEncoderBase(TextEncoderBase[InputType, EncoderOutput]):
     @abstractmethod
     def forward(
         self, inputs: List[InputType], options: Optional[TokenizerOptions] = None
-    ) -> EncoderOutput:
-        ...
+    ) -> EncoderOutput: ...
 
 
 class TokenizedTextEncoder(
