@@ -5,9 +5,9 @@ name: Python package
 
 on:
   push:
-    branches: [master]
+    branches: [master, xpmir-V2]
   pull_request:
-    branches: [master]
+    branches: [master, xpmir-V2]
 
 jobs:
   build:
@@ -21,6 +21,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Required for hatch-vcs to determine version
+          submodules: recursive
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -33,6 +34,8 @@ jobs:
           uv sync --group test
           uv pip install faiss-cpu tensorboard transformers pandas
 
+      - name: Lint with ruff
+        run: uv run ruff check .
+
       - name: Test with pytest
-        run: |
-          uv run pytest
+        run: uv run pytest
