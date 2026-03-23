@@ -1,3 +1,4 @@
+import io
 import os
 from pathlib import Path
 from typing import Optional, Union, Dict
@@ -7,7 +8,7 @@ from experimaestro import Config
 from xpmir.neural.dual import DotDense
 from xpmir.neural.huggingface import HFCrossScorer
 from xpm_torch import ModuleLoader
-import importlib
+from xpm_torch.module import ReadmeSection, assemble_readme_sections
 
 import logging
 
@@ -16,21 +17,63 @@ logger = logging.getLogger(__name__)
 
 def get_class(name: str):
     module_name, class_name = name.split(":")
+    import importlib
+
     module = importlib.import_module(module_name)
     return getattr(module, class_name)
 
 
 class XPMIRHFHub(ExperimaestroHFHub):
+    """HF Hub integration for xpmir models.
+
+    Builds the README from ordered sections: base sections (frontmatter,
+    description, usage, results) are merged with loader-provided sections
+    via :meth:`~xpm_torch.module.ModuleLoader.hub_readme_sections`.
+    """
+
     def __init__(
         self,
         config: Config,
-        variant: Optional[str] = None,
-        readme: Optional[str] = None,
+        *,
+        doc: Optional[str] = None,
+        model_id: Optional[str] = None,
+        evaluations=None,
+        model_key: Optional[str] = None,
         tb_logs: Optional[Dict[str, Path]] = None,
     ):
-        super().__init__(config, variant)
-        self.readme = readme
+        super().__init__(config)
+        self.doc = doc
+        self.model_id = model_id
+        self.evaluations = evaluations
+        self.model_key = model_key
         self.tb_logs = tb_logs
+
+    def _xpmir_usage_section(self) -> str:
+        return (
+            "## Using the model\n\n"
+            "The model can be loaded with [experimaestro "
+            "IR](https://experimaestro-ir.readthedocs.io/en/latest/)\n\n"
+            "To use in further experiments with XPMIR, load the model loader:\n"
+            "```py\n"
+            "from xpmir.models import AutoModel\n\n"
+            f'loader = AutoModel.load_from_hf_hub("{self.model_id}")\n'
+            "# loader.model is the model config\n"
+            "# pass loader as an init task to load the weights\n"
+            "```\n\n"
+            "For direct inference:\n\n"
+            "```py\n"
+            "from xpmir.models import AutoModel\n\n"
+            f'model = AutoModel.load_from_hf_hub("{self.model_id}", as_instance=True)\n'
+            'model.rsv("walgreens store sales average", '
+            '"The average Walgreens salary ranges...")\n'
+            "```"
+        )
+
+    def _results_section(self) -> str:
+        out = io.StringIO()
+        out.write("## Results\n\n")
+        self.evaluations.output_model_results(self.model_key, file=out)
+        return out.getvalue()
 
     def _save_pretrained(self, save_directory: Union[str, Path]):
         save_directory = Path(save_directory)
@@ -39,13 +82,20 @@ class XPMIRHFHub(ExperimaestroHFHub):
         # Let the config write format-specific extras (e.g. ST configs)
         self.config.write_hub_extras(save_directory)
 
-        # Build README: base content + model-specific extras
-        readme = self.readme or ""
-        extra = self.config.hub_readme_extra()
-        if extra:
-            readme = readme + "\n" + extra if readme else extra
-        if readme:
-            (save_directory / "README.md").write_text(readme)
+        # Build README from ordered sections
+        base_sections = [
+            ReadmeSection("frontmatter", "---\nlibrary_name: xpmir\n---\n"),
+        ]
+        if self.doc:
+            base_sections.append(ReadmeSection("description", f"{self.doc}\n"))
+        if self.model_id:
+            base_sections.append(ReadmeSection("usage", self._xpmir_usage_section()))
+        if self.evaluations and self.model_key:
+            base_sections.append(ReadmeSection("results", self._results_section()))
+
+        loader_sections = self.config.hub_readme_sections()
+        readme = assemble_readme_sections(base_sections, loader_sections)
+        (save_directory / "README.md").write_text(readme)
 
         if self.tb_logs:
             runs_dir = save_directory / "runs"
@@ -57,37 +107,40 @@ class XPMIRHFHub(ExperimaestroHFHub):
 class AutoModel:
     @staticmethod
     def load_from_hf_hub(
-        hf_id_or_folder: str, variant: Optional[str] = None, as_instance: bool = False
+        hf_id_or_folder: str,
+        as_instance: bool = False,
     ):
-        """Loads from hugging face hub or from a folder"""
+        """Loads a model from HuggingFace Hub or from a local folder.
+
+        Returns a :class:`~xpm_torch.module.ModuleLoader`. Use
+        ``loader.model`` to access the model config, and ``loader`` itself
+        as an init task.
+
+        If ``as_instance=True``, executes the loader and returns the
+        ready-to-use model instance directly.
+        """
         local_files_only = os.environ.get("HF_HUB_OFFLINE", False)
-        data = XPMIRHFHub.from_pretrained(
+        loader = XPMIRHFHub.from_pretrained(
             hf_id_or_folder,
-            variant=variant,
-            as_instance=as_instance,
             local_files_only=local_files_only,
         )
 
-        if isinstance(data, ModuleLoader):
-            model, init_tasks = data.value, [data]
-        else:
-            raise Exception(f"Cannot handle data of type {type(data)}")
+        if not isinstance(loader, ModuleLoader):
+            raise TypeError(f"Expected ModuleLoader, got {type(loader)}")
 
         if as_instance:
-            for init_task in init_tasks:
-                init_task.execute()
-            return model
-        return model, init_tasks
+            loader.execute()
+            return loader.model
+
+        return loader
 
     @staticmethod
-    def push_to_hf_hub(config: Config, *args, variant=None, readme=None, **kwargs):
+    def push_to_hf_hub(config: Config, *args, **kwargs):
         """Push to HuggingFace Hub
 
         See ModelHubMixin.push_to_hub for the other arguments
         """
-        return XPMIRHFHub(config, variant=variant, readme=readme).push_to_hub(
-            *args, **kwargs
-        )
+        return XPMIRHFHub(config).push_to_hub(*args, **kwargs)
 
     @staticmethod
     def sentence_scorer(hf_id: str):

@@ -102,14 +102,22 @@ class SentenceTransformerLoaderMixin:
                 json.dumps(pooling_config, indent=2)
             )
 
-    def hub_readme_extra(self) -> str:
-        """Return ST loading instructions for the README."""
-        return (
-            "\n## Loading with sentence-transformers\n\n"
-            "This model is also compatible with the "
-            "[sentence-transformers](https://www.sbert.net/) library:\n\n"
-            "```python\n"
-            "from sentence_transformers import SparseEncoder\n\n"
-            'model = SparseEncoder("YOUR_ORG/YOUR_MODEL")\n'
-            "```\n"
-        )
+    def hub_readme_sections(self):
+        """Return ST loading section, positioned before XPMIR usage."""
+        from xpm_torch.module import ReadmeSection
+
+        return [
+            ReadmeSection(
+                key="quick_loading",
+                content=(
+                    "## Loading with sentence-transformers\n\n"
+                    "This model is also compatible with the "
+                    "[sentence-transformers](https://www.sbert.net/) library:\n\n"
+                    "```python\n"
+                    "from sentence_transformers import SparseEncoder\n\n"
+                    'model = SparseEncoder("YOUR_ORG/YOUR_MODEL")\n'
+                    "```"
+                ),
+                before="usage",
+            ),
+        ]

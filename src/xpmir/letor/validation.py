@@ -53,8 +53,8 @@ class ValidationModuleLoader(LightweightTask):
     def write_hub_extras(self, save_directory):
         self.loader.write_hub_extras(save_directory)
 
-    def hub_readme_extra(self) -> str:
-        return self.loader.hub_readme_extra()
+    def hub_readme_sections(self):
+        return self.loader.hub_readme_sections()
 
 
 class ValidationListener(LearnerListener):
