@@ -163,6 +163,7 @@ class InitCEFromHFID(HFModelInitBase):
         config = self.model.autoconfig.from_pretrained(
             model_id_or_path,
             trust_remote_code=True,
+            dtype=torch.float32,
             local_files_only=is_local_files_only(),
         )
 
