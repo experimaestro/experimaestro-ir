@@ -125,8 +125,11 @@ class DualVectorScorer(DualRepresentationScorer[QueriesRep, DocsRep]):
         super().__validate__()
         assert not self.encoder.static(), "The vocabulary should be learnable"
 
-    @abstractmethod
-    def _has_separate_query_model(self) -> bool: ...
+    def _has_separate_query_model(self) -> bool:
+        """Check if query and doc encoders are separate models.
+        Default: object identity check. Override for more specific logic.
+        """
+        return self.query_encoder is not None and self.query_encoder is not self.encoder
 
     def loader_config(self, path: Path) -> DualModuleLoader:
         has_separate_query = self._has_separate_query_model()

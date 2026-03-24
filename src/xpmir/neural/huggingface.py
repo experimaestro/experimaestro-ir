@@ -1,12 +1,14 @@
+from pathlib import Path
 from typing import List, Tuple, Optional
 import torch
 import torch.nn.functional as F
 
-from experimaestro import Param, LightweightTask
+from experimaestro import DataPath, Param, LightweightTask
 
 from xpmir.text import TokenizedTexts
 from xpmir.letor.records import BaseItems
 from xpmir.rankers import AbstractModuleScorer
+from xpm_torch.module import ModuleLoader, ReadmeSection
 from xpm_torch.utils import to_device
 
 from xpmir.text.huggingface.base import (
@@ -235,6 +237,52 @@ class HFCrossScorer(AbstractModuleScorer):
                 token_type_ids=to_device(tokenized.token_type_ids, self.device),
             ).logits  # Tensor[float] of length records size
         return result
+
+    def save_model(self, path: Path):
+        """Save the HF model and tokenizer in standard pretrained format."""
+        path.mkdir(parents=True, exist_ok=True)
+        self.encoder.model.save_pretrained(path)
+        self.tokenizer.tokenizer.tokenizer.save_pretrained(path)
+
+    def load_model(self, path: Path):
+        """Load from HF pretrained format."""
+        from transformers import AutoModelForSequenceClassification
+
+        self.encoder.model = AutoModelForSequenceClassification.from_pretrained(path)
+
+    def loader_config(self, path: Path) -> "CrossEncoderModuleLoader":
+        return CrossEncoderModuleLoader.C(value=self, encoder_path=path)
+
+
+class CrossEncoderModuleLoader(ModuleLoader):
+    """ModuleLoader for cross-encoder models.
+
+    Saves the model in standard HuggingFace format (config.json +
+    model.safetensors + tokenizer), which is directly loadable by
+    sentence-transformers ``CrossEncoder``.
+    """
+
+    encoder_path: DataPath
+    """Path to the encoder checkpoint directory"""
+
+    def execute(self):
+        self.value.initialize()
+        self.value.load_model(Path(self.encoder_path))
+
+    def hub_readme_sections(self) -> list:
+        return [
+            ReadmeSection(
+                key="quick_loading",
+                content=(
+                    "## Loading with sentence-transformers\n\n"
+                    "```python\n"
+                    "from sentence_transformers import CrossEncoder\n\n"
+                    'model = CrossEncoder("YOUR_ORG/YOUR_MODEL")\n'
+                    "```"
+                ),
+                before="usage",
+            ),
+        ]
 
 
 def hf_cross_scorer(
