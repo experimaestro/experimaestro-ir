@@ -43,7 +43,7 @@ class UploadToHub:
             model_key=key,
             evaluations=evaluations,
             tb_logs=tb_logs,
-        ).push_to_hub(repo_id=self.model_id, config={})
+        ).push_to_hub(repo_id=self.model_id)
 
 
 class IRExperimentHelper(LearningExperimentHelper):

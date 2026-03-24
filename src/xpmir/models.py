@@ -3,12 +3,12 @@ import os
 from pathlib import Path
 from typing import Optional, Union, Dict
 import shutil
-from experimaestro.huggingface import ExperimaestroHFHub
 from experimaestro import Config
 from xpmir.neural.dual import DotDense
 from xpmir.neural.huggingface import HFCrossScorer
 from xpm_torch import ModuleLoader
-from xpm_torch.module import ReadmeSection, assemble_readme_sections
+from xpm_torch.huggingface import TorchHFHub
+from xpm_torch.module import ReadmeSection
 
 import logging
 
@@ -23,12 +23,12 @@ def get_class(name: str):
     return getattr(module, class_name)
 
 
-class XPMIRHFHub(ExperimaestroHFHub):
+class XPMIRHFHub(TorchHFHub):
     """HF Hub integration for xpmir models.
 
-    Builds the README from ordered sections: base sections (frontmatter,
-    description, usage, results) are merged with loader-provided sections
-    via :meth:`~xpm_torch.module.ModuleLoader.hub_readme_sections`.
+    Extends :class:`~xpm_torch.huggingface.TorchHFHub` with xpmir-specific
+    README sections (frontmatter, description, usage, results) and
+    TensorBoard log copying.
     """
 
     def __init__(
@@ -75,27 +75,21 @@ class XPMIRHFHub(ExperimaestroHFHub):
         self.evaluations.output_model_results(self.model_key, file=out)
         return out.getvalue()
 
-    def _save_pretrained(self, save_directory: Union[str, Path]):
-        save_directory = Path(save_directory)
-        super()._save_pretrained(save_directory)
-
-        # Let the config write format-specific extras (e.g. ST configs)
-        self.config.write_hub_extras(save_directory)
-
-        # Build README from ordered sections
-        base_sections = [
+    def _readme_base_sections(self):
+        sections = [
             ReadmeSection("frontmatter", "---\nlibrary_name: xpmir\n---\n"),
         ]
         if self.doc:
-            base_sections.append(ReadmeSection("description", f"{self.doc}\n"))
+            sections.append(ReadmeSection("description", f"{self.doc}\n"))
         if self.model_id:
-            base_sections.append(ReadmeSection("usage", self._xpmir_usage_section()))
+            sections.append(ReadmeSection("usage", self._xpmir_usage_section()))
         if self.evaluations and self.model_key:
-            base_sections.append(ReadmeSection("results", self._results_section()))
+            sections.append(ReadmeSection("results", self._results_section()))
+        return sections
 
-        loader_sections = self.config.hub_readme_sections()
-        readme = assemble_readme_sections(base_sections, loader_sections)
-        (save_directory / "README.md").write_text(readme)
+    def _save_pretrained(self, save_directory: Union[str, Path]):
+        save_directory = Path(save_directory)
+        super()._save_pretrained(save_directory)
 
         if self.tb_logs:
             runs_dir = save_directory / "runs"

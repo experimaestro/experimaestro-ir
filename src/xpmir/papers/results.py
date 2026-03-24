@@ -1,9 +1,8 @@
 from pathlib import Path
 from attrs import define
-from typing import Dict, Optional, Union
-from xpmir.rankers import Scorer
+from typing import Any, Dict, Optional
 from xpmir.evaluation import EvaluationsCollection
-from xpmir.text.huggingface.base import HFMaskedLanguageModel
+from xpm_torch.module import ModuleLoader
 from xpm_torch.results import TrainingResults
 
 
@@ -11,8 +10,8 @@ from xpm_torch.results import TrainingResults
 class PaperResults:
     """Results from an IR paper experiment."""
 
-    models: Dict[str, Union[Scorer, HFMaskedLanguageModel]]
-    """List of models with their identifier"""
+    models: Dict[str, Any]
+    """Model loaders keyed by identifier (ValidationModuleLoader, ModuleLoader, etc.)"""
 
     evaluations: EvaluationsCollection
     """The evaluation results"""
@@ -21,5 +20,18 @@ class PaperResults:
     """Tensorboard directory for each model"""
 
     def to_training_results(self) -> TrainingResults:
-        """Convert to a serializable TrainingResults for xp.save()."""
-        return TrainingResults.C(models=self.models, tb_logs=self.tb_logs)
+        """Convert to a serializable TrainingResults for xp.save().
+
+        Unwraps ValidationModuleLoader/CheckpointModuleLoader wrappers
+        to get the inner ModuleLoader, since TrainingResults expects
+        plain ModuleLoaders.
+        """
+        loaders = {}
+        for key, model in self.models.items():
+            if isinstance(model, ModuleLoader):
+                loaders[key] = model
+            elif hasattr(model, "loader") and isinstance(model.loader, ModuleLoader):
+                loaders[key] = model.loader
+            else:
+                loaders[key] = model
+        return TrainingResults.C(models=loaders, tb_logs=self.tb_logs)

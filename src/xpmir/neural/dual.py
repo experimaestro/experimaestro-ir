@@ -3,14 +3,14 @@ from pathlib import Path
 from typing import List, Optional
 from attrs import evolve
 import torch
-from experimaestro import field, Param
+from experimaestro import DataPath, OptionalDataPath, field, Param
 from datamaestro_ir.data import IDTextRecord
 from xpmir.neural import DualRepresentationScorer, QueriesRep, DocsRep
 
 from xpmir.text.encoders import TextEncoderBase
 from xpm_torch.learner import TrainerContext
 from xpm_torch.losses import Loss
-from xpm_torch.module import ModuleLoader
+from xpm_torch.module import ModuleLoader, SimpleModuleLoader
 from xpm_torch.trainers import TrainingHook
 from xpm_torch.metrics import ScalarMetric
 
@@ -79,8 +79,32 @@ class DualVectorScorerListener(TrainingHook, ABC):
         raise NotImplementedError(f"__call__ in {self.__class__}")
 
 
+class DualModuleLoader(ModuleLoader):
+    """ModuleLoader for dual encoder models.
+
+    Has distinct ``encoder_path`` and ``query_encoder_path`` DataPaths so each
+    encoder is serialized independently. This enables proper
+    sentence-transformers format on HF Hub export (symmetric vs
+    router/asymmetric).
+    """
+
+    encoder_path: Param[DataPath]
+    """Path to the document encoder checkpoint"""
+
+    query_encoder_path: OptionalDataPath = None
+    """Path to the query encoder checkpoint (if separate from doc encoder)"""
+
+    def execute(self):
+        self.value.initialize()
+        self.value.encoder.load_model(Path(self.encoder_path))
+        if self.query_encoder_path and self.value.query_encoder is not None:
+            self.value._query_encoder.load_model(Path(self.query_encoder_path))
+
+
 class DualVectorScorer(DualRepresentationScorer[QueriesRep, DocsRep]):
     """A scorer based on dual vectorial representations"""
+
+    CONFIG_LOADER = DualModuleLoader.C
 
     encoder: Param[TextEncoderBase]
     """The document (and potentially query) encoder"""
@@ -100,6 +124,17 @@ class DualVectorScorer(DualRepresentationScorer[QueriesRep, DocsRep]):
     def __validate__(self):
         super().__validate__()
         assert not self.encoder.static(), "The vocabulary should be learnable"
+
+    @abstractmethod
+    def _has_separate_query_model(self) -> bool: ...
+
+    def loader_config(self, path: Path) -> DualModuleLoader:
+        has_separate_query = self._has_separate_query_model()
+        return self.CONFIG_LOADER(
+            value=self,
+            encoder_path=path / "encoder",
+            query_encoder_path=(path / "query_encoder" if has_separate_query else None),
+        )
 
 
 class Dense(DualVectorScorer[QueriesRep, DocsRep]):
@@ -209,8 +244,8 @@ class DotDense(Dense):
         return self.encoder(records)
 
     def loader_config(self, path: Path) -> ModuleLoader:
-        """Returns a ModuleLoader for this dual-encoder model."""
-        return ModuleLoader.C(value=self, path=path)
+        """Returns a SimpleModuleLoader for this dual-encoder model."""
+        return SimpleModuleLoader.C(value=self, path=path)
 
     def save_model(self, path: Path):
         """Save sub-encoders independently to subdirectories."""

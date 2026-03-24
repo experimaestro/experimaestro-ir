@@ -14,14 +14,14 @@ from xpmir.text.encoders import (
     InputType as EncoderInputType,
     TextsRepresentationOutput,
 )
-from xpmir.neural.dual import DotDense, ScheduledFlopsRegularizer
-from xpmir.neural.sentence_transformers import SentenceTransformerLoaderMixin
+from xpmir.neural.dual import DotDense, DualModuleLoader, ScheduledFlopsRegularizer
+from xpmir.neural.sentence_transformers import SpladeLoaderMixin
 from xpmir.text.huggingface.base import (
     HFConfigID,
     HFMaskedLanguageModel,
     HFModelInitFromID,
 )
-from xpm_torch.module import initialized, ModuleLoader
+from xpm_torch.module import initialized
 import logging
 
 logger = logging.getLogger(__name__)
@@ -184,25 +184,55 @@ class SpladeTextEncoder(
         return False
 
 
-class SpladeModuleLoader(SentenceTransformerLoaderMixin, ModuleLoader):
-    """ModuleLoader that adds ST SparseEncoder configs on Hub export.
+class SpladeModuleLoader(SpladeLoaderMixin, DualModuleLoader):
+    """ModuleLoader for SPLADE models with separate encoder DataPaths.
 
-    Inherits :class:`~xpmir.neural.sentence_transformers.SentenceTransformerLoaderMixin`
-    which provides :meth:`write_hub_extras` and :meth:`hub_readme_extra`.
-    These are only called during HF Hub export, not during checkpoint saving.
+    Has distinct ``encoder_path`` and ``query_encoder_path`` DataPaths so
+    each encoder is serialized independently. Overrides
+    ``__xpm_serialize__`` to map field names to ST-compatible directory
+    names (``document_0_MLMTransformer``, ``query_0_MLMTransformer``).
+
+    Inherits :class:`~xpmir.neural.sentence_transformers.SpladeLoaderMixin`
+    for ST config writing and README sections.
     """
+
+    # ST-compatible directory name mapping
+    _ST_NAMES = {
+        "encoder_path": "document_0_MLMTransformer",
+        "query_encoder_path": "query_0_MLMTransformer",
+    }
+
+    def __xpm_serialize__(self, context):
+        result = {}
+        for argument, value in self.__xpm__.xpmvalues():
+            if argument.is_data and value is not None:
+                st_name = self._ST_NAMES.get(argument.name, argument.name)
+                result[argument.name] = context.serialize(
+                    context.var_path + [st_name], Path(value), self
+                )
+        return result
 
 
 class SpladeScorer(DotDense):
     """DotDense subclass for SPLADE models.
 
     Overrides :meth:`loader_config` to return :class:`SpladeModuleLoader`,
-    which writes ST SparseEncoder config files and README instructions
-    when exporting to HuggingFace Hub.
+    which has separate DataPaths per encoder and writes ST SparseEncoder
+    config files when exporting to HuggingFace Hub.
     """
 
-    def loader_config(self, path: Path) -> SpladeModuleLoader:
-        return SpladeModuleLoader.C(value=self, path=path)
+    CONFIG_LOADER = SpladeModuleLoader.C
+
+    def _has_separate_query_model(self) -> bool:
+        """Check if query and doc encoders use different HF models."""
+        if self.query_encoder is None or self.query_encoder is self.encoder:
+            return False
+        # Both are SpladeTextEncoder — check if they share the HF model
+        if isinstance(self.encoder, SpladeTextEncoder) and isinstance(
+            self._query_encoder, SpladeTextEncoder
+        ):
+            return self.encoder.encoder is not self._query_encoder.encoder
+        return True
 
 
 def _splade(

@@ -135,7 +135,9 @@ class ValidationListener(LearnerListener):
         return {
             key: dep(
                 ValidationModuleLoader.C(
-                    loader=learner.model.loader_config(self.bestpath / key),
+                    loader=learner.model.loader_config(
+                        self.bestpath / key / TrainState.MODEL_DIR
+                    ),
                     listener=self,
                     key=key,
                 )
@@ -300,7 +302,9 @@ class AggregatorValidationListener(LearnerListener):
         return {
             key: dep(
                 ValidationModuleLoader.C(
-                    loader=learner.model.loader_config(self.bestpath / key),
+                    loader=learner.model.loader_config(
+                        self.bestpath / key / TrainState.MODEL_DIR
+                    ),
                     listener=self,
                     key=key,
                 )

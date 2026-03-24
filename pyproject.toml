@@ -21,10 +21,9 @@ classifiers = [
 
 dependencies = [
     # Experimaestro
-    "experimaestro>=2.0.6",
+    "experimaestro>=2.2.1",
     "datamaestro>=1.0.1",
     "datamaestro-ir>=2025.7.28",
-    "ir_datasets",
     "docstring_parser",
     "impact-index>=1.2.0",
     "omegaconf>=2.2",
@@ -46,7 +45,7 @@ neural = [
     "torch>=1.12",
     "tensorboard",
     "transformers",
-    "sentence_transformers"
+    "sentence_transformers>=5.3.0"
 ]
 
 [dependency-groups]
