@@ -51,9 +51,10 @@ def test_faiss_indexation(tmp_path: Path, indexspec):
         scoredDocuments = retriever.retrieve(document)
         scoredDocuments.sort(reverse=True)
 
-        expected = list(scores[ix].sort(descending=True).indices[:topk].numpy())
+        expected = list(
+            int(s) for s in scores[ix].sort(descending=True).indices[:topk].numpy()
+        )
         logging.debug("%s vs %s", scores[ix], scoredDocuments)
-        observed = [int(sd.document["id"]) for sd in scoredDocuments]
         observed = [int(sd.document["id"]) for sd in scoredDocuments]
 
         assert expected == observed
