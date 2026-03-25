@@ -136,8 +136,8 @@ class ValidationListener(LearnerListener):
         for key, store in self.metrics.items():
             if not store:
                 continue
-            loader = learner.model.loader_config(
-                self.bestpath / key / TrainState.MODEL_DIR
+            loader = dep(
+                learner.model.loader_config(self.bestpath / key / TrainState.MODEL_DIR)
             )
             val_loader = dep(
                 ValidationModuleLoader.C(
@@ -309,8 +309,8 @@ class AggregatorValidationListener(LearnerListener):
         for key, store in self.metrics.items():
             if not store:
                 continue
-            loader = learner.model.loader_config(
-                self.bestpath / key / TrainState.MODEL_DIR
+            loader = dep(
+                learner.model.loader_config(self.bestpath / key / TrainState.MODEL_DIR)
             )
             val_loader = dep(
                 ValidationModuleLoader.C(
