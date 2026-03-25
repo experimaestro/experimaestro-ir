@@ -140,12 +140,13 @@ class DualVectorScorer(DualRepresentationScorer[QueriesRep, DocsRep]):
             kwargs.setdefault("bibtex", self.bibtex)
         return XPMIRExportAction.C(loader=loader, **kwargs)
 
-    def loader_config(self, path: Path) -> DualModuleLoader:
+    def loader_config(self, path: Path, *, settings=None) -> DualModuleLoader:
         has_separate_query = self._has_separate_query_model()
         return self.CONFIG_LOADER(
             value=self,
             encoder_path=path / "encoder",
             query_encoder_path=(path / "query_encoder" if has_separate_query else None),
+            settings=settings,
         )
 
 

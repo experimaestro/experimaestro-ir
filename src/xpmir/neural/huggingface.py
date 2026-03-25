@@ -250,8 +250,10 @@ class HFCrossScorer(AbstractModuleScorer):
 
         self.encoder.model = AutoModelForSequenceClassification.from_pretrained(path)
 
-    def loader_config(self, path: Path) -> "CrossEncoderModuleLoader":
-        return CrossEncoderModuleLoader.C(value=self, encoder_path=path)
+    def loader_config(self, path: Path, *, settings=None) -> "CrossEncoderModuleLoader":
+        return CrossEncoderModuleLoader.C(
+            value=self, encoder_path=path, settings=settings
+        )
 
     def export_action(self, loader, **kwargs):
         from xpmir.models import XPMIRExportAction

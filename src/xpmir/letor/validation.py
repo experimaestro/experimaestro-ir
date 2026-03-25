@@ -5,10 +5,9 @@ import numpy as np
 from typing import Dict, Iterator, List
 from collections import defaultdict
 from numpy import mean
-from experimaestro import LightweightTask, Param, pathgenerator, Annotated, field
+from experimaestro import Config, Param, pathgenerator, Annotated, field
 from datamaestro_ir.data import Adhoc
 
-from xpm_torch.optim import ModuleLoader
 from xpm_torch.trainers.context import ValidationHook
 from xpm_torch.learner import (
     TrainState,
@@ -24,37 +23,19 @@ from xpmir.rankers import Retriever
 logger = logging.getLogger(__name__)
 
 
-class ValidationModuleLoader(LightweightTask):
-    """Wrapper around a ModuleLoader for validation checkpoints.
+class ValidationSettings(Config):
+    """Settings for a validation-specific ModuleLoader.
 
-    Holds validation metadata (listener, key) and delegates loading
-    and Hub export hooks to the inner loader (produced by
-    ``Module.loader_config``).
+    Attached as ``settings`` on the loader to distinguish validation
+    checkpoints from other loaders with the same model and path.
     """
 
-    loader: Param[ModuleLoader]
-    """The actual loader (from loader_config)"""
-
     listener: Param["LearnerListener"] = field(ignore_generated=True)
-    """The listener (kept there to change the validation loader identifier based
+    """The listener (kept to change the loader identifier based
     on the learner listener configuration)"""
 
     key: Param[str]
-    """The key for this listener"""
-
-    @property
-    def value(self):
-        """The model config (delegates to the inner loader)."""
-        return self.loader.value
-
-    def execute(self):
-        self.loader.execute()
-
-    def write_hub_extras(self, save_directory):
-        self.loader.write_hub_extras(save_directory)
-
-    def hub_readme_sections(self):
-        return self.loader.hub_readme_sections()
+    """The metric key for this validation checkpoint"""
 
 
 class ValidationListener(LearnerListener):
@@ -137,19 +118,15 @@ class ValidationListener(LearnerListener):
             if not store:
                 continue
             loader = dep(
-                learner.model.loader_config(self.bestpath / key / TrainState.MODEL_DIR)
-            )
-            val_loader = dep(
-                ValidationModuleLoader.C(
-                    loader=loader,
-                    listener=self,
-                    key=key,
+                learner.model.loader_config(
+                    self.bestpath / key / TrainState.MODEL_DIR,
+                    settings=ValidationSettings.C(listener=self, key=key),
                 )
             )
             add_action(
                 learner.model.export_action(loader, default_name=f"{self.id}/{key}")
             )
-            result[key] = val_loader
+            result[key] = loader
         return result
 
     def should_stop(self, epoch=0):
@@ -310,19 +287,15 @@ class AggregatorValidationListener(LearnerListener):
             if not store:
                 continue
             loader = dep(
-                learner.model.loader_config(self.bestpath / key / TrainState.MODEL_DIR)
-            )
-            val_loader = dep(
-                ValidationModuleLoader.C(
-                    loader=loader,
-                    listener=self,
-                    key=key,
+                learner.model.loader_config(
+                    self.bestpath / key / TrainState.MODEL_DIR,
+                    settings=ValidationSettings.C(listener=self, key=key),
                 )
             )
             add_action(
                 learner.model.export_action(loader, default_name=f"{self.id}/{key}")
             )
-            result[key] = val_loader
+            result[key] = loader
         return result
 
     def should_stop(self, epoch=0):
