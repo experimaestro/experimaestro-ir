@@ -131,20 +131,31 @@ class ValidationListener(LearnerListener):
     def monitored(self) -> Iterator[str]:
         return [key for key, monitored in self.metrics.items() if monitored]
 
-    def init_task(self, learner: "Learner", dep):
-        return {
-            key: dep(
+    def init_task(self, learner: "Learner", dep, add_action):
+        from xpmir.models import XPMIRExportAction
+
+        result = {}
+        for key, store in self.metrics.items():
+            if not store:
+                continue
+            loader = learner.model.loader_config(
+                self.bestpath / key / TrainState.MODEL_DIR
+            )
+            val_loader = dep(
                 ValidationModuleLoader.C(
-                    loader=learner.model.loader_config(
-                        self.bestpath / key / TrainState.MODEL_DIR
-                    ),
+                    loader=loader,
                     listener=self,
                     key=key,
                 )
             )
-            for key, store in self.metrics.items()
-            if store
-        }
+            add_action(
+                XPMIRExportAction.C(
+                    loader=loader,
+                    default_name=f"{self.id}/{key}",
+                )
+            )
+            result[key] = val_loader
+        return result
 
     def should_stop(self, epoch=0):
         if self.early_stop > 0 and self.top:
@@ -298,20 +309,31 @@ class AggregatorValidationListener(LearnerListener):
     def monitored(self) -> Iterator[str]:
         return [key for key, monitored in self.metrics.items() if monitored]
 
-    def init_task(self, learner: "Learner", dep):
-        return {
-            key: dep(
+    def init_task(self, learner: "Learner", dep, add_action):
+        from xpmir.models import XPMIRExportAction
+
+        result = {}
+        for key, store in self.metrics.items():
+            if not store:
+                continue
+            loader = learner.model.loader_config(
+                self.bestpath / key / TrainState.MODEL_DIR
+            )
+            val_loader = dep(
                 ValidationModuleLoader.C(
-                    loader=learner.model.loader_config(
-                        self.bestpath / key / TrainState.MODEL_DIR
-                    ),
+                    loader=loader,
                     listener=self,
                     key=key,
                 )
             )
-            for key, store in self.metrics.items()
-            if store
-        }
+            add_action(
+                XPMIRExportAction.C(
+                    loader=loader,
+                    default_name=f"{self.id}/{key}",
+                )
+            )
+            result[key] = val_loader
+        return result
 
     def should_stop(self, epoch=0):
         if self.early_stop > 0 and self.top:

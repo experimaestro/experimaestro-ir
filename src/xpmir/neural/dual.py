@@ -10,7 +10,7 @@ from xpmir.neural import DualRepresentationScorer, QueriesRep, DocsRep
 from xpmir.text.encoders import TextEncoderBase
 from xpm_torch.learner import TrainerContext
 from xpm_torch.losses import Loss
-from xpm_torch.module import ModuleLoader, SimpleModuleLoader
+from xpm_torch.module import ModuleLoader
 from xpm_torch.trainers import TrainingHook
 from xpm_torch.metrics import ScalarMetric
 
@@ -245,10 +245,6 @@ class DotDense(Dense):
     def encode_documents(self, records: List[IDTextRecord]):
         """Encode the different documents"""
         return self.encoder(records)
-
-    def loader_config(self, path: Path) -> ModuleLoader:
-        """Returns a SimpleModuleLoader for this dual-encoder model."""
-        return SimpleModuleLoader.C(value=self, path=path)
 
     def save_model(self, path: Path):
         """Save sub-encoders independently to subdirectories."""

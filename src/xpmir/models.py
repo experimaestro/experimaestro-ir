@@ -7,6 +7,7 @@ from experimaestro import Config
 from xpmir.neural.dual import DotDense
 from xpmir.neural.huggingface import HFCrossScorer
 from xpm_torch import ModuleLoader
+from xpm_torch.actions import ExportAction
 from xpm_torch.huggingface import TorchHFHub
 from xpm_torch.module import ReadmeSection
 
@@ -96,6 +97,13 @@ class XPMIRHFHub(TorchHFHub):
             runs_dir.mkdir()
             for key, path in self.tb_logs.items():
                 shutil.copytree(path, runs_dir / key)
+
+
+class XPMIRExportAction(ExportAction):
+    """Export action that uses XPMIRHFHub for xpmir-specific README sections."""
+
+    def get_hub(self):
+        return XPMIRHFHub(self.loader)
 
 
 class AutoModel:
