@@ -27,6 +27,7 @@ dependencies = [
     "docstring_parser",
     "impact-index>=1.2.0",
     "omegaconf>=2.2",
+    "pandas",
     "attrs",
     # Information retrieval libraries
     "ir-measures>=0.3.3",

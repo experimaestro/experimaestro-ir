@@ -30,9 +30,7 @@ jobs:
         run: uv python install ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: |
-          uv sync --group test
-          uv pip install faiss-cpu tensorboard transformers pandas
+        run: uv sync --group test
 
       - name: Lint with ruff
         run: uv run ruff check .

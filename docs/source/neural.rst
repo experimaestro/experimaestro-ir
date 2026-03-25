@@ -24,6 +24,7 @@ of several documents and/or queries.
 .. autoxpmconfig:: xpmir.neural.DualRepresentationScorer
     :members: score_pairs, score_product
 .. autoxpmconfig:: xpmir.neural.dual.DualVectorScorer
+.. autoxpmconfig:: xpmir.neural.dual.DualModuleLoader
 
 
 Hooks
@@ -31,6 +32,8 @@ Hooks
 
 .. autoxpmconfig:: xpmir.neural.dual.DualVectorListener
     :members: __call__
+
+.. autoxpmconfig:: xpmir.neural.dual.DualVectorScorerListener
 
 
 .. autoxpmconfig:: xpmir.neural.dual.FlopsRegularizer
@@ -87,6 +90,8 @@ Sparse Models
 =============
 
 .. autoxpmconfig:: xpmir.neural.splade.SpladeTextEncoder
+.. autoxpmconfig:: xpmir.neural.splade.SpladeScorer
+.. autoxpmconfig:: xpmir.neural.splade.SpladeModuleLoader
 .. autoxpmconfig:: xpmir.neural.splade.Aggregation
 .. autoxpmconfig:: xpmir.neural.splade.MaxAggregation
 .. autoxpmconfig:: xpmir.neural.splade.SumAggregation
@@ -111,3 +116,10 @@ From Huggingface
 ================
 
 .. autoxpmconfig:: xpmir.neural.huggingface.HFCrossScorer
+.. autoxpmconfig:: xpmir.neural.huggingface.HFQueryDocTokenizer
+.. autoxpmconfig:: xpmir.neural.huggingface.CrossEncoderModuleLoader
+.. autoxpmconfig:: xpmir.neural.huggingface.InitCEFromHFID
+.. autoxpmconfig:: xpmir.text.huggingface.base.HFConfig
+.. autoxpmconfig:: xpmir.text.huggingface.base.HFConfigID
+.. autoxpmconfig:: xpmir.text.huggingface.base.HFModelInitBase
+.. autoxpmconfig:: xpmir.text.huggingface.base.HFSequenceClassification
