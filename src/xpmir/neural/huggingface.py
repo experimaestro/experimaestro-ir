@@ -253,6 +253,11 @@ class HFCrossScorer(AbstractModuleScorer):
     def loader_config(self, path: Path) -> "CrossEncoderModuleLoader":
         return CrossEncoderModuleLoader.C(value=self, encoder_path=path)
 
+    def export_action(self, loader, **kwargs):
+        from xpmir.models import XPMIRExportAction
+
+        return XPMIRExportAction.C(loader=loader, **kwargs)
+
 
 class CrossEncoderModuleLoader(ModuleLoader):
     """ModuleLoader for cross-encoder models.

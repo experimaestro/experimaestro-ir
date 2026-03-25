@@ -131,6 +131,11 @@ class DualVectorScorer(DualRepresentationScorer[QueriesRep, DocsRep]):
         """
         return self.query_encoder is not None and self.query_encoder is not self.encoder
 
+    def export_action(self, loader, **kwargs):
+        from xpmir.models import XPMIRExportAction
+
+        return XPMIRExportAction.C(loader=loader, **kwargs)
+
     def loader_config(self, path: Path) -> DualModuleLoader:
         has_separate_query = self._has_separate_query_model()
         return self.CONFIG_LOADER(

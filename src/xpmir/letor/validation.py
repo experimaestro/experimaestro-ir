@@ -132,8 +132,6 @@ class ValidationListener(LearnerListener):
         return [key for key, monitored in self.metrics.items() if monitored]
 
     def init_task(self, learner: "Learner", dep, add_action):
-        from xpmir.models import XPMIRExportAction
-
         result = {}
         for key, store in self.metrics.items():
             if not store:
@@ -149,10 +147,7 @@ class ValidationListener(LearnerListener):
                 )
             )
             add_action(
-                XPMIRExportAction.C(
-                    loader=loader,
-                    default_name=f"{self.id}/{key}",
-                )
+                learner.model.export_action(loader, default_name=f"{self.id}/{key}")
             )
             result[key] = val_loader
         return result
@@ -310,8 +305,6 @@ class AggregatorValidationListener(LearnerListener):
         return [key for key, monitored in self.metrics.items() if monitored]
 
     def init_task(self, learner: "Learner", dep, add_action):
-        from xpmir.models import XPMIRExportAction
-
         result = {}
         for key, store in self.metrics.items():
             if not store:
@@ -327,10 +320,7 @@ class AggregatorValidationListener(LearnerListener):
                 )
             )
             add_action(
-                XPMIRExportAction.C(
-                    loader=loader,
-                    default_name=f"{self.id}/{key}",
-                )
+                learner.model.export_action(loader, default_name=f"{self.id}/{key}")
             )
             result[key] = val_loader
         return result
