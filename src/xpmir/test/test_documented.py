@@ -9,3 +9,4 @@ def test_documented():
 
     analyzer.analyze()
     analyzer.report()
+    analyzer.assert_valid_documentation()
