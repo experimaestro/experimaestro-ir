@@ -187,6 +187,50 @@ class ListwiseSoftmaxCrossEntropy(DistillationListwiseLoss):
         return loss
 
 
+class ListwiseInfoNCE(DistillationListwiseLoss):
+    """Standard InfoNCE loss for listwise supervised training.
+
+    This loss expects binary relevance labels (1 for positive, 0 for negative).
+    If multiple positives are present, it averages the cross-entropy loss over them.
+    TODO CHECK 
+    """
+
+    NAME = "listwise-infonce"
+
+    def initialize(self, ranker: AbstractModuleScorer):
+        super().initialize(ranker)
+        self.normalize = {
+            ModuleOutputType.REAL: lambda x: F.log_softmax(x, -1),
+            ModuleOutputType.LOG_PROBABILITY: lambda x: x,
+            ModuleOutputType.PROBABILITY: lambda x: x.log(),
+        }[ranker.outputType]
+
+    def compute(
+        self, student_scores: Tensor, teacher_scores: Tensor, context: TrainerContext
+    ) -> torch.Tensor:
+        # teacher_scores are binary (1 for positive, 0 for negative)
+        log_probs = self.normalize(student_scores)
+
+        # Binary mask for positives
+        is_positive = (teacher_scores > 0).float()
+
+        # Number of positives per query
+        num_positives = is_positive.sum(dim=-1, keepdim=True)
+
+        # Target distribution: uniform over positives
+        targets = is_positive / torch.clamp(num_positives, min=1.0)
+
+        # Cross entropy: -sum(targets * log_probs)
+        # This computes the average log-probability of positive documents
+        loss = -(targets * log_probs).sum(dim=-1)
+
+        # Mask out queries with no positives to avoid contributing to the mean
+        mask = (num_positives > 0).float().squeeze(-1)
+        loss = (loss * mask).sum() / torch.clamp(mask.sum(), min=1.0)
+
+        return loss
+
+
 ### Trainer
 
 
