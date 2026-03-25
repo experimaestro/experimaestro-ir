@@ -57,7 +57,6 @@ Misc
 .. autoxpmconfig:: xpmir.rankers.full.FullRetriever
 .. autoxpmconfig:: xpmir.rankers.full.FullRetrieverRescorer
 .. autoxpmconfig:: xpmir.rankers.RetrieverHydrator
-.. autoxpmconfig:: xpmir.rankers.mergers.SumRetriever
 
 Collection dependendant
 -----------------------

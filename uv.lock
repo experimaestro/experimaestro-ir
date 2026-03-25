@@ -904,6 +904,7 @@ test = [
     { name = "sphinx-rtd-theme" },
     { name = "sphinx-toolbox" },
     { name = "sphobjinv" },
+    { name = "transformers" },
 ]
 
 [package.metadata]
@@ -957,6 +958,7 @@ test = [
     { name = "sphinx-rtd-theme", specifier = ">=3" },
     { name = "sphinx-toolbox" },
     { name = "sphobjinv" },
+    { name = "transformers" },
 ]
 
 [[package]]

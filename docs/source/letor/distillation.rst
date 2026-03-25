@@ -28,6 +28,3 @@ Samplers
 
 .. autoclass:: xpmir.letor.distillation.samplers.PairwiseDistillationSample
     :members: documents, query
-
-.. autoxpmconfig:: xpmir.letor.distillation.samplers.PairwiseDistillationSamples
-.. autoxpmconfig:: xpmir.letor.distillation.samplers.PairwiseDistillationSamplesTSV

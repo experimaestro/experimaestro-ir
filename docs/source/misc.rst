@@ -32,12 +32,6 @@ Distillation
 .. autoxpmconfig:: xpmir.letor.distillation.samplers.DistillationListwiseSampler
 .. autoxpmconfig:: xpmir.letor.distillation.samplers.DistillationNegativesSampler
 
-Trainers
-========
-
-.. autoxpmconfig:: xpmir.letor.trainers.pairwise.PairwiseTrainer
-.. autoxpmconfig:: xpmir.letor.trainers.batchwise.BatchwiseTrainer
-
 Index
 =====
 

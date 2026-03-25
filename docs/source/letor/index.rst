@@ -8,20 +8,6 @@ Learning to rank
    pairwise
    batchwise
    distillation
-   generative
-   mlm
-   generation
-   alignment
-
-
-Learning to rank is handled by various classes. Some are located
-in the :ref:`learning module <Learning>`.
-
-Listeners
-=========
-
-.. autoxpmconfig:: xpmir.letor.learner.ValidationListener
-.. autoxpmconfig:: xpmir.letor.learner.ValidationModuleLoader
 
 Scorers
 =======
@@ -33,12 +19,6 @@ scorers, some are have learnable parameters.
    :members: initialize, rsv, to, eval, getRetriever
 .. autoxpmconfig:: xpmir.rankers.RandomScorer
 .. autoxpmconfig:: xpmir.rankers.AbstractModuleScorer
-.. autoxpmconfig:: xpmir.rankers.LearnableScorer
-
-Adapters
-********
-
-.. autoxpmconfig:: xpmir.rankers.adapters.ScorerTransformAdapter
 
 Utility functions
 *****************

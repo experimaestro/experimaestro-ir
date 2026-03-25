@@ -5,7 +5,6 @@ Text Representation
    :maxdepth: 2
 
    huggingface
-   wordvec
 
 
 The `text` module groups classes and configurations that compute
