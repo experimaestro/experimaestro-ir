@@ -256,6 +256,10 @@ class HFCrossScorer(AbstractModuleScorer):
     def export_action(self, loader, **kwargs):
         from xpmir.models import XPMIRExportAction
 
+        if self.doc:
+            kwargs.setdefault("doc", self.doc)
+        if self.bibtex:
+            kwargs.setdefault("bibtex", self.bibtex)
         return XPMIRExportAction.C(loader=loader, **kwargs)
 
 

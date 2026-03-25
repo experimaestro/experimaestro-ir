@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 from typing import Optional, Union, Dict
 import shutil
-from experimaestro import Config
+from experimaestro import Config, Param, field
 from xpmir.neural.dual import DotDense
 from xpmir.neural.huggingface import HFCrossScorer
 from xpm_torch import ModuleLoader
@@ -37,6 +37,7 @@ class XPMIRHFHub(TorchHFHub):
         config: Config,
         *,
         doc: Optional[str] = None,
+        bibtex: Optional[str] = None,
         model_id: Optional[str] = None,
         evaluations=None,
         model_key: Optional[str] = None,
@@ -44,6 +45,7 @@ class XPMIRHFHub(TorchHFHub):
     ):
         super().__init__(config)
         self.doc = doc
+        self.bibtex = bibtex
         self.model_id = model_id
         self.evaluations = evaluations
         self.model_key = model_key
@@ -86,6 +88,13 @@ class XPMIRHFHub(TorchHFHub):
             sections.append(ReadmeSection("usage", self._xpmir_usage_section()))
         if self.evaluations and self.model_key:
             sections.append(ReadmeSection("results", self._results_section()))
+        if self.bibtex:
+            sections.append(
+                ReadmeSection(
+                    "citation",
+                    f"## Citation\n\n```bibtex\n{self.bibtex}\n```",
+                )
+            )
         return sections
 
     def _save_pretrained(self, save_directory: Union[str, Path]):
@@ -102,8 +111,14 @@ class XPMIRHFHub(TorchHFHub):
 class XPMIRExportAction(ExportAction):
     """Export action that uses XPMIRHFHub for xpmir-specific README sections."""
 
+    doc: Param[str] = field(default="", ignore_default=True)
+    """Paper description or title"""
+
+    bibtex: Param[str] = field(default="", ignore_default=True)
+    """BibTeX citation"""
+
     def get_hub(self):
-        return XPMIRHFHub(self.loader)
+        return XPMIRHFHub(self.loader, doc=self.doc or None, bibtex=self.bibtex or None)
 
 
 class AutoModel:

@@ -56,6 +56,12 @@ class Scorer(Config, Initializable, EasyLogger, ABC):
     outputType: ModuleOutputType = ModuleOutputType.REAL
     """Determines the type of output scalar (log probability, probability, logit) """
 
+    doc: Meta[str] = ""
+    """Paper description or title (used in HF Hub README)"""
+
+    bibtex: Meta[str] = ""
+    """BibTeX citation (used in HF Hub README)"""
+
     def __initialize__(self):
         """Initialize the scorer"""
         pass
@@ -117,7 +123,7 @@ def scorer_retriever(
     *,
     retrievers: "RetrieverFactory",
     scorer: Scorer,
-    key:str=None,
+    key: str = None,
     **kwargs,
 ):
     """Helper function that returns a two stage retriever. This is useful
