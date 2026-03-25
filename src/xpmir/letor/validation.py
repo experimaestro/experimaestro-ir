@@ -139,6 +139,44 @@ class ValidationListener(LearnerListener):
 
         return LearnerListenerStatus.DONT_STOP
 
+    def _log_and_track_ir_metrics(self, means, details, state: TrainState):
+        """Log IR metrics to tensorboard and update best checkpoints."""
+        for metric, keep in self.metrics.items():
+            value = means[metric]
+
+            self.context.writer.add_scalar(
+                f"{self.id}/{metric}/mean", value, state.step
+            )
+
+            self.context.writer.add_histogram(
+                f"{self.id}/{metric}",
+                np.array(list(details[metric].values()), dtype=np.float32),
+                state.step,
+            )
+
+            # Update the top validation
+            if state.epoch >= self.warmup:
+                topstate = self.top.get(metric, None)
+                if topstate is None or value > topstate["value"]:
+                    # Save the new top JSON
+                    self.top[metric] = {"value": value, "epoch": self.context.epoch}
+
+                    # Copy in corresponding directory
+                    if keep:
+                        logging.info(
+                            f"Saving the checkpoint {state.epoch} for metric {metric}"
+                        )
+                        self.context.copy(self.bestpath / metric)
+
+    def _on_validation(self, means, details, state: TrainState):
+        """Called after IR metrics are computed. Override to add custom metrics.
+
+        :param means: Aggregated IR metric values (e.g. {"RR@10": 0.35})
+        :param details: Per-query IR metric values
+        :param state: Current training state
+        """
+        pass
+
     def __call__(self, state: TrainState):
         # Check that we did not stop earlier (when loading from checkpoint / if other
         # listeners have not stopped yet)
@@ -154,33 +192,8 @@ class ValidationListener(LearnerListener):
                 self.retriever, self.dataset, list(self.metrics.keys()), True
             )
 
-            for metric, keep in self.metrics.items():
-                value = means[metric]
-
-                self.context.writer.add_scalar(
-                    f"{self.id}/{metric}/mean", value, state.step
-                )
-
-                self.context.writer.add_histogram(
-                    f"{self.id}/{metric}",
-                    np.array(list(details[metric].values()), dtype=np.float32),
-                    state.step,
-                )
-
-                # Update the top validation
-                if state.epoch >= self.warmup:
-                    topstate = self.top.get(metric, None)
-                    if topstate is None or value > topstate["value"]:
-                        # Save the new top JSON
-                        self.top[metric] = {"value": value, "epoch": self.context.epoch}
-
-                        # Copy in corresponding directory
-                        if keep:
-                            logging.info(
-                                f"Saving the checkpoint {state.epoch}"
-                                f" for metric {metric}"
-                            )
-                            self.context.copy(self.bestpath / metric)
+            self._log_and_track_ir_metrics(means, details, state)
+            self._on_validation(means, details, state)
 
             # Update information
             with self.info.open("wt") as fp:
