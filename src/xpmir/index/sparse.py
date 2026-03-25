@@ -101,7 +101,7 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
     batcher: Meta[Batcher] = field(default_factory=Batcher.C)
     """Batcher used when computing representations"""
 
-    batch_size: Param[int]
+    batch_size: Meta[int]
     """Size of batches"""
 
     ordered_index: Param[bool]

@@ -21,7 +21,7 @@ def opt_slice(x: Optional[Sequence[T]], ix: Union[int, slice, list]) -> Optional
     return x[ix]
 
 class TokenizedTexts(NamedTuple):
-    """Tokenized texts output"""
+    """Structured Tokenized texts output, that can be cast to device"""
 
     tokens: Optional[List[List[str]]]
     """The list of tokens"""
