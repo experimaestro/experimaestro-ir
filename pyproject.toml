@@ -64,6 +64,7 @@ test = [
     "pytest",
     "faiss-cpu",
     "ruff>=0.14",
+    "transformers",
 ]
 dev = [
     "docutils>=0.21.2",
