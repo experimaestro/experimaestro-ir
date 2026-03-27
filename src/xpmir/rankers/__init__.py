@@ -4,12 +4,14 @@ from typing import (
     Protocol,
     TypeVar,
 )
-from datamaestro_ir.data import Documents
+from datamaestro_ir.data import (  # noqa: F401
+    Documents,
+    ScoredDocument,
+)
 from .retriever import (  # noqa: F401
     Retriever,
     RetrieverHydrator,
     RunRetriever,
-    MultiRunRetrieverFactory,
 )
 from .scorer import (  # noqa: F401
     Scorer,
