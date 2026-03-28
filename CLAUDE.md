@@ -72,7 +72,6 @@ Built on `xpm_torch` / PyTorch Lightning. `TrainerContext` is passed through for
 
 ### Submodule Dependencies
 
-- `datamaestro-ir/` — IR dataset management (local submodule)
 - `xpm-torch/` — PyTorch + experimaestro integration (local submodule)
 - `datamaestro-text/` — Text dataset management (local directory, no longer a submodule)
 - `ir_datasets` — Pinned to custom fork in some projects

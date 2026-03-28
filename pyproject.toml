@@ -23,7 +23,7 @@ dependencies = [
     # Experimaestro
     "experimaestro>=2.3",
     "datamaestro>=1.0.1",
-    "datamaestro-ir>=2025.7.28",
+    "datamaestro-ir>=0.2.0",
     "docstring_parser",
     "impact-index>=1.2.0",
     "omegaconf>=2.2",
@@ -104,7 +104,6 @@ include = [
 
 [tool.uv.sources]
 xpm-torch = { path = "xpm-torch", editable = true }
-datamaestro-ir = { path = "datamaestro-ir", editable = true }
 
 [tool.pytest.ini_options]
 markers = [
@@ -120,7 +119,7 @@ filterwarnings = [
 
 [tool.ruff]
 # Exclude submodules — they have their own ruff config
-exclude = ["xpm-torch", "datamaestro-ir", "datamaestro-text"]
+exclude = ["xpm-torch", "datamaestro-text"]
 
 [tool.pyright]
 include = ["xpmir"]
