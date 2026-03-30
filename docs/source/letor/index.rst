@@ -16,7 +16,7 @@ Scorers are able to give a score to a (query, document) pair. Among the
 scorers, some are have learnable parameters.
 
 .. autoxpmconfig:: xpmir.rankers.scorer.Scorer
-   :members: initialize, rsv, to, eval, getRetriever
+   :members: initialize, rsv, compute, to, eval, getRetriever
 .. autoxpmconfig:: xpmir.rankers.scorer.RandomScorer
 .. autoxpmconfig:: xpmir.rankers.scorer.AbstractModuleScorer
 

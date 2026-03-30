@@ -39,6 +39,10 @@ In a re-ranking setting, one can use a two stage retriever to perform
 retrieval, by using a fully fledge retriever first, and then
 re-ranking the results.
 
+The re-ranking process is memory-efficient as it uses lazy evaluation of
+the first-stage results and maximizes GPU throughput by batching query-document
+pairs across multiple queries.
+
 .. autoxpmconfig:: xpmir.rankers.scorer.AbstractTwoStageRetriever
 .. autoxpmconfig:: xpmir.rankers.scorer.TwoStageRetriever
 

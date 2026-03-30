@@ -1,6 +1,7 @@
 # This package contains all rankers
 from abc import ABC, abstractmethod
 from typing import (
+    Dict,
     Iterable,
     List,
     Optional,
@@ -11,7 +12,7 @@ from typing import (
 )
 import torch
 import torch.nn as nn
-from experimaestro import Param, Config, Meta, field
+from experimaestro import Param, Config, Meta, field, tqdm
 from datamaestro_ir.data import (
     Documents,
     IDTextRecord,
@@ -20,13 +21,16 @@ from datamaestro_ir.data import (
 from xpm_torch import Module, Random
 from xpm_torch.utils.utils import Initializable
 from xpm_torch.utils.logging import EasyLogger
-from xpm_torch.batchers import Batcher
+from xpm_torch.datasets import IndexedDataset, ShardedIterableDataset
+from torchdata.stateful_dataloader import StatefulDataLoader
 from xpm_torch.learner import TrainerContext
 from xpm_torch.losses import ModuleOutputType
 from xpmir.letor.records import (
     BaseItems,
     PairwiseItem,
     PairwiseItems,
+    PointwiseItem,
+    PointwiseItems,
     ProductItems,
 )
 from datamaestro_ir.data.base import ScoredDocument
@@ -46,6 +50,8 @@ class Scorer(Config, Initializable, EasyLogger, ABC):
     A model able to give a score to a list of documents given a query
     """
 
+    _initialized = False
+
     outputType: ModuleOutputType = ModuleOutputType.REAL
     """Determines the type of output scalar (log probability, probability, logit) """
 
@@ -64,6 +70,17 @@ class Scorer(Config, Initializable, EasyLogger, ABC):
         topic: Union[str, IDTextRecord],
         documents: Union[List[ScoredDocument], ScoredDocument, str, List[str]],
     ) -> List[ScoredDocument]:
+        """Compute the Retrieval Status Value (RSV) for a query and a set of documents.
+
+        This method is the primary entry point for scoring a set of documents
+        against a single query. It handles input normalization and delegates
+        to the :meth:`compute` method.
+
+        Note:
+            For large-scale evaluation involving multiple queries, using
+            :meth:`Retriever.retrieve_all` via a :class:`TwoStageRetriever`
+            is preferred as it allows for cross-query batching on GPUs.
+        """
         # Convert into document records
         if isinstance(documents, str):
             documents = [ScoredDocument({"text_item": SimpleTextItem(documents)}, None)]
@@ -83,14 +100,17 @@ class Scorer(Config, Initializable, EasyLogger, ABC):
     def compute(
         self, topic: IDTextRecord, documents: Iterable[ScoredDocument]
     ) -> List[ScoredDocument]:
-        """Score all documents with respect to the topic"""
+        """Score all documents with respect to a single topic.
+
+        This method should be implemented by subclasses to provide the actual
+        scoring logic. It is query-atomic (processes one query at a time).
+        """
         ...
 
     def getRetriever(
         self,
         retriever: "Retriever",
         batch_size: int,
-        batcher: Batcher = Batcher.C(),
         top_k=None,
         device=None,
     ):
@@ -106,7 +126,6 @@ class Scorer(Config, Initializable, EasyLogger, ABC):
             retriever=retriever,
             scorer=self,
             batchsize=batch_size,
-            batcher=batcher,
             top_k=top_k if top_k else None,
         )
 
@@ -153,10 +172,15 @@ class AbstractModuleScorerCall(Protocol):
 
 
 class AbstractModuleScorer(Scorer, Module):
-    """Base class for all torch-based Modules implementing the `xpmir.rankers.Scorer`
+    """Base class for all torch-based Modules implementing the `xpmir.rankers.Scorer`.
 
-    This class provides a `compute` method that calls the forward method,
+    While :meth:`compute` (inherited from :class:`Scorer`) processes documents
+    for a single query, :class:`AbstractModuleScorer` also supports cross-query
+    batching when called directly through its `forward` method (aliased as `__call__`).
 
+    When used in a :class:`TwoStageRetriever` with a `batchsize > 0`, the retriever
+    will use the :class:`PointwiseItems` batching to maximize GPU utilization across
+    multiple queries.
     """
 
     # Ensures basic operations are redirected to torch.nn.Module methods
@@ -176,6 +200,11 @@ class AbstractModuleScorer(Scorer, Module):
     def compute(
         self, topic: IDTextRecord, scored_documents: Iterable[ScoredDocument]
     ) -> List[ScoredDocument]:
+        """Atomic scoring for a single query using ProductItems.
+
+        This implementation leverages the :meth:`forward` method by wrapping
+        the single query and its documents into a :class:`ProductItems` object.
+        """
         # Prepare the inputs and call the model
         inputs = ProductItems()
         inputs.add_topics(topic)
@@ -187,10 +216,10 @@ class AbstractModuleScorer(Scorer, Module):
 
         # Returns the scored documents
         scoredDocuments = []
-        for i in range(len(scored_documents)):
+        for i, sd in enumerate(scored_documents):
             scoredDocuments.append(
                 ScoredDocument(
-                    scored_documents[i].document,
+                    sd.document,
                     float(scores[i].item()),
                 )
             )
@@ -221,41 +250,119 @@ class AbstractTwoStageRetriever(Retriever):
     batchsize: Meta[int] = field(default=0, ignore_default=True)
     """The batch size for the re-ranker"""
 
-    batcher: Meta[Batcher] = field(default_factory=Batcher.C)
-    """How to provide batches of documents"""
-
     def initialize(self):
         self.retriever.initialize()
-        self._batcher = self.batcher.initialize(self.batchsize)
         self.scorer.initialize()
+
+
+def reranking_collate(
+    batch: List[PointwiseItem],
+) -> Tuple[PointwiseItems, List[PointwiseItem]]:
+    """Collate PointwiseItems into a PointwiseItems batch."""
+    batch_items = PointwiseItems()
+    for item in batch:
+        batch_items.add(item)
+    return batch_items, batch
+
+
+class ReRankingDataset(ShardedIterableDataset):
+    """A dataset that yields PointwiseItem records for re-ranking"""
+
+    def __init__(self, queries: Dict[str, IDTextRecord], retriever: Retriever):
+        super().__init__()
+        self.queries = list(queries.items())
+        self.retriever = retriever
+
+    def iter_shard(self, shard_id: int, num_shards: int):
+        for i in range(shard_id, len(self.queries), num_shards):
+            qid, query = self.queries[i]
+            # Pull first-stage results on-the-fly to avoid materialising everything
+            scored_docs = self.retriever.retrieve(query)
+            for sd in scored_docs:
+                yield PointwiseItem(query, sd.document, sd.score)
 
 
 class TwoStageRetriever(AbstractTwoStageRetriever):
     """Use on retriever to select the top-K documents which are the re-ranked
     given a scorer"""
 
-    def _retrieve(
-        self,
-        batch: List[ScoredDocument],
-        query: str,
-        scoredDocuments: List[ScoredDocument],
-    ):
-        scoredDocuments.extend(self.scorer.rsv(query, batch))
-
     def retrieve(self, record: IDTextRecord):
         # Calls the retriever
         scoredDocuments = self.retriever.retrieve(record)
 
-        # Scorer in evaluation mode
-        self.scorer.eval()
-
-        _scoredDocuments = []
-        scoredDocuments = self._batcher.process(
-            scoredDocuments, self._retrieve, record, _scoredDocuments
-        )
+        # Score all documents
+        _scoredDocuments = self.scorer.rsv(record, scoredDocuments)
 
         _scoredDocuments.sort(reverse=True)
         return _scoredDocuments[: (self.top_k or len(_scoredDocuments))]
+
+    @torch.no_grad()
+    def retrieve_all(
+        self, queries: Dict[str, IDTextRecord]
+    ) -> Dict[str, List[ScoredDocument]]:
+        """Retrieves documents for all queries in an efficient two - stage fashion:
+        - populate a `PointWiseItem` dataset with the documents from first stage
+        - reranks them on the fly with the scorer with given batch size
+        - if self.batchsize is 0, scores all documents from the same query at once (will cause OOM large top_k first stages)
+        """
+        # Scorer in evaluation mode
+        self.scorer.eval()
+
+        if self.batchsize == 0:
+            # Fallback to per-query retrieval if no batchsize
+            return super().retrieve_all(queries)
+
+        # We don't materialise everything, but iterate on the fly
+        dataset = ReRankingDataset(queries, self.retriever)
+        dataloader = StatefulDataLoader(
+            dataset, batch_size=self.batchsize, collate_fn=reranking_collate
+        )
+
+        logger.info(
+            f"Re-Ranking with '{self.scorer.__class__.__name__}' using batch size {self.batchsize}..."
+        )
+        # Process in batches
+        scored_results = {qid: [] for qid in queries}
+        seen_qids = set()
+        pbar = tqdm(total=len(queries), desc="Re-ranking", unit="query")
+
+        for batch_items, batch in dataloader:
+            # Use scorer.forward if it's an AbstractModuleScorer to batch across queries
+            if isinstance(self.scorer, AbstractModuleScorer):
+                with torch.no_grad():
+                    scores = self.scorer(batch_items, None).cpu().float().numpy()
+                for score, item in zip(scores, batch):
+                    qid = item.topic["id"]
+                    if qid not in seen_qids:
+                        seen_qids.add(qid)
+                        pbar.update(1)
+                    scored_results[qid].append(
+                        ScoredDocument(item.document, float(score))
+                    )
+            else:
+                # Fallback: group by query and use rsv (score one by one)
+                by_query = {}
+                for item in batch:
+                    qid = item.topic["id"]
+                    if qid not in seen_qids:
+                        seen_qids.add(qid)
+                        pbar.update(1)
+                    by_query.setdefault(qid, []).append(
+                        ScoredDocument(item.document, item.relevance)
+                    )
+
+                for qid, docs in by_query.items():
+                    scored_results[qid].extend(self.scorer.rsv(queries[qid], docs))
+
+        pbar.close()
+
+        # Sort and truncate
+        for qid in scored_results:
+            scored_results[qid].sort(reverse=True)
+            if self.top_k:
+                scored_results[qid] = scored_results[qid][: self.top_k]
+
+        return scored_results
 
 
 class DuoTwoStageRetriever(AbstractTwoStageRetriever):
@@ -265,18 +372,6 @@ class DuoTwoStageRetriever(AbstractTwoStageRetriever):
     way.
     """
 
-    def _retrieve(
-        self,
-        batch: List[Tuple[ScoredDocument, ScoredDocument]],
-        query: str,
-        scoredDocuments: List[float],
-    ):
-        """call the function rsv to get the information for each batch
-        because of the batchsize is independent on k, we may seperate the
-        triplets belongs to the same query into different batches.
-        """
-        scoredDocuments.extend(self.rsv(query, batch))
-
     def retrieve(self, query: IDTextRecord):
         """call the _retrieve function by using the batcher and do an
         aggregation of all the scores
@@ -284,21 +379,32 @@ class DuoTwoStageRetriever(AbstractTwoStageRetriever):
         # get the documents from the retriever
         scoredDocuments_previous = self.retriever.retrieve(query)
 
-        # transform them into the pairs (i, j)
-        # for i != j ranging from 1 to nb of documents
-        pairs = []
-        for i in range(len(scoredDocuments_previous)):
-            for j in range(len(scoredDocuments_previous)):
-                if i != j:
-                    pairs.append(
-                        (scoredDocuments_previous[i], scoredDocuments_previous[j])
-                    )
-
         # Scorer in evaluation mode
         self.scorer.eval()
 
+        # Generator for pairs to avoid materialising everything
+        def iter_pairs():
+            for i in range(len(scoredDocuments_previous)):
+                for j in range(len(scoredDocuments_previous)):
+                    if i != j:
+                        yield (scoredDocuments_previous[i], scoredDocuments_previous[j])
+
         _scores_pairs = []  # the scores for each pair of documents
-        self._batcher.process(pairs, self._retrieve, query, _scores_pairs)
+        if self.batchsize > 0:
+            # Duo-reranking often involves a small number of docs (N=50, 100),
+            # but N^2 can still be large (10k). We use a list for now as
+            # IndexedDataset needs a sequence, but the materialisation is limited
+            # to ONE query at a time.
+            pairs = list(iter_pairs())
+            dataset = IndexedDataset(pairs)
+            dataloader = StatefulDataLoader(
+                dataset, batch_size=self.batchsize, collate_fn=lambda x: x
+            )
+            for batch in dataloader:
+                _scores_pairs.extend(self.rsv(query, batch))
+        else:
+            pairs = list(iter_pairs())
+            _scores_pairs = self.rsv(query, pairs)
 
         # Use the sum aggregation strategy
         _scores_pairs = torch.Tensor(_scores_pairs).reshape(
