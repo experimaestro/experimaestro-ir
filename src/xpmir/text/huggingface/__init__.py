@@ -20,3 +20,4 @@ from .base import (  # noqa: F401
     HFModelInitFromID,
     HFFromCheckpoint,
 )
+from .decompose import decompose_mlm_model  # noqa: F401

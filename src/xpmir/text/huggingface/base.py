@@ -136,6 +136,16 @@ class HFMaskedLanguageModel(HFModel):
     def automodel(self):
         return AutoModelForMaskedLM
 
+    def decompose(self):
+        """Decompose into (backbone, transform, decoder).
+
+        See :func:`~xpmir.text.huggingface.decompose.decompose_mlm_model`
+        for details.
+        """
+        from xpmir.text.huggingface.decompose import decompose_mlm_model
+
+        return decompose_mlm_model(self.model)
+
 
 class HFSequenceClassification(HFModel):
     """HuggingFace model for sequence classification"""

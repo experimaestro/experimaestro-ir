@@ -1,4 +1,3 @@
-import copy
 from pathlib import Path
 from typing import Optional, Generic
 from experimaestro import field, Config, Param
@@ -26,16 +25,33 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Sparton: GPU-accelerated SPLADE kernels
+# https://github.com/thongnt99/sparton — Apache License 2.0
+try:
+    from xpmir.neural._sparton import SpartonHead
+
+    _SPARTON_AVAILABLE = True
+except ImportError:
+    _SPARTON_AVAILABLE = False
+
 
 class Aggregation(Config):
     """The aggregation function for SPLADE"""
 
-    def get_output_module(self, linear: nn.Module) -> nn.Module:
-        return AggregationModule(linear, self)
+    def get_output_module(self, transform: nn.Module, decoder: nn.Linear) -> nn.Module:
+        """Returns an nn.Module: (hidden_states, mask) -> [B, V] sparse reps"""
+        raise NotImplementedError
 
 
 class MaxAggregation(Aggregation):
     """Aggregate using a max"""
+
+    def get_output_module(self, transform, decoder):
+        if _SPARTON_AVAILABLE:
+            logger.info("Using Sparton fused Triton kernel for MaxAggregation")
+            return SpartonAggregationModule(transform, decoder)
+        logger.info("Using PyTorch fallback for MaxAggregation (Sparton unavailable)")
+        return PyTorchAggregationModule(transform, decoder, self)
 
     def __call__(self, logits, mask):
         assert logits.shape[:2] == mask.shape[:2], (
@@ -54,6 +70,9 @@ class MaxAggregation(Aggregation):
 class SumAggregation(Aggregation):
     """Aggregate using a sum"""
 
+    def get_output_module(self, transform, decoder):
+        return PyTorchAggregationModule(transform, decoder, self)
+
     def __call__(self, logits, mask):
         assert logits.shape[:2] == mask.shape[:2], (
             f"Shape mismatch: logits {logits.shape} vs mask {mask.shape}"
@@ -64,25 +83,49 @@ class SumAggregation(Aggregation):
         )
 
 
-class AggregationModule(nn.Module):
-    """The aggregation module for SPLADE, which applies a linear layer followed
-    by an aggregation"""
+class PyTorchAggregationModule(nn.Module):
+    """PyTorch fallback: transform -> decoder -> aggregation"""
 
-    def __init__(self, linear: nn.Linear, aggregation: Aggregation):
+    def __init__(
+        self, transform: nn.Module, decoder: nn.Linear, aggregation: Aggregation
+    ):
         super().__init__()
-        self.linear = linear
+        self.transform = transform
+        self.decoder = decoder
         self.aggregation = aggregation
 
-    def forward(self, input: torch.Tensor, mask: torch.Tensor):
-        return self.aggregation(self.linear(input), mask)
+    def forward(self, hidden_states: torch.Tensor, mask: torch.Tensor):
+        logits = self.decoder(self.transform(hidden_states))
+        return self.aggregation(logits, mask)
 
 
-class IdentityWithBias(nn.Identity):
-    def __init__(self, original_linear: nn.Linear = None):
-        # So that set_output_embeddings is happy
+class SpartonAggregationModule(nn.Module):
+    """Fused Triton kernel: transform -> sparton (matmul+max+relu+log1p).
+
+    Falls back to PyTorch on CPU.
+    """
+
+    def __init__(self, transform: nn.Module, decoder: nn.Linear):
         super().__init__()
-        self.bias = None
-        self.original_linear = original_linear
+        self.transform = transform
+        self.decoder = decoder
+        self._sparton_head = SpartonHead(
+            decoder.out_features,
+            decoder.in_features,
+            use_bias=(decoder.bias is not None),
+        )
+        self._sparton_head.tie_weights(decoder)
+
+    def forward(self, hidden_states: torch.Tensor, mask: torch.Tensor):
+        hidden_states = self.transform(hidden_states)
+        if hidden_states.is_cuda:
+            return self._sparton_head(hidden_states, mask)
+        # CPU fallback: standard PyTorch max+relu+log1p
+        logits = self.decoder(hidden_states)
+        values, _ = torch.max(
+            torch.relu(logits) * mask.to(logits.device).unsqueeze(-1), dim=1
+        )
+        return torch.log1p(values.clamp(min=0))
 
 
 class SpladeTextEncoder(
@@ -110,34 +153,14 @@ class SpladeTextEncoder(
 
     def __initialize__(self):
         """Module initialization: initializes the encoder and tokenizer, and
-        adds the aggregation head."""
+        decomposes the MLM model into backbone + aggregation head."""
 
         self.encoder.initialize()
         self.tokenizer.initialize()
 
-        # Adds the aggregation head right away - this could allow
-        # optimization e.g. for a top-k max aggregation method.
-
-        # Note: ideally we should not modify the encoder in-place, so that
-        # the HFMaskedLanguageModel remains reusable.
-
-        # When the encoder is shared between doc/query encoders, the second
-        # SpladeTextEncoder finds IdentityWithBias already in place — in that
-        # case retrieve the stored original linear.
-        output_embeddings = self.encoder.model.get_output_embeddings()
-        if isinstance(output_embeddings, IdentityWithBias):
-            # Shared encoder: output embeddings already replaced; reuse original
-            original_linear = output_embeddings.original_linear
-        else:
-            assert isinstance(output_embeddings, nn.Linear), (
-                f"Cannot handle output embeddings of class {output_embeddings.__class__}"
-            )
-            original_linear = output_embeddings
-            self.encoder.model.set_output_embeddings(
-                IdentityWithBias(original_linear=original_linear)
-            )
-
-        self.aggregation = self.aggregation.get_output_module(original_linear)
+        backbone, transform, decoder = self.encoder.decompose()
+        self._backbone = backbone
+        self._head = self.aggregation.get_output_module(transform, decoder)
 
     @initialized
     def forward(self, texts: EncoderInputType) -> TextsRepresentationOutput:
@@ -145,19 +168,29 @@ class SpladeTextEncoder(
         tokenized = self.tokenizer.tokenize(
             texts, options=TokenizerOptions(self.maxlen)
         )
+        tokenized = tokenized.to(self.encoder.model.device)
 
-        value = self.aggregation(self.encoder(tokenized).logits, tokenized.mask)
+        kwargs = {}
+        if tokenized.token_type_ids is not None:
+            kwargs["token_type_ids"] = tokenized.token_type_ids
+
+        hidden = self._backbone(
+            input_ids=tokenized.ids,
+            attention_mask=tokenized.mask,
+            **kwargs,
+        ).last_hidden_state
+
+        value = self._head(hidden, tokenized.mask)
         return TextsRepresentationOutput(value, tokenized)
 
     def save_model(self, path: Path):
-        """Save the HF model in standard pretrained format (safetensors + config + tokenizer)."""
+        """Save the HF model in standard pretrained format.
+
+        With tie_weights, the decoder linear remains in the HF model's module
+        tree, so ``save_pretrained`` saves all weights naturally.
+        """
         path.mkdir(parents=True, exist_ok=True)
-        hf_model = self.encoder.model
-        # Shallow copy to restore output embeddings without affecting the live model
-        model_copy = copy.copy(hf_model)
-        model_copy._modules = dict(model_copy._modules)
-        model_copy.set_output_embeddings(self.aggregation.linear)
-        model_copy.save_pretrained(path)
+        self.encoder.model.save_pretrained(path)
         self.tokenizer.tokenizer.tokenizer.save_pretrained(path)
 
     def load_model(self, path: Path):
@@ -166,13 +199,10 @@ class SpladeTextEncoder(
         if config_path.exists():
             from transformers import AutoModelForMaskedLM
 
-            loaded = AutoModelForMaskedLM.from_pretrained(path)
-            output_linear = loaded.get_output_embeddings()
-            loaded.set_output_embeddings(
-                IdentityWithBias(original_linear=output_linear)
-            )
-            self.encoder.model = loaded
-            self.aggregation.linear = output_linear
+            self.encoder.model = AutoModelForMaskedLM.from_pretrained(path)
+            backbone, transform, decoder = self.encoder.decompose()
+            self._backbone = backbone
+            self._head = self.aggregation.get_output_module(transform, decoder)
         else:
             super().load_model(path)
 
