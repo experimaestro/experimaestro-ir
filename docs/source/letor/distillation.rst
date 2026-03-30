@@ -22,6 +22,7 @@ Losses
 
 .. autoxpmconfig:: xpmir.letor.distillation.pairwise.MSEDifferenceLoss
 .. autoxpmconfig:: xpmir.letor.distillation.pairwise.DistillationKLLoss
+.. autoxpmconfig:: xpmir.letor.distillation.listwise.ListwiseInfoNCE
 
 Samplers
 --------

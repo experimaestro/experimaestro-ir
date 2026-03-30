@@ -19,7 +19,7 @@ Base class
 
 .. autoclass:: xpmir.rankers.ScoredDocument
 
-.. autoxpmconfig:: xpmir.rankers.Retriever
+.. autoxpmconfig:: xpmir.rankers.retriever.Retriever
     :members: initialize, collection, getindex, retrieve_all, retrieve
 
 Standard IR models
@@ -39,8 +39,8 @@ In a re-ranking setting, one can use a two stage retriever to perform
 retrieval, by using a fully fledge retriever first, and then
 re-ranking the results.
 
-.. autoxpmconfig:: xpmir.rankers.AbstractTwoStageRetriever
-.. autoxpmconfig:: xpmir.rankers.TwoStageRetriever
+.. autoxpmconfig:: xpmir.rankers.scorer.AbstractTwoStageRetriever
+.. autoxpmconfig:: xpmir.rankers.scorer.TwoStageRetriever
 
 Duo-retrievers
 --------------
@@ -48,15 +48,16 @@ Duo-retrievers
 Duo-retrievers only predicts whether a document is "more relevant" than
 another
 
-.. autoxpmconfig:: xpmir.rankers.DuoTwoStageRetriever
-.. autoxpmconfig:: xpmir.rankers.DuoLearnableScorer
+.. autoxpmconfig:: xpmir.rankers.scorer.DuoTwoStageRetriever
+.. autoxpmconfig:: xpmir.rankers.scorer.DuoLearnableScorer
 
 Misc
 ----
 
 .. autoxpmconfig:: xpmir.rankers.full.FullRetriever
 .. autoxpmconfig:: xpmir.rankers.full.FullRetrieverRescorer
-.. autoxpmconfig:: xpmir.rankers.RetrieverHydrator
+.. autoxpmconfig:: xpmir.rankers.retriever.RetrieverHydrator
+.. autoxpmconfig:: xpmir.rankers.retriever.RunRetriever
 
 Collection dependendant
 -----------------------

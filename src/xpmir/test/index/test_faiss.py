@@ -57,4 +57,12 @@ def test_faiss_indexation(tmp_path: Path, indexspec):
         logging.debug("%s vs %s", scores[ix], scoredDocuments)
         observed = [int(sd.document["id"]) for sd in scoredDocuments]
 
-        assert expected == observed
+        if indexspec == "Flat":
+            assert expected == observed
+        else:
+            # Approximate indices (HNSW) may not return exact top-k
+            overlap = len(set(expected) & set(observed))
+            assert overlap >= topk - 1, (
+                f"Expected at least {topk - 1}/{topk} overlap, got {overlap}. "
+                f"Expected {expected}, observed {observed}"
+            )
