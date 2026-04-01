@@ -337,7 +337,7 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
                         seen_qids.add(qid)
                         pbar.update(1)
                     scored_results[qid].append(
-                        ScoredDocument(item.document, float(score))
+                        ScoredDocument(item.document, float(score.item()))
                     )
             else:
                 # Fallback: group by query and use rsv (score one by one)
