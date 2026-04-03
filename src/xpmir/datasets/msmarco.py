@@ -3,8 +3,8 @@
 from attrs import Factory
 import logging
 
-from . import NeuralIRExperiment, configuration
-from xpmir.papers.helpers.samplers import ValidationSample
+from xpmir.experiments.helpers import NeuralIRExperiment, configuration
+from xpmir.datasets.samplers import ValidationSample
 
 logging.basicConfig(level=logging.INFO)
 
