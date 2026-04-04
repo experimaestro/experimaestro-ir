@@ -1,16 +1,22 @@
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import List, Optional
 from attrs import evolve
 import torch
-from experimaestro import Param
-from xpmir.letor.records import TopicRecord, DocumentRecord
+from experimaestro import DataPath, OptionalDataPath, field, Param
+from datamaestro_ir.data import IDTextRecord
 from xpmir.neural import DualRepresentationScorer, QueriesRep, DocsRep
-from xpmir.utils.utils import easylog, foreach
-from xpmir.text.encoders import TextEncoderBase
-from xpmir.learning.context import Loss, TrainerContext, TrainingHook
-from xpmir.learning.metrics import ScalarMetric
 
-logger = easylog()
+from xpmir.text.encoders import TextEncoderBase
+from xpm_torch.learner import TrainerContext
+from xpm_torch.losses import Loss
+from xpm_torch.module import ModuleLoader
+from xpm_torch.trainers import TrainingHook
+from xpm_torch.metrics import ScalarMetric
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class DualVectorListener(TrainingHook):
@@ -73,8 +79,32 @@ class DualVectorScorerListener(TrainingHook, ABC):
         raise NotImplementedError(f"__call__ in {self.__class__}")
 
 
+class DualModuleLoader(ModuleLoader):
+    """ModuleLoader for dual encoder models.
+
+    Has distinct ``encoder_path`` and ``query_encoder_path`` DataPaths so each
+    encoder is serialized independently. This enables proper
+    sentence-transformers format on HF Hub export (symmetric vs
+    router/asymmetric).
+    """
+
+    encoder_path: Param[DataPath]
+    """Path to the document encoder checkpoint"""
+
+    query_encoder_path: OptionalDataPath = None
+    """Path to the query encoder checkpoint (if separate from doc encoder)"""
+
+    def execute(self):
+        self.value.initialize()
+        self.value.encoder.load_model(Path(self.encoder_path))
+        if self.query_encoder_path and self.value.query_encoder is not None:
+            self.value._query_encoder.load_model(Path(self.query_encoder_path))
+
+
 class DualVectorScorer(DualRepresentationScorer[QueriesRep, DocsRep]):
     """A scorer based on dual vectorial representations"""
+
+    CONFIG_LOADER = DualModuleLoader.C
 
     encoder: Param[TextEncoderBase]
     """The document (and potentially query) encoder"""
@@ -82,10 +112,10 @@ class DualVectorScorer(DualRepresentationScorer[QueriesRep, DocsRep]):
     query_encoder: Param[Optional[TextEncoderBase]]
     """The query encoder (optional, if not defined uses the query_encoder)"""
 
-    def __initialize__(self, options):
-        self.encoder.initialize(options)
+    def __initialize__(self):
+        self.encoder.initialize()
         if self.query_encoder:
-            self.query_encoder.initialize(options)
+            self.query_encoder.initialize()
 
     @property
     def _query_encoder(self):
@@ -95,22 +125,52 @@ class DualVectorScorer(DualRepresentationScorer[QueriesRep, DocsRep]):
         super().__validate__()
         assert not self.encoder.static(), "The vocabulary should be learnable"
 
+    def _has_separate_query_model(self) -> bool:
+        """Check if query and doc encoders are separate models.
+        Default: object identity check. Override for more specific logic.
+        """
+        return self.query_encoder is not None and self.query_encoder is not self.encoder
+
+    def export_action(self, loader, **kwargs):
+        from xpmir.models import XPMIRExportAction
+
+        if self.doc:
+            kwargs.setdefault("doc", self.doc)
+        if self.bibtex:
+            kwargs.setdefault("bibtex", self.bibtex)
+        return XPMIRExportAction.C(loader=loader, **kwargs)
+
+    def loader_config(self, path: Path, *, settings=None) -> DualModuleLoader:
+        has_separate_query = self._has_separate_query_model()
+        return self.CONFIG_LOADER(
+            value=self,
+            encoder_path=path / "encoder",
+            query_encoder_path=(path / "query_encoder" if has_separate_query else None),
+            settings=settings,
+        )
+
 
 class Dense(DualVectorScorer[QueriesRep, DocsRep]):
     """A scorer based on a pair of (query, document) dense vectors"""
 
     def score_product(self, queries, documents, info: Optional[TrainerContext] = None):
-        scores = queries.value @ documents.value.T
+        # Gather the representations across all processes
+        if info is not None and info.fabric is not None:
+            fabric = info.fabric
+            q_all = fabric.all_gather(queries.value, sync_grads=True)
+            d_all = fabric.all_gather(documents.value, sync_grads=True)
+        else:
+            # We should always have access to fabric (even not in trainer mode)
+            q_all = queries.value
+            d_all = documents.value
+
+        scores = q_all @ d_all.T
 
         if info is not None:
-            foreach(
-                info.hooks(DualVectorListener),
-                lambda hook: hook(info, queries, documents),
-            )
-            foreach(
-                info.hooks(DualVectorScorerListener),
-                lambda hook: hook(info, queries, documents, scores),
-            )
+            for hook in info.hooks(DualVectorListener):
+                hook(info, queries, documents)
+            for hook in info.hooks(DualVectorScorerListener):
+                hook(info, queries, documents, scores)
 
         return scores
 
@@ -123,15 +183,31 @@ class Dense(DualVectorScorer[QueriesRep, DocsRep]):
 
         # Apply the dual vector hook
         if info is not None:
-            foreach(
-                info.hooks(DualVectorListener),
-                lambda hook: hook(info, queries, documents),
-            )
-            foreach(
-                info.hooks(DualVectorScorerListener),
-                lambda hook: hook(info, queries, documents, scores),
-            )
+            for hook in info.hooks(DualVectorListener):
+                hook(info, queries, documents)
+            for hook in info.hooks(DualVectorScorerListener):
+                hook(info, queries, documents, scores)
         return scores
+
+    @classmethod
+    def from_pretrained_hf(cls, model_id: str, **kwargs):
+        """Creates a Dense model from a HuggingFace encoder model
+
+        :param model_id: The HuggingFace model ID
+        :param kwargs: Additional keyword arguments passed to the constructor
+        :returns: (model, init_tasks) tuple
+        """
+        from xpmir.text.huggingface.base import (
+            HFConfigID,
+            HFModel,
+            HFModelInitFromID,
+        )
+        from xpmir.text.huggingface.encoders import HFCLSEncoder
+
+        hf_model = HFModel.C(config=HFConfigID.C(hf_id=model_id))
+        init_hf = HFModelInitFromID.C(model=hf_model)
+        encoder = HFCLSEncoder.C(model=hf_model, **kwargs)
+        return cls.C(encoder=encoder), [init_hf]
 
     @classmethod
     def from_sentence_transformers(cls, hf_id: str, **kwargs):
@@ -142,22 +218,22 @@ class Dense(DualVectorScorer[QueriesRep, DocsRep]):
 
         :param hf_id: The HuggingFace ID
         """
-        from xpmir.text.huggingface import SentenceTransformerTextEncoder
+        from xpmir.text.huggingface.encoders import SentenceTransformerTextEncoder
 
-        encoder = SentenceTransformerTextEncoder(hf_id)
-        return cls(encoder, **kwargs)
+        encoder = SentenceTransformerTextEncoder.C(model_id=hf_id)
+        return cls.C(encoder=encoder, **kwargs)
 
 
 class CosineDense(Dense):
     """Dual model based on cosine similarity."""
 
-    def encode_queries(self, records: List[TopicRecord]):
+    def encode_queries(self, records: List[IDTextRecord]):
         queries = (self.query_encoder or self.encoder)(records)
         return evolve(
             queries, value=queries.value / queries.value.norm(dim=-1, keepdim=True)
         )
 
-    def encode_documents(self, records: List[DocumentRecord]):
+    def encode_documents(self, records: List[IDTextRecord]):
         documents = self.encoder(records)
         return evolve(
             documents,
@@ -172,13 +248,72 @@ class DotDense(Dense):
         super().__validate__()
         assert not self.encoder.static(), "The vocabulary should be learnable"
 
-    def encode_queries(self, records: List[TopicRecord]):
+    def encode_queries(self, records: List[IDTextRecord]):
         """Encode the different queries"""
         return self._query_encoder(records)
 
-    def encode_documents(self, records: List[DocumentRecord]):
+    def encode_documents(self, records: List[IDTextRecord]):
         """Encode the different documents"""
         return self.encoder(records)
+
+    def save_model(self, path: Path):
+        """Save sub-encoders independently to subdirectories."""
+        path.mkdir(parents=True, exist_ok=True)
+        self.encoder.save_model(path / "encoder")
+        if self.query_encoder is not None and self.query_encoder is not self.encoder:
+            self._query_encoder.save_model(path / "query_encoder")
+
+    def load_model(self, path: Path):
+        """Load sub-encoders from subdirectories, with backward compat."""
+        if (path / "encoder").exists():
+            self.encoder.load_model(path / "encoder")
+            if (path / "query_encoder").exists() and self.query_encoder is not None:
+                self._query_encoder.load_model(path / "query_encoder")
+        else:
+            # Backward compat: flat state_dict
+            super().load_model(path)
+
+
+def dual_representation_metrics(
+    info: TrainerContext, queries: torch.Tensor, documents: torch.Tensor
+):
+    """Compute and report sparsity and QD-FLOPS metrics for dual representations"""
+    with torch.no_grad():
+        qdflops_count = (
+            ((queries > 0).sum(0) * (documents > 0).sum(0)).float().mean()
+        ) / queries.shape[1]
+
+        info.metrics.add(ScalarMetric("qdflops_count", qdflops_count.item(), 1))
+        info.metrics.add(
+            ScalarMetric(
+                "sparsity_q",
+                torch.count_nonzero(queries).item()
+                / (queries.shape[0] * queries.shape[1]),
+                len(queries),
+            )
+        )
+        info.metrics.add(
+            ScalarMetric(
+                "sparsity_d",
+                torch.count_nonzero(documents).item()
+                / (documents.shape[0] * documents.shape[1]),
+                len(documents),
+            )
+        )
+
+        # Median activation rate of the top-k most frequent terms
+        for prefix, x in [("q", queries), ("d", documents)]:
+            freq = (x > 0).float().mean(0)
+            top_freq = freq.topk(min(20, freq.shape[0])).values
+            for k in (1, 5, 10, 20):
+                if k <= top_freq.shape[0]:
+                    info.metrics.add(
+                        ScalarMetric(
+                            f"saturation_{prefix}/top{k}",
+                            top_freq[:k].median().item(),
+                            1,
+                        )
+                    )
 
 
 class FlopsRegularizer(DualVectorListener):
@@ -193,6 +328,7 @@ class FlopsRegularizer(DualVectorListener):
     .. math::
         FLOPS(x) = \left( \frac{1}{d} \sum_{i=1}^d |x_i| \right)^2
     """
+
     lambda_q: Param[float]
     """Lambda for queries"""
 
@@ -229,23 +365,7 @@ class FlopsRegularizer(DualVectorListener):
         info.metrics.add(ScalarMetric("flops_q", flops_q.item(), 1))
         info.metrics.add(ScalarMetric("flops_d", flops_d.item(), 1))
 
-        with torch.no_grad():
-            info.metrics.add(
-                ScalarMetric(
-                    "sparsity_q",
-                    torch.count_nonzero(queries).item()
-                    / (queries.shape[0] * queries.shape[1]),
-                    len(q),
-                )
-            )
-            info.metrics.add(
-                ScalarMetric(
-                    "sparsity_d",
-                    torch.count_nonzero(documents).item()
-                    / (documents.shape[0] * documents.shape[1]),
-                    len(d),
-                )
-            )
+        dual_representation_metrics(info, queries, documents)
 
 
 class ScheduledFlopsRegularizer(FlopsRegularizer):
@@ -255,13 +375,13 @@ class ScheduledFlopsRegularizer(FlopsRegularizer):
     ```lambda_warmup_steps```, and then remains constant
     """
 
-    min_lambda_q: Param[float] = 0
+    min_lambda_q: Param[float] = field(default=0, ignore_default=True)
     """Min value for the lambda_q before it increase"""
 
-    min_lambda_d: Param[float] = 0
+    min_lambda_d: Param[float] = field(default=0, ignore_default=True)
     """Min value for the lambda_d before it increase"""
 
-    lambda_warmup_steps: Param[int] = 0
+    lambda_warmup_steps: Param[int] = field(default=0, ignore_default=True)
     """The warmup steps for the lambda"""
 
     def quadratic_ratio(self, step):

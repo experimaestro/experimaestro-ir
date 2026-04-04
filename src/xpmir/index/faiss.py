@@ -5,27 +5,21 @@ https://github.com/facebookresearch/faiss
 
 from pathlib import Path
 from typing import Callable, Iterator, List, Optional, Tuple
-from datamaestro_text.data.ir.base import TopicRecord
 from experimaestro import Config, initializer, PathGenerator
 import torch
 import numpy as np
 from experimaestro import Meta, Task, Param, tqdm, field
 import logging
-from datamaestro_text.data.ir import DocumentStore, TextItem
+from datamaestro_ir.data import DocumentStore, TextRecord
 from xpmir.rankers import Retriever, ScoredDocument
-from xpmir.learning.batchers import Batcher
-from xpmir.learning import ModuleInitMode
+from xpm_torch.batchers import Batcher
 from xpmir.text.encoders import TextEncoder
-from xpmir.letor import (
-    Device,
-    DEFAULT_DEVICE,
-    DeviceInformation,
-)
-from xpmir.utils.utils import batchiter, easylog, foreach
+
+from xpmir.utils.utils import batchiter, foreach
 from xpmir.documents.samplers import DocumentSampler
 from xpmir.context import Context, Hook, InitializationHook
 
-logger = easylog()
+logger = logging.getLogger(__name__)
 
 try:
     import faiss
@@ -40,7 +34,9 @@ class FaissIndex(Config):
     normalize: Param[bool]
     """Whether vectors should be normalized (L2)"""
 
-    faiss_index: Meta[Path] = field(default_factory=PathGenerator("faiss.dat"))
+    faiss_index: Meta[Path] = field(
+        default_factory=PathGenerator("faiss.dat"), ignore_generated=True
+    )
     """Path to the file containing the index"""
 
     documents: Param[DocumentStore]
@@ -57,16 +53,13 @@ class IndexBackedFaiss(FaissIndex, Task):
     encoder: Param[TextEncoder]
     """Encoder for document texts"""
 
-    batchsize: Meta[int] = 1
+    batchsize: Meta[int] = field(default=1, ignore_default=True)
     """The batch size used when computing representations of documents"""
 
-    device: Meta[Device] = DEFAULT_DEVICE
-    """The device used by the encoder"""
-
-    batcher: Meta[Batcher] = Batcher.C()
+    batcher: Meta[Batcher] = field(default=Batcher.C(), ignore_default=True)
     """The way to prepare batches of documents"""
 
-    hooks: Param[List[Hook]] = []
+    hooks: Param[List[Hook]] = field(default=[], ignore_default=True)
     """An optional list of hooks"""
 
     indexspec: Param[str]
@@ -122,9 +115,6 @@ class IndexBackedFaiss(FaissIndex, Task):
         index.train(sample)
 
     def execute(self):
-        self.device.execute(self._execute)
-
-    def _execute(self, device_information: DeviceInformation):
         # Initialization hooks
         context = Context(hooks=self.hooks)
         foreach(context.hooks(InitializationHook), lambda hook: hook.before(context))
@@ -132,14 +122,13 @@ class IndexBackedFaiss(FaissIndex, Task):
         step_iter = tqdm(total=2, desc="Building the FAISS index")
 
         # Initializations
-        self.encoder.initialize(ModuleInitMode.DEFAULT.to_options())
+        self.encoder.initialize()
         index = faiss.index_factory(
             self.encoder.dimension, self.indexspec, faiss.METRIC_INNER_PRODUCT
         )
         batcher = self.batcher.initialize(self.batchsize)
 
-        # Change the device of the encoder
-        self.encoder.to(device_information.device).eval()
+        self.encoder.eval()
 
         # Train the index
         if not index.is_trained:
@@ -157,14 +146,10 @@ class IndexBackedFaiss(FaissIndex, Task):
         step_iter.update()
 
         # Index the collection
-        doc_iter = (
-            tqdm(
-                self.documents.iter_documents(),
-                total=self.documents.documentcount,
-                desc="Indexing the collection",
-            )
-            if device_information.main
-            else self.documents.iter_documents()
+        doc_iter = tqdm(
+            self.documents.iter_documents(),
+            total=self.documents.documentcount,
+            desc="Indexing the collection",
         )
 
         # Initialization hooks (after)
@@ -175,7 +160,7 @@ class IndexBackedFaiss(FaissIndex, Task):
         with torch.no_grad():
             for batch in batchiter(self.batchsize, doc_iter):
                 batcher.process(
-                    [document[TextItem].text for document in batch],
+                    [document["text_item"].text for document in batch],
                     self.index_documents,
                     index,
                 )
@@ -220,15 +205,18 @@ class FaissRetriever(Retriever):
         self._index = faiss.read_index(str(self.index.faiss_index))
         logger.info("FAISS retriever: initialized")
 
-    def retrieve(self, query: TopicRecord) -> List[ScoredDocument]:
+    def retrieve(self, query: TextRecord) -> List[ScoredDocument]:
         """Retrieves a documents, returning a list sorted by decreasing score"""
         with torch.no_grad():
             self.encoder.eval()  # pass the model to the evaluation model
-            encoded_query = self.encoder([query[TextItem].text]).value
+            encoded_query = self.encoder([query["text_item"].text]).value
             if self.index.normalize:
                 encoded_query /= encoded_query.norm(2)
 
-            values, indices = self._index.search(encoded_query.cpu().numpy(), self.topk)
+            values, indices = self._index.search(
+                np.ascontiguousarray(encoded_query.cpu().numpy(), dtype=np.float32),
+                self.topk,
+            )
             return [
                 ScoredDocument(self.index.documents.document_int(int(ix)), float(value))
                 for ix, value in zip(indices[0], values[0])

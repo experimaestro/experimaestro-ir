@@ -7,6 +7,7 @@ import logging
 import shutil
 import threading
 import heapq
+from lightning import Fabric
 import torch
 from queue import Empty, Queue
 import torch.multiprocessing as mp
@@ -25,18 +26,19 @@ from experimaestro import (
     tqdm,
     Constant,
 )
-from datamaestro_text.data.ir import DocumentRecord, DocumentStore
-from xpmir.learning import ModuleInitMode
-from xpmir.learning.batchers import Batcher
-from xpmir.utils.utils import batchiter, easylog
-from xpmir.letor import Device, DeviceInformation, DEFAULT_DEVICE
+from datamaestro_ir.data import IDTextRecord, DocumentStore
+from xpm_torch.configuration import FabricConfiguration
+from xpm_torch.batchers import Batcher
+
+from xpmir.utils.utils import batchiter
 from xpmir.text.encoders import TextEncoderBase, TextsRepresentationOutput, InputType
-from xpmir.rankers import Retriever, TopicRecord, ScoredDocument
+from datamaestro_ir.data import TextRecord
+from xpmir.rankers import Retriever, ScoredDocument
 from xpmir.utils.iter import MultiprocessIterator
 from xpmir.utils.multiprocessing import StoppableQueue, available_cpus
 import impact_index
 
-logger = easylog()
+logger = logging.getLogger(__name__)
 
 # --- Index and retriever
 
@@ -99,37 +101,33 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
     batcher: Meta[Batcher] = field(default_factory=Batcher.C)
     """Batcher used when computing representations"""
 
-    batch_size: Param[int]
+    batch_size: Meta[int]
     """Size of batches"""
 
     ordered_index: Param[bool]
     """Ordered index: if not ordered, use DAAT strategy (WAND), otherwise, use
     fast top-k strategies"""
 
-    device: Meta[Device] = DEFAULT_DEVICE
-    """The device for building the index"""
-
     version: Constant[int] = 3
     """Version 3 of the index"""
 
-    max_docs: Param[int] = 0
+    max_docs: Param[int] = field(default=0, ignore_default=True)
     """Maximum number of indexed documents"""
 
-    def execute(self):
+    def _execute(self, fabric: Fabric):
         if mp.get_start_method(allow_none=True) is None:
             mp.set_start_method("spawn")
 
-        max_docs = 0
         if self.max_docs:
             max_docs = min(self.max_docs, self.documents.documentcount or sys.maxsize)
             logger.warning("Limited indexing to %d documents", max_docs)
-
-        self.encoder.initialize(ModuleInitMode.DEFAULT.to_options(None))
+        else:
+            max_docs = self.documents.documentcount
 
         closed = mp.Event()
         queues = [
             StoppableQueue(2 * self.batch_size + 1, closed)
-            for _ in range(self.device.n_processes)
+            for _ in range(fabric.world_size)
         ]
 
         # Start the index process (thread)
@@ -151,8 +149,8 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
         ).detach()
 
         try:
-            self.device.execute(
-                self.device_execute,
+            fabric.launch(
+                self._device_worker,
                 iter_batches,
                 self.encoder,
                 self.batcher,
@@ -209,9 +207,9 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
                     logger.debug("Handling range: %s", current)
                     for docid in range(current.start, current.end + 1):
                         encoded = queues[current.rank].get()
-                        assert (
-                            encoded.docid == docid
-                        ), f"Mismatch in document IDs ({encoded.docid} vs {docid})"
+                        assert encoded.docid == docid, (
+                            f"Mismatch in document IDs ({encoded.docid} vs {docid})"
+                        )
 
                         (nonzero_ix,) = encoded.value.nonzero()
                         self.add_encoded_document(docid, encoded, nonzero_ix)
@@ -244,49 +242,47 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
                 raise
 
     @staticmethod
-    def device_execute(
-        device_information: DeviceInformation,
-        iter_batches: Iterator[List[Tuple[int, DocumentRecord]]],
+    def _device_worker(
+        fabric: Fabric,
+        iter_batches: Iterator[List[Tuple[int, IDTextRecord]]],
         encoder,
         batcher,
         batch_size,
         queues: List[StoppableQueue],
     ):
+        """Encoding worker launched by Fabric (one per device)"""
+        queue = queues[fabric.local_rank]
         try:
-            # Encode all documents
+            encoder.initialize()
+            encoder = fabric.setup(encoder)
+            encoder.eval()
+
             logger.info(
-                "Load the encoder and "
-                f"transfer to the target device {device_information.device}"
+                "Encoding on device %s (rank %d)", fabric.device, fabric.local_rank
             )
 
-            encoder = encoder.to(device_information.device).eval()
-            queue = queues[device_information.rank]
             batcher = batcher.initialize(batch_size)
 
-            # Index
             with torch.no_grad():
                 for batch in iter_batches:
-                    # Signals the output range
                     document_range = DocumentRange(
-                        device_information.rank, batch[0][0], batch[-1][0]
+                        fabric.local_rank, batch[0][0], batch[-1][0]
                     )
                     logger.debug(
                         "Starting range [%d] %s",
-                        device_information.rank,
+                        fabric.local_rank,
                         document_range,
                     )
                     queue.put(document_range)
 
-                    # Outputs the documents
                     batcher.process(
                         batch,
-                        SparseRetrieverIndexBuilder.encode_documents,
+                        AbstractSparseRetrieverIndexBuilder.encode_documents,
                         encoder,
                         queue,
                     )
 
-            # Build the index
-            logger.info("Closing queue %d", device_information.rank)
+            logger.info("Closing queue %d", fabric.local_rank)
             queue.put(None)
         except BaseException:
             logging.exception("Got an exception while encoding documents")
@@ -295,7 +291,7 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
 
     @staticmethod
     def encode_documents(
-        batch: List[Tuple[int, DocumentRecord]],
+        batch: List[Tuple[int, IDTextRecord]],
         encoder: TextEncoderBase[InputType, TextsRepresentationOutput],
         queue: "Queue[EncodedDocument]",
     ):
@@ -330,26 +326,24 @@ class SparseRetriever(Retriever, Generic[InputType]):
     topk: Param[int]
     """Number of documents to return"""
 
-    device: Meta[Device] = DEFAULT_DEVICE
-    """The device for building the index"""
-
     batcher: Meta[Batcher] = field(default_factory=Batcher.C)
     """The way to prepare batches of queries (when using retrieve_all)"""
 
     batchsize: Meta[int]
     """Size of batches (when using retrieve_all)"""
 
-    in_memory: Meta[bool] = False
+    in_memory: Meta[bool] = field(default=False, ignore_default=True)
     """Whether the index should be fully loaded in memory (otherwise, uses
     virtual memory)"""
 
     def initialize(self):
         super().initialize()
         logger.info("Initializing the encoder")
-        self.encoder.initialize(ModuleInitMode.DEFAULT.to_options(None))
-        self.encoder.to(self.device.value)
+        self.encoder.initialize()
         logger.info("Initializing the index")
         self.index.initialize(self.in_memory)
+
+        logger.info("Moving everything to Fabric")
 
     def retrieve_all(
         self, queries: Dict[str, InputType]
@@ -422,7 +416,7 @@ class SparseRetriever(Retriever, Generic[InputType]):
         results = asyncio.run(aio_process())
         return results
 
-    def retrieve(self, query: TopicRecord, top_k=None) -> List[ScoredDocument]:
+    def retrieve(self, query: TextRecord, top_k=None) -> List[ScoredDocument]:
         """Search with document-at-a-time (DAAT) strategy
 
         :param top_k: Overrides the default top-K value
@@ -444,9 +438,9 @@ class SparseRetriever(Retriever, Generic[InputType]):
 
     def __validate__(self):
         # Checks that we are using the right retriever
-        assert isinstance(
-            self, self.index.Retriever
-        ), f"{type(self)} is not an instance of {self.index.Retriever}"
+        assert isinstance(self, self.index.Retriever), (
+            f"{type(self)} is not an instance of {self.index.Retriever}"
+        )
 
 
 class AbstractSparseRetrieverIndex(Config, ABC):
@@ -531,18 +525,27 @@ class SparseRetrieverIndex(AbstractSparseRetrieverIndex):
 
 
 class SparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputType]):
-    in_memory: Meta[bool] = False
+    in_memory: Meta[bool] = field(default=False, ignore_default=True)
     """Whether the index should be fully loaded in memory (otherwise, uses
     virtual memory)"""
 
     index_path: Meta[Path] = field(default_factory=PathGenerator("index"))
 
-    checkpoint_frequency: Meta[int] = 0
+    checkpoint_frequency: Meta[int] = field(default=0, ignore_default=True)
     """Checkpoint frequency (allows recovery at the cost of writing some
     information to disk)"""
 
-    max_postings: Meta[Optional[int]] = None
+    max_postings: Meta[Optional[int]] = field(default=None, ignore_default=True)
     """Number of postings before dumping a term postings to disk"""
+
+    fabric_config: Meta[FabricConfiguration] = field(
+        default_factory=FabricConfiguration.C
+    )
+    """Runtime configuration, managed by Fabric"""
+
+    def execute(self):
+        fabric = self.fabric_config.get_fabric()
+        self._execute(fabric)
 
     def task_outputs(self, dep):
         """Returns a sparse retriever index that can be used by a
@@ -563,6 +566,9 @@ class SparseRetrieverIndexBuilder(AbstractSparseRetrieverIndexBuilder[InputType]
         options.checkpoint_frequency = self.checkpoint_frequency
         if self.max_postings is not None:
             options.in_memory_threshold = self.max_postings
+        else:
+            # Default to 128 for effective block-max pruning in search
+            options.in_memory_threshold = 128
 
         # and create the index builder
         self.indexer = impact_index.IndexBuilder(str(self.index_path), options)

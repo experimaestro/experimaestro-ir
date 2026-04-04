@@ -63,6 +63,8 @@ extensions = [
     "sphinx_toolbox.more_autodoc.autonamedtuple",
     # Code
     "sphinx.ext.viewcode",
+    # Auto-link identifiers in code blocks to API docs
+    "sphinx_codeautolink",
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -88,10 +90,15 @@ html_static_path = ["_static"]
 
 
 intersphinx_mapping = {
-    "datamaestro_text": (
-        "https://datamaestro-text.readthedocs.io/en/latest",
+    "experimaestro": (
+        "https://experimaestro-python.readthedocs.io/en/latest/",
         None,
-    )  # /objects.inv",
+    ),
+    "datamaestro_ir": (
+        "https://datamaestro-ir.readthedocs.io/en/latest/",
+        None,
+    ),
+    "xpm-torch": ("https://xpm-torch.readthedocs.io/en/latest/", None),
 }
 
 # Autodoc options

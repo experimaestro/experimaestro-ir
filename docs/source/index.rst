@@ -48,9 +48,7 @@ Table of Contents
    data/index
    retrieval
    evaluation
-   learning/index
    letor/index
-   conversation/index
    neural
    hooks
    text/index

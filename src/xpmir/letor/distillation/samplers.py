@@ -1,163 +1,56 @@
-from typing import (
-    Iterable,
-    Iterator,
-    NamedTuple,
-    Tuple,
-    List,
-    Any,
-)
-
+from typing import Optional
 import numpy as np
-from datamaestro.data import File
-from datamaestro_text.data.ir.base import (
-    TopicRecord,
-    DocumentRecord,
-    ScoredItem,
-    SimpleTextItem,
-    IDItem,
-    create_record,
-)
-from experimaestro import Config, Meta, Param
-from xpmir.learning import Sampler
-from xpmir.letor.samplers.hydrators import SampleHydrator
+
+from experimaestro import Param, field
 from xpmir.rankers import ScoredDocument
-from xpmir.utils.iter import (
-    SerializableIterator,
-    SkippingIterator,
-    SerializableIteratorTransform,
+from xpm_torch.datasets import (
+    LineFileDataset,
+    QueryGroupedFileDataset,
+    InfiniteDataset,
+    ShardedIterableDataset,
+    TransformDataset,
+)
+from xpm_torch.base import Sampler
+
+# Re-export data types from datamaestro_ir
+from datamaestro_ir.data.distillation import (  # noqa: F401
+    PairwiseDistillationSample,
+    PairwiseDistillationSamples,
+    PairwiseDistillationSamplesTSV,
+    ListwiseDistillationSample,
+    ListwiseDistillationSamples,
+    ListwiseDistillationSamplesTSV,
+    ListwiseDistillationSamplesTSVWithAnnotations,
 )
 
 
-class PairwiseDistillationSample(NamedTuple):
-    query: TopicRecord
-    """The query"""
-
-    documents: Tuple[DocumentRecord, DocumentRecord]
-    """Positive/negative document with teacher scores"""
+# --- Add as_dataset methods to datamaestro_ir types ---
 
 
-class PairwiseDistillationSamples(Config, Iterable[PairwiseDistillationSample]):
-    """Pairwise distillation file"""
-
-    def __iter__(self) -> Iterator[PairwiseDistillationSample]:
-        raise NotImplementedError()
+def _pairwise_tsv_as_dataset(self) -> ShardedIterableDataset:
+    """Returns a LineFileDataset that yields PairwiseDistillationSample."""
+    return InfiniteDataset(LineFileDataset(self.path, self._parse_line))
 
 
-class PairwiseHydrator(PairwiseDistillationSamples, SampleHydrator):
-    """Hydrate ID-based samples with document and/or query content"""
+PairwiseDistillationSamplesTSV.as_dataset = _pairwise_tsv_as_dataset
 
-    samples: Param[PairwiseDistillationSamples]
-    """The distillation samples without texts for query and documents"""
 
-    def transform(self, sample: PairwiseDistillationSample):
-        topic, documents = sample.query, sample.documents
-
-        if transformed := self.transform_topics([topic]):
-            topic = transformed[0]
-
-        if transformed := self.transform_documents(documents):
-            documents = tuple(
-                ScoredDocument(d, sd[ScoredItem].score)
-                for d, sd in zip(transformed, sample.documents)
-            )
-
-        return PairwiseDistillationSample(topic, documents)
-
-    def __iter__(self) -> Iterator[PairwiseDistillationSample]:
-        iterator = iter(self.samples)
-        return SerializableIteratorTransform(
-            SkippingIterator.make_serializable(iterator), self.transform
+def _listwise_tsv_as_dataset(self) -> ShardedIterableDataset:
+    """Returns a QueryGroupedFileDataset that yields ListwiseDistillationSample."""
+    return InfiniteDataset(
+        QueryGroupedFileDataset(
+            self.path,
+            self._parse_trec_line,
+            self._build_group,
+            top_k=self.top_k,
         )
+    )
 
 
-class PairwiseDistillationSamplesTSV(PairwiseDistillationSamples, File):
-    """A TSV file (Score 1, Score 2, Query, Document 1, Document 2)"""
-
-    with_docid: Meta[bool]
-    with_queryid: Meta[bool]
-
-    def __iter__(self) -> Iterator[PairwiseDistillationSample]:
-        return self.iter()
-
-    def iter(self) -> Iterator[PairwiseDistillationSample]:
-        import csv
-
-        def iterate():
-            with self.path.open("rt") as fp:
-                for row in csv.reader(fp, delimiter="\t"):
-                    if self.with_queryid:
-                        query = create_record(id=row[2])
-                    else:
-                        query = create_record(text=row[2])
-
-                    if self.with_docid:
-                        documents = (
-                            DocumentRecord(IDItem(row[3]), ScoredItem(float(row[0]))),
-                            DocumentRecord(IDItem(row[4]), ScoredItem(float(row[1]))),
-                        )
-                    else:
-                        documents = (
-                            DocumentRecord(
-                                SimpleTextItem(row[3]), ScoredItem(float(row[0]))
-                            ),
-                            DocumentRecord(
-                                SimpleTextItem(row[4]), ScoredItem(float(row[1]))
-                            ),
-                        )
-
-                    yield PairwiseDistillationSample(query, documents)
-
-        return SkippingIterator(iterate())
+ListwiseDistillationSamplesTSV.as_dataset = _listwise_tsv_as_dataset
 
 
-class _DistillationPairwiseBatchIterator(SerializableIterator):
-    """Batch iterator for DistillationPairwiseSampler.
-
-    Defined at module level to allow pickling for multiprocessing.
-    """
-
-    def __init__(self, sampler: "DistillationPairwiseSampler", size: int):
-        self.sampler = sampler
-        self.size = size
-        self._iter = None
-        self._state = None
-
-    def _ensure_iter(self):
-        """Lazily initialize the iterator."""
-        if self._iter is None:
-            self._iter = self.sampler.pairwise_iter()
-            if self._state is not None:
-                self._iter.load_state_dict(self._state)
-                self._state = None
-
-    def __getstate__(self):
-        """For pickling: save the state_dict instead of the iterator."""
-        state = self.__dict__.copy()
-        if self._iter is not None:
-            state["_state"] = self._iter.state_dict()
-        state["_iter"] = None
-        return state
-
-    def __setstate__(self, state):
-        """For unpickling: restore from state_dict."""
-        self.__dict__.update(state)
-
-    def state_dict(self):
-        self._ensure_iter()
-        return self._iter.state_dict()
-
-    def load_state_dict(self, state):
-        if self._iter is not None:
-            self._iter.load_state_dict(state)
-        else:
-            self._state = state
-
-    def __next__(self):
-        self._ensure_iter()
-        batch = []
-        for _, record in zip(range(self.size), self._iter):
-            batch.append(record)
-        return batch
+# --- Sampler classes ---
 
 
 class DistillationPairwiseSampler(Sampler):
@@ -168,13 +61,62 @@ class DistillationPairwiseSampler(Sampler):
     def initialize(self, random: np.random.RandomState):
         super().initialize(random)
 
-    def pairwise_iter(self) -> SerializableIterator[PairwiseDistillationSample, Any]:
-        return SkippingIterator.make_serializable(iter(self.samples))
+    def as_dataset(self) -> ShardedIterableDataset:
+        """Returns the underlying dataset for use with StatefulDataLoader."""
+        return self.samples.as_dataset()
 
-    def pairwise_batch_iter(
-        self, size
-    ) -> SerializableIterator[List[PairwiseDistillationSample], Any]:
-        """Batchwise iterator
 
-        Can be subclassed by some classes to be more efficient"""
-        return _DistillationPairwiseBatchIterator(self, size)
+class DistillationListwiseSampler(Sampler):
+    """Just loops over samples"""
+
+    samples: Param[ListwiseDistillationSamples]
+
+    def initialize(self, random: Optional[np.random.RandomState]):
+        super().initialize(random)
+
+    def as_dataset(self) -> ShardedIterableDataset:
+        """Returns the underlying dataset for use with StatefulDataLoader."""
+        return self.samples.as_dataset()
+
+
+class DistillationNegativesSampler(DistillationListwiseSampler):
+    """Samples only `passages_per_query` documents per query, skips query if no relevant document retrieved
+    - Needs the relevances judgements to ensure sampling one positive and (passages_per_query - 1) negatives per query
+    - Uses ScoredDocument to store Relevance Labels,
+       - WARNING: ignores eventual scores from original Dataset.
+    """
+
+    samples: Param[ListwiseDistillationSamplesTSVWithAnnotations]
+    passages_per_query: Param[int] = field(default=8)
+
+    def _sample_docs(self, item):
+        qrel = self.samples.qrels_dict.get(item.query["id"], set())
+        negatives = []
+        positives = []
+
+        for doc in item.documents:
+            if doc.document["id"] in qrel:
+                positives.append(ScoredDocument(doc.document, score=1))
+            else:
+                negatives.append(ScoredDocument(doc.document, score=0))
+
+        if not positives:  # this will be skipped by TransformDataset.iter_shard
+            return
+
+        # if we have positives, return one per positive doc
+        sampled_negatives = [
+            negatives[idx]
+            for idx in self.random.choice(len(negatives), self.passages_per_query - 1)
+        ]
+
+        # return positive document fist and then
+        return ListwiseDistillationSample(
+            query=item.query, documents=[positives[0]] + sampled_negatives
+        )
+
+    def initialize(self, random: Optional[np.random.RandomState]):
+        super().initialize(random)
+
+    def as_dataset(self) -> ShardedIterableDataset:
+        """Returns the underlying dataset for use with StatefulDataLoader."""
+        return TransformDataset(self.samples.as_dataset(), transform=self._sample_docs)

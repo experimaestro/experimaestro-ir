@@ -5,11 +5,10 @@ import sys
 from attrs import define
 from experimaestro import Param
 import torch
-import torch.nn as nn
 
-from xpmir.learning.optim import Module
+from xpm_torch import Module
+from xpm_torch.utils.logging import EasyLogger
 
-from xpmir.utils.utils import EasyLogger
 from .tokenizers import (
     Tokenizer,
     TokenizedTexts,
@@ -24,17 +23,11 @@ T = TypeVar("T")
 class Encoder(Module, EasyLogger, ABC):
     """Base class for all word and text encoders"""
 
-    def __initialize__(self, options):
-        # Easy and hacky way to get the device
-        super().__initialize__(options)
-        self._dummy_params = nn.Parameter(torch.Tensor())
+    def __initialize__(self):
+        super().__initialize__()
 
     def static(self):
         return True
-
-    @property
-    def device(self):
-        return self._dummy_params.device
 
 
 @define
@@ -108,7 +101,7 @@ InputType = TypeVar("InputType")
 EncoderOutput = TypeVar("EncoderOutput")
 
 
-class TextEncoderBase(Encoder, Generic[InputType, EncoderOutput]):
+class TextEncoderBase(Module, Generic[InputType, EncoderOutput]):
     """Base class for all text encoders"""
 
     __call__: Callable[Tuple["TextEncoderBase", List[InputType]], EncoderOutput]
@@ -214,8 +207,7 @@ class TokenizedTextEncoderBase(TextEncoderBase[InputType, EncoderOutput]):
     @abstractmethod
     def forward(
         self, inputs: List[InputType], options: Optional[TokenizerOptions] = None
-    ) -> EncoderOutput:
-        ...
+    ) -> EncoderOutput: ...
 
 
 class TokenizedTextEncoder(
@@ -233,10 +225,10 @@ class TokenizedTextEncoder(
     tokenizer: Param[TokenizerBase[InputType, TokenizerOutput]]
     encoder: Param[TokenizedEncoder[TokenizerOutput, EncoderOutput]]
 
-    def __initialize__(self, options):
-        super().__initialize__(options)
-        self.tokenizer.initialize(options)
-        self.encoder.initialize(options)
+    def __initialize__(self):
+        super().__initialize__()
+        self.tokenizer.initialize()
+        self.encoder.initialize()
 
     def forward(
         self, inputs: List[InputType], *args, options: Optional[TokenizerOptions] = None

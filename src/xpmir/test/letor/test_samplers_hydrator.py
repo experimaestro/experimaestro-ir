@@ -1,40 +1,31 @@
-from functools import cached_property
-import itertools
-from experimaestro import Param
+from experimaestro import field, Param
 from typing import Iterator, Tuple
-from datamaestro.record import record_type
-import datamaestro_text.data.ir as ir
+from datamaestro_ir.data import IDTextRecord
+import datamaestro_ir.data as ir
 from xpmir.letor.samplers import (
     TrainingTriplets,
-    TripletBasedSampler,
 )
 from xpmir.datasets.adapters import TextStore
 
-from xpmir.letor.samplers.hydrators import (
-    SampleHydrator,
-    PairwiseTransformAdapter,
-)
+from xpmir.letor.samplers.adapters import BufferedProcessingDataset
+from xpmir.letor.processors import StoreHydrator
+from xpmir.letor.records import PairwiseItem
+from xpm_torch.datasets import ShardedIterableDataset
 
 
 class TripletIterator(TrainingTriplets):
     def iter(
         self,
-    ) -> Iterator[Tuple[ir.TopicRecord, ir.DocumentRecord, ir.DocumentRecord]]:
+    ) -> Iterator[Tuple[IDTextRecord, IDTextRecord, IDTextRecord]]:
         count = 0
 
         while True:
-            yield ir.create_record(id=str(count)), ir.create_record(
-                id=str(2 * count)
-            ), ir.create_record(id=str(2 * count + 1))
+            yield (
+                {"id": str(count)},
+                {"id": str(2 * count)},
+                {"id": str(2 * count + 1)},
+            )
             count += 1
-
-    @cached_property
-    def topic_recordtype(self):
-        return record_type(ir.IDItem)
-
-    @cached_property
-    def document_recordtype(self):
-        return record_type(ir.IDItem)
 
 
 class FakeTextStore(TextStore):
@@ -43,29 +34,68 @@ class FakeTextStore(TextStore):
 
 
 class FakeDocumentStore(ir.DocumentStore):
-    id: Param[str] = ""
+    id: Param[str] = field(default="", ignore_default=True)
 
-    def document_ext(self, docid: str) -> ir.DocumentRecord:
-        return ir.create_record(id=docid, text=f"D{docid}")
+    def document_ext(self, docid: str) -> ir.IDTextRecord:
+        return ir.IDTextRecord(id=docid, text_item=ir.SimpleTextItem(f"D{docid}"))
 
 
-def test_pairwise_hydrator():
-    sampler = TripletBasedSampler(source=TripletIterator(id="test-triplets"))
+class _PairwiseDataset(ShardedIterableDataset):
+    """Simple dataset yielding ID-only PairwiseItems for testing."""
 
-    hydrator = SampleHydrator(
-        querystore=FakeTextStore(), documentstore=FakeDocumentStore()
-    )
+    def iter_shard(self, shard_id, num_shards):
+        count = 0
+        while True:
+            yield PairwiseItem(
+                ir.IDRecord(id=str(count)),
+                ir.IDRecord(id=str(2 * count)),
+                ir.IDRecord(id=str(2 * count + 1)),
+            )
+            count += 1
 
-    h_sampler = PairwiseTransformAdapter(sampler=sampler, adapter=hydrator)
-    h_sampler.instance()
 
-    for record, n in zip(h_sampler.pairwise_iter(), range(5)):
-        assert record.query[ir.TextItem].text == f"T{n}"
-        assert record.positive[ir.TextItem].text == f"D{2*n}"
-        assert record.negative[ir.TextItem].text == f"D{2*n+1}"
+def test_store_hydrator_process_batch():
+    """Test that StoreHydrator correctly hydrates a batch of PairwiseItems."""
+    hydrator = StoreHydrator.C(
+        documentstore=FakeDocumentStore.C(),
+        querystore=FakeTextStore.C(),
+    ).instance()
 
-    batch_it = h_sampler.pairwise_batch_iter(3)
-    for record, n in zip(itertools.chain(next(batch_it), next(batch_it)), range(5)):
-        assert record.query[ir.TextItem].text == f"T{n}"
-        assert record.positive[ir.TextItem].text == f"D{2*n}"
-        assert record.negative[ir.TextItem].text == f"D{2*n+1}"
+    records = [
+        PairwiseItem(
+            ir.IDRecord(id=str(n)),
+            ir.IDRecord(id=str(2 * n)),
+            ir.IDRecord(id=str(2 * n + 1)),
+        )
+        for n in range(5)
+    ]
+
+    hydrated = hydrator.process_batch(records)
+    assert len(hydrated) == 5
+    for n, record in enumerate(hydrated):
+        assert record.query["text_item"].text == f"T{n}"
+        assert record.positive["text_item"].text == f"D{2 * n}"
+        assert record.negative["text_item"].text == f"D{2 * n + 1}"
+
+
+def test_buffered_processing_dataset():
+    """Test that BufferedProcessingDataset buffers and hydrates correctly."""
+    hydrator = StoreHydrator.C(
+        documentstore=FakeDocumentStore.C(),
+        querystore=FakeTextStore.C(),
+    ).instance()
+
+    inner_dataset = _PairwiseDataset()
+    dataset = BufferedProcessingDataset(inner_dataset, [hydrator], buffer_size=4)
+
+    count = 0
+    for record in dataset:
+        n = count
+        assert record.query["text_item"].text == f"T{n}"
+        assert record.positive["text_item"].text == f"D{2 * n}"
+        assert record.negative["text_item"].text == f"D{2 * n + 1}"
+        count += 1
+        if count >= 10:
+            break
+
+    assert count == 10

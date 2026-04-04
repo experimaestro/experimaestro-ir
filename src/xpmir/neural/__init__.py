@@ -2,16 +2,16 @@ from abc import abstractmethod
 import itertools
 from typing import Iterable, Union, List, Optional, TypeVar, Generic, Sequence
 import torch
-from datamaestro_text.data.ir import TextItem
-from xpmir.learning.context import TrainerContext
-from xpmir.letor.records import BaseRecords, ProductRecords, TopicRecord, DocumentRecord
-from xpmir.rankers import LearnableScorer
+from datamaestro_ir.data import IDTextRecord
+from xpm_torch.learner import TrainerContext
+from xpmir.letor.records import BaseItems, ProductItems
+from xpmir.rankers import AbstractModuleScorer
 
 QueriesRep = TypeVar("QueriesRep", bound=Sequence)
 DocsRep = TypeVar("DocsRep", bound=Sequence)
 
 
-class DualRepresentationScorer(LearnableScorer, Generic[QueriesRep, DocsRep]):
+class DualRepresentationScorer(AbstractModuleScorer, Generic[QueriesRep, DocsRep]):
     """Neural scorer based on (at least a partially) independent representation
     of the document and the question.
 
@@ -19,13 +19,15 @@ class DualRepresentationScorer(LearnableScorer, Generic[QueriesRep, DocsRep]):
     of cosine/inner products between query and document tokens.
     """
 
-    def forward(self, inputs: BaseRecords, info: Optional[TrainerContext] = None):
+    def forward(
+        self, inputs: BaseItems, info: Optional[TrainerContext] = None, **kwargs
+    ):
         # Forward to model
         enc_queries = self.encode_queries(list(inputs.unique_queries))
         enc_documents = self.encode_documents(list(inputs.unique_documents))
 
         # Score product
-        if isinstance(inputs, ProductRecords):
+        if isinstance(inputs, ProductItems):
             return self.score_product(
                 enc_queries,
                 enc_documents,
@@ -36,12 +38,8 @@ class DualRepresentationScorer(LearnableScorer, Generic[QueriesRep, DocsRep]):
         pairs = inputs.pairs()
         q_ix, d_ix = pairs
         return self.score_pairs(
-            enc_queries[
-                q_ix
-            ],
-            enc_documents[
-                d_ix
-            ],
+            enc_queries[q_ix],
+            enc_documents[d_ix],
             info,
         ).flatten()
 
@@ -51,20 +49,20 @@ class DualRepresentationScorer(LearnableScorer, Generic[QueriesRep, DocsRep]):
         The return value is model dependent"""
         raise NotImplementedError()
 
-    def encode_documents(self, records: Iterable[DocumentRecord]) -> DocsRep:
+    def encode_documents(self, records: Iterable[IDTextRecord]) -> DocsRep:
         """Encode a list of texts (document or query)
 
         The return value is model dependent"""
-        return self.encode([record[TextItem].text for record in records])
+        return self.encode([record["text_item"].text for record in records])
 
-    def encode_queries(self, records: Iterable[TopicRecord]) -> QueriesRep:
+    def encode_queries(self, records: Iterable[IDTextRecord]) -> QueriesRep:
         """Encode a list of texts (document or query)
 
         The return value is model dependent, but should be sequence
 
         By default, uses `merge`
         """
-        return self.encode([record[TextItem].text for record in records])
+        return self.encode([record["text_item"].text for record in records])
 
     def merge_queries(self, queries: QueriesRep):
         """Merge query batches encoded with `encode_queries`
@@ -83,9 +81,9 @@ class DualRepresentationScorer(LearnableScorer, Generic[QueriesRep, DocsRep]):
         - for tensors, uses torch.cat
         - for lists, concatenate all of them
         """
-        assert isinstance(
-            objects, List
-        ), f"Merging can only be done with lists, got {type(objects)}"
+        assert isinstance(objects, List), (
+            f"Merging can only be done with lists, got {type(objects)}"
+        )
 
         # Just returns the only object to merge
         if len(objects) == 1:

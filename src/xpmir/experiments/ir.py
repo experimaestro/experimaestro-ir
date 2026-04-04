@@ -1,23 +1,23 @@
 from typing import Any, List, Optional, Dict
+from pathlib import Path
 import logging
 import pandas as pd
-from pathlib import Path
 import click
-import io
 from functools import cached_property
-
 import docstring_parser
+
 from experimaestro import RunMode, Config
 from experimaestro.exceptions import HandledException
+from xpm_torch.experiments import TensorboardService
+
 from xpmir.evaluation import EvaluationsCollection
 from xpmir.models import XPMIRHFHub
 from xpmir.papers.results import PaperResults
 from xpmir.experiments.learning import LearningExperimentHelper
-from xpmir.learning.optim import TensorboardService
 
 
 class UploadToHub:
-    def __init__(self, model_id: Optional[str], doc: docstring_parser.Docstring):
+    def __init__(self, model_id: Optional[str], doc):
         self.model_id = model_id
         self.doc = doc
 
@@ -27,70 +27,23 @@ class UploadToHub:
         *,
         evaluations: Optional[EvaluationsCollection] = None,
         tb_logs: Dict[str, Path],
-        add_des: str = "",
     ):
-        """Upload the scorer(s) to the HuggingFace Hub
-
-        :param models: The models to upload, each with a key
-        :param tb_logs: The tensorboard logs
-        :param evaluations: Models evaluations, defaults to None
-        :param add_des: Extra documentation, defaults to ""
-        """
+        """Upload the scorer(s) to the HuggingFace Hub"""
         if self.model_id is None:
             return
-
-        out = io.StringIO()
-        out.write(
-            """---
-library_name: xpmir
----
-"""
-        )
-
-        out.write(f"{self.doc}\n\n")
-        out.write(f"{add_des}\n\n")
-
-        out.write("\n## Using the model")
-        out.write(
-            f"""
-The model can be loaded with [experimaestro
-IR](https://experimaestro-ir.readthedocs.io/en/latest/)
-
-If you want to use the model in further experiments with XPMIR,
-use this code:
-```py
-from xpmir.models import AutoModel
-from xpmir.models import AutoModel
-
-model, init_tasks = AutoModel.load_from_hf_hub("{self.model_id}")
-```
-
-
-Use this code if you want to use the model in inference only:
-
-```py
-from xpmir.models import AutoModel
-from xpmir.models import AutoModel
-
-model = AutoModel.load_from_hf_hub("{self.model_id}", as_instance=True)
-model.rsv("walgreens store sales average", "The average Walgreens salary ranges...")
-```
-"""
-        )
 
         assert len(models) == 1, "Cannot deal with more than one variant"
         ((key, model),) = list(models.items())
 
-        if evaluations is not None:
-            out.write("\n## Results\n\n")
-            evaluations.output_model_results(key, file=out)
-
-        readme_md = out.getvalue()
-
         logging.info("Uploading to HuggingFace Hub")
-        XPMIRHFHub(model, readme=readme_md, tb_logs=tb_logs).push_to_hub(
-            repo_id=self.model_id, config={}
-        )
+        XPMIRHFHub(
+            model,
+            doc=str(self.doc),
+            model_id=self.model_id,
+            model_key=key,
+            evaluations=evaluations,
+            tb_logs=tb_logs,
+        ).push_to_hub(repo_id=self.model_id)
 
 
 class IRExperimentHelper(LearningExperimentHelper):

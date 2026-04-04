@@ -4,9 +4,9 @@ import os
 from queue import Full, Empty
 import torch.multiprocessing as mp
 from typing import Any, Generic, TypeVar
-from xpmir.utils.logging import easylog
 
-logger = easylog()
+import logging
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 

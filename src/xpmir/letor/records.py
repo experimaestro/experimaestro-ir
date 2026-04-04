@@ -1,37 +1,86 @@
 import torch
 import itertools
-from datamaestro_text.data.ir import (
-    TopicRecord,
-    DocumentRecord,
-    TextItem,
-    create_record,
+from datamaestro_ir.data import (
+    IDTextRecord,
+    SimpleTextItem,
 )
+
 from typing import (
+    Generic,
     Iterable,
     List,
     Optional,
     Tuple,
     TypeVar,
+    TypedDict,
     Union,
 )
+from typing_extensions import ReadOnly
 
 
-class PointwiseRecord:
-    """A record from a pointwise sampler"""
+TopicRecord = DocumentRecord = IDTextRecord
+
+
+## TypeddDicts
+
+
+class ScoreRecord(TypedDict):
+    """A record with just a score"""
+
+    score: ReadOnly[float]
+
+
+class ScoreDocumentRecord(IDTextRecord, ScoreRecord):
+    """A record with an ID, a text item and a score"""
+
+    pass
+
+
+## Dataclasses / generics
+
+DocT = TypeVar("DocT")
+DocT2 = TypeVar("DocT2")
+QueryT = TypeVar("QueryT")
+QueryT2 = TypeVar("QueryT2")
+
+
+class SampleItem(Generic[DocT, QueryT]):
+    """Base class for sample items with document/query access.
+
+    All item types (pointwise, pairwise, listwise) expose a uniform
+    interface for extracting and replacing documents/queries, enabling
+    generic batch processing in RecordsProcessor.
+    """
+
+    def get_documents(self) -> List[DocT]:
+        raise NotImplementedError
+
+    def with_documents(self, ds: "List[DocT2]") -> "SampleItem[DocT2, QueryT]":
+        raise NotImplementedError
+
+    def get_queries(self) -> List[QueryT]:
+        raise NotImplementedError
+
+    def with_queries(self, qs: "List[QueryT2]") -> "SampleItem[DocT, QueryT2]":
+        raise NotImplementedError
+
+
+class PointwiseItem(SampleItem[DocT, QueryT]):
+    """An Item from a pointwise sampler"""
 
     # The query
-    topic: TopicRecord
+    topic: QueryT
 
     # The document
-    document: DocumentRecord
+    document: DocT
 
     # The relevance
     relevance: Optional[float]
 
     def __init__(
         self,
-        topic: TopicRecord,
-        document: DocumentRecord,
+        topic: QueryT,
+        document: DocT,
         relevance: Optional[float] = None,
     ):
         self.topic = topic
@@ -42,36 +91,57 @@ class PointwiseRecord:
     def query(self):
         return self.topic
 
+    def get_queries(self) -> List[QueryT]:
+        return [self.topic]
+
+    def with_queries(self, qs: "List[QueryT2]") -> "PointwiseItem[DocT, QueryT2]":
+        return PointwiseItem(qs[0], self.document, self.relevance)
+
+    def get_documents(self) -> List[DocT]:
+        return [self.document]
+
+    def with_documents(self, ds: "List[DocT2]") -> "PointwiseItem[DocT2, QueryT]":
+        return PointwiseItem(self.topic, ds[0], self.relevance)
+
 
 RT = TypeVar("RT")
 
 
-class BaseRecords(List[RT]):
-    """Base records just exposes iterables on (query, document) pairs
+class BaseItems(List[RT]):
+    """Base items just exposes iterables on (query, document) pairs
 
-    Records can be structured, i.e. the same queries and documents
+    items can be structured, i.e. the same queries and documents
     can be used more than once. To allow optimization (e.g. pre-computing
     document/query representation),
     """
 
-    topics: Iterable[TopicRecord]
-    documents: Iterable[DocumentRecord]
+    topics: Iterable[IDTextRecord]
+    documents: Iterable[IDTextRecord]
     is_product = False
 
+    def __repr__(self):
+        return f"<{self.__class__.__name__}(count={len(self)})>"
+
     @property
-    def unique_topics(self) -> Iterable[TopicRecord]:
-        return self.topics
+    def unique_topics(self) -> List[IDTextRecord]:
+        return list(self.topics)
 
     unique_queries = unique_topics
 
     @property
-    def unique_documents(self) -> Iterable[DocumentRecord]:
-        return self.documents
+    def unique_documents(self) -> List[IDTextRecord]:
+        return list(self.documents)
 
     @property
     def queries(self):
         """Deprecated: use topics"""
         return self.topics
+
+    def to(self, *args, **kwargs):
+        """Moves the records to a device (e.g. for the relevance matrix in ProductItems)
+        Default implementation does nothing, but can be implemented by specific records that have tensors as attributes (e.g. ProductItems)
+        """
+        return self
 
     def pairs(self) -> Tuple[Iterable[int], Iterable[int]]:
         """Returns two iterators (over queries and documents)
@@ -95,14 +165,14 @@ class BaseRecords(List[RT]):
         raise NotImplementedError(f"__len__() in {self.__class__}")
 
 
-class PointwiseRecords(BaseRecords[PointwiseRecord]):
-    """Pointwise records are a set of triples (query, document, relevance)"""
+class PointwiseItems(BaseItems[PointwiseItem]):
+    """Pointwise items are a set of triples (query, document, relevance)"""
 
     # The queries
-    topics: List[TopicRecord]
+    topics: List[IDTextRecord]
 
     # Text of the documents
-    documents: List[DocumentRecord]
+    documents: List[IDTextRecord]
 
     # The relevances
     relevances: List[float]
@@ -112,7 +182,7 @@ class PointwiseRecords(BaseRecords[PointwiseRecord]):
         self.documents = []
         self.relevances = []
 
-    def add(self, record: PointwiseRecord):
+    def add(self, record: PointwiseItem):
         self.queries.append(record.query)
         self.relevances.append(record.relevance or 0)
         self.documents.append(record.document)
@@ -122,16 +192,14 @@ class PointwiseRecords(BaseRecords[PointwiseRecord]):
 
     def __getitem__(self, ix: Union[slice, int]):
         if isinstance(ix, slice):
-            records = PointwiseRecords()
+            records = PointwiseItems()
             for i in range(ix.start, min(ix.stop, len(self.topics)), ix.step or 1):
                 records.add(
-                    PointwiseRecord(
-                        self.topics[i], self.documents[i], self.relevances[i]
-                    )
+                    PointwiseItem(self.topics[i], self.documents[i], self.relevances[i])
                 )
             return records
 
-        return PointwiseRecord(self.topics[ix], self.documents[ix], self.relevances[ix])
+        return PointwiseItem(self.topics[ix], self.documents[ix], self.relevances[ix])
 
     def pairs(self) -> Tuple[List[int], List[int]]:
         ix = list(range(len(self.queries)))
@@ -143,64 +211,76 @@ class PointwiseRecords(BaseRecords[PointwiseRecord]):
         documents: List[str],
         relevances: Optional[List[float]] = None,
     ):
-        records = PointwiseRecords()
-        records.topics = list(map(lambda t: create_record(text=t), topics))
-        records.documents = list(map(lambda t: create_record(text=t), documents))
+        records = PointwiseItems()
+        records.topics = list(map(lambda t: {"text_item": SimpleTextItem(t)}, topics))
+        records.documents = list(
+            map(lambda t: {"text_item": SimpleTextItem(t)}, documents)
+        )
         records.relevances = relevances
         return records
 
 
-class PairwiseRecord:
+class PairwiseItem(SampleItem[DocT, QueryT]):
     """A pairwise record is composed of a query, a positive and a negative document"""
 
-    query: TopicRecord
-    positive: DocumentRecord
-    negative: DocumentRecord
+    query: QueryT
+    positive: DocT
+    negative: DocT
 
-    def __init__(
-        self, query: TopicRecord, positive: DocumentRecord, negative: DocumentRecord
-    ):
+    def __init__(self, query: QueryT, positive: DocT, negative: DocT):
         self.query = query
         self.positive = positive
         self.negative = negative
 
+    def get_queries(self) -> List[QueryT]:
+        return [self.query]
 
-class PairwiseRecordWithTarget(PairwiseRecord):
-    """A pairwise record is composed of a query, a positive and a negative
-    document, and the indetifier which says the one on the first is pos or
-    neg"""
+    def with_queries(self, qs: "List[QueryT2]") -> "PairwiseItem[DocT, QueryT2]":
+        return PairwiseItem(qs[0], self.positive, self.negative)
+
+    def get_documents(self) -> List[DocT]:
+        return [self.positive, self.negative]
+
+    def with_documents(self, ds: "List[DocT2]") -> "PairwiseItem[DocT2, QueryT]":
+        return PairwiseItem(self.query, ds[0], ds[1])
+
+
+class PairwiseItemWithTarget(PairwiseItem):
+    """A pairwise Item composed of a query, a positive and a negative
+    document, and the indetifier which says the one on the first is pos or neg
+    """
 
     target: int
 
     def __init__(
         self,
-        query: TopicRecord,
-        positive: DocumentRecord,
-        negative: DocumentRecord,
+        query: IDTextRecord,
+        positive: IDTextRecord,
+        negative: IDTextRecord,
         target: int,
     ):
         super().__init__(query, positive, negative)
         self.target = target
 
 
-class PairwiseRecords(BaseRecords):
+class PairwiseItems(BaseItems):
     """Pairwise records of queries associated with (positive, negative) pairs"""
 
     # The queries
-    _topics: List[TopicRecord]
+    _topics: List[IDTextRecord]
 
     # The document IDs (positive)
-    positives: List[DocumentRecord]
+    positives: List[IDTextRecord]
 
     # The scores of the retriever
-    negatives: List[DocumentRecord]
+    negatives: List[IDTextRecord]
 
     def __init__(self):
         self._topics = []
         self.positives = []
         self.negatives = []
 
-    def add(self, record: PairwiseRecord):
+    def add(self, record: PairwiseItem):
         self._topics.append(record.query)
         self.positives.append(record.positive)
         self.negatives.append(record.negative)
@@ -209,13 +289,13 @@ class PairwiseRecords(BaseRecords):
     def topics(self):
         return itertools.chain(self._topics, self._topics)
 
-    def set_unique_topics(self, topics: List[TopicRecord]):
-        assert len(topics) == len(
-            self._topics
-        ), f"Number of topics do not match ({len(topics)} vs {len(self._topics)})"
+    def set_unique_topics(self, topics: List[IDTextRecord]):
+        assert len(topics) == len(self._topics), (
+            f"Number of topics do not match ({len(topics)} vs {len(self._topics)})"
+        )
         self._topics = topics
 
-    def set_unique_documents(self, documents: List[DocumentRecord]):
+    def set_unique_documents(self, documents: List[IDTextRecord]):
         N = len(self._topics)
         assert len(documents) == N * 2
         self.positives = documents[:N]
@@ -234,6 +314,8 @@ class PairwiseRecords(BaseRecords):
         return itertools.chain(self.positives, self.negatives)
 
     def pairs(self):
+        """Returns the list of query/document indices for which we should compute the score, or None if all (cartesian product). This method should be
+        used with `unique_topics`"""
         indices = list(range(len(self._topics)))
         return indices * 2, list(range(2 * len(self.positives)))
 
@@ -242,20 +324,18 @@ class PairwiseRecords(BaseRecords):
 
     def __getitem__(self, ix: Union[slice, int]):
         if isinstance(ix, slice):
-            records = PairwiseRecords()
+            records = PairwiseItems()
             for i in range(ix.start, min(ix.stop, len(self._topics)), ix.step or 1):
                 records.add(
-                    PairwiseRecord(
-                        self._topics[i], self.positives[i], self.negatives[i]
-                    )
+                    PairwiseItem(self._topics[i], self.positives[i], self.negatives[i])
                 )
             return records
 
-        return PairwiseRecord(self._topics[ix], self.positives[ix], self.negatives[ix])
+        return PairwiseItem(self._topics[ix], self.positives[ix], self.negatives[ix])
 
 
-class PairwiseRecordsWithTarget(PairwiseRecords):
-    """Pairwise records associated with a label (saying which document is better)"""
+class PairwiseItemsWithTarget(PairwiseItems):
+    """Pairwise items associated with a label (saying which document is better)"""
 
     target: List[int]
 
@@ -263,7 +343,7 @@ class PairwiseRecordsWithTarget(PairwiseRecords):
         super().__init__()
         self.target = []
 
-    def add(self, record: PairwiseRecordWithTarget):
+    def add(self, record: PairwiseItemWithTarget):
         self._topics.append(record.query)
         self.positives.append(record.positive)
         self.negatives.append(record.negative)
@@ -274,10 +354,10 @@ class PairwiseRecordsWithTarget(PairwiseRecords):
 
     def __getitem__(self, ix: Union[slice, int]):
         if isinstance(ix, slice):
-            records = PairwiseRecordsWithTarget()
+            records = PairwiseItemsWithTarget()
             for i in range(ix.start, min(ix.stop, len(self._topics)), ix.step or 1):
                 records.add(
-                    PairwiseRecordWithTarget(
+                    PairwiseItemWithTarget(
                         self._topics[i],
                         self.positives[i],
                         self.negatives[i],
@@ -286,12 +366,96 @@ class PairwiseRecordsWithTarget(PairwiseRecords):
                 )
             return records
 
-        return PairwiseRecordWithTarget(
+        return PairwiseItemWithTarget(
             self._topics[ix], self.positives[ix], self.negatives[ix], self.target[ix]
         )
 
 
-class BatchwiseRecords(BaseRecords):
+class ListwiseItem(SampleItem[DocT, QueryT]):
+    """A listwise Item is a generic data class composed of a query and a list of documents"""
+
+    query: QueryT
+    documents: List[DocT]
+
+    def __init__(self, query: QueryT, documents: List[DocT]):
+        self.query = query
+        self.documents = documents
+
+    def get_queries(self) -> List[QueryT]:
+        return [self.query]
+
+    def with_queries(self, qs: "List[QueryT2]") -> "ListwiseItem[DocT, QueryT2]":
+        return ListwiseItem(qs[0], self.documents)
+
+    def get_documents(self) -> List[DocT]:
+        return self.documents
+
+    def with_documents(self, ds: "List[DocT2]") -> "ListwiseItem[DocT2, QueryT]":
+        return ListwiseItem(self.query, list(ds))
+
+
+class ListwiseItems(BaseItems):
+    """Listwise items of queries associated with lists of documents"""
+
+    # The queries
+    _topics: List[IDTextRecord]
+
+    # The list of documents per query
+    _documents: List[List[IDTextRecord]]
+
+    def __init__(self):
+        self._topics = []
+        self._documents = []
+
+    def add(self, record: ListwiseItem):
+        self._topics.append(record.query)
+        self._documents.append(record.documents)
+
+    @property
+    def topics(self):
+        return itertools.chain(self._topics, self._topics)
+
+    def set_unique_topics(self, topics: List[IDTextRecord]):
+        assert len(topics) == len(self._topics), (
+            f"Number of topics do not match ({len(topics)} vs {len(self._topics)})"
+        )
+        self._topics = topics
+
+    def set_unique_documents(self, documents: List[IDTextRecord]):
+        raise NotImplementedError(
+            f"set_unique_documents() in {self.__class__.__name__}"
+        )
+
+    queries = topics
+
+    @property
+    def unique_topics(self):
+        return self._topics
+
+    unique_queries = unique_topics
+
+    @property
+    def documents(self):
+        return itertools.chain.from_iterable(self._documents)
+
+    def pairs(self):
+        indices = list(range(len(self._topics)))
+        return indices * 2, list(range(2 * len(self._documents)))
+
+    def __len__(self):
+        return len(self._topics)
+
+    def __getitem__(self, ix: Union[slice, int]):
+        if isinstance(ix, slice):
+            records = ListwiseItems()
+            for i in range(ix.start, min(ix.stop, len(self._topics)), ix.step or 1):
+                records.add(ListwiseItem(self._topics[i], self._documents[i]))
+            return records
+
+        return ListwiseItem(self._topics[ix], self._documents[ix])
+
+
+class BatchwiseItems(BaseItems):
     """Several documents (with associated [pseudo]relevance) per query
 
     Assumes that the number of documents per query is always the same (even
@@ -302,10 +466,10 @@ class BatchwiseRecords(BaseRecords):
 
     def __getitem__(self, ix: Union[slice, int]):
         """Sub-sample"""
-        raise NotImplementedError(f"__getitem__() in {self.__class__}")
+        raise NotImplementedError(f"__getitem__() in {self.__class__.__name__}")
 
 
-class ProductRecords(BatchwiseRecords):
+class ProductItems(BatchwiseItems):
     """Computes the score for all the documents and queries
 
     The relevance matrix
@@ -317,10 +481,10 @@ class ProductRecords(BatchwiseRecords):
         _relevances: (query x document) matrix with relevance score (between 0 and 1)
     """
 
-    _topics: List[TopicRecord]
+    _topics: List[IDTextRecord]
     """The list of queries to score"""
 
-    _documents: List[DocumentRecord]
+    _documents: List[IDTextRecord]
     """The list of documents to score"""
 
     relevances: torch.Tensor
@@ -333,10 +497,10 @@ class ProductRecords(BatchwiseRecords):
         self._topics = []
         self._documents = []
 
-    def add_topics(self, *topics: TopicRecord):
+    def add_topics(self, *topics: IDTextRecord):
         self._topics.extend(topics)
 
-    def add_documents(self, *documents: DocumentRecord):
+    def add_documents(self, *documents: IDTextRecord):
         self._documents.extend(documents)
 
     def set_relevances(self, relevances: torch.Tensor):
@@ -374,7 +538,7 @@ class ProductRecords(BatchwiseRecords):
                 yield d
 
     @property
-    def unique_documents(self):
+    def unique_documents(self) -> Iterable[IDTextRecord]:
         return self._documents
 
     def pairs(self) -> Tuple[Iterable[int], Iterable[int]]:
@@ -386,18 +550,60 @@ class ProductRecords(BatchwiseRecords):
                 documents.append(d)
         return topics, documents
 
+    def __getitem__(self, ix: Union[slice, int]):
+        if isinstance(ix, slice):
+            start, stop, step = ix.indices(len(self._topics))
+            records = ProductItems()
+            # add selected topics
+            for i in range(start, stop, step):
+                records.add_topics(self._topics[i])
+            # keep same documents
+            for d in self._documents:
+                records.add_documents(d)
+            # slice relevances rows if present
+            if hasattr(self, "relevances") and self.relevances is not None:
+                # build list of row indices and index into tensor
+                rows = list(range(start, stop, step))
+                records.set_relevances(self.relevances[rows])
+            return records
 
-class DocumentRecords(List[DocumentRecord]):
+        # integer index: return a PointwiseItems containing this topic
+        # paired with every document (preserving relevances when present)
+        if ix < 0:
+            ix += len(self._topics)
+        if ix < 0 or ix >= len(self._topics):
+            raise IndexError("ProductItems index out of range")
+
+        records = PointwiseItems()
+        topic = self._topics[ix]
+
+        if hasattr(self, "relevances") and self.relevances is not None:
+            row = self.relevances[ix]
+            try:
+                rels = list(row.tolist())
+            except Exception:
+                rels = list(row)
+
+            for d, r in zip(self._documents, rels):
+                records.add(PointwiseItem(topic, d, float(r)))
+        else:
+            for d in self._documents:
+                records.add(PointwiseItem(topic, d, None))
+
+        return records
+
+
+class DocumentRecords(List[IDTextRecord]):
     """Masked Language Modeling Records are a set of documents"""
 
     # Text of the documents
-    documents: List[DocumentRecord]
+    documents: List[IDTextRecord]
 
     def __init__(self):
         super().__init__()
         self.documents = []
 
-    def add(self, record: DocumentRecord):
+    def add(self, record: IDTextRecord):
         self.documents.append(record)
 
     def __len__(self):
@@ -405,7 +611,7 @@ class DocumentRecords(List[DocumentRecord]):
 
     def __getitem__(self, ix: Union[slice, int]):
         if isinstance(ix, slice):
-            records = DocumentRecord()
+            records = DocumentRecords()
             for i in range(ix.start, min(ix.stop, len(self)), ix.step or 1):
                 records.add(self.documents[i])
             return records
@@ -423,6 +629,6 @@ class DocumentRecords(List[DocumentRecord]):
     def to_texts(self) -> List[str]:
         texts = []
         for doc in self.documents:
-            texts.append(doc.document[TextItem].text)
+            texts.append(doc.document["text_item"].text)
 
         return texts

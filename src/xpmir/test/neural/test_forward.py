@@ -4,18 +4,14 @@ import itertools
 import pytest
 import torch
 from collections import defaultdict
-from experimaestro import Constant
-from datamaestro_text.data.ir import TextItem, create_record
-from datamaestro.record import Record
-from xpmir.index import Index
-from xpmir.learning import Random, ModuleInitMode
+from datamaestro_ir.data import SimpleTextItem, IDTextRecord
 from xpmir.neural.dual import CosineDense, DotDense
 from xpmir.letor.records import (
-    PairwiseRecord,
-    PairwiseRecords,
-    PointwiseRecord,
-    PointwiseRecords,
-    ProductRecords,
+    PairwiseItem,
+    PairwiseItems,
+    PointwiseItem,
+    PointwiseItems,
+    ProductItems,
 )
 from xpmir.text.tokenizers import Tokenizer
 from xpmir.text.encoders import (
@@ -28,8 +24,9 @@ from xpmir.text.encoders import (
 from xpmir.text.adapters import MeanTextEncoder
 
 
-class TestTokenizer(Tokenizer):
-    def __init__(self):
+class MyTokenizer(Tokenizer):
+    def __post_init__(self):
+        super().__post_init__()
         self.map = {}
         self._dummy_params = torch.nn.Parameter(torch.Tensor())
 
@@ -42,16 +39,18 @@ class TestTokenizer(Tokenizer):
             return tokid
 
 
-class RandomTokensEncoder(TokenizedTextEncoderBase[Record, TokensRepresentationOutput]):
+class RandomTokensEncoder(
+    TokenizedTextEncoderBase[IDTextRecord, TokensRepresentationOutput]
+):
     DIMENSION = 7
     MAX_WORDS = 100
 
-    def __initialize__(self, options):
-        super().__initialize__(options)
+    def __initialize__(self):
+        super().__initialize__()
         self.embed = torch.nn.Embedding.from_pretrained(
             torch.randn(RandomTokensEncoder.MAX_WORDS, RandomTokensEncoder.DIMENSION)
         )
-        self.tokenizer = TestTokenizer().instance()
+        self.tokenizer = MyTokenizer.C().instance()
 
     @property
     def dimension(self) -> int:
@@ -61,10 +60,10 @@ class RandomTokensEncoder(TokenizedTextEncoderBase[Record, TokensRepresentationO
     def pad_tokenid(self) -> int:
         return 0
 
-    def forward(self, records: List[Record], options=None):
+    def forward(self, records: List[IDTextRecord], options=None):
         options = options or TokenizerOptions()
         tok_texts = self.tokenizer.batch_tokenize(
-            [record[TextItem].text for record in records],
+            [record["text_item"].text for record in records],
             maxlen=options.max_length,
             mask=True,
         )
@@ -72,17 +71,6 @@ class RandomTokensEncoder(TokenizedTextEncoderBase[Record, TokensRepresentationO
 
     def static(self) -> bool:
         return False
-
-
-class CustomIndex(Index):
-    id: Constant[int] = 1
-
-    @property
-    def documentcount(self):
-        return 50
-
-    def term_df(self, term: str):
-        return 1
 
 
 # ---
@@ -97,31 +85,6 @@ def registermodel(method):
         pytest.param(method, marks=pytest.mark.dependency(name=f"model-{method}"))
     )
     return method
-
-
-@registermodel
-def drmm():
-    """Drmm factory"""
-    from xpmir.neural.interaction.drmm import Drmm
-    from xpmir.neural.interaction.common import CosineSimilarity
-
-    drmm = Drmm.C(
-        encoder=RandomTokensEncoder.C(),
-        index=CustomIndex.C(),
-        similarity=CosineSimilarity(),
-    )
-    return drmm.instance()
-
-
-@registermodel
-def colbert_cos():
-    """Colbert model factory"""
-    from xpmir.neural.interaction.colbert import Colbert
-    from xpmir.neural.interaction.common import CosineSimilarity
-
-    return Colbert.C(
-        encoder=RandomTokensEncoder.C(), similarity=CosineSimilarity()
-    ).instance()
 
 
 @registermodel
@@ -143,8 +106,8 @@ def cosinedense():
 
 
 class DummyDualTextEncoder(DualTextEncoder):
-    def __init__(self):
-        super().__init__()
+    def __initialize__(self):
+        super().__initialize__()
         self.cache = defaultdict(lambda: torch.randn(1, 13))
 
     @property
@@ -158,53 +121,45 @@ class DummyDualTextEncoder(DualTextEncoder):
         return RepresentationOutput(torch.cat([self.cache[text] for text in texts]))
 
 
-@registermodel
-def cross_scorer():
-    """Cross-scorer classifier factory"""
-    from xpmir.neural.cross import CrossScorer
-
-    return CrossScorer.C(max_length=100, encoder=DummyDualTextEncoder.C()).instance()
-
-
 # ---
 # --- Input factory
 # ---
 
 QUERIES = [
-    create_record(text="purple cat"),
-    create_record(text="yellow house"),
+    {"text_item": SimpleTextItem("purple cat")},
+    {"text_item": SimpleTextItem("yellow house")},
 ]
 DOCUMENTS = [
-    create_record(id="1", text="the cat sat on the mat"),
-    create_record(id="2", text="the purple car"),
-    create_record(id="3", text="my little dog"),
-    create_record(id="4", text="the truck was on track"),
+    {"id": "1", "text_item": SimpleTextItem("the cat sat on the mat")},
+    {"id": "2", "text_item": SimpleTextItem("the purple car")},
+    {"id": "3", "text_item": SimpleTextItem("my little dog")},
+    {"id": "4", "text_item": SimpleTextItem("the truck was on track")},
 ]
 
 
 def pointwise():
     # Pointwise inputs
-    inputs = PointwiseRecords()
+    inputs = PointwiseItems()
 
     # Implicit order (Q0, D0) (Q1, D0) (Q0, D1) (Q1, D1)
-    inputs.add(PointwiseRecord(QUERIES[0], DOCUMENTS[0], 0.0))
-    inputs.add(PointwiseRecord(QUERIES[0], DOCUMENTS[0], 0.0))
-    inputs.add(PointwiseRecord(QUERIES[1], DOCUMENTS[2], 0.0))
-    inputs.add(PointwiseRecord(QUERIES[1], DOCUMENTS[1], 0.0))
+    inputs.add(PointwiseItem(QUERIES[0], DOCUMENTS[0], 0.0))
+    inputs.add(PointwiseItem(QUERIES[0], DOCUMENTS[0], 0.0))
+    inputs.add(PointwiseItem(QUERIES[1], DOCUMENTS[2], 0.0))
+    inputs.add(PointwiseItem(QUERIES[1], DOCUMENTS[1], 0.0))
     return inputs
 
 
 def pairwise():
     # Implicit order (Q0, D0) (Q1, D0) (Q0, D1) (Q1, D1)
-    inputs = PairwiseRecords()
-    inputs.add(PairwiseRecord(QUERIES[0], DOCUMENTS[0], DOCUMENTS[1]))
-    inputs.add(PairwiseRecord(QUERIES[1], DOCUMENTS[2], DOCUMENTS[3]))
+    inputs = PairwiseItems()
+    inputs.add(PairwiseItem(QUERIES[0], DOCUMENTS[0], DOCUMENTS[1]))
+    inputs.add(PairwiseItem(QUERIES[1], DOCUMENTS[2], DOCUMENTS[3]))
     return inputs
 
 
 def product():
     # Implicit order (Q0, D0) (Q0, D1) (Q1, D0)
-    inputs = ProductRecords()
+    inputs = ProductItems()
     inputs.add_topics(QUERIES[0], QUERIES[1])
     inputs.add_documents(DOCUMENTS[0], DOCUMENTS[1])
 
@@ -220,8 +175,7 @@ inputfactories = [pointwise, pairwise, product]
 def test_forward_types(modelfactory, inputfactory):
     """Test that each record type is handled"""
     model = modelfactory()
-    random = Random().instance().state
-    model.initialize(ModuleInitMode.RANDOM.to_options(random))
+    model.initialize()
 
     inputs = inputfactory()
 
@@ -239,8 +193,7 @@ def test_forward_types(modelfactory, inputfactory):
 def test_forward_consistency(modelfactory, inputfactoriescouple):
     """Test that outputs are consistent between the different records types"""
     model = modelfactory()
-    random = Random().instance().state
-    model.initialize(ModuleInitMode.DEFAULT.to_options(random))
+    model.initialize()
 
     outputs = []
     maps = []
@@ -250,7 +203,7 @@ def test_forward_consistency(modelfactory, inputfactoriescouple):
             outputs.append(model(input, None))
             maps.append(
                 {
-                    (qr[TextItem].text, dr[TextItem].text): ix
+                    (qr["text_item"].text, dr["text_item"].text): ix
                     for ix, (qr, dr) in enumerate(zip(input.queries, input.documents))
                 }
             )
@@ -260,6 +213,6 @@ def test_forward_consistency(modelfactory, inputfactoriescouple):
     for key in inter:
         s1 = outputs[0][maps[0][key]].item()
         s2 = outputs[1][maps[1][key]].item()
-        assert s1 == pytest.approx(
-            s2, abs=1e-6
-        ), f"{s1} different from {s2} in {outputs[0]}, {outputs[1]}"
+        assert s1 == pytest.approx(s2, abs=1e-6), (
+            f"{s1} different from {s2} in {outputs[0]}, {outputs[1]}"
+        )

@@ -1,21 +1,27 @@
 from abc import ABC, abstractmethod
-import sys
-from typing import List, NamedTuple, Optional, TypeVar, Generic
+from typing import List, NamedTuple, Optional, TypeVar, Generic, Sequence, Union
 from attr import define
 import re
-
+import sys 
 import torch
-
 from experimaestro import Config
-from xpmir.text.utils import lengthToMask
-from xpmir.learning.optim import ModuleInitOptions
-from xpmir.utils.utils import Initializable
-from xpmir.utils.misc import opt_slice
-from xpmir.utils.torch import to_device
+from xpm_torch.utils.utils import Initializable
+from xpm_torch.utils import to_device
 
+from xpmir.text.utils import lengthToMask
+
+T = TypeVar("T")
+
+
+def opt_slice(x: Optional[Sequence[T]], ix: Union[int, slice, list]) -> Optional[Sequence[T]]:
+    if x is None:
+        return None
+    if isinstance(ix, list):
+        return [x[i] for i in ix]
+    return x[ix]
 
 class TokenizedTexts(NamedTuple):
-    """Tokenized texts output"""
+    """Structured Tokenized texts output, that can be cast to device"""
 
     tokens: Optional[List[List[str]]]
     """The list of tokens"""
@@ -169,8 +175,8 @@ class TokenizerBase(
 ):
     """Base tokenizer"""
 
-    def __initialize__(self, options: ModuleInitOptions):
-        super().__initialize__(options)
+    def __initialize__(self):
+        super().__initialize__()
 
     @abstractmethod
     def tokenize(

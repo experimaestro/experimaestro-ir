@@ -10,17 +10,23 @@ repos:
   repo: https://github.com/pre-commit/pre-commit-hooks
   rev: v6.0.0
 - hooks:
-  - exclude: ^src/experimaestro/server/data
-    id: black
-  repo: https://github.com/psf/black
-  rev: 25.12.0
+  - id: python-check-blanket-noqa
+  repo: https://github.com/pre-commit/pygrep-hooks
+  rev: v1.10.0
 - hooks:
-  - additional_dependencies:
-    - flake8-print
-    - flake8-fixme
-    id: flake8
-  repo: https://github.com/pycqa/flake8
-  rev: 7.3.0
+  - id: no-fixme-todo
+    name: No FIXME or TODO markers
+    entry: '(FIXME:|TODO:)'
+    language: pygrep
+    types: [python]
+  repo: local
+- hooks:
+  - id: ruff
+    args: [--fix]
+  - id: ruff-format
+    exclude: ^src/experimaestro/webui/data
+  repo: https://github.com/astral-sh/ruff-pre-commit
+  rev: v0.14.10
 - hooks:
   - id: conventional-pre-commit
     stages:

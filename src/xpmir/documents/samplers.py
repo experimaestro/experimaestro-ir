@@ -1,13 +1,12 @@
 from abc import ABC, abstractmethod
-from typing import Optional, Tuple, Iterator, Any
-from experimaestro import Param, Config
+from typing import Optional, Tuple, Iterator
+from experimaestro import field, Param, Config
 import torch
 import numpy as np
-from datamaestro_text.data.ir import DocumentStore, TextItem, create_record
-from xpmir.letor import Random
-from xpmir.letor.records import DocumentRecord, PairwiseRecord, ProductRecords
-from xpmir.letor.samplers import BatchwiseSampler, PairwiseSampler
-from xpmir.utils.iter import RandomSerializableIterator, SerializableIterator
+from datamaestro_ir.data import DocumentStore, SimpleTextItem
+from xpm_torch import Random
+from xpmir.letor.records import DocumentRecord, PairwiseItem, ProductItems
+from xpm_torch import Sampler
 
 
 class DocumentSampler(Config, ABC):
@@ -32,10 +31,10 @@ class HeadDocumentSampler(DocumentSampler):
     if max_count is 0, it iterates over all documents
     """
 
-    max_count: Param[int] = 0
+    max_count: Param[int] = field(default=0, ignore_default=True)
     """Maximum number of documents (if 0, no limit)"""
 
-    max_ratio: Param[float] = 0
+    max_ratio: Param[float] = field(default=0, ignore_default=True)
     """Maximum ratio of documents (if 0, no limit)"""
 
     def __call__(self) -> Tuple[int, Iterator[DocumentRecord]]:
@@ -58,10 +57,10 @@ class RandomDocumentSampler(DocumentSampler):
     Either max_count or max_ratio should be non null
     """
 
-    max_count: Param[int] = 0
+    max_count: Param[int] = field(default=0, ignore_default=True)
     """Maximum number of documents (if 0, no limit)"""
 
-    max_ratio: Param[float] = 0
+    max_ratio: Param[float] = field(default=0, ignore_default=True)
     """Maximum ratio of documents (if 0, no limit)"""
 
     random: Param[Optional[Random]]
@@ -78,7 +77,7 @@ class RandomDocumentSampler(DocumentSampler):
 
     def iter(self, count) -> Iterator[str]:
         """Iterate over the documents"""
-        state = np.random.RandomState() if self.random is None else self.random.state
+        state = self.random if self.random is not None else np.random.RandomState()
         docids = state.choice(
             np.arange(self.documents.documentcount), size=count, replace=False
         )
@@ -86,7 +85,7 @@ class RandomDocumentSampler(DocumentSampler):
             yield self.documents.document_int(int(docid))
 
 
-class RandomSpanSampler(BatchwiseSampler, PairwiseSampler):
+class RandomSpanSampler(Sampler):
     """This sampler uses positive samples coming from the same documents
     and negative ones coming from others
 
@@ -100,7 +99,7 @@ class RandomSpanSampler(BatchwiseSampler, PairwiseSampler):
     documents: Param[DocumentStore]
     """The document store to use"""
 
-    max_spansize: Param[int] = 1000
+    max_spansize: Param[int] = field(default=1000, ignore_default=True)
     """Maximum span size in number of characters"""
 
     def get_text_span(self, text, random):
@@ -129,50 +128,44 @@ class RandomSpanSampler(BatchwiseSampler, PairwiseSampler):
 
         return (text[start1:end1], text[start2:end2])
 
-    def pairwise_iter(self) -> SerializableIterator[PairwiseRecord, Any]:
-        def iter(random: np.random.RandomState):
-            iter = self.documents.iter_sample(lambda m: random.randint(0, m))
+    def pairwise_iter(self) -> Iterator[PairwiseItem]:
+        random = self.random if self.random is not None else np.random.RandomState()
+        doc_iter = self.documents.iter_sample(lambda m: random.randint(0, m))
 
-            while True:
-                record_pos_qry = next(iter)
-                text_pos_qry = record_pos_qry[TextItem].text
-                spans_pos_qry = self.get_text_span(text_pos_qry, random)
+        while True:
+            record_pos_qry = next(doc_iter)
+            text_pos_qry = record_pos_qry["text_item"].text
+            spans_pos_qry = self.get_text_span(text_pos_qry, random)
 
-                record_neg = next(iter)
-                text_neg = record_neg[TextItem].text
-                spans_neg = self.get_text_span(text_neg, random)
+            record_neg = next(doc_iter)
+            text_neg = record_neg["text_item"].text
+            spans_neg = self.get_text_span(text_neg, random)
 
-                if not (spans_pos_qry and spans_neg):
+            if not (spans_pos_qry and spans_neg):
+                continue
+
+            yield PairwiseItem(
+                {"text_item": SimpleTextItem(spans_pos_qry[0])},
+                {"text_item": SimpleTextItem(spans_pos_qry[1])},
+                {"text_item": SimpleTextItem(spans_neg[random.randint(0, 2)])},
+            )
+
+    def batchwise_iter(self, batch_size: int) -> Iterator[ProductItems]:
+        random = self.random if self.random is not None else np.random.RandomState()
+        # Pre-compute relevance matrix
+        relevances = torch.diag(torch.ones(batch_size, dtype=torch.float))
+
+        doc_iter = self.documents.iter_sample(lambda m: random.randint(0, m))
+
+        while True:
+            batch = ProductItems()
+            while len(batch) < batch_size:
+                record = next(doc_iter)
+                text = record["text_item"].text
+                res = self.get_text_span(text, random)
+                if not res:
                     continue
-
-                yield PairwiseRecord(
-                    create_record(text=spans_pos_qry[0]),
-                    create_record(text=spans_pos_qry[1]),
-                    create_record(text=spans_neg[random.randint(0, 2)]),
-                )
-
-        return RandomSerializableIterator(self.random, iter)
-
-    def batchwise_iter(
-        self, batch_size: int
-    ) -> SerializableIterator[ProductRecords, Any]:
-        def iterator(random: np.random.RandomState):
-            # Pre-compute relevance matrix
-            relevances = torch.diag(torch.ones(batch_size, dtype=torch.float))
-
-            iter = self.documents.iter_sample(lambda m: random.randint(0, m))
-
-            while True:
-                batch = ProductRecords()
-                while len(batch) < batch_size:
-                    record = next(iter)
-                    text = record.text
-                    res = self.get_text_span(text, random)
-                    if not res:
-                        continue
-                    batch.add_topics(create_record(text=res[0]))
-                    batch.add_documents(create_record(text=res[1]))
-                batch.set_relevances(relevances)
-                yield batch
-
-        return RandomSerializableIterator(self.random, iterator)
+                batch.add_topics({"text_item": SimpleTextItem(res[0])})
+                batch.add_documents({"text_item": SimpleTextItem(res[1])})
+            batch.set_relevances(relevances)
+            yield batch

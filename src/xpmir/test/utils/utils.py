@@ -1,35 +1,35 @@
-from functools import cached_property
 from collections import OrderedDict, defaultdict
 from typing import ClassVar, Dict, Iterator, List, Tuple, Any
 import torch
 import numpy as np
-from datamaestro.record import Record, record_type
-from datamaestro_text.data.ir import (
-    create_record,
+from datamaestro_ir.data import (
     DocumentStore,
-    InternalIDItem,
+    IDTextRecord,
     SimpleTextItem,
-    TextItem,
 )
 
-from experimaestro import Param
-from xpmir.text.encoders import TextEncoder, RepresentationOutput
+from experimaestro import field, Param
+from xpmir.text.encoders import (
+    RepresentationOutput,
+    TextEncoder,
+    TextEncoderBase,
+    TextsRepresentationOutput,
+)
 
 
 class SampleDocumentStore(DocumentStore):
-    id: Param[str] = ""
-    num_docs: Param[int] = 200
+    id: Param[str] = field(default="", ignore_default=True)
+    num_docs: Param[int] = field(default=200, ignore_default=True)
 
     def __post_init__(self):
         # Generate all the documents
         self.documents = OrderedDict(
             (
                 str(ix),
-                create_record(
-                    InternalIDItem(ix),
-                    id=str(ix),
-                    text=f"Document {ix}",
-                ),
+                {
+                    "id": str(ix),
+                    "text_item": SimpleTextItem(f"Document {ix}"),
+                },
             )
             for ix in range(self.num_docs)
         )
@@ -38,19 +38,15 @@ class SampleDocumentStore(DocumentStore):
     def documentcount(self):
         return len(self.documents)
 
-    def document_int(self, internal_docid: int) -> Record:
+    def document_int(self, internal_docid: int) -> IDTextRecord:
         return self.documents[str(internal_docid)]
 
-    def document_ext(self, docid: str) -> Record:
+    def document_ext(self, docid: str) -> IDTextRecord:
         """Returns the text of the document given its id"""
         return self.documents[docid]
 
-    def iter_documents(self) -> Iterator[Record]:
+    def iter_documents(self) -> Iterator[IDTextRecord]:
         return iter(self.documents.values())
-
-    @cached_property
-    def document_recordtype(self):
-        return record_type(InternalIDItem, SimpleTextItem)
 
     def docid_internal2external(self, docid: int):
         """Converts an internal collection ID (integer) to an external ID"""
@@ -81,17 +77,17 @@ def check_str(x: Any):
     return x
 
 
-class SparseRandomTextEncoder(TextEncoder):
+class SparseRandomTextEncoder(TextEncoderBase[str, TextsRepresentationOutput]):
     # A default dict to always return the same embeddings
     MAPS: ClassVar[Dict[Tuple[int, float], Dict[str, torch.Tensor]]] = {}
 
     map: Dict[str, torch.Tensor]
     dim: Param[int]
-    sparsity: Param[float] = 0.0
+    sparsity: Param[float] = field(default=0.0, ignore_default=True)
 
     def __post_init__(self):
         super().__init__()
-        if not (self.dim, self.sparsity) in SparseRandomTextEncoder.MAPS:
+        if (self.dim, self.sparsity) not in SparseRandomTextEncoder.MAPS:
             SparseRandomTextEncoder.MAPS[(self.dim, self.sparsity)] = defaultdict(
                 VectorGenerator(self.dim, self.sparsity)
             )
@@ -103,11 +99,44 @@ class SparseRandomTextEncoder(TextEncoder):
     def dimension(self):
         return self.dim
 
-    def forward(self, texts: List[str]) -> torch.Tensor:
+    def forward(self, texts: List[str]) -> TextsRepresentationOutput:
         """Returns a matrix encoding the provided texts"""
 
-        tensors = [self.map[check_str(
-            text[TextItem].text if isinstance(text, Record) else text
-        )].unsqueeze(0) for text in texts]
+        tensors = [
+            self.map[
+                check_str(text["text_item"].text if isinstance(text, dict) else text)
+            ].unsqueeze(0)
+            for text in texts
+        ]
 
+        return TextsRepresentationOutput(torch.cat(tensors), tokenized=None)
+
+
+class DenseRandomTextEncoder(TextEncoder):
+    """Random text encoder returning dense torch.Tensor (for FAISS tests)."""
+
+    MAPS: ClassVar[Dict[Tuple[int, float], Dict[str, torch.Tensor]]] = {}
+
+    map: Dict[str, torch.Tensor]
+    dim: Param[int]
+
+    def __post_init__(self):
+        super().__init__()
+        if (self.dim, 0.0) not in DenseRandomTextEncoder.MAPS:
+            DenseRandomTextEncoder.MAPS[(self.dim, 0.0)] = defaultdict(
+                VectorGenerator(self.dim, 0.0)
+            )
+        self.map = DenseRandomTextEncoder.MAPS[(self.dim, 0.0)]
+
+    @property
+    def dimension(self):
+        return self.dim
+
+    def forward(self, texts: List[str]) -> RepresentationOutput:
+        tensors = [
+            self.map[
+                check_str(text["text_item"].text if isinstance(text, dict) else text)
+            ].unsqueeze(0)
+            for text in texts
+        ]
         return RepresentationOutput(torch.cat(tensors))

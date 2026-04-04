@@ -1,13 +1,13 @@
 import os
 from pathlib import Path
-import logging
 from typing import List, Optional, Tuple, Union
-from functools import cached_property
+from functools import cached_property, lru_cache
 import torch
-from experimaestro import Config, Param
+from experimaestro import field, Config, Param
 
-from xpmir.learning.optim import ModuleInitOptions
-from xpmir.utils.utils import Initializable
+from xpm_torch.utils.utils import Initializable
+from xpm_torch.huggingface import get_hf_config
+
 from xpmir.utils.convert import Converter
 from xpmir.text.tokenizers import (
     TokenizerBase,
@@ -16,6 +16,11 @@ from xpmir.text.tokenizers import (
     TokenizerOptions,
 )
 
+
+import logging
+
+logger = logging.getLogger(__name__)
+
 try:
     from transformers import AutoTokenizer, AutoConfig
 except Exception:
@@ -23,7 +28,16 @@ except Exception:
     raise
 
 
-HFTokenizerInput = Union[List[str], List[Tuple[str, str]]]
+@lru_cache
+def get_default_max_len(model_id: str) -> int:
+    """get default max len from model id if it is in the hf config
+    defaults to 512
+    """
+    hf_config = get_hf_config(model_id)
+    return hf_config.get("max_position_embeddings", 512)
+
+
+HFTokenizerInput = Union[str, List[str], List[Tuple[str, str]]]
 
 
 class HFTokenizer(Config, Initializable):
@@ -32,12 +46,22 @@ class HFTokenizer(Config, Initializable):
     model_id: Param[str]
     """The tokenizer hugginface ID"""
 
-    max_length: Param[int] = 4096
-    """Maximum length for the tokenizer (can be overridden at inference)"""
+    max_length: Param[Optional[int]]
+    """Maximum length for the tokenizer (can be overridden by the model) default
+    can be set by default using the hf config
+    """
 
     DEFAULT_OPTIONS = TokenizerOptions()
 
-    def __initialize__(self, options: ModuleInitOptions):
+    def __post_init__(self):
+        super().__post_init__()
+
+        if self.max_length is None:
+            # try to infer it from config
+            self.max_length = get_default_max_len(self.model_id)
+            logger.warning(f"No max_len provided, using default hf: {self.max_length}")
+
+    def __initialize__(self):
         """Initialize the HuggingFace transformer"""
 
         model_id_or_path = self.model_id
@@ -66,7 +90,7 @@ class HFTokenizer(Config, Initializable):
 
     def tokenize(
         self,
-        texts: HFTokenizerInput,
+        texts: HFTokenizerInput, #FIXME : not true, but might want to implement it.
         options: Optional[TokenizerOptions] = None,
     ) -> TokenizedTexts:
         options = options or HFTokenizer.DEFAULT_OPTIONS
@@ -127,9 +151,9 @@ class HFTokenizerBase(TokenizerBase[TokenizerInput, TokenizedTexts]):
     tokenizer: Param[HFTokenizer]
     """The HuggingFace tokenizer"""
 
-    def __initialize__(self, options: ModuleInitOptions):
-        super().__initialize__(options)
-        self.tokenizer.initialize(options)
+    def __initialize__(self):
+        super().__initialize__()
+        self.tokenizer.initialize()
 
     @classmethod
     def from_pretrained_id(cls, hf_id: str, **kwargs):
@@ -143,7 +167,7 @@ class HFTokenizerBase(TokenizerBase[TokenizerInput, TokenizedTexts]):
 
     def id2tok(self, idx: int) -> str:
         return self.tokenizer.id2tok(idx)
-    
+
     def get_vocabulary(self):
         return self.tokenizer.vocab
 
@@ -173,7 +197,7 @@ class HFTokenizerAdapter(HFTokenizerBase[TokenizerInput]):
 class HFListTokenizer(HFTokenizerBase[List[List[str]]]):
     """Process list of texts by separating them by a separator token"""
 
-    separate_index: Param[bool] = 0
+    separate_index: Param[bool] = field(default=0, ignore_default=True)
     """Use a tuple until this index"""
 
     @cached_property

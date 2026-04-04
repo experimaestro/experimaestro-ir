@@ -9,29 +9,32 @@ import re
 import subprocess
 import sys
 from typing import List, Optional
-from experimaestro import tqdm as xpmtqdm, Task, Meta, field, PathGenerator
 
-from datamaestro_text.data.ir import (
+from experimaestro import tqdm as xpmtqdm, Task, Meta, field, PathGenerator
+from experimaestro import Param, progress
+
+from datamaestro_ir.data import (
     DocumentStore,
-    TextItem,
-    IDItem,
-    TopicRecord,
-    create_record,
-    InternalIDItem,
+    IDTextRecord,
+    SimpleTextItem,
 )
-import datamaestro_text.data.ir.csv as ir_csv
-from datamaestro_text.data.ir.trec import (
+
+import datamaestro_ir.data.csv as ir_csv
+from datamaestro_ir.data.trec import (
     Documents,
     Topics,
     TipsterCollection,
     TrecTopics,
 )
-from experimaestro import Param, progress
 from tqdm import tqdm
 from xpmir.index.anserini import Index
 from xpmir.rankers import Retriever, ScoredDocument, document_cache
 from xpmir.rankers.standard import BM25, QLDirichlet, Model
 from xpmir.utils.utils import Handler, StreamGenerator, needs_java
+
+TopicRecord = IDTextRecord
+
+logger = logging.getLogger(__name__)
 
 pyserini_java = needs_java(11)
 
@@ -68,12 +71,12 @@ class IndexCollection(Index, Task):
     documents: Param[Documents]
     """The documents to index"""
 
-    threads: Meta[int] = 8
+    threads: Meta[int] = field(default=8, ignore_default=True)
     """Number of threads when indexing"""
 
-    path: Meta[Path] = field(default_factory=PathGenerator("index"))
+    path: Meta[Path] = field(default_factory=PathGenerator("index"), overrides=True)
 
-    id: Param[str] = ""
+    id: Param[str] = field(overrides=True)
     """Use an empty ID since identifier is determined by documents"""
 
     def execute(self):
@@ -137,8 +140,8 @@ class IndexCollection(Index, Task):
                     # Generate document
                     json.dump(
                         {
-                            "id": document[IDItem].id,
-                            "contents": document[TextItem].text,
+                            "id": document["id"],
+                            "contents": document["text_item"].text,
                         },
                         out,
                     )
@@ -273,7 +276,7 @@ class AnseriniRetriever(Retriever):
 
     index: Param[Index]
     model: Param[Model]
-    k: Param[int] = 1500
+    k: Param[int] = field(default=1500, ignore_default=True)
 
     @cached_property
     def searcher(self):
@@ -301,10 +304,10 @@ class AnseriniRetriever(Retriever):
             return self.index
         return self.store
 
-    def retrieve(self, record: TopicRecord) -> List[ScoredDocument]:
+    def retrieve(self, record: IDTextRecord) -> List[ScoredDocument]:
         # see
         # https://github.com/castorini/anserini/blob/master/src/main/java/io/anserini/search/SimpleSearcher.java
-        hits = self.searcher.search(record[TextItem].text, k=self.k)
+        hits = self.searcher.search(record["text_item"].text, k=self.k)
         store = self.get_store()
 
         # Batch retrieve documents
@@ -318,11 +321,14 @@ class AnseriniRetriever(Retriever):
 
         return [
             ScoredDocument(
-                create_record(
-                    InternalIDItem(hit.lucene_docid),
-                    id=hit.docid,
-                    text=getattr(hit, "contents", None),
-                ),
+                {
+                    "id": hit.docid,
+                    **(
+                        {"text_item": SimpleTextItem(contents)}
+                        if (contents := getattr(hit, "contents", None))
+                        else {}
+                    ),
+                },
                 hit.score,
             )
             for hit in hits
@@ -349,6 +355,7 @@ def retriever(
     """Function to construct an Anserini retriever"""
     index = index_builder(documents)
 
-    return AnseriniRetriever.C(
-        index=index, k=k or AnseriniRetriever.k, model=model, store=store
-    )
+    kwargs = {"index": index, "model": model, "store": store}
+    if k is not None:
+        kwargs["k"] = k
+    return AnseriniRetriever.C(**kwargs)

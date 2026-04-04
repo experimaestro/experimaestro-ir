@@ -19,8 +19,8 @@ from subprocess import run
 import tempfile
 from experimaestro import SubmitHook, Job, Launcher
 from threading import Thread
-from xpmir.utils.functools import cache
-from xpmir.utils.logging import easylog, EasyLogger  # noqa: F401
+from functools import lru_cache as cache
+from xpm_torch.utils.logging import  EasyLogger  # noqa: F401
 
 T = TypeVar("T")
 
@@ -201,27 +201,3 @@ class needs_java(SubmitHook):
 
     def process(self, job: Job, launcher: Launcher):
         job.environ["JAVA_HOME"] = find_java_home(self.version)
-
-
-class Initializable:
-    """Base class for all initializable (but just once)"""
-
-    def initialize(self, *args, **kwargs):
-        """Main initialization
-
-        Calls :py:meth:`__initialize__` once (using :py:meth:`__initialize__`)
-        """
-        if not self._initialized:
-            self._initialized = True
-            self.__initialize__(*args, **kwargs)
-        self._initialized = True
-
-    def __init__(self):
-        self._initialized = False
-
-    def __initialize__(self, *args, **kwargs):
-        """Initialize the object
-
-        Parameters depend on the actual class
-        """
-        pass

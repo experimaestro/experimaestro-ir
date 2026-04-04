@@ -1,33 +1,44 @@
-import inspect
 import logging
 import sys
 from itertools import chain
 from attrs import define
-from datamaestro_text.interfaces.trec import write_run_dict
+from datamaestro_ir.interfaces.trec import write_run_dict
 import pandas as pd
 from pathlib import Path
 from typing import DefaultDict, Dict, List, Protocol, Union, Optional
 import ir_measures
-from experimaestro import Task, Param, pathgenerator, Annotated, tags, TagDict
-from datamaestro_text.data.ir import (
+
+from experimaestro import (
+    Task,
+    Param,
+    Meta,
+    field,
+    pathgenerator,
+    Annotated,
+    tags,
+    TagDict,
+)
+from datamaestro_ir.data import (
     Adhoc,
     AdhocAssessments,
     AdhocRun,
     AdhocRunDict,
     Documents,
     AdhocResults,
-    IDItem,
 )
-from datamaestro_text.data.ir.trec import TrecAdhocRun, TrecAdhocResults
-from datamaestro_text.transforms.ir import TopicWrapper
-from xpmir.measures import Measure
+from datamaestro_ir.data.trec import TrecAdhocRun, TrecAdhocResults
+from datamaestro_ir.transforms import TopicWrapper
+
+from xpm_torch.configuration import FabricConfiguration
+
 import xpmir.measures as m
+from xpmir.measures import Measure
 from xpmir.metrics import evaluator
-from xpmir.rankers import Retriever
-from xpmir.utils.logging import easylog
+from xpmir.rankers import Retriever, RunRetriever
 from experimaestro.launchers import Launcher
 
-logger = easylog()
+
+logger = logging.getLogger(__name__)
 
 
 def get_evaluator(metrics: List[ir_measures.Metric], assessments: AdhocAssessments):
@@ -41,7 +52,9 @@ def get_evaluator(metrics: List[ir_measures.Metric], assessments: AdhocAssessmen
 class BaseEvaluation(Task):
     """Base class for evaluation tasks"""
 
-    measures: Param[List[Measure]] = [m.AP, m.P @ 20, m.nDCG, m.nDCG @ 20, m.RR]
+    measures: Param[List[Measure]] = field(
+        default=[m.AP, m.P @ 20, m.nDCG, m.nDCG @ 20, m.RR], ignore_default=True
+    )
     """List of metrics"""
 
     aggregated: Annotated[Path, pathgenerator("aggregated.txt")]
@@ -50,7 +63,7 @@ class BaseEvaluation(Task):
     detailed: Annotated[Path, pathgenerator("detailed.dat")]
     """Path for detailed results"""
 
-    with_run: Param[bool] = False
+    with_run: Param[bool] = field(default=False, ignore_default=True)
     """Saves the run together with the evaluation"""
 
     run_path: Annotated[Path, pathgenerator("run.txt")]
@@ -93,10 +106,10 @@ class BaseEvaluation(Task):
 def get_run(retriever: Retriever, dataset: Adhoc) -> AdhocRunDict:
     """Returns the scored documents for each topic in a dataset"""
     results = retriever.retrieve_all(
-        {topic[IDItem].id: topic for topic in dataset.topics.iter()}
+        {topic["id"]: topic for topic in dataset.topics.iter()}
     )
     return {
-        qid: {sd.document[IDItem].id: sd.score for sd in scoredocs}
+        qid: {sd.document["id"]: sd.score for sd in scoredocs}
         for qid, scoredocs in results.items()
     }
 
@@ -149,11 +162,26 @@ class Evaluate(BaseEvaluation, Task):
     retriever: Param[Retriever]
     """The retriever to evaluate"""
 
-    topic_wrapper: Param[Optional[TopicWrapper]] = None
+    topic_wrapper: Param[Optional[TopicWrapper]] = field(
+        default=None, ignore_default=True
+    )
     """Topic extractor"""
+
+    fabric_config: Meta[FabricConfiguration] = field(
+        default_factory=FabricConfiguration.C
+    )
+    """Runtime configuration, managed by Fabric"""
 
     def execute(self):
         self.retriever.initialize()
+
+        # instanciate the Fabirc object
+        fabric = self.fabric_config.get_fabric()
+        fabric.launch()
+
+        # Wrap all necessary children with fabric
+        self.retriever.setup_with_fabric(fabric)
+
         run = get_run(self.retriever, self.dataset)
         self._execute(run, self.dataset.assessments)
 
@@ -161,8 +189,7 @@ class Evaluate(BaseEvaluation, Task):
 class RetrieverFactory(Protocol):
     """Generates a retriever for a given dataset"""
 
-    def __call__(self, dataset: Documents) -> Retriever:
-        ...
+    def __call__(self, dataset: Documents, key: str = None) -> Retriever: ...
 
 
 class Evaluations:
@@ -204,16 +231,7 @@ class Evaluations:
         :param retriever: the retriever (or the retriever factory)
         """
         if not isinstance(retriever, Retriever):
-            kwargs = {}
-            sig = inspect.signature(retriever)
-            kw_only = set(
-                name
-                for name, p in sig.parameters.items()
-                if p.kind == inspect.Parameter.KEYWORD_ONLY
-            )
-            if "key" in kw_only:
-                kwargs["key"] = key
-            retriever = retriever(self.dataset.documents, **kwargs)
+            retriever = retriever(self.dataset.documents, key=key)
 
         task = Evaluate.C(
             retriever=retriever,
@@ -221,7 +239,7 @@ class Evaluations:
             dataset=self.dataset,
             topic_wrapper=self.topic_wrapper,
             with_run=with_run,
-        )
+        ).tag("dataset", key)
 
         evaluation = task.submit(launcher=launcher, init_tasks=init_tasks)
 
@@ -251,9 +269,9 @@ class Evaluations:
         )
         tags.sort()
 
-        assert (
-            len(tags) > 0
-        ), "No tags found, please tag your evaluations to convert results to dataframe"
+        assert len(tags) > 0, (
+            "No tags found, please tag your evaluations to convert results to dataframe"
+        )
 
         # Get all the results and metrics
         to_process = []
@@ -379,9 +397,9 @@ class EvaluationsCollection:
             this changes the experiment ID.
         """
         if model_id is not None and not overwrite:
-            assert (
-                model_id not in self.per_model
-            ), f"Model with ID `{model_id}` was already evaluated"
+            assert model_id not in self.per_model, (
+                f"Model with ID `{model_id}` was already evaluated"
+            )
 
         results = []
         for key, evaluations in self.collection.items():
@@ -461,3 +479,49 @@ class EvaluationsCollection:
                 value = values.get(metric, "")
                 file.write(f" | {value}")
             file.write(" |\n")
+
+
+class MultiRunRetrieverFactory(RetrieverFactory):
+    """A factory that returns the appropriate `RunRetriever` for a given dataset"""
+
+    def __init__(self, retriever_name: str):
+        self.retriever_name = retriever_name
+        self.runs: Dict[str, AdhocRun] = {}
+        self.documents: Dict[str, Documents] = {}
+
+    def add_run(self, key: str, documents: Documents, run: AdhocRun):
+        """Register a run for a given document collection"""
+        if key in self.runs.keys():
+            logger.warning(
+                f"{key} Retrival run already stored for {self.retriever_name}"
+            )
+        self.runs[key] = run
+        self.documents[key] = documents
+
+    def __call__(self, dataset: Documents, key: str = None) -> RunRetriever:
+        # Try to find the run by key first, then by dataset ID
+        run = self.runs.get(key) if key else None
+        if run is None:
+            # Fallback to dataset ID if key not provided or not found
+            # This is less specific but better than nothing
+            for k, docs in self.documents.items():
+                if docs.id == dataset.id:
+                    run = self.runs[k]
+                    break
+
+        if run is None:
+            raise KeyError(
+                f"No run found for dataset key='{key}' or id='{dataset.id}'"
+                f"Available: {','.join(self.runs.keys())}"
+            )
+
+        return RunRetriever.C(run=run, documents=dataset).tag(
+            "first_stage", self.retriever_name
+        )
+
+    @classmethod
+    def from_results(cls, name: str, results: List) -> "MultiRunRetrieverFactory":
+        factory = cls(name)
+        for res in results:
+            factory.add_run(res.key, res.task.dataset.documents, res.run)
+        return factory

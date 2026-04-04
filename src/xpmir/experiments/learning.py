@@ -1,7 +1,7 @@
 from functools import cached_property
 
 from xpmir.experiments import ExperimentHelper
-from xpmir.learning.optim import TensorboardService
+from xpm_torch.experiments import TensorboardService
 
 
 class LearningExperimentHelper(ExperimentHelper):
