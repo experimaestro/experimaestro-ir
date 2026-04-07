@@ -152,6 +152,84 @@ class HFQueryDocTokenizer(HFTokenizer):
         )
 
 
+class LLMRankerTokenizer(HFTokenizer):
+    """Specific tokenizer for LLM Cross-Scorers that handles query and document truncation separately"""
+
+    max_query_length: Param[Optional[int]]
+    """maximum number of tokens for the query side"""
+
+    max_doc_length: Param[Optional[int]]
+    """maximum number of tokens for the document side"""
+
+    prompt_template: Param[str] = "Query: {query} Document: {document} Relevant:"
+    """Prompt template for the LLM"""
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        # Sanity Check - max len should be set in parent class
+        assert isinstance(self.max_length, int)
+
+        if self.max_doc_length is None:
+            self.max_doc_length = self.max_length // 2
+
+        if self.max_query_length is None:
+            self.max_query_length = self.max_length // 2
+
+    def __initialize__(self):
+        super().__initialize__()
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+            self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
+
+    def tokenize(
+        self,
+        input_records: BaseItems,
+        options: Optional[TokenizerOptions] = None,
+    ) -> TokenizedTexts:
+        # Determine per-side token limits
+        q_max = self.max_query_length
+        d_max = self.max_doc_length
+
+        ix_qs, ix_ds = input_records.pairs()
+        queries = [input_records.unique_topics[i]["text_item"].text for i in ix_qs]
+        docs = [input_records.unique_documents[i]["text_item"].text for i in ix_ds]
+
+        # Use the template to create the full text
+        # We need to truncate queries and documents separately before putting them in the template
+        # for maximum control.
+        def _truncate(text, max_len):
+            tokens = self.tokenizer.encode(text, add_special_tokens=False)
+            if len(tokens) > max_len:
+                tokens = tokens[:max_len]
+            return self.tokenizer.decode(tokens)
+
+        full_texts = [
+            self.prompt_template.format(
+                query=_truncate(q, q_max), document=_truncate(d, d_max)
+            )
+            for q, d in zip(queries, docs)
+        ]
+
+        r = self.tokenizer(
+            full_texts,
+            add_special_tokens=True,
+            truncation=True,
+            max_length=self.max_length,
+            padding=True,
+            return_tensors="pt",
+            return_length=True,
+        )
+
+        return TokenizedTexts(
+            tokens=None,
+            ids=r["input_ids"],
+            lens=r["length"].tolist(),
+            mask=r.get("attention_mask", None),
+            token_type_ids=r.get("token_type_ids", None),
+        )
+
+
 class InitCEFromHFID(HFModelInitBase):
     """Load Cross-encoder weights from a HuggingFace Hub model ID.
     this is specific to this class: we need to ensure n_labels is 1.
@@ -193,6 +271,9 @@ class InitCEFromHFID(HFModelInitBase):
             )
         self.model._initialized = True
 
+    def hub_readme_sections(self) -> list:
+        return []
+
 
 class HFCrossScorer(AbstractModuleScorer):
     """Load a cross scorer model from the huggingface"""
@@ -200,7 +281,7 @@ class HFCrossScorer(AbstractModuleScorer):
     encoder: Param[HFSequenceClassification]
     """The encoder from Hugging Face"""
 
-    tokenizer: Param[HFQueryDocTokenizer]
+    tokenizer: Param[HFTokenizer]
     """The tokenizer for the cross-scorer"""
 
     def __initialize__(self):
