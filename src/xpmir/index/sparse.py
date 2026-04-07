@@ -35,7 +35,11 @@ from xpmir.text.encoders import TextEncoderBase, TextsRepresentationOutput, Inpu
 from datamaestro_ir.data import TextRecord
 from xpmir.rankers import Retriever, ScoredDocument
 from xpmir.utils.iter import MultiprocessIterator
-from xpmir.utils.multiprocessing import StoppableQueue, available_cpus
+from xpmir.utils.multiprocessing import (
+    StoppableQueue,
+    available_cpus,
+    available_memory,
+)
 import impact_index
 
 logger = logging.getLogger(__name__)
@@ -340,7 +344,7 @@ class SparseRetriever(Retriever, Generic[InputType]):
         super().initialize()
         logger.info("Initializing the encoder")
         self.encoder.initialize()
-        logger.info("Initializing the index")
+        logger.info("Initializing the index (in-memory: %s)", self.in_memory)
         self.index.initialize(self.in_memory)
 
         logger.info("Moving everything to Fabric")
@@ -412,7 +416,11 @@ class SparseRetriever(Retriever, Generic[InputType]):
                     worker.cancel()
             return results
 
-        logger.info("Retrieve all with %d CPUs", available_cpus())
+        logger.info(
+            "Retrieve all with %d CPUs (%.1f GiB available memory)",
+            available_cpus(),
+            available_memory() / (1024**3),
+        )
         results = asyncio.run(aio_process())
         return results
 
