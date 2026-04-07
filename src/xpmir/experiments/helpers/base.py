@@ -1,9 +1,8 @@
 from experimaestro.experiments import configuration, ConfigurationBase
-from experimaestro.launcherfinder import find_launcher
 
 from functools import cached_property as attrs_cached_property
 from xpm_torch import Random
-
+from .launchers import LauncherSpecification  # noqa
 
 PaperExperiment = ConfigurationBase
 
@@ -24,18 +23,3 @@ class NeuralIRExperiment(ConfigurationBase):
     @attrs_cached_property
     def random(self):
         return Random.C(seed=self.seed)
-
-
-@configuration()
-class LauncherSpecification:
-    """Launcher specification
-
-    This allows requesting computational resources such as 2 GPUs with more than
-    12Go of memory)
-    """
-
-    requirements: str
-
-    @attrs_cached_property
-    def launcher(self):
-        return find_launcher(self.requirements)
