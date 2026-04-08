@@ -85,6 +85,18 @@ FAISS
 .. autoxpmconfig:: xpmir.index.faiss.FaissRetriever
 
 
+fast-plaid (ColBERT / PLAID)
+----------------------------
+
+Interface to `fast-plaid <https://github.com/lightonai/fast-plaid>`_, a
+Rust-based implementation of PLAID / ColBERT late-interaction retrieval.
+
+.. autoxpmconfig:: xpmir.index.plaid.PlaidIndex
+    :members: get_document_tokens
+.. autoxpmconfig:: xpmir.index.plaid.PlaidIndexBuilder
+.. autoxpmconfig:: xpmir.index.plaid.PlaidRetriever
+
+
 Sparse
 ------
 

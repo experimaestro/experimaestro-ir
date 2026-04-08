@@ -39,6 +39,12 @@ Dense models
 .. autoxpmconfig:: xpmir.neural.dual.DotDense
 .. autoxpmconfig:: xpmir.neural.dual.CosineDense
 
+Late-interaction (ColBERT)
+==========================
+
+.. autoxpmconfig:: xpmir.neural.colbert.ColBERTEncoder
+    :members: encode_queries, encode_documents, document_token_embeddings, query_token_embeddings, score_product, score_pairs
+
 Sparse Models
 =============
 

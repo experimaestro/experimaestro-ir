@@ -49,6 +49,10 @@ neural = [
     "sentence_transformers>=5.3.0"
 ]
 
+fast-plaid = [
+    "fast-plaid"
+]
+
 [dependency-groups]
 documentation = [
     "Sphinx>6",
