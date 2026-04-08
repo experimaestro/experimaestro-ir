@@ -961,7 +961,7 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "attrs" },
-    { name = "datamaestro", specifier = ">=1.0.1" },
+    { name = "datamaestro", specifier = ">=0.2.3" },
     { name = "datamaestro-ir", specifier = ">=0.2.0" },
     { name = "docstring-parser" },
     { name = "experimaestro", specifier = ">=2.3" },
