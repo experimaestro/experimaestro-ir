@@ -22,7 +22,7 @@ classifiers = [
 dependencies = [
     # Experimaestro
     "experimaestro>=2.3",
-    "datamaestro>=1.0.1",
+    "datamaestro>=0.2.3",
     "datamaestro-ir>=0.2.0",
     "docstring_parser",
     "impact-index>=1.2.0",
