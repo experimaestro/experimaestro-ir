@@ -80,10 +80,14 @@ class DistillationListwiseSampler(Sampler):
 
 
 class DistillationNegativesSampler(DistillationListwiseSampler):
-    """Samples only `passages_per_query` documents per query, skips query if no relevant document retrieved
-    - Needs the relevances judgements to ensure sampling one positive and (passages_per_query - 1) negatives per query
-    - Uses ScoredDocument to store Relevance Labels,
-       - WARNING: ignores eventual scores from original Dataset.
+    """Samples only ``passages_per_query`` documents per query.
+
+    Skips queries that have no relevant document in the retrieved set.
+
+    - Needs relevance judgements to ensure sampling one positive and
+      (passages_per_query - 1) negatives per query.
+    - Uses ScoredDocument to store relevance labels.
+      Note: ignores any scores from the original dataset.
     """
 
     samples: Param[ListwiseDistillationSamplesTSVWithAnnotations]

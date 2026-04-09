@@ -1,32 +1,34 @@
 Retrieval
 =========
 
-This page describes the different configurations/tasks needed for retrieval, i.e. searching
-the a subset of :math:`k` documents given a query.
+This page describes the components used for retrieval, i.e. finding the top
+:math:`k` documents from a collection given a query. XPMIR supports classical
+models (BM25, query-likelihood), dense retrieval (FAISS), sparse learned
+retrieval, and late-interaction models (ColBERT/PLAID), as well as multi-stage
+pipelines that combine them.
+
+.. contents:: On this page
+   :local:
+   :depth: 2
 
 
-- `Base class`_ shows the main class used for retrieval,
-- `Standard IR models`_ describes the configurations for standard IR models like BM25,
-- `Multi-stage retrievers` describes the configurations handling multi-stage retrieval (e.g. two-stage retriever)
-- `Factories`_ describe utility classes and decorators that can be used to build retrievers that depend on a dataset.
+Base classes
+------------
 
-Finally, retrieval interfaces to other libraries are given for `Anserini`_, `FAISS`_.
-
-
-
-Base class
-----------
+Core data structures and the abstract retriever interface that all
+implementations extend.
 
 .. autoclass:: xpmir.rankers.ScoredDocument
 
 .. autoxpmconfig:: xpmir.rankers.retriever.Retriever
-    :members: initialize, collection, getindex, retrieve_all, retrieve
+    :members: initialize, collection, retrieve_all, retrieve
 
 Standard IR models
 ------------------
 
-Standard IR models are definitions that can be used by a specific instance,
-like e.g. :class:`xpmir.interfaces.anserini.AnseriniRetriever`
+Definitions for classical probabilistic retrieval models. These are
+backend-agnostic specifications that can be instantiated with a concrete
+engine such as :class:`~xpmir.interfaces.anserini.AnseriniRetriever`.
 
 .. autoxpmconfig:: xpmir.rankers.standard.Model
 .. autoxpmconfig:: xpmir.rankers.standard.BM25
@@ -35,12 +37,11 @@ like e.g. :class:`xpmir.interfaces.anserini.AnseriniRetriever`
 Multi-stage retrievers
 ----------------------
 
-In a re-ranking setting, one can use a two stage retriever to perform
-retrieval, by using a fully fledge retriever first, and then
-re-ranking the results.
+In a re-ranking setting, a two-stage retriever first retrieves candidates with
+a fast first-stage model, then re-scores them with a more expensive scorer.
 
-The re-ranking process is memory-efficient as it uses lazy evaluation of
-the first-stage results and maximizes GPU throughput by batching query-document
+The re-ranking process is memory-efficient: it uses lazy evaluation of
+first-stage results and maximises GPU throughput by batching query-document
 pairs across multiple queries.
 
 .. autoxpmconfig:: xpmir.rankers.scorer.AbstractTwoStageRetriever
@@ -49,28 +50,35 @@ pairs across multiple queries.
 Duo-retrievers
 --------------
 
-Duo-retrievers only predicts whether a document is "more relevant" than
-another
+Duo-retrievers predict which of two candidate documents is more relevant to the
+query (pairwise preference), rather than assigning an absolute score.
 
 .. autoxpmconfig:: xpmir.rankers.scorer.DuoTwoStageRetriever
 .. autoxpmconfig:: xpmir.rankers.scorer.DuoLearnableScorer
 
-Misc
-----
+Miscellaneous retrievers
+------------------------
+
+Utility retrievers for loading pre-computed runs, hydrating results with
+document text, or exhaustive scoring.
 
 .. autoxpmconfig:: xpmir.rankers.full.FullRetriever
 .. autoxpmconfig:: xpmir.rankers.full.FullRetrieverRescorer
 .. autoxpmconfig:: xpmir.rankers.retriever.RetrieverHydrator
 .. autoxpmconfig:: xpmir.rankers.retriever.RunRetriever
 
-Collection dependendant
------------------------
 
+Index backends
+--------------
 
-
+The sections below describe the available index backends and their associated
+retrievers.
 
 Anserini
---------
+^^^^^^^^
+
+`Anserini <https://github.com/castorini/anserini>`_ provides classical
+inverted-index retrieval (BM25, query-likelihood, etc.) via Lucene.
 
 .. autoxpmconfig:: xpmir.index.anserini.Index
 .. autoxpmconfig:: xpmir.interfaces.anserini.AnseriniRetriever
@@ -78,7 +86,10 @@ Anserini
 .. autoxpmconfig:: xpmir.interfaces.anserini.SearchCollection
 
 FAISS
------
+^^^^^
+
+`FAISS <https://github.com/facebookresearch/faiss>`_ provides approximate
+nearest-neighbour search for dense vector retrieval.
 
 .. autoxpmconfig:: xpmir.index.faiss.FaissIndex
 .. autoxpmconfig:: xpmir.index.faiss.IndexBackedFaiss
@@ -86,7 +97,7 @@ FAISS
 
 
 fast-plaid (ColBERT / PLAID)
-----------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Interface to `fast-plaid <https://github.com/lightonai/fast-plaid>`_, a
 Rust-based implementation of PLAID / ColBERT late-interaction retrieval.
@@ -99,24 +110,25 @@ via :meth:`~xpmir.index.plaid.PlaidIndex.get_document_tokens`.
 .. autoxpmconfig:: xpmir.index.plaid.PlaidRetriever
 
 
-Sparse
-------
+Sparse retrieval
+^^^^^^^^^^^^^^^^
+
+Learned sparse retrieval indexes (e.g. for SPLADE), backed by the
+`impact-index <https://github.com/experimaestro/impact-index>`_ Rust library.
 
 .. autoxpmconfig:: xpmir.index.sparse.AbstractSparseRetrieverIndex
 .. autoxpmconfig:: xpmir.index.sparse.AbstractSparseRetrieverIndexBuilder
 .. autoxpmconfig:: xpmir.index.sparse.SparseRetriever
 
-Impact library (rust)
-+++++++++++++++++++++
+**Impact library (Rust)**
 
 .. autoxpmconfig:: xpmir.index.sparse.SparseRetrieverIndex
 .. autoxpmconfig:: xpmir.index.sparse.SparseRetrieverIndexBuilder
 
-Faster Learned Sparse Retrieval with Block-Max Pruning
-++++++++++++++++++++++++++++++++++++++++++++++++++++++
+**Block-Max Pruning**
 
-Adapters for the "Faster Learned Sparse Retrieval with Block-Max Pruning"
-are available
+Adapters for `Faster Learned Sparse Retrieval with Block-Max Pruning
+<https://arxiv.org/abs/2405.01117>`_.
 
 .. autoxpmconfig:: xpmir.index.sparse.BMPSparseRetrieverIndex
 .. autoxpmconfig:: xpmir.index.sparse.BMPSparseRetrieverIndexBuilder

@@ -1,10 +1,22 @@
 Evaluation
 ==========
 
+The evaluation module provides tasks for measuring retrieval quality. Given a
+retriever and a test collection (topics + relevance assessments), it produces
+per-query and aggregate metric scores using the
+`ir-measures <https://ir-measur.es/>`_ library.
+
+.. contents:: On this page
+   :local:
+   :depth: 2
 
 
-Evaluation
-----------
+Evaluation tasks
+----------------
+
+These configurations define how a retrieval run is evaluated.
+:class:`~xpmir.evaluation.BaseEvaluation` is the abstract base;
+:class:`~xpmir.evaluation.Evaluate` is the standard concrete implementation.
 
 .. autoxpmconfig:: xpmir.evaluation.BaseEvaluation
 .. autoxpmconfig:: xpmir.evaluation.RunEvaluation
@@ -20,20 +32,22 @@ Evaluation
 Metrics
 -------
 
-Metrics are backed up by the module ir_measures
+Metrics are backed by the `ir-measures <https://ir-measur.es/>`_ library.
+Cut-off values can be specified with the ``@`` operator.
 
 .. autoxpmconfig:: xpmir.measures.Measure
 
-List of defined measures
+List of built-in measures:
 
 .. automodule:: xpmir.measures
     :members: AP, P, RR, nDCG, R, Success
 
-Measures can be used with the @ operator. Exemple:
+Example:
 
 .. code-block:: python
 
     from xpmir.measures import AP, P, nDCG, RR
     from xpmir.evaluation import Evaluate
 
-    Evaluate(measures=[AP, P@20, nDCG, nDCG@10, nDCG@20, RR, RR@10], ...)
+    measures = [AP, P@20, nDCG, nDCG@10, nDCG@20, RR, RR@10]
+    Evaluate(measures=measures, ...)

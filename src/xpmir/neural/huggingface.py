@@ -33,7 +33,8 @@ class HFQueryDocTokenizer(HFTokenizer):
     while ensuring the combined sequence ([CLS] query [SEP] document [SEP])
     never exceeds the model's maximum length.
 
-    Truncation Strategy:
+    Truncation strategy:
+
     1. Initial encoding caps each side at its respective max length (or the
        total available content limit).
     2. If the combined length still exceeds the total limit, the document is

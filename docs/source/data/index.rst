@@ -1,11 +1,12 @@
 Data
 ====
 
-Experimaestro-IR extends datamaestro-text with new data *types*, *ir-datasets* collections
-as well as its own datasets (e.g. hard negatives datasets).
+Dataset definitions and loading are handled by
+`datamaestro-IR <https://datamaestro-ir.readthedocs.io/>`_. XPMIR builds on
+top of those types with **adapters** for subsampling, folding, and
+transforming datasets to fit training and evaluation pipelines.
 
 .. toctree::
    :maxdepth: 2
 
-   xpmir
    adapters

@@ -21,7 +21,7 @@ classifiers = [
 
 dependencies = [
     # Experimaestro
-    "experimaestro>=2.3",
+    "experimaestro>=2.3.4",
     "datamaestro>=0.2.3",
     "datamaestro-ir>=0.2.0",
     "docstring_parser",
