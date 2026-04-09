@@ -74,6 +74,12 @@ class PlaidIndex(Config):
     delegates to fast-plaid's ``get_embeddings`` method. The reconstruction
     quality is controlled by :attr:`n_bits`.
 
+    When :attr:`compress_only` is ``True`` the index only contains the
+    compressed vectors (centroids + quantised residuals) without the IVF
+    search structure. This is cheaper to build and sufficient when only
+    :meth:`get_document_tokens` is needed. Attempting to search a
+    compress-only index via :class:`PlaidRetriever` will raise an error.
+
     .. _fast-plaid: https://github.com/lightonai/fast-plaid
     """
 
@@ -95,6 +101,16 @@ class PlaidIndex(Config):
     n_samples_kmeans: Param[int] = field(default=0, ignore_default=True)
     """Number of token samples used to train the centroids (0 = fast-plaid
     default)."""
+
+    compress_only: Param[bool] = field(default=False, ignore_default=True)
+    """When ``True`` the fast-plaid index is built without the IVF search
+    structure. This skips the expensive inverted-list construction and is
+    sufficient when only :meth:`get_document_tokens` is needed.
+
+    Requires fast-plaid support for ``compress_only``
+    (see `lightonai/fast-plaid#41 <https://github.com/lightonai/fast-plaid/pull/41>`_).
+    If the installed version does not support it, the full index is built
+    instead and a warning is logged."""
 
     def _plaid_dir(self) -> Path:
         return self.index_path / _PLAID_SUBDIR
@@ -179,6 +195,15 @@ class PlaidIndexBuilder(Task):
     """Number of token samples used to train the centroids (0 = fast-plaid
     default)."""
 
+    compress_only: Param[bool] = field(default=False, ignore_default=True)
+    """When ``True``, skip IVF construction. The resulting index supports
+    :meth:`PlaidIndex.get_document_tokens` but not search via
+    :class:`PlaidRetriever`.
+
+    Requires fast-plaid support for ``compress_only``
+    (see `lightonai/fast-plaid#41 <https://github.com/lightonai/fast-plaid/pull/41>`_).
+    Falls back to building the full index with a warning if unsupported."""
+
     device: Meta[str] = field(default="", ignore_default=True)
     """Device for fast-plaid (``""`` = auto: cuda if available,
     cpu otherwise)."""
@@ -196,6 +221,7 @@ class PlaidIndexBuilder(Task):
                 n_bits=self.n_bits,
                 kmeans_niters=self.kmeans_niters,
                 n_samples_kmeans=self.n_samples_kmeans,
+                compress_only=self.compress_only,
             )
         )
 
@@ -240,7 +266,25 @@ class PlaidIndexBuilder(Task):
                     }
                     if self.n_samples_kmeans:
                         create_kwargs["n_samples_kmeans"] = self.n_samples_kmeans
-                    fast_plaid.create(**create_kwargs)
+                    if self.compress_only:
+                        create_kwargs["compress_only"] = True
+                    try:
+                        fast_plaid.create(**create_kwargs)
+                    except TypeError:
+                        if self.compress_only:
+                            # compress_only not yet supported by installed
+                            # fast-plaid — see
+                            # https://github.com/lightonai/fast-plaid/pull/41
+                            logger.warning(
+                                "compress_only is not supported by this "
+                                "version of fast-plaid; building the full "
+                                "index instead. See "
+                                "https://github.com/lightonai/fast-plaid/pull/41"
+                            )
+                            del create_kwargs["compress_only"]
+                            fast_plaid.create(**create_kwargs)
+                        else:
+                            raise
                     first_batch = False
                 else:
                     fast_plaid.update(documents_embeddings=per_doc_cpu)
@@ -306,6 +350,12 @@ class PlaidRetriever(Retriever):
 
     def initialize(self):
         super().initialize()
+        if self.index.compress_only:
+            raise RuntimeError(
+                "Cannot search a compress-only PLAID index. "
+                "Rebuild with compress_only=False to enable retrieval."
+            )
+
         logger.info("PLAID retriever (1/2): initializing the encoder")
         self.encoder.initialize()
         self.encoder.eval()
