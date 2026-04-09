@@ -34,7 +34,7 @@ dependencies = [
     # Torch addons
     "toma",
     "pytorch-lightning",
-    "xpm-torch",  # local submodule: xpm-torch/
+    "xpm-torch",
 ]
 
 [project.optional-dependencies]
@@ -101,9 +101,6 @@ include = [
     "/src",
     "/README.md",
 ]
-
-[tool.uv.sources]
-xpm-torch = { path = "xpm-torch", editable = true }
 
 [tool.pytest.ini_options]
 markers = [
