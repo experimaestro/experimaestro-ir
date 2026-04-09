@@ -85,26 +85,16 @@ FAISS
 .. autoxpmconfig:: xpmir.index.faiss.FaissRetriever
 
 
-Token store (ColBERT embeddings)
---------------------------------
-
-Per-token document embeddings produced by a ColBERT encoder. The store
-is independent of fast-plaid and can be used to retrieve raw token vectors
-for a given document id.
-
-.. autoxpmconfig:: xpmir.index.plaid.TokenStore
-    :members: get_document_tokens
-.. autoxpmconfig:: xpmir.index.plaid.TokenStoreBuilder
-
 fast-plaid (ColBERT / PLAID)
 ----------------------------
 
 Interface to `fast-plaid <https://github.com/lightonai/fast-plaid>`_, a
 Rust-based implementation of PLAID / ColBERT late-interaction retrieval.
-Builds the centroid/IVF search structure from a pre-built
-:class:`~xpmir.index.plaid.TokenStore`.
+Per-document token vectors can be reconstructed from the compressed index
+via :meth:`~xpmir.index.plaid.PlaidIndex.get_document_tokens`.
 
 .. autoxpmconfig:: xpmir.index.plaid.PlaidIndex
+    :members: get_document_tokens
 .. autoxpmconfig:: xpmir.index.plaid.PlaidIndexBuilder
 .. autoxpmconfig:: xpmir.index.plaid.PlaidRetriever
 

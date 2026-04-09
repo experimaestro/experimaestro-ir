@@ -5,18 +5,15 @@ implementation of PLAID / ColBERT late-interaction retrieval. This module
 wraps it to build and query an index from a
 :class:`~xpmir.neural.colbert.ColBERTEncoder`.
 
-The module is split in two layers that can be used independently:
+Three classes are exposed:
 
-- **Token store** (:class:`TokenStore` / :class:`TokenStoreBuilder`):
-  encodes every document using a ColBERT encoder and persists the raw
-  (unquantised) per-token embeddings on disk. No fast-plaid dependency is
-  needed. The store can retrieve per-document token vectors by internal
-  integer id or external string id via :meth:`TokenStore.get_document_tokens`.
-
-- **PLAID index** (:class:`PlaidIndex` / :class:`PlaidIndexBuilder` /
-  :class:`PlaidRetriever`): builds the fast-plaid centroid/IVF structure
-  *from* a pre-built token store and exposes a standard
-  :class:`~xpmir.rankers.Retriever` interface for approximate search.
+- :class:`PlaidIndex` — the index configuration (paths, metadata). Supports
+  retrieving per-document token vectors via :meth:`PlaidIndex.get_document_tokens`
+  using fast-plaid's compressed centroid+residual storage.
+- :class:`PlaidIndexBuilder` — a :class:`~experimaestro.Task` that encodes a
+  :class:`~datamaestro_ir.data.DocumentStore` and builds the fast-plaid index.
+- :class:`PlaidRetriever` — a :class:`~xpmir.rankers.Retriever` that searches
+  the index given a query.
 """
 
 from __future__ import annotations
@@ -27,7 +24,6 @@ import shutil
 from pathlib import Path
 from typing import List, Union
 
-import numpy as np
 import torch
 from experimaestro import (
     Config,
@@ -58,228 +54,37 @@ def _import_fast_plaid():
     return fp_search
 
 
-# ---- File layout -----------------------------------------------------------
+# File layout (under ``index_path``):
 #
-# Token store (under ``store_path``):
-#   tokens.dat       — concatenated float32 per-token embeddings
-#   offsets.npy      — int64 offsets into tokens.dat
-#   ext2int.json     — external -> internal docid map
-#   metadata.json    — dim, num_docs
-#
-# PLAID index (under ``index_path``):
 #   plaid/           — fast-plaid index directory
+#   ext2int.json     — external -> internal docid map
+#   metadata.json    — dim, num_docs, n_bits
 
-_TOKENS_FILE = "tokens.dat"
-_OFFSETS_FILE = "offsets.npy"
+_PLAID_SUBDIR = "plaid"
 _EXT2INT_FILE = "ext2int.json"
 _METADATA_FILE = "metadata.json"
-_PLAID_SUBDIR = "plaid"
 
 
-# ---------------------------------------------------------------------------
-# Token store — no fast-plaid dependency
-# ---------------------------------------------------------------------------
+class PlaidIndex(Config):
+    """A ColBERT / PLAID index backed by `fast-plaid`_.
 
+    The index stores per-token document embeddings in fast-plaid's compressed
+    centroid + residual format. Per-document token vectors can be
+    reconstructed (approximately) via :meth:`get_document_tokens`, which
+    delegates to fast-plaid's ``get_embeddings`` method. The reconstruction
+    quality is controlled by :attr:`n_bits`.
 
-class TokenStore(Config):
-    """On-disk store of per-token document embeddings.
-
-    Given a document identifier the store returns the ``(num_tokens, dim)``
-    tensor of (projected, normalised) token vectors that were produced by
-    the ColBERT encoder at indexing time.
-
-    The store is a flat file pair:
-
-    * ``tokens.dat`` — a concatenated float32 array of all token vectors.
-    * ``offsets.npy`` — an int64 array of length ``num_docs + 1`` giving
-      the start offset for each document into ``tokens.dat``.
-
-    No fast-plaid dependency is required.
+    .. _fast-plaid: https://github.com/lightonai/fast-plaid
     """
 
     documents: Param[DocumentStore]
     """The indexed document collection."""
 
-    store_path: Meta[Path] = field(default_factory=PathGenerator("token-store"))
-    """Directory containing the token files."""
+    index_path: Meta[Path] = field(default_factory=PathGenerator("plaid-index"))
+    """Directory containing the fast-plaid index and side-car files."""
 
     dim: Param[int]
-    """Per-token embedding dimension."""
-
-    # -- internal helpers ---------------------------------------------------
-
-    def _tokens_file(self) -> Path:
-        return self.store_path / _TOKENS_FILE
-
-    def _offsets_file(self) -> Path:
-        return self.store_path / _OFFSETS_FILE
-
-    def _ext2int_file(self) -> Path:
-        return self.store_path / _EXT2INT_FILE
-
-    def _load_offsets(self) -> np.ndarray:
-        return np.load(str(self._offsets_file()))
-
-    def _load_tokens_memmap(self, offsets: np.ndarray) -> np.memmap:
-        total = int(offsets[-1])
-        return np.memmap(
-            str(self._tokens_file()),
-            dtype=np.float32,
-            mode="r",
-            shape=(total, self.dim),
-        )
-
-    def _load_ext2int(self) -> dict:
-        path = self._ext2int_file()
-        if not path.exists():
-            return {}
-        with path.open("r") as fh:
-            return json.load(fh)
-
-    # -- public API ---------------------------------------------------------
-
-    def get_document_tokens(self, docid: Union[int, str]) -> torch.Tensor:
-        """Return the per-token embeddings stored for a document.
-
-        :param docid: The document identifier. Integers are interpreted as
-            internal positions in the store (``0..num_docs-1``); strings are
-            looked up in the external-to-internal map written at indexing
-            time.
-        :returns: A ``(num_tokens, dim)`` float tensor.
-        :raises KeyError: if the external identifier is unknown.
-        :raises IndexError: if the internal id is out of range.
-        """
-        if isinstance(docid, str):
-            ext2int = self._load_ext2int()
-            if docid not in ext2int:
-                raise KeyError(
-                    f"External document id {docid!r} is unknown to this store"
-                )
-            internal = int(ext2int[docid])
-        else:
-            internal = int(docid)
-
-        offsets = self._load_offsets()
-        if internal < 0 or internal >= len(offsets) - 1:
-            raise IndexError(
-                f"Internal document id {internal} out of range [0, {len(offsets) - 1})"
-            )
-
-        tokens = self._load_tokens_memmap(offsets)
-        start, end = int(offsets[internal]), int(offsets[internal + 1])
-        return torch.from_numpy(np.asarray(tokens[start:end]).copy())
-
-
-class TokenStoreBuilder(Task):
-    """Encodes a document collection and writes a :class:`TokenStore`.
-
-    For each document the encoder produces one ``(num_valid_tokens, dim)``
-    tensor. The tensors are written contiguously into ``tokens.dat`` and
-    their boundaries recorded in ``offsets.npy``.
-
-    This task does **not** require fast-plaid.
-    """
-
-    documents: Param[DocumentStore]
-    """Set of documents to encode."""
-
-    encoder: Param[ColBERTEncoder]
-    """The ColBERT-style encoder used to produce per-token embeddings."""
-
-    batch_size: Meta[int] = field(default=32, ignore_default=True)
-    """Encoder batch size."""
-
-    store_path: Meta[Path] = field(default_factory=PathGenerator("token-store"))
-    """Output directory for the token store files."""
-
-    device: Meta[str] = field(default="", ignore_default=True)
-    """Device for the encoder (``""`` = auto)."""
-
-    def task_outputs(self, dep) -> TokenStore:
-        return dep(
-            TokenStore.C(
-                documents=self.documents,
-                store_path=self.store_path,
-                dim=self.encoder.dim,
-            )
-        )
-
-    def execute(self):
-        if self.store_path.exists():
-            shutil.rmtree(self.store_path)
-        self.store_path.mkdir(parents=True, exist_ok=True)
-
-        self.encoder.initialize()
-        self.encoder.eval()
-
-        dim = self.encoder.dim
-        total_docs = self.documents.documentcount or 0
-        offsets: List[int] = [0]
-        ext2int: dict = {}
-        num_docs_seen = 0
-
-        tokens_path = self.store_path / _TOKENS_FILE
-        tokens_file = tokens_path.open("wb")
-
-        try:
-            with torch.no_grad():
-                pbar = tqdm(
-                    total=total_docs or None,
-                    desc="Encoding documents",
-                    unit="doc",
-                )
-                for batch in batchiter(
-                    self.batch_size, self.documents.iter_documents()
-                ):
-                    per_doc = self.encoder.document_token_embeddings(batch)
-                    for record, tensor in zip(batch, per_doc):
-                        arr = (
-                            tensor.detach().cpu().numpy().astype(np.float32, copy=False)
-                        )
-                        assert arr.ndim == 2 and arr.shape[1] == dim
-                        tokens_file.write(arr.tobytes(order="C"))
-                        offsets.append(offsets[-1] + arr.shape[0])
-                        ext_id = record.get("id") if isinstance(record, dict) else None
-                        if ext_id is not None:
-                            ext2int[str(ext_id)] = num_docs_seen
-                        num_docs_seen += 1
-                    pbar.update(len(per_doc))
-                pbar.close()
-        finally:
-            tokens_file.close()
-
-        np.save(
-            str(self.store_path / _OFFSETS_FILE),
-            np.asarray(offsets, dtype=np.int64),
-        )
-        if ext2int:
-            with (self.store_path / _EXT2INT_FILE).open("w") as fh:
-                json.dump(ext2int, fh)
-        with (self.store_path / _METADATA_FILE).open("w") as fh:
-            json.dump({"num_docs": num_docs_seen, "dim": dim}, fh)
-
-        logger.info("Token store built: %d documents, dim=%d", num_docs_seen, dim)
-
-
-# ---------------------------------------------------------------------------
-# PLAID index — requires fast-plaid
-# ---------------------------------------------------------------------------
-
-
-class PlaidIndex(Config):
-    """A ColBERT / PLAID search index backed by `fast-plaid`_.
-
-    Wraps a :class:`TokenStore` (the raw per-token embeddings) and the
-    fast-plaid centroid/IVF structure (built by :class:`PlaidIndexBuilder`).
-
-    .. _fast-plaid: https://github.com/lightonai/fast-plaid
-    """
-
-    token_store: Param[TokenStore]
-    """The underlying token store (also reachable for ``get_document_tokens``)."""
-
-    index_path: Meta[Path] = field(default_factory=PathGenerator("plaid-index"))
-    """Directory containing the fast-plaid index files."""
+    """Per-token embedding dimension stored in the index."""
 
     n_bits: Param[int] = field(default=2, ignore_default=True)
     """Number of bits used by fast-plaid for residual quantisation."""
@@ -294,28 +99,81 @@ class PlaidIndex(Config):
     def _plaid_dir(self) -> Path:
         return self.index_path / _PLAID_SUBDIR
 
+    def _ext2int_file(self) -> Path:
+        return self.index_path / _EXT2INT_FILE
+
+    def _load_ext2int(self) -> dict:
+        path = self._ext2int_file()
+        if not path.exists():
+            return {}
+        with path.open("r") as fh:
+            return json.load(fh)
+
+    def get_document_tokens(
+        self,
+        docid: Union[int, str],
+        device: str = "",
+    ) -> torch.Tensor:
+        """Return the (approximate) per-token embeddings for a document.
+
+        The vectors are reconstructed from fast-plaid's compressed
+        centroid + residual storage using ``FastPlaid.get_embeddings``.
+        The reconstruction quality depends on :attr:`n_bits`.
+
+        :param docid: The document identifier. Integers are interpreted as
+            internal positions in the index (``0..num_docs-1``); strings are
+            looked up in the external-to-internal map written at indexing
+            time.
+        :param device: Device for the fast-plaid instance used to decompress
+            (``""`` = auto).
+        :returns: A ``(num_tokens, dim)`` float tensor containing the
+            reconstructed token embeddings.
+        :raises KeyError: if the external identifier is unknown.
+        """
+        if isinstance(docid, str):
+            ext2int = self._load_ext2int()
+            if docid not in ext2int:
+                raise KeyError(
+                    f"External document id {docid!r} is unknown to this index"
+                )
+            internal = int(ext2int[docid])
+        else:
+            internal = int(docid)
+
+        fp_search = _import_fast_plaid()
+        fp = fp_search.FastPlaid(index=str(self._plaid_dir()), device=device or None)
+        results = fp.get_embeddings(subset=[internal])
+        return results[0]
+
 
 class PlaidIndexBuilder(Task):
-    """Builds a fast-plaid search index from an existing :class:`TokenStore`.
+    """Builds a fast-plaid index from a document collection.
 
-    The builder reads the raw token embeddings from the store and feeds them
-    to fast-plaid. This step is separate from :class:`TokenStoreBuilder` so
-    that the token store can be used independently (e.g. to retrieve
-    per-document token vectors) without paying the cost of building the
-    centroid/IVF structure.
+    The builder encodes every document using the given
+    :class:`~xpmir.neural.colbert.ColBERTEncoder`, collects the valid (i.e.
+    non-padding) token vectors, and feeds them to ``fast-plaid``.
+
+    The fast-plaid index stores the embeddings in a compressed
+    centroid + residual format, so no separate raw-token file is needed.
+    Per-document token vectors can be reconstructed later via
+    :meth:`PlaidIndex.get_document_tokens`.
     """
 
-    token_store: Param[TokenStore]
-    """A pre-built token store."""
+    documents: Param[DocumentStore]
+    """Set of documents to index."""
 
-    batch_size: Meta[int] = field(default=1024, ignore_default=True)
-    """Number of documents read from the store at a time."""
+    encoder: Param[ColBERTEncoder]
+    """The ColBERT-style encoder used to produce per-token embeddings."""
+
+    batch_size: Meta[int] = field(default=32, ignore_default=True)
+    """Encoder batch size."""
 
     n_bits: Param[int] = field(default=2, ignore_default=True)
     """Number of bits used by fast-plaid for residual quantisation."""
 
     kmeans_niters: Param[int] = field(default=4, ignore_default=True)
-    """Number of K-means iterations for centroid training."""
+    """Number of K-means iterations performed by fast-plaid when clustering
+    the centroids."""
 
     n_samples_kmeans: Param[int] = field(default=0, ignore_default=True)
     """Number of token samples used to train the centroids (0 = fast-plaid
@@ -326,13 +184,15 @@ class PlaidIndexBuilder(Task):
     cpu otherwise)."""
 
     index_path: Meta[Path] = field(default_factory=PathGenerator("plaid-index"))
-    """Output directory for the fast-plaid index files."""
+    """Output directory for the index and its side-car files."""
 
     def task_outputs(self, dep) -> PlaidIndex:
+        """Expose a :class:`PlaidIndex` for downstream tasks."""
         return dep(
             PlaidIndex.C(
-                token_store=self.token_store,
+                documents=self.documents,
                 index_path=self.index_path,
+                dim=self.encoder.dim,
                 n_bits=self.n_bits,
                 kmeans_niters=self.kmeans_niters,
                 n_samples_kmeans=self.n_samples_kmeans,
@@ -344,6 +204,9 @@ class PlaidIndexBuilder(Task):
             shutil.rmtree(self.index_path)
         self.index_path.mkdir(parents=True, exist_ok=True)
 
+        self.encoder.initialize()
+        self.encoder.eval()
+
         fp_search = _import_fast_plaid()
 
         plaid_dir = self.index_path / _PLAID_SUBDIR
@@ -352,40 +215,66 @@ class PlaidIndexBuilder(Task):
         device = self.device or None
         fast_plaid = fp_search.FastPlaid(index=str(plaid_dir), device=device)
 
-        # Load the token store as a memmap
-        store = self.token_store
-        offsets = store._load_offsets()
-        tokens_mmap = store._load_tokens_memmap(offsets)
-        num_docs = len(offsets) - 1
-
+        total_docs = self.documents.documentcount or 0
+        ext2int: dict = {}
+        num_docs_seen = 0
         first_batch = True
-        pbar = tqdm(total=num_docs, desc="Building fast-plaid index", unit="doc")
 
-        for batch_start in range(0, num_docs, self.batch_size):
-            batch_end = min(batch_start + self.batch_size, num_docs)
-            per_doc: List[torch.Tensor] = []
-            for i in range(batch_start, batch_end):
-                start, end = int(offsets[i]), int(offsets[i + 1])
-                t = torch.from_numpy(np.asarray(tokens_mmap[start:end]).copy())
-                per_doc.append(t)
+        with torch.no_grad():
+            pbar = tqdm(
+                total=total_docs or None,
+                desc="Encoding documents for fast-plaid",
+                unit="doc",
+            )
+            for batch in batchiter(self.batch_size, self.documents.iter_documents()):
+                per_doc = self.encoder.document_token_embeddings(batch)
+                per_doc_cpu = [
+                    t.detach().to("cpu", dtype=torch.float32) for t in per_doc
+                ]
 
-            if first_batch:
-                create_kwargs = {
-                    "documents_embeddings": per_doc,
+                if first_batch:
+                    create_kwargs = {
+                        "documents_embeddings": per_doc_cpu,
+                        "n_bits": self.n_bits,
+                        "kmeans_niters": self.kmeans_niters,
+                    }
+                    if self.n_samples_kmeans:
+                        create_kwargs["n_samples_kmeans"] = self.n_samples_kmeans
+                    fast_plaid.create(**create_kwargs)
+                    first_batch = False
+                else:
+                    fast_plaid.update(documents_embeddings=per_doc_cpu)
+
+                for record in batch:
+                    ext_id = record.get("id") if isinstance(record, dict) else None
+                    if ext_id is not None:
+                        ext2int[str(ext_id)] = num_docs_seen
+                    num_docs_seen += 1
+
+                pbar.update(len(per_doc_cpu))
+
+            pbar.close()
+
+        if ext2int:
+            with (self.index_path / _EXT2INT_FILE).open("w") as fh:
+                json.dump(ext2int, fh)
+
+        with (self.index_path / _METADATA_FILE).open("w") as fh:
+            json.dump(
+                {
+                    "num_docs": num_docs_seen,
+                    "dim": self.encoder.dim,
                     "n_bits": self.n_bits,
-                    "kmeans_niters": self.kmeans_niters,
-                }
-                if self.n_samples_kmeans:
-                    create_kwargs["n_samples_kmeans"] = self.n_samples_kmeans
-                fast_plaid.create(**create_kwargs)
-                first_batch = False
-            else:
-                fast_plaid.update(documents_embeddings=per_doc)
+                },
+                fh,
+            )
 
-            pbar.update(batch_end - batch_start)
-
-        pbar.close()
-        logger.info("fast-plaid index built (%d documents)", num_docs)
+        logger.info(
+            "fast-plaid index built: %d documents, dim=%d, n_bits=%d",
+            num_docs_seen,
+            self.encoder.dim,
+            self.n_bits,
+        )
 
 
 class PlaidRetriever(Retriever):
@@ -396,7 +285,7 @@ class PlaidRetriever(Retriever):
 
     encoder: Param[ColBERTEncoder]
     """The query encoder. Typically the same encoder that was used to build
-    the token store."""
+    :attr:`index`."""
 
     index: Param[PlaidIndex]
     """The fast-plaid index to search."""
@@ -405,7 +294,8 @@ class PlaidRetriever(Retriever):
     """Number of documents to return per query."""
 
     n_ivf_probe: Meta[int] = field(default=8, ignore_default=True)
-    """Number of inverted-list clusters explored at search time."""
+    """Number of inverted-list clusters explored by fast-plaid at search
+    time."""
 
     n_full_scores: Meta[int] = field(default=0, ignore_default=True)
     """Number of candidates for which fast-plaid computes full scores
@@ -428,7 +318,7 @@ class PlaidRetriever(Retriever):
         )
 
     def _store(self):
-        return self.index.token_store.documents
+        return self.index.documents
 
     def retrieve(self, record: IDTextRecord) -> List[ScoredDocument]:
         with torch.no_grad():
@@ -447,7 +337,7 @@ class PlaidRetriever(Retriever):
             )
 
         single = results[0] if results else []
-        documents = self.index.token_store.documents
+        documents = self.index.documents
         out: List[ScoredDocument] = []
         for doc_index, score in single:
             out.append(
