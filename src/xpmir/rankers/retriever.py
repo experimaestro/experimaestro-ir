@@ -7,7 +7,6 @@ from typing import (
     Optional,
     TYPE_CHECKING,
 )
-from lightning_fabric import is_wrapped
 from experimaestro import Param, Config, field
 from datamaestro_ir.data import (
     Documents,
@@ -56,19 +55,6 @@ class Retriever(Config, ModuleContainer, ABC):
         for key, record in tqdm(list(queries.items())):
             results[key] = self.retrieve(record)
         return results
-
-    # we need to register the "retrieve" method as a foward method for the fabric, otherwise, it will not be able to call it from other processes
-    def setup_with_fabric(self, fabric):
-        # wraps the encoder with the fabric for device management
-        super().setup_with_fabric(fabric)
-
-        if is_wrapped(self):
-            logger.debug(
-                "self is wrapped with Fabric, marking retrieve as a forward method"
-            )
-            self.mark_forward_method("retrieve")
-        else:
-            logger.debug(f"{self.__class__.__name__} is not wrapped with Fabric")
 
     @abstractmethod
     def retrieve(self, record: IDTextRecord) -> List[ScoredDocument]:

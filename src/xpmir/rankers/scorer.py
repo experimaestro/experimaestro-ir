@@ -197,6 +197,10 @@ class AbstractModuleScorer(Scorer, Module):
         """Initialize a learnable scorer (structure only)"""
         return self
 
+    def get_forward_methods(self) -> list:
+        """Returns the list of forward methods for this scorer. By default, it is just `forward`, but it can be extended to support multiple forward methods (e.g. for different scoring strategies)"""
+        return ["rsv"]
+
     def compute(
         self, topic: IDTextRecord, scored_documents: Iterable[ScoredDocument]
     ) -> List[ScoredDocument]:
@@ -318,17 +322,22 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
             dataset, batch_size=self.batchsize, collate_fn=reranking_collate
         )
 
-        logger.info(
-            f"Re-Ranking with '{self.scorer.__class__.__name__}' using batch size {self.batchsize}..."
+        # get type (check underlying module if wrapped)
+        scorer_type = type(
+            self.scorer.module if hasattr(self.scorer, "module") else self.scorer
         )
+
         # Process in batches
         scored_results = {qid: [] for qid in queries}
         seen_qids = set()
         pbar = tqdm(total=len(queries), desc="Re-ranking", unit="query")
 
         for batch_items, batch in dataloader:
-            # Use scorer.forward if it's an AbstractModuleScorer to batch across queries
-            if isinstance(self.scorer, AbstractModuleScorer):
+            if issubclass(scorer_type, AbstractModuleScorer):
+                logger.info(
+                    f"Re-Ranking with '{scorer_type.__name__}' using batch size {self.batchsize}..."
+                )
+                # Use scorer.forward if it's an AbstractModuleScorer to batch across queries
                 with torch.no_grad():
                     scores = self.scorer(batch_items, None).cpu().float().numpy()
                 for score, item in zip(scores, batch):
@@ -340,6 +349,9 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
                         ScoredDocument(item.document, float(score.item()))
                     )
             else:
+                logger.info(
+                    f"Re-Ranking with '{scorer_type.__name__}' with rsv (one-by-one)..."
+                )
                 # Fallback: group by query and use rsv (score one by one)
                 by_query = {}
                 for item in batch:
