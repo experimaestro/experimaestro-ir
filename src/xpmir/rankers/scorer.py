@@ -332,14 +332,18 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
         seen_qids = set()
         pbar = tqdm(total=len(queries), desc="Re-ranking", unit="query")
 
+        if issubclass(scorer_type, AbstractModuleScorer):
+            logger.info(
+                f"Re-Ranking with '{scorer_type.__name__}' using batch size {self.batchsize}..."
+            )
+        else:
+            logger.info(
+                f"Re-Ranking with '{scorer_type.__name__}' with rsv (one-by-one)..."
+            )
         for batch_items, batch in dataloader:
             if issubclass(scorer_type, AbstractModuleScorer):
-                logger.info(
-                    f"Re-Ranking with '{scorer_type.__name__}' using batch size {self.batchsize}..."
-                )
                 # Use scorer.forward if it's an AbstractModuleScorer to batch across queries
-                with torch.no_grad():
-                    scores = self.scorer(batch_items, None).cpu().float().numpy()
+                scores = self.scorer(batch_items, None).cpu().float().numpy()
                 for score, item in zip(scores, batch):
                     qid = item.topic["id"]
                     if qid not in seen_qids:
@@ -349,9 +353,6 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
                         ScoredDocument(item.document, float(score.item()))
                     )
             else:
-                logger.info(
-                    f"Re-Ranking with '{scorer_type.__name__}' with rsv (one-by-one)..."
-                )
                 # Fallback: group by query and use rsv (score one by one)
                 by_query = {}
                 for item in batch:
