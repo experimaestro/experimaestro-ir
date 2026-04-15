@@ -9,7 +9,10 @@ from typing import (
     Tuple,
     Union,
     TYPE_CHECKING,
+    TypedDict,
 )
+from typing_extensions import ReadOnly
+from xpmir.text import TokenizedTexts
 import torch
 import torch.nn as nn
 from experimaestro import Param, Config, Meta, field, tqdm
@@ -18,6 +21,7 @@ from datamaestro_ir.data import (
     IDTextRecord,
     SimpleTextItem,
 )
+import os
 from xpm_torch import Module, Random
 from xpm_torch.utils.utils import Initializable
 from xpm_torch.utils.logging import EasyLogger
@@ -168,7 +172,12 @@ class RandomScorer(Scorer):
 
 
 class AbstractModuleScorerCall(Protocol):
-    def __call__(self, inputs: "BaseItems", info: Optional[TrainerContext]): ...
+    def __call__(
+        self,
+        inputs: "BaseItems",
+        *,
+        tokenized: Optional[TokenizedTexts] = None,
+    ): ...
 
 
 class AbstractModuleScorer(Scorer, Module):
@@ -259,14 +268,27 @@ class AbstractTwoStageRetriever(Retriever):
         self.scorer.initialize()
 
 
+class RerankingInputs(TypedDict):
+    """Inputs for re-ranking"""
+
+    records: ReadOnly[PointwiseItems]
+    """The pointwise records"""
+
+    batch: ReadOnly[List[PointwiseItem]]
+    """The original batch of items"""
+
+    tokenized_records: ReadOnly[Optional[TokenizedTexts]]
+    """The tokenized records (if any)"""
+
+
 def reranking_collate(
     batch: List[PointwiseItem],
-) -> Tuple[PointwiseItems, List[PointwiseItem]]:
+) -> RerankingInputs:
     """Collate PointwiseItems into a PointwiseItems batch."""
     batch_items = PointwiseItems()
     for item in batch:
         batch_items.add(item)
-    return batch_items, batch
+    return RerankingInputs(records=batch_items, batch=batch, tokenized_records=None)
 
 
 class ReRankingDataset(ShardedIterableDataset):
@@ -318,13 +340,28 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
 
         # We don't materialise everything, but iterate on the fly
         dataset = ReRankingDataset(queries, self.retriever)
-        dataloader = StatefulDataLoader(
-            dataset, batch_size=self.batchsize, collate_fn=reranking_collate
-        )
 
-        # get type (check underlying module if wrapped)
-        scorer_type = type(
-            self.scorer.module if hasattr(self.scorer, "module") else self.scorer
+        # get underlying module if wrapped (e.g. Fabric)
+        scorer = self.scorer.module if hasattr(self.scorer, "module") else self.scorer
+        scorer_type = type(scorer)
+
+        if hasattr(scorer, "get_tokenizer_fn"):
+            tokenization_fn = scorer.get_tokenizer_fn()
+
+            def collate_fn(batch: List[PointwiseItem]) -> RerankingInputs:
+                inputs = reranking_collate(batch)
+                inputs["tokenized_records"] = tokenization_fn(inputs["records"])
+                return inputs
+
+        else:
+            collate_fn = reranking_collate
+
+        dataloader = StatefulDataLoader(
+            dataset,
+            batch_size=self.batchsize,
+            num_workers=min(int(os.environ.get("SLURM_CPUS_PER_TASK", 4)), 4),
+            pin_memory=True if torch.cuda.is_available() else False,
+            collate_fn=collate_fn,
         )
 
         # Process in batches
@@ -340,10 +377,21 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
             logger.info(
                 f"Re-Ranking with '{scorer_type.__name__}' with rsv (one-by-one)..."
             )
-        for batch_items, batch in dataloader:
+        for inputs in dataloader:
+            batch_items = inputs["records"]
+            batch = inputs["batch"]
+            tokenized_records = inputs.get("tokenized_records")
+
             if issubclass(scorer_type, AbstractModuleScorer):
                 # Use scorer.forward if it's an AbstractModuleScorer to batch across queries
-                scores = self.scorer(batch_items, None).cpu().float().numpy()
+
+                scores = (
+                    self.scorer(batch_items, tokenized=tokenized_records)
+                    .cpu()
+                    .float()
+                    .numpy()
+                )
+
                 for score, item in zip(scores, batch):
                     qid = item.topic["id"]
                     if qid not in seen_qids:
