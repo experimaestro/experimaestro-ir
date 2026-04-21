@@ -785,7 +785,7 @@ wheels = [
 
 [[package]]
 name = "experimaestro"
-version = "2.3.0"
+version = "2.3.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "arpeggio" },
@@ -816,9 +816,9 @@ dependencies = [
     { name = "uvicorn", extra = ["standard"] },
     { name = "watchdog" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/07/3d/ad937fa63dfb68bcc916de22c8ebd818f68645d5472467857f8e07332d15/experimaestro-2.3.0.tar.gz", hash = "sha256:3edec23139f8842924c57eaa50bb8b45d0aedee72f1159104ac348f6c536df76", size = 28547304, upload-time = "2026-03-25T11:57:04.888Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/44/e5/b68005f54365c26f439e409f842cefad887713abde2e27a8969b954c5f72/experimaestro-2.3.4.tar.gz", hash = "sha256:c5c31ba141de83dde1d26ee8a9ddc09bd4cabe437f60d693adb74c82cfc1a0dd", size = 28559706, upload-time = "2026-04-09T10:57:06.065Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/19/aa/d8488b6cd7a531fa688af46baa9cf8b218aef74f052e21176a6b0a03ac79/experimaestro-2.3.0-py3-none-any.whl", hash = "sha256:b80dbf9fa06f643f7ac8cc2596df8bd3f65a001b7141695056e573dc2b66883e", size = 3006025, upload-time = "2026-03-25T11:57:02.37Z" },
+    { url = "https://files.pythonhosted.org/packages/97/cf/57978594b7bdcecac38a09c3e52245730740867362d0725c8ea91ec89d69/experimaestro-2.3.4-py3-none-any.whl", hash = "sha256:befb0c5e8872fa774f225143a7917fd58a0314a508b51cf5dd24db4205a55dc3", size = 3017652, upload-time = "2026-04-09T10:57:03.665Z" },
 ]
 
 [[package]]
@@ -894,7 +894,7 @@ requires-dist = [
     { name = "datamaestro", specifier = ">=0.2.3" },
     { name = "datamaestro-ir", specifier = ">=0.2.0" },
     { name = "docstring-parser" },
-    { name = "experimaestro", specifier = ">=2.3" },
+    { name = "experimaestro", specifier = ">=2.3.4" },
     { name = "fast-plaid", marker = "extra == 'fast-plaid'" },
     { name = "impact-index", specifier = ">=1.2.0" },
     { name = "ir-measures", specifier = ">=0.3.3" },
@@ -3464,11 +3464,11 @@ wheels = [
 
 [[package]]
 name = "python-dotenv"
-version = "1.2.1"
+version = "1.2.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/f0/26/19cadc79a718c5edbec86fd4919a6b6d3f681039a2f6d66d14be94e75fb9/python_dotenv-1.2.1.tar.gz", hash = "sha256:42667e897e16ab0d66954af0e60a9caa94f0fd4ecf3aaf6d2d260eec1aa36ad6", size = 44221, upload-time = "2025-10-26T15:12:10.434Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/82/ed/0301aeeac3e5353ef3d94b6ec08bbcabd04a72018415dcb29e588514bba8/python_dotenv-1.2.2.tar.gz", hash = "sha256:2c371a91fbd7ba082c2c1dc1f8bf89ca22564a087c2c287cd9b662adde799cf3", size = 50135, upload-time = "2026-03-01T16:00:26.196Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/14/1b/a298b06749107c305e1fe0f814c6c74aea7b2f1e10989cb30f544a1b3253/python_dotenv-1.2.1-py3-none-any.whl", hash = "sha256:b81ee9561e9ca4004139c6cbba3a238c32b03e4894671e181b671e8cb8425d61", size = 21230, upload-time = "2025-10-26T15:12:09.109Z" },
+    { url = "https://files.pythonhosted.org/packages/0b/d7/1959b9648791274998a9c3526f6d0ec8fd2233e4d4acce81bbae76b44b2a/python_dotenv-1.2.2-py3-none-any.whl", hash = "sha256:1d8214789a24de455a8b8bd8ae6fe3c6b69a5e3d64aa8a8e5d68e694bbcb285a", size = 22101, upload-time = "2026-03-01T16:00:25.09Z" },
 ]
 
 [[package]]
@@ -6034,7 +6034,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "experimaestro", specifier = ">=2.3" },
+    { name = "experimaestro", specifier = ">=2.3.4" },
     { name = "huggingface-hub", specifier = ">0.17" },
     { name = "lightning", specifier = ">=2.4" },
     { name = "safetensors", specifier = ">=0.4" },
