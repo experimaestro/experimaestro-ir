@@ -1,33 +1,32 @@
-Running IR experiments
-----------------------
+Running experiments
+===================
 
-The module `experimaestro.experiments` contain code factorizing boilerplate for
-launching experiments, which is specialized in `xpmir` with specific experiment
-helpers.
+The ``xpmir.experiments`` module provides decorators and helper classes that
+reduce the boilerplate needed to define a reproducible IR experiment. An
+experiment is a single Python function decorated with
+:func:`~xpmir.experiments.ir.ir_experiment` (or ``learning_experiment`` for
+generic learning tasks), paired with a YAML configuration file.
 
-For instance, one can define a standard IR experiments that learns (with tensorboard),
-evaluates a model on a different metrics and upload it to HuggingFace.
-
-With `full.yaml` located in the same folder as `experiment.py`
+Given a YAML file ``full.yaml``:
 
 .. code-block:: yaml
 
     file: experiment
     learning_rate: 1e-4
 
-The experiment can be started with
+The experiment can be started with:
 
 .. code-block:: sh
 
     experimaestro run-experiment --run-mode normal full.yaml
 
+
 Learning experiment
-===================
+-------------------
 
-Generic learning experiments can be conducted with the
-:py:module:`xpmir.experiments.learning` module that allows to easily use a
-Tensorboard service.
-
+Generic learning experiments (not IR-specific). Provides a
+:class:`~xpmir.experiments.learning.LearningExperimentHelper` with
+Tensorboard logging.
 
 .. code-block:: python
 
@@ -46,12 +45,14 @@ Tensorboard service.
         ...
 
 
-
 IR experiment
-=============
+-------------
+
+IR-specific experiments that add evaluation and model-upload capabilities on
+top of the learning experiment.
 
 Example
-*******
+^^^^^^^
 
 .. code-block:: python
 
@@ -76,7 +77,7 @@ Example
         )
 
 API
-***
+^^^
 
 .. automodule:: xpmir.experiments.ir
     :members:

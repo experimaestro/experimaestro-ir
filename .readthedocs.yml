@@ -9,6 +9,7 @@ build:
   tools:
     python: "3.12"
   commands:
+    - git submodule update --init --recursive
     - asdf plugin add uv
     - asdf install uv latest
     - asdf global uv latest

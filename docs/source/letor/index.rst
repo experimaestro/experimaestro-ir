@@ -1,5 +1,10 @@
-Learning to rank
-----------------
+Learning to Rank
+================
+
+This section covers the learning-to-rank (LTR) components: scorers that assign
+relevance scores to query-document pairs, samplers that produce training data,
+and trainers that optimise model parameters. XPMIR supports pointwise, pairwise,
+batchwise, and distillation training strategies.
 
 .. toctree::
    :maxdepth: 1
@@ -9,71 +14,79 @@ Learning to rank
    batchwise
    distillation
 
-Scorers
-=======
 
-Scorers are able to give a score to a (query, document) pair. Among the
-scorers, some are have learnable parameters.
+Scorers
+-------
+
+Scorers assign a relevance score to a (query, document) pair.
+:class:`~xpmir.rankers.scorer.AbstractModuleScorer` is the base class for
+scorers with learnable parameters (neural models).
 
 .. autoxpmconfig:: xpmir.rankers.scorer.Scorer
-   :members: initialize, rsv, compute, to, eval, getRetriever
+   :members: initialize, rsv, compute, getRetriever
 .. autoxpmconfig:: xpmir.rankers.scorer.RandomScorer
 .. autoxpmconfig:: xpmir.rankers.scorer.AbstractModuleScorer
-
-Utility functions
-*****************
 
 .. autofunction:: xpmir.rankers.scorer_retriever
 
 
-Retrievers
-==========
+Retrievers from scorers
+-----------------------
 
-Scores can be used as retrievers through a :py:class:`xpmir.rankers.TwoStageRetriever`
+Scorers can be wrapped as retrievers through a
+:class:`~xpmir.rankers.scorer.TwoStageRetriever` (see :doc:`/retrieval`).
 
-Naming Conventions
-==================
 
-To maintain architectural clarity, the project uses the following naming conventions for data objects:
+Naming conventions
+------------------
 
-*   **Records**: Low-level data structures (e.g., `IDTextRecord`, `ScoreRecord`). These are implemented as `TypedDict` and represent raw data or identifiers.
-*   **Samples**: Data-layer objects (e.g., `PairwiseSample`). These are typically found in the data layer (datamaestro) and represent "raw" data containers, often containing multiple candidates or non-hydrated information.
-*   **Items**: Model-ready objects (e.g., `PointwiseItem`, `PairwiseItem`). These are hydrated classes used in the model layer (xpmir), ready to be converted into tensors for training or inference.
+The project uses consistent naming for data objects at different layers:
+
+*   **Records** -- Low-level data structures (e.g. ``IDTextRecord``,
+    ``ScoreRecord``). Implemented as ``TypedDict`` for raw data or identifiers.
+*   **Samples** -- Data-layer objects (e.g. ``PairwiseSample``). Found in
+    datamaestro; represent raw containers, possibly non-hydrated.
+*   **Items** -- Model-ready objects (e.g. ``PointwiseItem``, ``PairwiseItem``).
+    Hydrated objects used in the training loop, ready to be converted into
+    tensors.
 
 
 Samplers
 --------
 
+Samplers generate model-ready **items** from a dataset and a scorer (used for
+hard-negative mining or scoring).
+
 .. currentmodule:: xpmir.letor.samplers
-
-Samplers provide model-ready **items**. They all inherit from:
-
-.. autoclass:: SerializableIterator
-
 
 .. autoxpmconfig:: ModelBasedSampler
 
 
-Items for training
-------------------
+Training items
+--------------
+
+Data classes representing training instances at different granularities.
 
 .. automodule:: xpmir.letor.records
    :members: PointwiseItem, PairwiseItem, ListwiseItem, BatchwiseItems
 
 
-
 Document samplers
-=================
+-----------------
 
-Useful for pre-training or when learning index parameters (e.g. for FAISS).
+Samplers that produce documents (without queries). Useful for pre-training
+objectives or for learning index parameters (e.g. FAISS quantisers).
 
 .. currentmodule:: xpmir.documents.samplers
 .. autoxpmconfig:: DocumentSampler
 .. autoxpmconfig:: HeadDocumentSampler
 .. autoxpmconfig:: RandomDocumentSampler
 
-Adapters
-********
+Sample adapters
+---------------
+
+Transforms applied to samples before they reach the model (e.g. hydrating
+document text from a store, adding query prefixes).
 
 .. autoxpmconfig:: xpmir.letor.samplers.hydrators.SampleTransform
 .. autoxpmconfig:: xpmir.letor.samplers.hydrators.SampleHydrator

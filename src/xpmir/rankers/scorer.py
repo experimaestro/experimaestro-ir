@@ -9,15 +9,21 @@ from typing import (
     Tuple,
     Union,
     TYPE_CHECKING,
+    TypedDict,
 )
+from typing_extensions import ReadOnly
+from xpmir.text import TokenizedTexts
 import torch
 import torch.nn as nn
+from lightning_fabric import Fabric
 from experimaestro import Param, Config, Meta, field, tqdm
 from datamaestro_ir.data import (
     Documents,
     IDTextRecord,
     SimpleTextItem,
 )
+import os
+import torch.distributed as dist
 from xpm_torch import Module, Random
 from xpm_torch.utils.utils import Initializable
 from xpm_torch.utils.logging import EasyLogger
@@ -168,7 +174,12 @@ class RandomScorer(Scorer):
 
 
 class AbstractModuleScorerCall(Protocol):
-    def __call__(self, inputs: "BaseItems", info: Optional[TrainerContext]): ...
+    def __call__(
+        self,
+        inputs: "BaseItems",
+        *,
+        tokenized: Optional[TokenizedTexts] = None,
+    ): ...
 
 
 class AbstractModuleScorer(Scorer, Module):
@@ -196,6 +207,10 @@ class AbstractModuleScorer(Scorer, Module):
     def __initialize__(self):
         """Initialize a learnable scorer (structure only)"""
         return self
+
+    def get_forward_methods(self) -> list:
+        """Returns the list of forward methods for this scorer. By default, it is just `forward`, but it can be extended to support multiple forward methods (e.g. for different scoring strategies)"""
+        return ["rsv"]
 
     def compute(
         self, topic: IDTextRecord, scored_documents: Iterable[ScoredDocument]
@@ -255,14 +270,27 @@ class AbstractTwoStageRetriever(Retriever):
         self.scorer.initialize()
 
 
+class RerankingInputs(TypedDict):
+    """Inputs for re-ranking"""
+
+    records: ReadOnly[PointwiseItems]
+    """The pointwise records"""
+
+    batch: ReadOnly[List[PointwiseItem]]
+    """The original batch of items"""
+
+    tokenized_records: ReadOnly[Optional[TokenizedTexts]]
+    """The tokenized records (if any)"""
+
+
 def reranking_collate(
     batch: List[PointwiseItem],
-) -> Tuple[PointwiseItems, List[PointwiseItem]]:
+) -> RerankingInputs:
     """Collate PointwiseItems into a PointwiseItems batch."""
     batch_items = PointwiseItems()
     for item in batch:
         batch_items.add(item)
-    return batch_items, batch
+    return RerankingInputs(records=batch_items, batch=batch, tokenized_records=None)
 
 
 class ReRankingDataset(ShardedIterableDataset):
@@ -274,6 +302,18 @@ class ReRankingDataset(ShardedIterableDataset):
         self.retriever = retriever
 
     def iter_shard(self, shard_id: int, num_shards: int):
+        import os
+
+        rank = os.environ.get(
+            "SLURM_PROCID", os.environ.get("RANK", os.environ.get("LOCAL_RANK", "0"))
+        )
+        logger.debug(
+            "ReRankingDataset (rank %s): shard %d/%d starting (total queries: %d)",
+            rank,
+            shard_id,
+            num_shards,
+            len(self.queries),
+        )
         for i in range(shard_id, len(self.queries), num_shards):
             qid, query = self.queries[i]
             # Pull first-stage results on-the-fly to avoid materialising everything
@@ -296,6 +336,41 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
         _scoredDocuments.sort(reverse=True)
         return _scoredDocuments[: (self.top_k or len(_scoredDocuments))]
 
+    def build_reranking_dataloader(self, queries: Dict[str, IDTextRecord]):
+        """Builds a dataloader for re-ranking all documents for a set of queries
+        Allows for efficient two-stage retrieval with cross-query batching on GPU when the scorer supports it (i.e. is an AbstractModuleScorer and batchsize > 0).
+        """
+        # We don't materialise everything, but iterate on the fly
+        dataset = ReRankingDataset(queries, self.retriever)
+
+        # get underlying module if wrapped (e.g. Fabric)
+        scorer = self.scorer.module if hasattr(self.scorer, "module") else self.scorer
+
+        if hasattr(scorer, "get_tokenizer_fn"):
+            tokenization_fn = scorer.get_tokenizer_fn()
+
+            def collate_fn(batch: List[PointwiseItem]) -> RerankingInputs:
+                inputs = reranking_collate(batch)
+                inputs["tokenized_records"] = tokenization_fn(inputs["records"])
+                return inputs
+
+        else:
+            collate_fn = reranking_collate
+
+        dataloader = StatefulDataLoader(
+            dataset,
+            batch_size=self.batchsize,
+            num_workers=min(int(os.environ.get("SLURM_CPUS_PER_TASK", 4)), 4),
+            pin_memory=True if torch.cuda.is_available() else False,
+            collate_fn=collate_fn,
+        )
+
+        fabric: Fabric = getattr(self, "fabric", None)
+        if fabric:
+            dataloader = fabric.setup_dataloaders(dataloader)
+
+        return dataloader
+
     @torch.no_grad()
     def retrieve_all(
         self, queries: Dict[str, IDTextRecord]
@@ -312,30 +387,66 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
             # Fallback to per-query retrieval if no batchsize
             return super().retrieve_all(queries)
 
-        # We don't materialise everything, but iterate on the fly
-        dataset = ReRankingDataset(queries, self.retriever)
-        dataloader = StatefulDataLoader(
-            dataset, batch_size=self.batchsize, collate_fn=reranking_collate
-        )
+        # get underlying module if wrapped (e.g. Fabric)
+        scorer = self.scorer.module if hasattr(self.scorer, "module") else self.scorer
+        scorer_type = type(scorer)
 
-        logger.info(
-            f"Re-Ranking with '{self.scorer.__class__.__name__}' using batch size {self.batchsize}..."
-        )
+        fabric: Fabric = getattr(self, "fabric", None)
+        dataloader = self.build_reranking_dataloader(queries)
+
         # Process in batches
         scored_results = {qid: [] for qid in queries}
         seen_qids = set()
-        pbar = tqdm(total=len(queries), desc="Re-ranking", unit="query")
 
-        for batch_items, batch in dataloader:
-            # Use scorer.forward if it's an AbstractModuleScorer to batch across queries
-            if isinstance(self.scorer, AbstractModuleScorer):
-                with torch.no_grad():
-                    scores = self.scorer(batch_items, None).cpu().float().numpy()
+        disable_tqdm = fabric is not None and not fabric.is_global_zero
+
+        # Calculate local total for the progress bar to reach 100% on rank 0
+        total_to_process = len(queries)
+        if fabric and fabric.world_size > 1:
+            # Number of queries this specific rank (0) will handle
+            total_to_process = len(
+                range(fabric.global_rank, len(queries), fabric.world_size)
+            )
+
+        pbar = (
+            tqdm(
+                total=total_to_process,
+                desc="Re-ranking",
+                unit="query",
+            )
+            if not disable_tqdm
+            else None
+        )
+
+        if issubclass(scorer_type, AbstractModuleScorer):
+            logger.info(
+                f"Re-Ranking with '{scorer_type.__name__}' using batch size {self.batchsize}..."
+            )
+        else:
+            logger.info(
+                f"Re-Ranking with '{scorer_type.__name__}' with rsv (one-by-one)..."
+            )
+        for inputs in dataloader:
+            batch_items = inputs["records"]
+            batch = inputs["batch"]
+            tokenized_records = inputs.get("tokenized_records")
+
+            if issubclass(scorer_type, AbstractModuleScorer):
+                # Use scorer.forward if it's an AbstractModuleScorer to batch across queries
+
+                scores = (
+                    self.scorer(batch_items, tokenized=tokenized_records)
+                    .cpu()
+                    .float()
+                    .numpy()
+                )
+
                 for score, item in zip(scores, batch):
                     qid = item.topic["id"]
                     if qid not in seen_qids:
                         seen_qids.add(qid)
-                        pbar.update(1)
+                        if pbar is not None:
+                            pbar.update(1)
                     scored_results[qid].append(
                         ScoredDocument(item.document, float(score.item()))
                     )
@@ -346,7 +457,8 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
                     qid = item.topic["id"]
                     if qid not in seen_qids:
                         seen_qids.add(qid)
-                        pbar.update(1)
+                        if pbar is not None:
+                            pbar.update(1)
                     by_query.setdefault(qid, []).append(
                         ScoredDocument(item.document, item.relevance)
                     )
@@ -354,7 +466,29 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
                 for qid, docs in by_query.items():
                     scored_results[qid].extend(self.scorer.rsv(queries[qid], docs))
 
-        pbar.close()
+        if pbar is not None:
+            pbar.close()
+
+        if fabric and fabric.world_size > 1:
+            # Gather results from all GPUs
+            # We use a list of tuples and filter empty results to reduce
+            # communication overhead. Using torch.distributed directly for
+            # objects is more robust than fabric.all_gather which is tensor-oriented.
+            local_results = [
+                (qid, docs) for qid, docs in scored_results.items() if docs
+            ]
+            gathered_data = [None] * fabric.world_size
+            dist.all_gather_object(gathered_data, local_results)
+
+            if fabric.is_global_zero:
+                # Merge them back into one master dictionary
+                final_results = {qid: [] for qid in queries}
+                for rank_results in gathered_data:
+                    for qid, docs in rank_results:
+                        final_results[qid].extend(docs)
+                scored_results = final_results
+            else:
+                return {}
 
         # Sort and truncate
         for qid in scored_results:

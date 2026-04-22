@@ -164,6 +164,10 @@ class BaseItems(List[RT]):
         """
         raise NotImplementedError(f"__len__() in {self.__class__}")
 
+    def __iter__(self):
+        for i in range(len(self)):
+            yield self[i]
+
 
 class PointwiseItems(BaseItems[PointwiseItem]):
     """Pointwise items are a set of triples (query, document, relevance)"""

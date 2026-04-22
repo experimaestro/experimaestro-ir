@@ -173,13 +173,14 @@ class Evaluate(BaseEvaluation, Task):
     """Runtime configuration, managed by Fabric"""
 
     def execute(self):
-        self.retriever.initialize()
-
-        # instanciate the Fabirc object
+        # 1. Initialize Fabric first
         fabric = self.fabric_config.get_fabric()
         fabric.launch()
 
-        # Wrap all necessary children with fabric
+        # 2. Initialize the retriever (loads the model)
+        self.retriever.initialize()
+
+        # 3. Wrap necessary children with fabric
         self.retriever.setup_with_fabric(fabric)
 
         run = get_run(self.retriever, self.dataset)

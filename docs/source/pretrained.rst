@@ -1,26 +1,30 @@
 Pre-trained models
 ==================
 
-Experimaestro specific pre-trained models can be found on
-the `HuggingFace Hub <https://huggingface.co/models?library=xpmir>`_
-searching the `xpmir` library. Models can then be loaded using
+XPMIR pre-trained models are published on the
+`HuggingFace Hub <https://huggingface.co/models?library=xpmir>`_ under the
+``xpmir`` library tag. They can be loaded with
+:class:`~xpmir.models.AutoModel` for use in experiments or direct inference.
+
+.. contents:: On this page
+   :local:
+   :depth: 2
 
 
 Using existing models
 ---------------------
 
-You can simply download a model from the Hub using `xpmir.models.AutoModel`.
-Thanks to the `experimaestro framework <https://github.com/experimaestro/experimaestro-python>`_,
-you can either use models in your own experiments or in pure inference mode using
-:py:meth:`load_from_hf_hub() <xpmir.models.AutoModel.load_from_hf_hub>`
+Download a model from the Hub using
+:meth:`~xpmir.models.AutoModel.load_from_hf_hub`. Thanks to the experimaestro
+framework, you can either re-use models inside experiments (with full parameter
+tracking) or in pure inference mode.
 
 As experimental models
-----------------------
+^^^^^^^^^^^^^^^^^^^^^^
 
-In this mode, you can reuse the model in your experiments -- e.g. to compare this model
-with your own, or using it in a complex IR pipeline (e.g. distillation). Please
-refer to the `experimaestro-IR documentation <https://experimaestro-ir.readthedocs.io/>_`
-for more details::
+In this mode, the loaded model is an experimaestro configuration that can be
+composed with other components (e.g. for comparison, distillation, or pipeline
+integration)::
 
     from xpmir.models import AutoModel
 
@@ -28,9 +32,10 @@ for more details::
     model = AutoModel.load_from_hf_hub("xpmir/monobert")
 
 Pure inference mode
--------------------
+^^^^^^^^^^^^^^^^^^^
 
-In this mode, the model can be used right away to score documents::
+In this mode, the model is instantiated immediately and can score
+documents right away::
 
     from xpmir.models import AutoModel
 
@@ -43,14 +48,14 @@ In this mode, the model can be used right away to score documents::
 Cross-encoders
 --------------
 
-Cross-encoders models can also be created from any transformer model that has been trained
-to classify a query/document using :py:meth:`cross_encoder_model <xpmir.models.AutoModel.cross_encoder_model>`
-
-
+Cross-encoder models can also be created from any HuggingFace transformer
+checkpoint trained for sequence classification, using
+:meth:`~xpmir.models.AutoModel.cross_encoder_model`.
 
 
 Dense models
 ------------
 
-:py:class:`Dense <xpmir.neural.dual.Dense>` models can also be created from
-transformers from the Sentence Transformers library (`HuggingFace Hub list <https://huggingface.co/models?library=sentence-transformers>`_) using :py:meth:`sentence_scorer <xpmir.models.AutoModel.sentence_scorer>`.
+:class:`~xpmir.neural.dual.Dense` models can be created from any
+`Sentence Transformers <https://huggingface.co/models?library=sentence-transformers>`_
+checkpoint using :meth:`~xpmir.models.AutoModel.sentence_scorer`.
