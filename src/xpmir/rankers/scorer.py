@@ -15,6 +15,7 @@ from typing_extensions import ReadOnly
 from xpmir.text import TokenizedTexts
 import torch
 import torch.nn as nn
+from lightning_fabric import Fabric
 from experimaestro import Param, Config, Meta, field, tqdm
 from datamaestro_ir.data import (
     Documents,
@@ -22,6 +23,7 @@ from datamaestro_ir.data import (
     SimpleTextItem,
 )
 import os
+import torch.distributed as dist
 from xpm_torch import Module, Random
 from xpm_torch.utils.utils import Initializable
 from xpm_torch.utils.logging import EasyLogger
@@ -300,6 +302,18 @@ class ReRankingDataset(ShardedIterableDataset):
         self.retriever = retriever
 
     def iter_shard(self, shard_id: int, num_shards: int):
+        import os
+
+        rank = os.environ.get(
+            "SLURM_PROCID", os.environ.get("RANK", os.environ.get("LOCAL_RANK", "0"))
+        )
+        logger.debug(
+            "ReRankingDataset (rank %s): shard %d/%d starting (total queries: %d)",
+            rank,
+            shard_id,
+            num_shards,
+            len(self.queries),
+        )
         for i in range(shard_id, len(self.queries), num_shards):
             qid, query = self.queries[i]
             # Pull first-stage results on-the-fly to avoid materialising everything
@@ -322,28 +336,15 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
         _scoredDocuments.sort(reverse=True)
         return _scoredDocuments[: (self.top_k or len(_scoredDocuments))]
 
-    @torch.no_grad()
-    def retrieve_all(
-        self, queries: Dict[str, IDTextRecord]
-    ) -> Dict[str, List[ScoredDocument]]:
-        """Retrieves documents for all queries in an efficient two - stage fashion:
-        - populate a `PointWiseItem` dataset with the documents from first stage
-        - reranks them on the fly with the scorer with given batch size
-        - if self.batchsize is 0, scores all documents from the same query at once (will cause OOM large top_k first stages)
+    def build_reranking_dataloader(self, queries: Dict[str, IDTextRecord]):
+        """Builds a dataloader for re-ranking all documents for a set of queries
+        Allows for efficient two-stage retrieval with cross-query batching on GPU when the scorer supports it (i.e. is an AbstractModuleScorer and batchsize > 0).
         """
-        # Scorer in evaluation mode
-        self.scorer.eval()
-
-        if self.batchsize == 0:
-            # Fallback to per-query retrieval if no batchsize
-            return super().retrieve_all(queries)
-
         # We don't materialise everything, but iterate on the fly
         dataset = ReRankingDataset(queries, self.retriever)
 
         # get underlying module if wrapped (e.g. Fabric)
         scorer = self.scorer.module if hasattr(self.scorer, "module") else self.scorer
-        scorer_type = type(scorer)
 
         if hasattr(scorer, "get_tokenizer_fn"):
             tokenization_fn = scorer.get_tokenizer_fn()
@@ -364,10 +365,58 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
             collate_fn=collate_fn,
         )
 
+        fabric: Fabric = getattr(self, "fabric", None)
+        if fabric:
+            dataloader = fabric.setup_dataloaders(dataloader)
+
+        return dataloader
+
+    @torch.no_grad()
+    def retrieve_all(
+        self, queries: Dict[str, IDTextRecord]
+    ) -> Dict[str, List[ScoredDocument]]:
+        """Retrieves documents for all queries in an efficient two - stage fashion:
+        - populate a `PointWiseItem` dataset with the documents from first stage
+        - reranks them on the fly with the scorer with given batch size
+        - if self.batchsize is 0, scores all documents from the same query at once (will cause OOM large top_k first stages)
+        """
+        # Scorer in evaluation mode
+        self.scorer.eval()
+
+        if self.batchsize == 0:
+            # Fallback to per-query retrieval if no batchsize
+            return super().retrieve_all(queries)
+
+        # get underlying module if wrapped (e.g. Fabric)
+        scorer = self.scorer.module if hasattr(self.scorer, "module") else self.scorer
+        scorer_type = type(scorer)
+
+        fabric: Fabric = getattr(self, "fabric", None)
+        dataloader = self.build_reranking_dataloader(queries)
+
         # Process in batches
         scored_results = {qid: [] for qid in queries}
         seen_qids = set()
-        pbar = tqdm(total=len(queries), desc="Re-ranking", unit="query")
+
+        disable_tqdm = fabric is not None and not fabric.is_global_zero
+
+        # Calculate local total for the progress bar to reach 100% on rank 0
+        total_to_process = len(queries)
+        if fabric and fabric.world_size > 1:
+            # Number of queries this specific rank (0) will handle
+            total_to_process = len(
+                range(fabric.global_rank, len(queries), fabric.world_size)
+            )
+
+        pbar = (
+            tqdm(
+                total=total_to_process,
+                desc="Re-ranking",
+                unit="query",
+            )
+            if not disable_tqdm
+            else None
+        )
 
         if issubclass(scorer_type, AbstractModuleScorer):
             logger.info(
@@ -396,7 +445,8 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
                     qid = item.topic["id"]
                     if qid not in seen_qids:
                         seen_qids.add(qid)
-                        pbar.update(1)
+                        if pbar is not None:
+                            pbar.update(1)
                     scored_results[qid].append(
                         ScoredDocument(item.document, float(score.item()))
                     )
@@ -407,7 +457,8 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
                     qid = item.topic["id"]
                     if qid not in seen_qids:
                         seen_qids.add(qid)
-                        pbar.update(1)
+                        if pbar is not None:
+                            pbar.update(1)
                     by_query.setdefault(qid, []).append(
                         ScoredDocument(item.document, item.relevance)
                     )
@@ -415,7 +466,29 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
                 for qid, docs in by_query.items():
                     scored_results[qid].extend(self.scorer.rsv(queries[qid], docs))
 
-        pbar.close()
+        if pbar is not None:
+            pbar.close()
+
+        if fabric and fabric.world_size > 1:
+            # Gather results from all GPUs
+            # We use a list of tuples and filter empty results to reduce
+            # communication overhead. Using torch.distributed directly for
+            # objects is more robust than fabric.all_gather which is tensor-oriented.
+            local_results = [
+                (qid, docs) for qid, docs in scored_results.items() if docs
+            ]
+            gathered_data = [None] * fabric.world_size
+            dist.all_gather_object(gathered_data, local_results)
+
+            if fabric.is_global_zero:
+                # Merge them back into one master dictionary
+                final_results = {qid: [] for qid in queries}
+                for rank_results in gathered_data:
+                    for qid, docs in rank_results:
+                        final_results[qid].extend(docs)
+                scored_results = final_results
+            else:
+                return {}
 
         # Sort and truncate
         for qid in scored_results:
