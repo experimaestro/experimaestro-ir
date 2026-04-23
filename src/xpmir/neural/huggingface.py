@@ -416,6 +416,13 @@ def hf_cross_scorer(
     max_doc_length: Optional[int] = None,
 ) -> Tuple[HFCrossScorer, List[LightweightTask]]:
     """Creates an HFCrossScorer model from a pre-trained HuggingFace checkpoint.
+    Usage example:
+    >>> from xpmir.neural.huggingface import hf_cross_scorer
+    >>> scorer, init_tasks = hf_cross_scorer("cross-encoder/ms-marco-MiniLM-L6-v2")
+        >>> for task in init_tasks: task.instance().execute()  # run initialization tasks to load the model
+    If max lengths are not provided, the tokenizer's default max length will be used for both query and document, which may lead to truncation of one or both sides depending on the model's
+    max_length. For more control, specify max_query_length and max_doc_length to set explicit limits for each side.
+
     if no max_query_length or max_doc_length is provided, will default to HF config max_length for qeur with no query truncation.
     :param hf_id: The HuggingFace model ID
     :param max_query_length: Maximum query length
