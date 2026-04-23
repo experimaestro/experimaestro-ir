@@ -1,76 +1,79 @@
 import torch
+import pytest
+from sentence_transformers import CrossEncoder
 from xpmir.neural.sentence_transformers import st_cross_scorer
 from xpmir.letor.records import PointwiseItems
 
 
-def test_st_cross_encoder_basic():
-    model_id = "cross-encoder/ms-marco-TinyBERT-L-2-v2"
-    scorer, init_tasks = st_cross_scorer(model_id=model_id, max_length=16)
+@pytest.mark.parametrize(
+    "model_id",
+    [
+        "Qwen/Qwen3-Reranker-0.6B",
+        "cross-encoder/ms-marco-MiniLM-L6-v2",
+        "mixedbread-ai/mxbai-rerank-base-v2",
+    ],
+)
+def test_st_cross_encoder_parity(model_id):
+    """Verify parity between raw sentence-transformers and STCrossEncoder.
+    Ensures that both direct and tokenized calls in xpmir yield the same scores as the raw ST implementation.
+    """
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if torch.backends.mps.is_available():
+        device = torch.device("mps")
+
+    # 1. Setup raw ST implementation
+    model = CrossEncoder(model_id, device=str(device))
+
+    queries = [
+        "Which planet is known as the Red Planet?",
+        "Which planet is known as the Red Planet?",
+    ]
+
+    documents = [
+        "Venus is often called Earth's twin because of its similar size and proximity.",
+        "Mars, known for its reddish appearance, is often referred to as the Red Planet.",
+    ]
+
+    pairs = [[query, doc] for query, doc in zip(queries, documents)]
+
+    # Process one by one to avoid ST's internal batch sorting for exact parity
+    raw_scores = []
+    for pair in pairs:
+        score = model.predict([pair], convert_to_tensor=True)
+        raw_scores.append(score)
+    raw_scores = torch.cat(raw_scores)
+
+    # 2. Setup xpmir STCrossEncoder implementation
+    scorer, init_tasks = st_cross_scorer(model_id=model_id)
     scorer = scorer.instance()
+    scorer.to(device)
 
     # Run initialization tasks
     for task in init_tasks:
         task.instance().execute()
 
-    # Check if ST model is loaded
-    assert hasattr(scorer, "st_model")
+    # 3. Compare scores
+    for i in range(len(queries)):
+        records = PointwiseItems.from_texts(
+            topics=[queries[i]], documents=[documents[i]]
+        )
 
-    # Create sample data (repeating query for each document)
-    records = PointwiseItems.from_texts(
-        topics=["Red Planet", "Red Planet"],
-        documents=["Mars is the Red Planet", "Venus is hot"],
-        relevances=[1.0, 0.0],
-    )
+        # Direct call
+        with torch.no_grad():
+            score_dir = scorer(records).view(-1)
 
-    # Test forward without pre-tokenization
-    # Using __call__ which calls forward
-    scores = scorer(records)
+        # Pre-tokenized call
+        tokenized = scorer.batch_tokenize(records)
+        with torch.no_grad():
+            score_tok = scorer(records, tokenized=tokenized).view(-1)
 
-    print(scores)
-    assert isinstance(scores, torch.Tensor)
-    # Output can be (2, 1) or (2,) depending on the model
-    scores = scores.view(-1)
-    assert scores.shape[0] == 2
-
-    # Test batch_tokenize
-    tokenized = scorer.batch_tokenize(records)
-    assert tokenized.ids is not None
-    assert tokenized.ids.shape[0] == 2
-
-    # Test forward with pre-tokenization
-    scores_tokenized = scorer(records, tokenized=tokenized).view(-1)
-    # The scores should be identical because they use the same underlying model and parameters
-    assert torch.allclose(scores, scores_tokenized, atol=1e-5)
-
-
-def test_st_cross_encoder_templates():
-    model_id = "cross-encoder/ms-marco-TinyBERT-L-2-v2"
-
-    # Using templates similar to the user example
-    query_template = "Query: {query}"
-    doc_template = "Document: {document}"
-
-    scorer, init_tasks = st_cross_scorer(
-        model_id=model_id,
-        max_length=32,
-        query_template=query_template,
-        document_template=doc_template,
-    )
-    scorer = scorer.instance()
-
-    for task in init_tasks:
-        task.instance().execute()
-
-    records = PointwiseItems.from_texts(
-        topics=["Red Planet"], documents=["Mars is the Red Planet"], relevances=[1.0]
-    )
-
-    # This should apply templates internally
-    scores = scorer(records)
-    assert scores.view(-1).shape[0] == 1
-
-
-if __name__ == "__main__":
-    test_st_cross_encoder_basic()
-    test_st_cross_encoder_templates()
-    print("Tests passed!")
+        # Assertions
+        expected = raw_scores[i]
+        # Use a slightly higher tolerance for BFloat16 vs Float32 if necessary
+        # but Qwen3-Reranker-0.6B usually yields exact matches in sequential mode
+        assert torch.allclose(score_dir.to(expected.dtype), expected, atol=1e-4), (
+            f"Direct score mismatch at index {i}: expected {expected}, got {score_dir}"
+        )
+        assert torch.allclose(score_tok.to(expected.dtype), expected, atol=1e-4), (
+            f"Tokenized score mismatch at index {i}: expected {expected}, got {score_tok}"
+        )

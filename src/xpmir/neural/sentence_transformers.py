@@ -9,17 +9,20 @@ loading instructions via
 """
 
 import json
+import torch
 from pathlib import Path
 from typing import Optional, List, Tuple
 
-import torch
-from experimaestro import Param, field, LightweightTask
+from sentence_transformers import CrossEncoder
+from sentence_transformers.base.modules import Transformer
 
+from experimaestro import Param, field, LightweightTask
 from xpmir.text import TokenizedTexts
 from xpmir.letor.records import BaseItems
 from xpmir.rankers import AbstractModuleScorer
 from xpm_torch.utils import to_device
-from xpmir.text.tokenizers import TokenizerOptions
+from xpmir.text.tokenizers import TokenizerOptions, TokenizerBase
+
 
 import logging
 
@@ -187,24 +190,20 @@ class SpladeLoaderMixin:
 
 
 class STCrossEncoder(AbstractModuleScorer):
-    """A cross-encoder model leveraging the sentence-transformers library."""
+    """A cross-encoder model leveraging the sentence-transformers library.
+    It supports both direct raw text input and pre-tokenized input, utilizing the ST model's native tokenization and forward pass for consistency.
+    """
 
     model_id: Param[str]
     """The HuggingFace model ID or path."""
 
     max_length: Param[Optional[int]] = field(default=None)
-    """Maximum sequence length."""
+    """Maximum sequence length for tokenization."""
 
-    query_template: Param[Optional[str]] = field(default=None)
-    """Template for query formatting (e.g., `<|im_start|>user\\n<Query>: {query}\\n`)."""
-
-    document_template: Param[Optional[str]] = field(default=None)
-    """Template for document formatting (e.g., `<Document>: {document}<|im_end|>\\n`)."""
+    st_model: CrossEncoder
 
     def __initialize__(self):
         super().__initialize__()
-        print(f"DEBUG: Initializing STCrossEncoder {id(self)}")
-        from sentence_transformers import CrossEncoder
 
         self.st_model = CrossEncoder(
             self.model_id,
@@ -212,41 +211,31 @@ class STCrossEncoder(AbstractModuleScorer):
         )
         self._initialized = True
 
-    def batch_tokenize(
+    @property
+    def tokenizer(self) -> TokenizerBase:
+        """Returns a tokenizer that uses the ST model's native tokenization."""
+        return self.st_model.tokenizer
+
+    def tokenize(
         self,
         input_records: BaseItems,
         options: Optional[TokenizerOptions] = None,
     ) -> TokenizedTexts:
-        """Transform the text to tokens by using the tokenizer."""
-        if not self._initialized:
-            self.initialize()
-
-        # Prepare formatted texts
+        # Prepare raw texts
         queries = [record["text_item"].text for record in input_records.unique_topics]
         documents = [
             record["text_item"].text for record in input_records.unique_documents
         ]
 
-        if self.query_template:
-            queries = [self.query_template.format(query=q) for q in queries]
-        if self.document_template:
-            documents = [self.document_template.format(document=d) for d in documents]
-
         # Reconstruct pairs
         pairs = []
         q_ix, d_ix = input_records.pairs()
         for qi, di in zip(q_ix, d_ix):
-            pairs.append((queries[qi], documents[di]))
+            pairs.append([queries[qi], documents[di]])
 
-        # Tokenize using the underlying ST tokenizer
-        # (ST CrossEncoder.tokenizer is a transformers tokenizer)
-        r = self.st_model.tokenizer(
-            pairs,
-            max_length=self.max_length,
-            truncation=True,
-            padding=True,
-            return_tensors="pt",
-        )
+        # Use ST model's preprocess to handle prompts and chat templates correctly
+        max_length = options.max_length if options else self.max_length
+        r = self.st_model.preprocess(pairs, max_length=max_length)
 
         return TokenizedTexts(
             tokens=None,
@@ -255,6 +244,23 @@ class STCrossEncoder(AbstractModuleScorer):
             mask=r.get("attention_mask", None),
             token_type_ids=r.get("token_type_ids", None),
         )
+
+    def vocabulary_size(self) -> int:
+        return self.st_model.tokenizer.vocab_size
+
+    def tok2id(self, tok: str) -> int:
+        return self.st_model.tokenizer.convert_tokens_to_ids(tok)
+
+    def id2tok(self, idx: int) -> str:
+        return self.st_model.tokenizer.convert_ids_to_tokens(idx)
+
+    def batch_tokenize(
+        self,
+        input_records: BaseItems,
+        options: Optional[TokenizerOptions] = None,
+    ) -> TokenizedTexts:
+        """Transform the text to tokens by using the tokenizer."""
+        return self.tokenize(input_records, options=options)
 
     def get_tokenizer_fn(self):
         return self.batch_tokenize
@@ -267,46 +273,53 @@ class STCrossEncoder(AbstractModuleScorer):
         if not self._initialized:
             self.initialize()
 
-        if tokenized is not None:
-            # Efficiency: use the underlying HF model directly if tokenized is provided
-            with torch.set_grad_enabled(torch.is_grad_enabled()):
-                kwargs = {
-                    "input_ids": to_device(tokenized.ids, self.device),
-                    "attention_mask": to_device(tokenized.mask, self.device),
-                }
-                if tokenized.token_type_ids is not None:
-                    kwargs["token_type_ids"] = to_device(
-                        tokenized.token_type_ids, self.device
-                    )
-                # ST CrossEncoder's model is an AutoModelForSequenceClassification
-                result = self.st_model.model(**kwargs).logits
-            return result
+        if tokenized is None:
+            # Extract raw pairs from inputs
+            queries = [record["text_item"].text for record in inputs.unique_topics]
+            documents = [record["text_item"].text for record in inputs.unique_documents]
+            pairs = []
+            q_ix, d_ix = inputs.pairs()
+            for qi, di in zip(q_ix, d_ix):
+                pairs.append([queries[qi], documents[di]])
 
-        # If not tokenized, we use the ST predict method which handles everything
-        # but first we must format the pairs
-        queries = [record["text_item"].text for record in inputs.unique_topics]
-        documents = [record["text_item"].text for record in inputs.unique_documents]
+            # Use raw ST predict function
+            scores = self.st_model.predict(
+                pairs,
+                batch_size=len(pairs),
+                convert_to_tensor=True,
+                show_progress_bar=False,
+            )
 
-        if self.query_template:
-            queries = [self.query_template.format(query=q) for q in queries]
-        if self.document_template:
-            documents = [self.document_template.format(document=d) for d in documents]
+            return to_device(scores, self.device)
 
-        pairs = []
-        q_ix, d_ix = inputs.pairs()
-        for qi, di in zip(q_ix, d_ix):
-            pairs.append((queries[qi], documents[di]))
+        # If tokenized is given, use the model modules sequentially
+        with torch.set_grad_enabled(torch.is_grad_enabled()):
+            features = {
+                "input_ids": to_device(tokenized.ids, self.device),
+                "attention_mask": to_device(tokenized.mask, self.device),
+            }
+            if tokenized.token_type_ids is not None:
+                features["token_type_ids"] = to_device(
+                    tokenized.token_type_ids, self.device
+                )
 
-        # We must use torch here, and ensure it's on the right device
-        # model.predict returns a numpy array by default unless convert_to_tensor=True
-        scores = self.st_model.predict(
-            pairs,
-            batch_size=len(pairs),
-            convert_to_tensor=True,
-            show_progress_bar=False,
-        )
+            # Causal models need logits_to_keep=1 for LogitScore module
+            if isinstance(self.st_model[0], Transformer) and self.st_model[
+                0
+            ].transformer_task in ("text-generation", "any-to-any"):
+                features["logits_to_keep"] = 1
 
-        return to_device(scores, self.device)
+            # Run through all modules (Transformer, LogitScore, etc.)
+            # using the model's native forward pass (BaseModel inherits nn.Sequential)
+            features = self.st_model(features)
+            result = features["scores"]
+
+            # Squeeze [batch_size, 1] -> [batch_size] for single-label models
+            # to match predict() behavior
+            if result.ndim > 1 and result.shape[-1] == 1:
+                result = result.squeeze(-1)
+
+        return result
 
 
 class InitSTCrossEncoder(LightweightTask):
@@ -315,28 +328,21 @@ class InitSTCrossEncoder(LightweightTask):
     model: Param[STCrossEncoder]
 
     def execute(self):
-        print(f"DEBUG: Executing InitSTCrossEncoder for model {id(self.model)}")
         self.model.initialize()
 
 
 def st_cross_scorer(
     model_id: str,
     max_length: Optional[int] = None,
-    query_template: Optional[str] = None,
-    document_template: Optional[str] = None,
 ) -> Tuple[STCrossEncoder, List[LightweightTask]]:
     """Creates an STCrossEncoder model.
 
     :param model_id: The HuggingFace model ID
     :param max_length: Maximum sequence length
-    :param query_template: Template for query formatting
-    :param document_template: Template for document formatting
     :returns: (STCrossEncoder, init_tasks)
     """
     scorer = STCrossEncoder.C(
         model_id=model_id,
         max_length=max_length,
-        query_template=query_template,
-        document_template=document_template,
     )
     return scorer, [InitSTCrossEncoder.C(model=scorer)]
