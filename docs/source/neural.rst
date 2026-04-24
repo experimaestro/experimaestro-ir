@@ -100,3 +100,14 @@ re-rankers in a multi-stage pipeline.
 .. autoxpmconfig:: xpmir.text.huggingface.base.HFConfigID
 .. autoxpmconfig:: xpmir.text.huggingface.base.HFModelInitBase
 .. autoxpmconfig:: xpmir.text.huggingface.base.HFSequenceClassification
+
+Cross-encoders (Sentence-Transformers)
+-------------------------------------
+
+XPMIR also supports cross-encoders via the `Sentence Transformers <https://sbert.net/docs/cross_encoder/usage/usage.html>`_
+library. This is particularly useful for models that require specific chat templates
+or prompt-based ranking (like some LLM-based rankers) that are natively supported
+by Sentence-Transformers.
+
+.. autoxpmconfig:: xpmir.neural.sentence_transformers.STCrossEncoder
+.. autoxpmconfig:: xpmir.neural.sentence_transformers.InitSTCrossEncoder

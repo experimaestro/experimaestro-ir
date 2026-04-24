@@ -309,7 +309,12 @@ class InitCEFromHFID(HFModelInitBase):
 
 
 class HFCrossScorer(AbstractModuleScorer):
-    """Load a cross scorer model from the huggingface"""
+    """Load a cross scorer model from the huggingface.
+
+    Example:
+        >>> from xpmir.neural.huggingface import hf_cross_scorer
+        >>> model, init_tasks = hf_cross_scorer(hf_id="cross-encoder/ms-marco-MiniLM-L-6-v2")
+    """
 
     encoder: Param[HFSequenceClassification]
     """The encoder from Hugging Face"""

@@ -191,7 +191,13 @@ class SpladeLoaderMixin:
 
 class STCrossEncoder(AbstractModuleScorer):
     """A cross-encoder model leveraging the sentence-transformers library.
-    It supports both direct raw text input and pre-tokenized input, utilizing the ST model's native tokenization and forward pass for consistency.
+
+    It supports both direct raw text input and pre-tokenized input, utilizing the
+    ST model's native tokenization and forward pass for consistency.
+
+    Example:
+        >>> from xpmir.neural.sentence_transformers import st_cross_scorer
+        >>> model, init_tasks = st_cross_scorer(model_id="mixedbread-ai/mxbai-rerank-base-v1")
     """
 
     model_id: Param[str]
