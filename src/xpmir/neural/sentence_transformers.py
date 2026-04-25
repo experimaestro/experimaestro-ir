@@ -17,6 +17,7 @@ from sentence_transformers import CrossEncoder
 from sentence_transformers.base.modules import Transformer
 
 from experimaestro import Param, field, LightweightTask
+from xpmir.text.huggingface.tokenizers import get_default_max_len
 from xpmir.text import TokenizedTexts
 from xpmir.letor.records import BaseItems
 from xpmir.rankers import AbstractModuleScorer
@@ -207,6 +208,16 @@ class STCrossEncoder(AbstractModuleScorer):
     """Maximum sequence length for tokenization."""
 
     st_model: CrossEncoder
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        if self.max_length is None:
+            # try to infer it from config
+            self.max_length = get_default_max_len(self.model_id)
+            logger.warning(
+                f"No max_len provided for STCrossEncoder, using default hf: {self.max_length}"
+            )
 
     def __initialize__(self):
         super().__initialize__()
