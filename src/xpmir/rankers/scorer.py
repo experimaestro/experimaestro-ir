@@ -324,7 +324,13 @@ class ReRankingDataset(ShardedIterableDataset):
 
 class TwoStageRetriever(AbstractTwoStageRetriever):
     """Use on retriever to select the top-K documents which are the re-ranked
-    given a scorer"""
+    given a scorer.
+
+    Multi-GPU support:
+        When set up with a :class:`lightning.Fabric` instance, :meth:`retrieve_all`
+        shards the re-ranking task across GPUs and gathers the results. It uses
+        efficient cross-query batching to maximize GPU throughput.
+    """
 
     def retrieve(self, record: IDTextRecord):
         # Calls the retriever

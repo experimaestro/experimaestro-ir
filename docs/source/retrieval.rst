@@ -68,6 +68,57 @@ document text, or exhaustive scoring.
 .. autoxpmconfig:: xpmir.rankers.retriever.RunRetriever
 
 
+Distributed Retrieval
+---------------------
+
+XPMIR supports distributed retrieval and re-ranking across multiple GPUs using
+`Lightning Fabric <https://lightning.ai/docs/fabric/>`_. **Currently, this
+optimized distributed logic is implemented for :class:`~xpmir.index.sparse.SparseRetriever`
+and :class:`~xpmir.rankers.scorer.TwoStageRetriever`.**
+
+This is particularly useful for large-scale evaluation on thousands of queries.
+
+How it works
+^^^^^^^^^^^^
+
+When a retriever is configured with a Fabric instance, the :meth:`~xpmir.rankers.retriever.Retriever.retrieve_all`
+method leverages all available devices:
+
+1. **Query Sharding**: The set of queries is automatically partitioned across
+   the available GPUs.
+2. **Parallel Processing**: Each device processes its assigned shard.
+   - For **Sparse Retrieval** (:class:`~xpmir.index.sparse.SparseRetriever`),
+     queries are encoded in batches and searched via asynchronous workers.
+   - For **Two-Stage Retrieval** (:class:`~xpmir.rankers.scorer.TwoStageRetriever`),
+     document re-ranking is batched across queries for maximum throughput.
+3. **Result Gathering**: Once processing is complete, results are collected
+   from all ranks and merged on the global zero rank.
+
+Usage
+^^^^^
+
+Distributed retrieval is automatically enabled when using the :class:`~xpmir.evaluation.Evaluate`
+task with a multi-GPU :class:`~xpm_torch.configuration.FabricConfiguration`.
+
+To use it manually in a script:
+
+.. code-block:: python
+
+    from lightning import Fabric
+    fabric = Fabric(devices=2, strategy="ddp")
+    fabric.launch()
+
+    retriever.initialize()
+    retriever.setup_with_fabric(fabric)
+
+    # Distributed retrieval
+    results = retriever.retrieve_all(queries)
+
+    # Results are gathered on rank 0
+    if fabric.is_global_zero:
+        print(f"Total queries retrieved: {len(results)}")
+
+
 Index backends
 --------------
 

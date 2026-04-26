@@ -18,6 +18,11 @@ These configurations define how a retrieval run is evaluated.
 :class:`~xpmir.evaluation.BaseEvaluation` is the abstract base;
 :class:`~xpmir.evaluation.Evaluate` is the standard concrete implementation.
 
+The :class:`~xpmir.evaluation.Evaluate` task automatically handles multi-GPU
+acceleration if the provided ``fabric_config`` specifies multiple devices.
+It shards the retrieval/re-ranking task across GPUs and merges the final run
+before computing metrics.
+
 .. autoxpmconfig:: xpmir.evaluation.BaseEvaluation
 .. autoxpmconfig:: xpmir.evaluation.RunEvaluation
 

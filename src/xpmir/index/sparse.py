@@ -9,6 +9,7 @@ import threading
 import heapq
 from lightning import Fabric
 import torch
+import torch.distributed as dist
 from queue import Empty, Queue
 import torch.multiprocessing as mp
 import numpy as np
@@ -321,6 +322,18 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
 
 
 class SparseRetriever(Retriever, Generic[InputType]):
+    """Retriever for learned sparse models (e.g. SPLADE).
+
+    This retriever uses a :class:`TextEncoderBase` to encode queries into sparse
+    vectors, which are then used to search an :class:`AbstractSparseRetrieverIndex`.
+
+    Multi-GPU support:
+        When set up with a :class:`lightning.Fabric` instance, :meth:`retrieve_all`
+        automatically shards the queries across GPUs and merges the results.
+        It also adjusts the number of asynchronous search workers to prevent
+        CPU oversubscription.
+    """
+
     index: Param["AbstractSparseRetrieverIndex"]
     """The sparse retriever index"""
 
@@ -353,6 +366,25 @@ class SparseRetriever(Retriever, Generic[InputType]):
         self, queries: Dict[str, InputType]
     ) -> Dict[str, List[ScoredDocument]]:
         """Input queries: {id: text}"""
+
+        fabric: Optional[Fabric] = getattr(self, "fabric", None)
+        items = list(queries.items())
+
+        # Shard the items if using multi-GPU
+        if fabric and fabric.world_size > 1:
+            items = items[fabric.global_rank :: fabric.world_size]
+            if fabric.is_global_zero:
+                logger.warning(
+                    "Multi-GPU detected for SparseRetriever. Note that for SPLADE, "
+                    "the bottleneck is typically the index retrieval (CPU/IO-bound) "
+                    "rather than query encoding (GPU-bound). Adding more GPUs may not "
+                    "linearly improve performance if CPU resources are limited."
+                )
+
+        cpus = available_cpus()
+        if fabric and fabric.world_size > 1:
+            # Avoid oversubscribing CPUs
+            cpus = max(1, cpus // fabric.world_size)
 
         async def aio_search_worker(progress, results: Dict, queue: asyncio.Queue):
             try:
@@ -389,14 +421,16 @@ class SparseRetriever(Retriever, Generic[InputType]):
             workers = []
             results = {}
             try:
-                queue = asyncio.Queue(available_cpus())
-                items = list(queries.items())
+                queue = asyncio.Queue(cpus)
 
                 with tqdm(
-                    desc="Retrieve documents", total=len(items), unit="queries"
+                    desc="Retrieve documents",
+                    total=len(items),
+                    unit="queries",
+                    disable=fabric is not None and not fabric.is_global_zero,
                 ) as progress:
                     self.encoder.eval()
-                    for _ in range(available_cpus()):
+                    for _ in range(cpus):
                         worker = asyncio.create_task(
                             aio_search_worker(progress, results, queue)
                         )
@@ -416,12 +450,30 @@ class SparseRetriever(Retriever, Generic[InputType]):
                     worker.cancel()
             return results
 
-        logger.info(
-            "Retrieve all with %d CPUs (%.1f GiB available memory)",
-            available_cpus(),
-            available_memory() / (1024**3),
-        )
+        if fabric is None or fabric.is_global_zero:
+            logger.info(
+                "Retrieve all with %d CPUs (%.1f GiB available memory)",
+                cpus,
+                available_memory() / (1024**3),
+            )
         results = asyncio.run(aio_process())
+
+        if fabric and fabric.world_size > 1:
+            # Gather results from all GPUs
+            local_results = list(results.items())
+            gathered_data = [None] * fabric.world_size
+            dist.all_gather_object(gathered_data, local_results)
+
+            if fabric.is_global_zero:
+                # Merge them back into one master dictionary
+                final_results = {}
+                for rank_results in gathered_data:
+                    for qid, docs in rank_results:
+                        final_results[qid] = docs
+                results = final_results
+            else:
+                return {}
+
         return results
 
     def retrieve(self, query: TextRecord, top_k=None) -> List[ScoredDocument]:
