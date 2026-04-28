@@ -155,7 +155,7 @@ class ListwiseSoftmaxCrossEntropy(DistillationListwiseLoss):
     batchwise losses, adapted to listwise distillation.
 
     The original formula is:
-      -logsumexp(normalize(scores) + (1 - 1.0 / relevances), dim=-1).mean()
+      `-logsumexp(normalize(scores) + (1 - 1.0 / relevances), dim=-1).mean()`
 
     where `normalize` depends on the model output type.
     """
@@ -192,7 +192,7 @@ class ListwiseInfoNCE(DistillationListwiseLoss):
 
     This loss expects binary relevance labels (1 for positive, 0 for negative).
     If multiple positives are present, it averages the cross-entropy loss over them.
-    TODO CHECK 
+    TODO CHECK
     """
 
     NAME = "listwise-infonce"
@@ -229,6 +229,64 @@ class ListwiseInfoNCE(DistillationListwiseLoss):
         loss = (loss * mask).sum() / torch.clamp(mask.sum(), min=1.0)
 
         return loss
+
+
+class ListwiseBCE(DistillationListwiseLoss):
+    """Point-wise cross-entropy loss for listwise samples.
+    Computes BCE for each document in the list.
+    """
+
+    NAME = "listwise-bce"
+
+    def initialize(self, ranker: AbstractModuleScorer):
+        super().initialize(ranker)
+        if ranker.outputType == ModuleOutputType.REAL:
+            self.loss = nn.BCEWithLogitsLoss()
+        elif ranker.outputType == ModuleOutputType.PROBABILITY:
+            self.loss = nn.BCELoss()
+        elif ranker.outputType == ModuleOutputType.LOG_PROBABILITY:
+            # For log probability, we use binary_cross_entropy_with_logits on the exp()
+            # or custom loss. Usually REAL is what we have for cross-encoders.
+            self.loss = nn.BCEWithLogitsLoss()
+        else:
+            raise Exception("Not implemented")
+
+    def compute(
+        self, student_scores: Tensor, teacher_scores: Tensor, context: TrainerContext
+    ) -> torch.Tensor:
+        # teacher_scores are binary (1 for positive, 0 for negative)
+        return self.loss(student_scores, teacher_scores.to(student_scores.dtype))
+
+
+class ListwiseHingeLoss(DistillationListwiseLoss):
+    """Pairwise Hinge loss for listwise samples.
+    Computes max(0, margin - (s_pos - s_neg)) for each negative.
+    """
+
+    NAME = "listwise-hinge"
+    margin: Param[float] = field(default=1.0, ignore_default=True)
+
+    def compute(
+        self, student_scores: Tensor, teacher_scores: Tensor, context: TrainerContext
+    ) -> torch.Tensor:
+        # teacher_scores are binary (1 for positive, 0 for negative)
+        is_positive = teacher_scores > 0
+        is_negative = ~is_positive
+
+        # We assume for now that each query has at least one positive and one negative
+        # which is true for DistillationNegativesSampler
+        # pos_scores: (B, num_pos), neg_scores: (B, num_neg)
+        # Note: student_scores[is_positive] returns a flattened tensor, so we reshape
+        # But wait, each query might have different number of positives/negatives?
+        # DistillationNegativesSampler gives exactly 1 pos and passages_per_query - 1 negs.
+
+        batch_size = student_scores.shape[0]
+        pos_scores = student_scores[is_positive].view(batch_size, -1)
+        neg_scores = student_scores[is_negative].view(batch_size, -1)
+
+        # (B, num_pos, 1) - (B, 1, num_neg) -> (B, num_pos, num_neg)
+        loss = F.relu(self.margin - pos_scores.unsqueeze(2) + neg_scores.unsqueeze(1))
+        return loss.mean()
 
 
 ### Trainer

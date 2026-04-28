@@ -171,7 +171,7 @@ class HFSequenceClassification(HFModel):
             # ensure that num_labels is one for a Cross-encoder
             if hasattr(hf_config, "num_labels"):
                 if hf_config.num_labels != self.n_labels:
-                    logger.info(
+                    logger.debug(
                         f"hf config 'n_labels' was {hf_config.num_labels}, setting it to {self.n_labels}"
                     )
                 hf_config.num_labels = self.n_labels

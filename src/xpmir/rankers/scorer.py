@@ -414,6 +414,15 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
                 range(fabric.global_rank, len(queries), fabric.world_size)
             )
 
+        batch_size_info = (
+            f"batch size {self.batchsize}"
+            if issubclass(scorer_type, AbstractModuleScorer)
+            else "rsv (one-by-one)"
+        )
+        logger.info(
+            f"Rank {fabric.global_rank if fabric else 0}: Re-Ranking with '{scorer_type.__name__}' using {batch_size_info}..."
+        )
+
         pbar = (
             tqdm(
                 total=total_to_process,
@@ -424,14 +433,6 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
             else None
         )
 
-        if issubclass(scorer_type, AbstractModuleScorer):
-            logger.info(
-                f"Re-Ranking with '{scorer_type.__name__}' using batch size {self.batchsize}..."
-            )
-        else:
-            logger.info(
-                f"Re-Ranking with '{scorer_type.__name__}' with rsv (one-by-one)..."
-            )
         for inputs in dataloader:
             batch_items = inputs["records"]
             batch = inputs["batch"]
