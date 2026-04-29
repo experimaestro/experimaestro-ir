@@ -25,7 +25,7 @@ from datamaestro_ir.data import (
 import os
 import torch.distributed as dist
 from xpm_torch import Module, Random
-from xpm_torch.utils.utils import Initializable
+from xpm_torch.utils.utils import Initializable, to_device
 from xpm_torch.utils.logging import EasyLogger
 from xpm_torch.datasets import IndexedDataset, ShardedIterableDataset
 from torchdata.stateful_dataloader import StatefulDataLoader
@@ -455,7 +455,10 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
                         if pbar is not None:
                             pbar.update(1)
                     scored_results[qid].append(
-                        ScoredDocument(item.document, float(score.item()))
+                        to_device(
+                            ScoredDocument(item.document, float(score.item())),
+                            "cpu",
+                        )
                     )
             else:
                 # Fallback: group by query and use rsv (score one by one)
@@ -467,7 +470,10 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
                         if pbar is not None:
                             pbar.update(1)
                     by_query.setdefault(qid, []).append(
-                        ScoredDocument(item.document, item.relevance)
+                        to_device(
+                            ScoredDocument(item.document, item.relevance),
+                            "cpu",
+                        )
                     )
 
                 for qid, docs in by_query.items():

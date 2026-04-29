@@ -428,7 +428,7 @@ def hf_cross_scorer(
     If max lengths are not provided, the tokenizer's default max length will be used for both query and document, which may lead to truncation of one or both sides depending on the model's
     max_length. For more control, specify max_query_length and max_doc_length to set explicit limits for each side.
 
-    if no max_query_length or max_doc_length is provided, will default to HF config max_length for qeur with no query truncation.
+    if no max_query_length or max_doc_length is provided, will default to HF config max_length with no query truncation.
     :param hf_id: The HuggingFace model ID
     :param max_query_length: Maximum query length
     :param max_doc_length: Maximum document length
