@@ -83,34 +83,8 @@ class PlaidIndex(Config):
     .. _fast-plaid: https://github.com/lightonai/fast-plaid
     """
 
-    documents: Param[DocumentStore]
-    """The indexed document collection."""
-
-    index_path: Meta[Path] = field(default_factory=PathGenerator("plaid-index"))
+    index_path: Meta[Path]
     """Directory containing the fast-plaid index and side-car files."""
-
-    dim: Param[int]
-    """Per-token embedding dimension stored in the index."""
-
-    n_bits: Param[int] = field(default=2, ignore_default=True)
-    """Number of bits used by fast-plaid for residual quantisation."""
-
-    kmeans_niters: Param[int] = field(default=4, ignore_default=True)
-    """Number of K-means iterations used to build the centroids."""
-
-    n_samples_kmeans: Param[int] = field(default=0, ignore_default=True)
-    """Number of token samples used to train the centroids (0 = fast-plaid
-    default)."""
-
-    compress_only: Param[bool] = field(default=False, ignore_default=True)
-    """When ``True`` the fast-plaid index is built without the IVF search
-    structure. This skips the expensive inverted-list construction and is
-    sufficient when only :meth:`get_document_tokens` is needed.
-
-    Requires fast-plaid support for ``compress_only``
-    (see `lightonai/fast-plaid#41 <https://github.com/lightonai/fast-plaid/pull/41>`_).
-    If the installed version does not support it, the full index is built
-    instead and a warning is logged."""
 
     def _plaid_dir(self) -> Path:
         return self.index_path / _PLAID_SUBDIR
@@ -215,13 +189,7 @@ class PlaidIndexBuilder(Task):
         """Expose a :class:`PlaidIndex` for downstream tasks."""
         return dep(
             PlaidIndex.C(
-                documents=self.documents,
                 index_path=self.index_path,
-                dim=self.encoder.dim,
-                n_bits=self.n_bits,
-                kmeans_niters=self.kmeans_niters,
-                n_samples_kmeans=self.n_samples_kmeans,
-                compress_only=self.compress_only,
             )
         )
 
