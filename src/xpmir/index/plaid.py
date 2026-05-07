@@ -36,8 +36,9 @@ from experimaestro import (
 )
 from datamaestro_ir.data import DocumentStore, IDTextRecord
 
-from xpmir.neural.colbert import ColBERTEncoder
 from xpmir.rankers import Retriever, ScoredDocument
+from xpmir.rankers.scorer import AbstractModuleScorer
+from xpmir.text.encoders import TextEncoderBase
 from xpmir.utils.utils import batchiter
 
 logger = logging.getLogger(__name__)
@@ -152,7 +153,7 @@ class PlaidIndexBuilder(Task):
     documents: Param[DocumentStore]
     """Set of documents to index."""
 
-    encoder: Param[ColBERTEncoder]
+    encoder: Param[TextEncoderBase]
     """The ColBERT-style encoder used to produce per-token embeddings."""
 
     batch_size: Meta[int] = field(default=32, ignore_default=True)
@@ -229,7 +230,7 @@ class PlaidIndexBuilder(Task):
                 if first_batch:
                     create_kwargs = {
                         "documents_embeddings": per_doc_cpu,
-                        "n_bits": self.n_bits,
+                        "nbits": self.n_bits,
                         "kmeans_niters": self.kmeans_niters,
                     }
                     if self.n_samples_kmeans:
@@ -295,7 +296,7 @@ class PlaidRetriever(Retriever):
     .. _fast-plaid: https://github.com/lightonai/fast-plaid
     """
 
-    encoder: Param[ColBERTEncoder]
+    encoder: Param[AbstractModuleScorer]
     """The query encoder. Typically the same encoder that was used to build
     :attr:`index`."""
 
