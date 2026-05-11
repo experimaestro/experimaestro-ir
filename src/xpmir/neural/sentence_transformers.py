@@ -358,8 +358,18 @@ def st_cross_scorer(
     :param max_length: Maximum sequence length
     :returns: (STCrossEncoder, init_tasks)
     """
+    default_max_len = get_default_max_len(model_id)
+
+    if max_length and default_max_len > max_length:
+        max_len = max_length
+    else:
+        logging.warning(
+            f"No max_length provided or default max_length {default_max_len} is not greater than provided max_length {max_length}."
+            f"Using default max_len {default_max_len} for CrossEncoder {model_id}"
+        )
+        max_len = None
     scorer = STCrossEncoder.C(
         model_id=model_id,
-        max_length=max_length,
+        max_length=max_len,
     )
     return scorer, [InitSTCrossEncoder.C(model=scorer)]
