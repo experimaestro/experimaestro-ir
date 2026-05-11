@@ -84,6 +84,11 @@ class BaseEvaluation(Task):
 
     def _execute(self, run: AdhocRunDict, assessments):
         """Evaluate an IR ad-hoc run with trec-eval"""
+        from experimaestro import taskglobals
+
+        if taskglobals.Env.instance().slave:
+            logging.info("Slave process: skipping evaluation write")
+            return
 
         if self.with_run:
             logging.info("Writing the run")
@@ -184,6 +189,9 @@ class Evaluate(BaseEvaluation, Task):
         self.retriever.setup_with_fabric(fabric)
 
         run = get_run(self.retriever, self.dataset)
+
+        if fabric.world_size > 1:
+            fabric.barrier()
         self._execute(run, self.dataset.assessments)
 
 

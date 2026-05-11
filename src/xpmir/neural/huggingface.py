@@ -18,9 +18,8 @@ from xpmir.text.huggingface.base import (
     _resolve_model_path,
     is_local_files_only,
 )
-from xpmir.text.huggingface.tokenizers import HFTokenizer
+from xpmir.text.huggingface.tokenizers import get_default_max_len, HFTokenizer
 from xpmir.text.tokenizers import TokenizerOptions
-
 import logging
 
 logger = logging.getLogger(__name__)
@@ -417,6 +416,7 @@ class CrossEncoderModuleLoader(ModuleLoader):
 
 def hf_cross_scorer(
     hf_id: str,
+    max_length: Optional[int] = None,
     max_query_length: Optional[int] = None,
     max_doc_length: Optional[int] = None,
 ) -> Tuple[HFCrossScorer, List[LightweightTask]]:
@@ -425,20 +425,37 @@ def hf_cross_scorer(
     >>> from xpmir.neural.huggingface import hf_cross_scorer
     >>> scorer, init_tasks = hf_cross_scorer("cross-encoder/ms-marco-MiniLM-L6-v2")
         >>> for task in init_tasks: task.instance().execute()  # run initialization tasks to load the model
-    If max lengths are not provided, the tokenizer's default max length will be used for both query and document, which may lead to truncation of one or both sides depending on the model's
-    max_length. For more control, specify max_query_length and max_doc_length to set explicit limits for each side.
+
+    If max lengths are not provided, the tokenizer's default max length will be used for concatenated query and document, which may lead to truncation of entire document if query is too long.
+    For more control, specify max_query_length and max_doc_length to set explicit limits for each side.
 
     if no max_query_length or max_doc_length is provided, will default to HF config max_length with no query truncation.
     :param hf_id: The HuggingFace model ID
+    :param max_length: Maximum context len
     :param max_query_length: Maximum query length
     :param max_doc_length: Maximum document length
     :returns: (model, init_tasks) tuple
     """
+    default_max_len = get_default_max_len(hf_id)
+
+    # logging.warning
+    if max_length:
+        if default_max_len < max_length:
+            logging.warning(
+                f" Max length {max_length} is greater than backbone config for {hf_id}. Using default HF max_len {default_max_len} for scorer"
+            )
+            max_length = default_max_len
+    else:  # no max
+        logging.warning(
+            f"No max_len provided. Using default max_len {default_max_len} for HF backbone {hf_id}"
+        )
+        max_length = default_max_len
 
     encoder = HFSequenceClassification.C(config=HFConfigID.C(hf_id=hf_id))
     init_tasks = [InitCEFromHFID.C(model=encoder)]
     tokenizer = HFQueryDocTokenizer.C(
         model_id=hf_id,
+        max_length=max_length,
         max_query_length=max_query_length,
         max_doc_length=max_doc_length,
     )
