@@ -24,6 +24,7 @@ import shutil
 from pathlib import Path
 from typing import List, Union
 
+import numpy as np
 import torch
 from experimaestro import (
     Config,
@@ -162,7 +163,15 @@ class PlaidIndexBuilder(Task):
     """The ColBERT-style encoder used to produce per-token embeddings."""
 
     batch_size: Meta[int] = field(default=32, ignore_default=True)
-    """Encoder batch size."""
+    """Encoder batch size. Warning, different from the batch size used internally by fast-plaid"""
+
+    warmup_docs: Param[int] = field(default=1000, ignore_default=True)
+    """Number of documents to encode and accumulate in RAM before creating the fast-plaid index and fitting the centroids.
+    The token embeddings used to initialize the centroids will be sampled randomly from those documents by plaid 
+    (or they will all be used if n_samples_kmeans is 0)."""
+
+    fast_plaid_batch_size: Meta[int] = field(default=32, ignore_default=True)
+    """Fast plaid internal batch size."""
 
     n_bits: Param[int] = field(default=2, ignore_default=True)
     """Number of bits used by fast-plaid for residual quantisation."""
@@ -174,6 +183,12 @@ class PlaidIndexBuilder(Task):
     n_samples_kmeans: Param[int] = field(default=0, ignore_default=True)
     """Number of token samples used to train the centroids (0 = fast-plaid
     default)."""
+
+    max_points_per_centroid: Param[int] = field(default=256, ignore_default=True)
+    """Maximum number of points (documents) per centroid. Controls the creation of new centroids."""
+
+    seed: Param[int] = field(default=42, ignore_default=True)
+    """Random seed for reproducibility (passed to fast-plaid's index creation)."""
 
     compress_only: Param[bool] = field(default=False, ignore_default=True)
     """When ``True``, skip IVF construction. The resulting index supports
@@ -187,10 +202,6 @@ class PlaidIndexBuilder(Task):
     low_memory: Param[bool] = field(default=True)
     """https://github.com/lightonai/fast-plaid#-search-speed-tip-low_memoryfalse
     If index fits on VRAM, set to False for faster search. Otherwise, keep True to avoid OOM errors."""
-
-    device: Meta[str] = field(default="", ignore_default=True)
-    """Device for fast-plaid (``""`` = auto: cuda if available,
-    cpu otherwise)."""
 
     fabric_config: Meta[FabricConfiguration] = field(
         default_factory=FabricConfiguration.C
@@ -229,13 +240,14 @@ class PlaidIndexBuilder(Task):
         plaid_dir = self.index_path / _PLAID_SUBDIR
         plaid_dir.mkdir(parents=True, exist_ok=True)
 
-        device = self.device or None
+        device = fabric.device or None
         fast_plaid = fp_search.FastPlaid(index=str(plaid_dir), device=device, low_memory=self.low_memory)
 
         total_docs = self.documents.documentcount or 0
         ext2int: dict = {}
         num_docs_seen = 0
-        first_batch = True
+        index_created = False
+        warmup_buffer: list = []
 
         with torch.no_grad():
             pbar = tqdm(
@@ -249,37 +261,64 @@ class PlaidIndexBuilder(Task):
                     t.detach().to("cpu", dtype=torch.float32) for t in per_doc
                 ]
 
-                if first_batch:
+                if not index_created:
+                    warmup_buffer.extend(per_doc_cpu)
+
+                    if num_docs_seen + len(per_doc_cpu) >= self.warmup_docs:
+                        logging.info(
+                            "Warmup buffer filled (%d documents, %d tokens). "
+                            "Creating the fast-plaid index and fitting centroids...",
+                            len(warmup_buffer),
+                            sum(t.shape[0] for t in warmup_buffer),
+                        )
+                        # Enough docs accumulated — fit centroids and create index
+                        create_kwargs = {
+                            "documents_embeddings": warmup_buffer,
+                            "nbits": self.n_bits,
+                            "kmeans_niters": self.kmeans_niters,
+                            "batch_size": self.fast_plaid_batch_size,
+                            "seed": self.seed,
+                            "max_points_per_centroid": self.max_points_per_centroid,
+                        }
+                        if self.n_samples_kmeans:
+                            create_kwargs["n_samples_kmeans"] = self.n_samples_kmeans
+                        if self.compress_only:
+                            create_kwargs["compress_only"] = True
+                        try:
+                            fast_plaid.create(**create_kwargs)
+                        except TypeError:
+                            if self.compress_only:
+                                logger.warning(
+                                    "compress_only is not supported by this "
+                                    "version of fast-plaid; building the full "
+                                    "index instead. See "
+                                    "https://github.com/lightonai/fast-plaid/pull/41"
+                                )
+                                del create_kwargs["compress_only"]
+                                fast_plaid.create(**create_kwargs)
+                            else:
+                                raise
+
+                        warmup_buffer.clear()  # free RAM immediately
+                        index_created = True
+                else:
                     create_kwargs = {
-                        "documents_embeddings": per_doc_cpu,
-                        "nbits": self.n_bits,
-                        "kmeans_niters": self.kmeans_niters,
-                    }
+                            "kmeans_niters": self.kmeans_niters,
+                            "batch_size": self.fast_plaid_batch_size,
+                            "seed": self.seed,
+                            "max_points_per_centroid": self.max_points_per_centroid,
+                        }
                     if self.n_samples_kmeans:
                         create_kwargs["n_samples_kmeans"] = self.n_samples_kmeans
                     if self.compress_only:
                         create_kwargs["compress_only"] = True
-                    try:
-                        fast_plaid.create(**create_kwargs)
-                    except TypeError:
-                        if self.compress_only:
-                            # compress_only not yet supported by installed
-                            # fast-plaid — see
-                            # https://github.com/lightonai/fast-plaid/pull/41
-                            logger.warning(
-                                "compress_only is not supported by this "
-                                "version of fast-plaid; building the full "
-                                "index instead. See "
-                                "https://github.com/lightonai/fast-plaid/pull/41"
-                            )
-                            del create_kwargs["compress_only"]
-                            fast_plaid.create(**create_kwargs)
-                        else:
-                            raise
-                    first_batch = False
-                else:
-                    fast_plaid.update(documents_embeddings=per_doc_cpu)
 
+                    fast_plaid.update(
+                        documents_embeddings=per_doc_cpu,
+                        **create_kwargs
+                    )
+
+                # ID mapping — same logic regardless of create vs update path
                 for record in batch:
                     ext_id = record.get("id") if isinstance(record, dict) else None
                     if ext_id is not None:
@@ -287,8 +326,20 @@ class PlaidIndexBuilder(Task):
                     num_docs_seen += 1
 
                 pbar.update(len(per_doc_cpu))
-
             pbar.close()
+
+        # In case the whole corpus was smaller than the warmup buffer, we still want to create the index 
+        if not index_created and warmup_buffer:
+            create_kwargs = {
+                "documents_embeddings": warmup_buffer,
+                "nbits": self.n_bits,
+                "kmeans_niters": self.kmeans_niters,
+                "batch_size": self.fast_plaid_batch_size,
+            }
+            if self.n_samples_kmeans:
+                create_kwargs["n_samples_kmeans"] = self.n_samples_kmeans
+            fast_plaid.create(**create_kwargs)
+            warmup_buffer.clear()
 
         if ext2int:
             with (self.index_path / _EXT2INT_FILE).open("w") as fh:
