@@ -36,8 +36,10 @@ from experimaestro import (
 )
 from datamaestro_ir.data import DocumentStore, IDTextRecord
 
-from xpmir.neural.colbert import ColBERTEncoder
+from xpm_torch.configuration import FabricConfiguration
 from xpmir.rankers import Retriever, ScoredDocument
+from xpmir.rankers.scorer import AbstractModuleScorer
+from xpmir.text.encoders import TextEncoderBase
 from xpmir.utils.utils import batchiter
 
 logger = logging.getLogger(__name__)
@@ -82,6 +84,10 @@ class PlaidIndex(Config):
 
     .. _fast-plaid: https://github.com/lightonai/fast-plaid
     """
+    documents: Param[DocumentStore]
+    """Set of documents to index."""
+
+    compress_only: Param[bool] = False
 
     index_path: Meta[Path]
     """Directory containing the fast-plaid index and side-car files."""
@@ -152,7 +158,7 @@ class PlaidIndexBuilder(Task):
     documents: Param[DocumentStore]
     """Set of documents to index."""
 
-    encoder: Param[ColBERTEncoder]
+    encoder: Param[TextEncoderBase]
     """The ColBERT-style encoder used to produce per-token embeddings."""
 
     batch_size: Meta[int] = field(default=32, ignore_default=True)
@@ -178,9 +184,18 @@ class PlaidIndexBuilder(Task):
     (see `lightonai/fast-plaid#41 <https://github.com/lightonai/fast-plaid/pull/41>`_).
     Falls back to building the full index with a warning if unsupported."""
 
+    low_memory: Param[bool] = field(default=True)
+    """https://github.com/lightonai/fast-plaid#-search-speed-tip-low_memoryfalse
+    If index fits on VRAM, set to False for faster search. Otherwise, keep True to avoid OOM errors."""
+
     device: Meta[str] = field(default="", ignore_default=True)
     """Device for fast-plaid (``""`` = auto: cuda if available,
     cpu otherwise)."""
+
+    fabric_config: Meta[FabricConfiguration] = field(
+        default_factory=FabricConfiguration.C
+    )
+    """Control the device for the model encoding (separate from :attr:`device` which controls the fast-plaid side)."""
 
     index_path: Meta[Path] = field(default_factory=PathGenerator("plaid-index"))
     """Output directory for the index and its side-car files."""
@@ -189,7 +204,9 @@ class PlaidIndexBuilder(Task):
         """Expose a :class:`PlaidIndex` for downstream tasks."""
         return dep(
             PlaidIndex.C(
+                documents=self.documents,
                 index_path=self.index_path,
+                compress_only=self.compress_only
             )
         )
 
@@ -198,8 +215,14 @@ class PlaidIndexBuilder(Task):
             shutil.rmtree(self.index_path)
         self.index_path.mkdir(parents=True, exist_ok=True)
 
-        self.encoder.initialize()
-        self.encoder.eval()
+         # 1. Initialize Fabric first
+        fabric = self.fabric_config.get_fabric()
+        fabric.launch()
+
+        with fabric.init_module():
+            self.encoder.initialize()
+            self.encoder = fabric.setup(self.encoder)
+            self.encoder.eval()
 
         fp_search = _import_fast_plaid()
 
@@ -207,7 +230,7 @@ class PlaidIndexBuilder(Task):
         plaid_dir.mkdir(parents=True, exist_ok=True)
 
         device = self.device or None
-        fast_plaid = fp_search.FastPlaid(index=str(plaid_dir), device=device)
+        fast_plaid = fp_search.FastPlaid(index=str(plaid_dir), device=device, low_memory=self.low_memory)
 
         total_docs = self.documents.documentcount or 0
         ext2int: dict = {}
@@ -229,7 +252,7 @@ class PlaidIndexBuilder(Task):
                 if first_batch:
                     create_kwargs = {
                         "documents_embeddings": per_doc_cpu,
-                        "n_bits": self.n_bits,
+                        "nbits": self.n_bits,
                         "kmeans_niters": self.kmeans_niters,
                     }
                     if self.n_samples_kmeans:
@@ -275,7 +298,7 @@ class PlaidIndexBuilder(Task):
             json.dump(
                 {
                     "num_docs": num_docs_seen,
-                    "dim": self.encoder.dim,
+                    "dim": self.encoder.dimension,
                     "n_bits": self.n_bits,
                 },
                 fh,
@@ -284,7 +307,7 @@ class PlaidIndexBuilder(Task):
         logger.info(
             "fast-plaid index built: %d documents, dim=%d, n_bits=%d",
             num_docs_seen,
-            self.encoder.dim,
+            self.encoder.dimension,
             self.n_bits,
         )
 
@@ -295,7 +318,7 @@ class PlaidRetriever(Retriever):
     .. _fast-plaid: https://github.com/lightonai/fast-plaid
     """
 
-    encoder: Param[ColBERTEncoder]
+    encoder: Param[AbstractModuleScorer]
     """The query encoder. Typically the same encoder that was used to build
     :attr:`index`."""
 
