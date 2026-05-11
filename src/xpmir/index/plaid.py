@@ -206,7 +206,7 @@ class PlaidIndexBuilder(Task):
     fabric_config: Meta[FabricConfiguration] = field(
         default_factory=FabricConfiguration.C
     )
-    """Control the device for the model encoding (separate from :attr:`device` which controls the fast-plaid side)."""
+    """Control the device for the model encoding and fast-plaid index."""
 
     index_path: Meta[Path] = field(default_factory=PathGenerator("plaid-index"))
     """Output directory for the index and its side-car files."""
@@ -387,8 +387,10 @@ class PlaidRetriever(Retriever):
     """Number of candidates for which fast-plaid computes full scores
     (0 = fast-plaid default)."""
 
-    device: Meta[str] = field(default="", ignore_default=True)
-    """Device for fast-plaid (``""`` = auto)."""
+    fabric_config: Meta[FabricConfiguration] = field(
+        default_factory=FabricConfiguration.C
+    )
+    """Control the device for the model encoding and fast-plaid index."""
 
     def initialize(self):
         super().initialize()
@@ -399,12 +401,18 @@ class PlaidRetriever(Retriever):
             )
 
         logger.info("PLAID retriever (1/2): initializing the encoder")
-        self.encoder.initialize()
-        self.encoder.eval()
+        # 1. Initialize Fabric first
+        fabric = self.fabric_config.get_fabric()
+        fabric.launch()
+
+        with fabric.init_module():
+            self.encoder.initialize()
+            self.encoder = fabric.setup(self.encoder)
+            self.encoder.eval()
 
         logger.info("PLAID retriever (2/2): opening the fast-plaid index")
         fp_search = _import_fast_plaid()
-        device = self.device or None
+        device = fabric.device or None
         self._fast_plaid = fp_search.FastPlaid(
             index=str(self.index._plaid_dir()), device=device
         )
