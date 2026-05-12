@@ -163,10 +163,10 @@ class PlaidIndexBuilder(Task):
     """The ColBERT-style encoder used to produce per-token embeddings."""
 
     batch_size: Meta[int] = field(default=32, ignore_default=True)
-    """Encoder batch size. Warning, different from the batch size used internally by fast-plaid"""
+    """Encoder batch size. Warning, different from the batch size used internally by fast-plaid ('fast_plaid_batch_size')"""
 
-    warmup_docs: Param[int] = field(default=1000, ignore_default=True)
-    """Number of documents to encode and accumulate in RAM before creating the fast-plaid index and fitting the centroids.
+    buffer_size: Param[int] = field(default=1000, ignore_default=True)
+    """Number of documents to encode and accumulate in RAM before creating/updating the fast-plaid index and fitting the centroids.
     The token embeddings used to initialize the centroids will be sampled randomly from those documents by plaid 
     (or they will all be used if n_samples_kmeans is 0)."""
 
@@ -247,7 +247,7 @@ class PlaidIndexBuilder(Task):
         ext2int: dict = {}
         num_docs_seen = 0
         index_created = False
-        warmup_buffer: list = []
+        doc_buffer: list = []
 
         with torch.no_grad():
             pbar = tqdm(
@@ -260,20 +260,21 @@ class PlaidIndexBuilder(Task):
                 per_doc_cpu = [
                     t.detach().to("cpu", dtype=torch.float32) for t in per_doc
                 ]
+                doc_buffer.extend(per_doc_cpu)
 
-                if not index_created:
-                    warmup_buffer.extend(per_doc_cpu)
+                if len(doc_buffer) >= self.buffer_size:
+                    logging.debug(
+                        "Warmup buffer filled (%d documents, %d tokens). "
+                        "Creating the fast-plaid index and fitting centroids...",
+                        len(doc_buffer),
+                        sum(t.shape[0] for t in doc_buffer),
+                    )
 
-                    if num_docs_seen + len(per_doc_cpu) >= self.warmup_docs:
-                        logging.info(
-                            "Warmup buffer filled (%d documents, %d tokens). "
-                            "Creating the fast-plaid index and fitting centroids...",
-                            len(warmup_buffer),
-                            sum(t.shape[0] for t in warmup_buffer),
-                        )
+                    if not index_created:
+                    
                         # Enough docs accumulated — fit centroids and create index
                         create_kwargs = {
-                            "documents_embeddings": warmup_buffer,
+                            "documents_embeddings": doc_buffer,
                             "nbits": self.n_bits,
                             "kmeans_niters": self.kmeans_niters,
                             "batch_size": self.fast_plaid_batch_size,
@@ -299,24 +300,23 @@ class PlaidIndexBuilder(Task):
                             else:
                                 raise
 
-                        warmup_buffer.clear()  # free RAM immediately
+                        doc_buffer.clear()  # free RAM immediately
                         index_created = True
-                else:
-                    create_kwargs = {
-                            "kmeans_niters": self.kmeans_niters,
-                            "batch_size": self.fast_plaid_batch_size,
-                            "seed": self.seed,
-                            "max_points_per_centroid": self.max_points_per_centroid,
-                        }
-                    if self.n_samples_kmeans:
-                        create_kwargs["n_samples_kmeans"] = self.n_samples_kmeans
-                    if self.compress_only:
-                        create_kwargs["compress_only"] = True
+                    else:
+                        create_kwargs = {
+                                "kmeans_niters": self.kmeans_niters,
+                                "batch_size": self.fast_plaid_batch_size,
+                                "seed": self.seed,
+                                "max_points_per_centroid": self.max_points_per_centroid,
+                            }
+                        if self.n_samples_kmeans:
+                            create_kwargs["n_samples_kmeans"] = self.n_samples_kmeans
 
-                    fast_plaid.update(
-                        documents_embeddings=per_doc_cpu,
-                        **create_kwargs
-                    )
+                        fast_plaid.update(
+                            documents_embeddings=doc_buffer,
+                            **create_kwargs
+                        )
+                        doc_buffer.clear()  # free RAM immediately
 
                 # ID mapping — same logic regardless of create vs update path
                 for record in batch:
@@ -329,9 +329,9 @@ class PlaidIndexBuilder(Task):
             pbar.close()
 
         # In case the whole corpus was smaller than the warmup buffer, we still want to create the index 
-        if not index_created and warmup_buffer:
+        if not index_created and doc_buffer:
             create_kwargs = {
-                "documents_embeddings": warmup_buffer,
+                "documents_embeddings": doc_buffer,
                 "nbits": self.n_bits,
                 "kmeans_niters": self.kmeans_niters,
                 "batch_size": self.fast_plaid_batch_size,
@@ -339,7 +339,7 @@ class PlaidIndexBuilder(Task):
             if self.n_samples_kmeans:
                 create_kwargs["n_samples_kmeans"] = self.n_samples_kmeans
             fast_plaid.create(**create_kwargs)
-            warmup_buffer.clear()
+            doc_buffer.clear()
 
         if ext2int:
             with (self.index_path / _EXT2INT_FILE).open("w") as fh:
