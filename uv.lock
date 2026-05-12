@@ -785,7 +785,7 @@ wheels = [
 
 [[package]]
 name = "experimaestro"
-version = "2.3.0"
+version = "2.3.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "arpeggio" },
@@ -816,9 +816,9 @@ dependencies = [
     { name = "uvicorn", extra = ["standard"] },
     { name = "watchdog" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/07/3d/ad937fa63dfb68bcc916de22c8ebd818f68645d5472467857f8e07332d15/experimaestro-2.3.0.tar.gz", hash = "sha256:3edec23139f8842924c57eaa50bb8b45d0aedee72f1159104ac348f6c536df76", size = 28547304, upload-time = "2026-03-25T11:57:04.888Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/50/f7/4d1ee42b4988e7a602cb1f9140459ce8d8dda4dde4df47b78ad9d59dacb1/experimaestro-2.3.6.tar.gz", hash = "sha256:6d5ed230b56c8c8603693248a4c1fbec94aae10365c60a2cbddb532e17400eef", size = 28579321, upload-time = "2026-05-12T09:15:44.369Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/19/aa/d8488b6cd7a531fa688af46baa9cf8b218aef74f052e21176a6b0a03ac79/experimaestro-2.3.0-py3-none-any.whl", hash = "sha256:b80dbf9fa06f643f7ac8cc2596df8bd3f65a001b7141695056e573dc2b66883e", size = 3006025, upload-time = "2026-03-25T11:57:02.37Z" },
+    { url = "https://files.pythonhosted.org/packages/05/3f/9783d3bf71b70f556b5c50bd47cca7023196f1f792033d858779afe2d6ec/experimaestro-2.3.6-py3-none-any.whl", hash = "sha256:a60305f4ccda079a7ca507f6b4cc9473fd1cd02f08f23feaab9b120c667a7ce9", size = 3023746, upload-time = "2026-05-12T09:15:41.719Z" },
 ]
 
 [[package]]
@@ -894,7 +894,7 @@ requires-dist = [
     { name = "datamaestro", specifier = ">=0.2.3" },
     { name = "datamaestro-ir", specifier = ">=0.2.0" },
     { name = "docstring-parser" },
-    { name = "experimaestro", specifier = ">=2.3" },
+    { name = "experimaestro", specifier = ">=2.3.6" },
     { name = "fast-plaid", marker = "extra == 'fast-plaid'" },
     { name = "impact-index", specifier = ">=1.2.0" },
     { name = "ir-measures", specifier = ">=0.3.3" },
@@ -6034,7 +6034,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "experimaestro", specifier = ">=2.3" },
+    { name = "experimaestro", specifier = ">=2.3.4" },
     { name = "huggingface-hub", specifier = ">0.17" },
     { name = "lightning", specifier = ">=2.4" },
     { name = "safetensors", specifier = ">=0.4" },

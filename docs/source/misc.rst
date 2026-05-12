@@ -66,6 +66,8 @@ for pairwise distillation).
 .. autoxpmconfig:: xpmir.letor.distillation.listwise.ListwiseSoftmaxCrossEntropy
 .. autoxpmconfig:: xpmir.letor.distillation.listwise.DistillRankNetLoss
 .. autoxpmconfig:: xpmir.letor.distillation.listwise.ADR_MSE
+.. autoxpmconfig:: xpmir.letor.distillation.listwise.ListwiseBCE
+.. autoxpmconfig:: xpmir.letor.distillation.listwise.ListwiseHingeLoss
 .. autoxpmconfig:: xpmir.letor.distillation.samplers.DistillationListwiseSampler
 .. autoxpmconfig:: xpmir.letor.distillation.samplers.DistillationNegativesSampler
 

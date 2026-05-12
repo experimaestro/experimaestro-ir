@@ -94,6 +94,7 @@ re-rankers in a multi-stage pipeline.
 
 .. autoxpmconfig:: xpmir.neural.huggingface.HFCrossScorer
 .. autoxpmconfig:: xpmir.neural.huggingface.HFQueryDocTokenizer
+.. autoxpmconfig:: xpmir.neural.huggingface.LLMRankerTokenizer
 .. autoxpmconfig:: xpmir.neural.huggingface.CrossEncoderModuleLoader
 .. autoxpmconfig:: xpmir.neural.huggingface.InitCEFromHFID
 .. autoxpmconfig:: xpmir.text.huggingface.base.HFConfig

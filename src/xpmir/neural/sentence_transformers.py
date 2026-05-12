@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Optional, List, Tuple
 
 from sentence_transformers import CrossEncoder
-from sentence_transformers.base.modules import Transformer
 
 from experimaestro import Param, field, LightweightTask
 from xpmir.text.huggingface.tokenizers import get_default_max_len
@@ -250,9 +249,14 @@ class STCrossEncoder(AbstractModuleScorer):
         for qi, di in zip(q_ix, d_ix):
             pairs.append([queries[qi], documents[di]])
 
-        # Use ST model's preprocess to handle prompts and chat templates correctly
         max_length = options.max_length if options else self.max_length
-        r = self.st_model.preprocess(pairs, max_length=max_length)
+        r = self.st_model.tokenizer(
+            pairs,
+            padding=True,
+            truncation=True,
+            return_tensors="pt",
+            max_length=max_length,
+        )
 
         return TokenizedTexts(
             tokens=None,
@@ -309,7 +313,6 @@ class STCrossEncoder(AbstractModuleScorer):
 
             return to_device(scores, self.device)
 
-        # If tokenized is given, use the model modules sequentially
         with torch.set_grad_enabled(torch.is_grad_enabled()):
             features = {
                 "input_ids": to_device(tokenized.ids, self.device),
@@ -320,20 +323,11 @@ class STCrossEncoder(AbstractModuleScorer):
                     tokenized.token_type_ids, self.device
                 )
 
-            # Causal models need logits_to_keep=1 for LogitScore module
-            if isinstance(self.st_model[0], Transformer) and self.st_model[
-                0
-            ].transformer_task in ("text-generation", "any-to-any"):
-                features["logits_to_keep"] = 1
+            logits = self.st_model.model(**features, return_dict=True).logits
+            result = self.st_model.activation_fn(logits)
 
-            # Run through all modules (Transformer, LogitScore, etc.)
-            # using the model's native forward pass (BaseModel inherits nn.Sequential)
-            features = self.st_model(features)
-            result = features["scores"]
-
-            # Squeeze [batch_size, 1] -> [batch_size] for single-label models
-            # to match predict() behavior
-            if result.ndim > 1 and result.shape[-1] == 1:
+            # Match predict() behavior for single-label regression models
+            if self.st_model.config.num_labels == 1 and result.ndim > 1:
                 result = result.squeeze(-1)
 
         return result
