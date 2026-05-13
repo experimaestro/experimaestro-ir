@@ -409,10 +409,21 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
         # Calculate local total for the progress bar to reach 100% on rank 0
         total_to_process = len(queries)
         if fabric and fabric.world_size > 1:
-            # Number of queries this specific rank (0) will handle
-            total_to_process = len(
-                range(fabric.global_rank, len(queries), fabric.world_size)
+            # ReRankingDataset shards such that rank R handles indices i where (i // num_workers) % world_size == R
+            _dataloader = (
+                dataloader.dataloader
+                if hasattr(dataloader, "dataloader")
+                else dataloader
             )
+            num_workers = max(1, getattr(_dataloader, "num_workers", 0))
+            total_to_process = sum(
+                1
+                for i in range(len(queries))
+                if (i // num_workers) % fabric.world_size == fabric.global_rank
+            )
+            desc = f"(Rank {fabric.global_rank if fabric else 0}): Re-Ranking"
+        else:
+            desc = "Re-Ranking"
 
         batch_size_info = (
             f"batch size {self.batchsize}"
@@ -420,13 +431,14 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
             else "rsv (one-by-one)"
         )
         logger.info(
-            f"Rank {fabric.global_rank if fabric else 0}: Re-Ranking with '{scorer_type.__name__}' using {batch_size_info}..."
+            f" with '{scorer_type.__name__}' using {batch_size_info}... "
+            f"({total_to_process}/{len(queries)} queries on this rank)"
         )
 
         pbar = (
             tqdm(
                 total=total_to_process,
-                desc="Re-ranking",
+                desc=desc,
                 unit="query",
             )
             if not disable_tqdm
