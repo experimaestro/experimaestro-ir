@@ -203,6 +203,10 @@ class PlaidIndexBuilder(Task):
     """https://github.com/lightonai/fast-plaid#-search-speed-tip-low_memoryfalse
     If index fits on VRAM, set to False for faster search. Otherwise, keep True to avoid OOM errors."""
 
+    force_cpu_indexing: Param[bool] = field(default=False)
+    """When True, forces the use of CPU for indexing even if a GPU is available.
+    This can be useful to avoid GPU OOM errors during indexing, especially for large corpora."""
+
     fabric_config: Meta[FabricConfiguration] = field(
         default_factory=FabricConfiguration.C
     )
@@ -240,7 +244,7 @@ class PlaidIndexBuilder(Task):
         plaid_dir = self.index_path / _PLAID_SUBDIR
         plaid_dir.mkdir(parents=True, exist_ok=True)
 
-        device = fabric.device or None
+        device = fabric.device if not self.force_cpu_indexing else "cpu"
         fast_plaid = fp_search.FastPlaid(index=str(plaid_dir), device=device, low_memory=self.low_memory)
 
         total_docs = self.documents.documentcount or 0
