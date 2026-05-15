@@ -431,7 +431,7 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
             else "rsv (one-by-one)"
         )
         logger.info(
-            f" with '{scorer_type.__name__}' using {batch_size_info}... "
+            f"{desc} with '{scorer_type.__name__}' using {batch_size_info}... "
             f"({total_to_process}/{len(queries)} queries on this rank)"
         )
 
