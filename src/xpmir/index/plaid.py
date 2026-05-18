@@ -108,7 +108,7 @@ class PlaidIndex(Config):
 
     def get_document_tokens(
         self,
-        docid: Union[int, str],
+        docids: List[Union[int, str]],
         device: str = "",
     ) -> torch.Tensor:
         """Return the (approximate) per-token embeddings for a document.
@@ -117,7 +117,7 @@ class PlaidIndex(Config):
         centroid + residual storage using ``FastPlaid.get_embeddings``.
         The reconstruction quality depends on :attr:`n_bits`.
 
-        :param docid: The document identifier. Integers are interpreted as
+        :param docid: The document identifiers. Integers are interpreted as
             internal positions in the index (``0..num_docs-1``); strings are
             looked up in the external-to-internal map written at indexing
             time.
@@ -127,20 +127,22 @@ class PlaidIndex(Config):
             reconstructed token embeddings.
         :raises KeyError: if the external identifier is unknown.
         """
-        if isinstance(docid, str):
+        if isinstance(docids[0], str):
             ext2int = self._load_ext2int()
-            if docid not in ext2int:
-                raise KeyError(
-                    f"External document id {docid!r} is unknown to this index"
-                )
-            internal = int(ext2int[docid])
+            internal_docids: list = []
+            for docid in docids:
+                if docid not in ext2int:
+                    raise KeyError(
+                        f"External document id {docid!r} is unknown to this index"
+                    )
+                internal_docids.append(int(ext2int[docid]))
         else:
-            internal = int(docid)
+            internal_docids = [int(docid) for docid in docids]
 
         fp_search = _import_fast_plaid()
         fp = fp_search.FastPlaid(index=str(self._plaid_dir()), device=device or None)
-        results = fp.get_embeddings(subset=[internal])
-        return results[0]
+        results = fp.get_embeddings(subset=internal_docids)
+        return results
 
 
 class PlaidIndexBuilder(Task):
@@ -339,11 +341,44 @@ class PlaidIndexBuilder(Task):
                 "nbits": self.n_bits,
                 "kmeans_niters": self.kmeans_niters,
                 "batch_size": self.fast_plaid_batch_size,
+                "seed": self.seed,
+                "max_points_per_centroid": self.max_points_per_centroid,
             }
             if self.n_samples_kmeans:
                 create_kwargs["n_samples_kmeans"] = self.n_samples_kmeans
-            fast_plaid.create(**create_kwargs)
+            if self.compress_only:
+                create_kwargs["compress_only"] = True
+            try:
+                fast_plaid.create(**create_kwargs)
+            except TypeError:
+                if self.compress_only:
+                    logger.warning(
+                        "compress_only is not supported by this "
+                        "version of fast-plaid; building the full "
+                        "index instead. See "
+                        "https://github.com/lightonai/fast-plaid/pull/41"
+                    )
+                    del create_kwargs["compress_only"]
+                    fast_plaid.create(**create_kwargs)
+                else:
+                    raise
             doc_buffer.clear()
+        elif index_created and doc_buffer:
+            create_kwargs = {
+                    "kmeans_niters": self.kmeans_niters,
+                    "batch_size": self.fast_plaid_batch_size,
+                    "seed": self.seed,
+                    "max_points_per_centroid": self.max_points_per_centroid,
+                }
+            if self.n_samples_kmeans:
+                create_kwargs["n_samples_kmeans"] = self.n_samples_kmeans
+            fast_plaid.update(
+                documents_embeddings=doc_buffer,
+                **create_kwargs
+            )
+            doc_buffer.clear()
+        else:
+            logger.info("No documents left to encode.")
 
         if ext2int:
             with (self.index_path / _EXT2INT_FILE).open("w") as fh:
