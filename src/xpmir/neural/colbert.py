@@ -27,6 +27,7 @@ from xpmir.text.encoders import (
     TokenizedTextEncoderBase,
 )
 from xpmir.text.tokenizers import TokenizerOptions
+from xpm_torch.utils import to_device
 
 
 class ColBERTEncoder(
@@ -85,7 +86,7 @@ class ColBERTEncoder(
         mask = output.tokenized.mask
         if mask is None:
             return None
-        return mask.to(output.value.device).bool()
+        return to_device(mask, output.value.device).bool()
 
     def document_token_embeddings(
         self, records: List[IDTextRecord]
