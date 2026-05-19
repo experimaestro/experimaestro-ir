@@ -35,6 +35,10 @@ dependencies = [
     "toma",
     "pytorch-lightning",
     "xpm-torch",  # local submodule: xpm-torch/
+    "python-dotenv>=1.2.1",
+    "pytest>=9.0.2",
+    "pillow>=12.1.0",
+    "transformers>=5.8.1",
 ]
 
 [project.optional-dependencies]
