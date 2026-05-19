@@ -22,9 +22,8 @@ import json
 import logging
 import shutil
 from pathlib import Path
-from typing import List, Union
+from typing import List
 
-import numpy as np
 import torch
 from experimaestro import (
     Config,
@@ -60,11 +59,10 @@ def _import_fast_plaid():
 # File layout (under ``index_path``):
 #
 #   plaid/           — fast-plaid index directory
-#   ext2int.json     — external -> internal docid map
 #   metadata.json    — dim, num_docs, n_bits
+#
 
 _PLAID_SUBDIR = "plaid"
-_EXT2INT_FILE = "ext2int.json"
 _METADATA_FILE = "metadata.json"
 
 
@@ -85,6 +83,7 @@ class PlaidIndex(Config):
 
     .. _fast-plaid: https://github.com/lightonai/fast-plaid
     """
+
     documents: Param[DocumentStore]
     """Set of documents to index."""
 
@@ -93,54 +92,76 @@ class PlaidIndex(Config):
     index_path: Meta[Path]
     """Directory containing the fast-plaid index and side-car files."""
 
+    device: Meta[str] = field(default="", ignore_default=True)
+    """Device used to load the index for :meth:`get_document_tokens`
+    (``""`` = auto). Fixed at first use because the underlying
+    ``FastPlaid`` instance is cached."""
+
+    in_memory: Meta[bool] = field(default=False, ignore_default=True)
+    """If ``True``, load the index fully into device memory (passes
+    ``low_memory=False`` to fast-plaid). Use when the index fits in
+    VRAM/RAM and you want faster decompression/search; otherwise the
+    document codes and residuals stay memory-mapped from disk."""
+
     def _plaid_dir(self) -> Path:
         return self.index_path / _PLAID_SUBDIR
 
-    def _ext2int_file(self) -> Path:
-        return self.index_path / _EXT2INT_FILE
+    def _get_fast_plaid(self):
+        """Return a cached ``FastPlaid`` instance for this index.
 
-    def _load_ext2int(self) -> dict:
-        path = self._ext2int_file()
-        if not path.exists():
-            return {}
-        with path.open("r") as fh:
-            return json.load(fh)
+        The instance is constructed lazily on first access and reused
+        afterwards so that subsequent calls (e.g. repeated
+        :meth:`get_document_tokens`) avoid reloading the index.
+        """
+        cached = getattr(self, "_fast_plaid", None)
+        if cached is not None:
+            return cached
+        fp_search = _import_fast_plaid()
+        fp = fp_search.FastPlaid(
+            index=str(self._plaid_dir()),
+            device=self.device or None,
+            low_memory=not self.in_memory,
+        )
+        self._fast_plaid = fp
+        return fp
 
-    def get_document_tokens(
-        self,
-        docid: Union[int, str],
-        device: str = "",
-    ) -> torch.Tensor:
+    def get_document_tokens(self, docid: int) -> torch.Tensor:
         """Return the (approximate) per-token embeddings for a document.
 
         The vectors are reconstructed from fast-plaid's compressed
         centroid + residual storage using ``FastPlaid.get_embeddings``.
         The reconstruction quality depends on :attr:`n_bits`.
 
-        :param docid: The document identifier. Integers are interpreted as
-            internal positions in the index (``0..num_docs-1``); strings are
-            looked up in the external-to-internal map written at indexing
-            time.
-        :param device: Device for the fast-plaid instance used to decompress
-            (``""`` = auto).
+        The underlying ``FastPlaid`` instance is cached (see
+        :meth:`_get_fast_plaid`); its device and memory mode are
+        controlled by :attr:`device` and :attr:`in_memory`.
+
+        :param docid: Internal position of the document in the index
+            (``0..num_docs-1``). External-to-internal mapping, if any,
+            is the caller's responsibility.
         :returns: A ``(num_tokens, dim)`` float tensor containing the
             reconstructed token embeddings.
-        :raises KeyError: if the external identifier is unknown.
         """
-        if isinstance(docid, str):
-            ext2int = self._load_ext2int()
-            if docid not in ext2int:
-                raise KeyError(
-                    f"External document id {docid!r} is unknown to this index"
-                )
-            internal = int(ext2int[docid])
-        else:
-            internal = int(docid)
+        fp = self._get_fast_plaid()
+        return fp.get_embeddings(subset=[int(docid)])[0]
 
-        fp_search = _import_fast_plaid()
-        fp = fp_search.FastPlaid(index=str(self._plaid_dir()), device=device or None)
-        results = fp.get_embeddings(subset=[internal])
-        return results[0]
+    def get_documents_tokens(self, docids: List[int]) -> List[torch.Tensor]:
+        """Return per-token embeddings for a batch of documents.
+
+        Issues a single call to fast-plaid's ``get_embeddings``, which is
+        materially faster than calling :meth:`get_document_tokens` in a
+        loop.
+
+        :param docids: Internal document positions
+            (``0..num_docs-1``). External-to-internal mapping, if any,
+            is the caller's responsibility.
+        :returns: A list of ``(num_tokens, dim)`` float tensors, one per
+            input id, in the same order.
+        """
+        if not docids:
+            return []
+        fp = self._get_fast_plaid()
+        return fp.get_embeddings(subset=[int(d) for d in docids])
 
 
 class PlaidIndexBuilder(Task):
@@ -167,7 +188,7 @@ class PlaidIndexBuilder(Task):
 
     warmup_docs: Param[int] = field(default=1000, ignore_default=True)
     """Number of documents to encode and accumulate in RAM before creating the fast-plaid index and fitting the centroids.
-    The token embeddings used to initialize the centroids will be sampled randomly from those documents by plaid 
+    The token embeddings used to initialize the centroids will be sampled randomly from those documents by plaid
     (or they will all be used if n_samples_kmeans is 0)."""
 
     fast_plaid_batch_size: Meta[int] = field(default=32, ignore_default=True)
@@ -217,7 +238,7 @@ class PlaidIndexBuilder(Task):
             PlaidIndex.C(
                 documents=self.documents,
                 index_path=self.index_path,
-                compress_only=self.compress_only
+                compress_only=self.compress_only,
             )
         )
 
@@ -226,7 +247,7 @@ class PlaidIndexBuilder(Task):
             shutil.rmtree(self.index_path)
         self.index_path.mkdir(parents=True, exist_ok=True)
 
-         # 1. Initialize Fabric first
+        # 1. Initialize Fabric first
         fabric = self.fabric_config.get_fabric()
         fabric.launch()
 
@@ -241,10 +262,11 @@ class PlaidIndexBuilder(Task):
         plaid_dir.mkdir(parents=True, exist_ok=True)
 
         device = fabric.device or None
-        fast_plaid = fp_search.FastPlaid(index=str(plaid_dir), device=device, low_memory=self.low_memory)
+        fast_plaid = fp_search.FastPlaid(
+            index=str(plaid_dir), device=device, low_memory=self.low_memory
+        )
 
         total_docs = self.documents.documentcount or 0
-        ext2int: dict = {}
         num_docs_seen = 0
         index_created = False
         warmup_buffer: list = []
@@ -303,32 +325,23 @@ class PlaidIndexBuilder(Task):
                         index_created = True
                 else:
                     create_kwargs = {
-                            "kmeans_niters": self.kmeans_niters,
-                            "batch_size": self.fast_plaid_batch_size,
-                            "seed": self.seed,
-                            "max_points_per_centroid": self.max_points_per_centroid,
-                        }
+                        "kmeans_niters": self.kmeans_niters,
+                        "batch_size": self.fast_plaid_batch_size,
+                        "seed": self.seed,
+                        "max_points_per_centroid": self.max_points_per_centroid,
+                    }
                     if self.n_samples_kmeans:
                         create_kwargs["n_samples_kmeans"] = self.n_samples_kmeans
                     if self.compress_only:
                         create_kwargs["compress_only"] = True
 
-                    fast_plaid.update(
-                        documents_embeddings=per_doc_cpu,
-                        **create_kwargs
-                    )
+                    fast_plaid.update(documents_embeddings=per_doc_cpu, **create_kwargs)
 
-                # ID mapping — same logic regardless of create vs update path
-                for record in batch:
-                    ext_id = record.get("id") if isinstance(record, dict) else None
-                    if ext_id is not None:
-                        ext2int[str(ext_id)] = num_docs_seen
-                    num_docs_seen += 1
-
+                num_docs_seen += len(per_doc_cpu)
                 pbar.update(len(per_doc_cpu))
             pbar.close()
 
-        # In case the whole corpus was smaller than the warmup buffer, we still want to create the index 
+        # In case the whole corpus was smaller than the warmup buffer, we still want to create the index
         if not index_created and warmup_buffer:
             create_kwargs = {
                 "documents_embeddings": warmup_buffer,
@@ -340,10 +353,6 @@ class PlaidIndexBuilder(Task):
                 create_kwargs["n_samples_kmeans"] = self.n_samples_kmeans
             fast_plaid.create(**create_kwargs)
             warmup_buffer.clear()
-
-        if ext2int:
-            with (self.index_path / _EXT2INT_FILE).open("w") as fh:
-                json.dump(ext2int, fh)
 
         with (self.index_path / _METADATA_FILE).open("w") as fh:
             json.dump(
