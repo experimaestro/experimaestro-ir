@@ -22,13 +22,18 @@ from datamaestro_ir.data import IDTextRecord
 from xpm_torch.learner import TrainerContext
 
 from xpmir.neural.dual import DualVectorScorer
+from xpmir.rankers.scorer import AbstractModuleScorer
 from xpmir.text.encoders import (
     TokensRepresentationOutput,
     TokenizedTextEncoderBase,
 )
+from xpmir.text.huggingface.tokenizers import get_default_max_len
 from xpmir.text.tokenizers import TokenizerOptions
-from xpm_torch.utils import to_device
 
+from pylate import models
+
+import logging
+logging.basicConfig(level=logging.INFO)
 
 class ColBERTEncoder(
     DualVectorScorer[TokensRepresentationOutput, TokensRepresentationOutput]
@@ -86,7 +91,7 @@ class ColBERTEncoder(
         mask = output.tokenized.mask
         if mask is None:
             return None
-        return to_device(mask, output.value.device).bool()
+        return mask.to(output.value.device).bool()
 
     def document_token_embeddings(
         self, records: List[IDTextRecord]
@@ -197,3 +202,119 @@ class ColBERTEncoder(
         proj_path = path / "projection.pth"
         if proj_path.exists():
             self._projection.load_state_dict(torch.load(proj_path, map_location="cpu"))
+
+
+class PylateColBERT(AbstractModuleScorer):
+    """Interface with Pylate to use a ColBERT model as a scorer."""
+
+    model_id: Param[str]
+    """The HuggingFace model ID or path."""
+
+    dim: Param[int] = field(default=128, ignore_default=True)
+    """Output dimension of the per-token projection."""
+
+    query_maxlen: Param[int] = field(default=32, ignore_default=True)
+    """Maximum number of tokens kept for a query."""
+
+    doc_maxlen: Param[int] = field(default=180, ignore_default=True)
+    """Maximum number of tokens kept for a document."""
+
+    def __initialize__(self):
+        super().__initialize__()
+
+        self.pl_model = models.ColBERT(
+            self.model_id,
+            document_length=self.doc_maxlen,
+            query_length=self.query_maxlen,
+            embedding_size=self.dim
+        )
+        self.pl_model.compile()
+
+        self._initialized = True
+
+    @property
+    def dimension(self) -> int:
+        """Projection dimension (returned per token)."""
+        return self.dim
+
+    def document_token_embeddings(
+        self, records: List[IDTextRecord]
+    ) -> List[torch.Tensor]:
+        """Encode a batch of documents and return the list of per-token
+        embeddings, one tensor ``(num_tokens, dim)`` per document. Padding
+        positions are filtered out.
+        """
+        return self.pl_model.encode_document(
+            records, 
+            normalize_embeddings=True,
+            convert_to_tensor=True
+        )
+        
+    def query_token_embeddings(
+            self, records: List[IDTextRecord]
+    ) -> torch.Tensor:
+        """Encode a batch of queries and return a dense
+        ``(batch, query_maxlen, dim)`` tensor suitable for fast-plaid search.
+        """
+        return self.pl_model.encode_query(
+            records, 
+            normalize_embeddings=True,
+            convert_to_tensor=True
+        )
+
+    # --------------------------------------------------------------- scoring
+
+    def _max_sim(
+        self,
+        queries: torch.Tensor,
+        documents: torch.Tensor,
+        all_pairs: bool,
+    ) -> torch.Tensor:
+        """Compute the MaxSim operator.
+
+        When ``all_pairs`` is True, returns an ``(Nq, Nd)`` matrix of scores
+        between every query and every document; otherwise returns a vector of
+        ``Nq == Nd`` scores for the aligned query/document pairs.
+        """
+        q = queries.value
+        d = documents.value
+        doc_mask = self._token_mask(documents)
+        query_mask = self._token_mask(queries)
+        neg_inf = torch.finfo(q.dtype).min
+
+        if all_pairs:
+            return self.pl_model.similarity_pairwise(q, d)
+        else: 
+            return self.pl_model.similarity(q, d)
+
+    def score_product(
+        self,
+        queries: TokensRepresentationOutput,
+        documents: TokensRepresentationOutput,
+        info: Optional[TrainerContext] = None,
+    ) -> torch.Tensor:
+        return self._max_sim(queries, documents, all_pairs=True)
+
+    def score_pairs(
+        self,
+        queries: TokensRepresentationOutput,
+        documents: TokensRepresentationOutput,
+        info: Optional[TrainerContext] = None,
+    ) -> torch.Tensor:
+        return self._max_sim(queries, documents, all_pairs=False)
+
+    # ------------------------------------------------------ (de)serialisation
+
+    def save_model(self, path: Path):
+        path.mkdir(parents=True, exist_ok=True)
+        # self.encoder.save_model(path / "encoder")
+        # if self.query_encoder is not None and self.query_encoder is not self.encoder:
+        #     self._query_encoder.save_model(path / "query_encoder")
+        self.pl_model.save(path / "model.pth")
+
+    def load_model(self, path: Path):
+        if (path / "model.pth").exists():
+            self.pl_model.load(path / "model.pth")
+        # proj_path = path / "projection.pth"
+        # if proj_path.exists():
+        #     self._projection.load_state_dict(torch.load(proj_path, map_location="cpu"))
