@@ -125,43 +125,42 @@ class PlaidIndex(Config):
         self._fast_plaid = fp
         return fp
 
-    def get_document_tokens(self, docid: int) -> torch.Tensor:
+    def get_document_tokens(
+        self,
+        docids: list[int | str],
+        device: str = "",
+    ) -> torch.Tensor:
         """Return the (approximate) per-token embeddings for a document.
 
         The vectors are reconstructed from fast-plaid's compressed
         centroid + residual storage using ``FastPlaid.get_embeddings``.
         The reconstruction quality depends on :attr:`n_bits`.
 
-        The underlying ``FastPlaid`` instance is cached (see
-        :meth:`_get_fast_plaid`); its device and memory mode are
-        controlled by :attr:`device` and :attr:`in_memory`.
-
-        :param docid: Internal position of the document in the index
-            (``0..num_docs-1``). External-to-internal mapping, if any,
-            is the caller's responsibility.
+        :param docid: The document identifiers. Integers are interpreted as
+            internal positions in the index (``0..num_docs-1``); strings are
+            looked up in the external-to-internal map written at indexing
+            time.
+        :param device: Device for the fast-plaid instance used to decompress
+            (``""`` = auto).
         :returns: A ``(num_tokens, dim)`` float tensor containing the
             reconstructed token embeddings.
         """
-        fp = self._get_fast_plaid()
-        return fp.get_embeddings(subset=[int(docid)])[0]
+        if isinstance(docids[0], str):
+            ext2int = self._load_ext2int()
+            internal_docids: list = []
+            for docid in docids:
+                if docid not in ext2int:
+                    raise KeyError(
+                        f"External document id {docid!r} is unknown to this index"
+                    )
+                internal_docids.append(int(ext2int[docid]))
+        else:
+            internal_docids = [int(docid) for docid in docids]
 
-    def get_documents_tokens(self, docids: List[int]) -> List[torch.Tensor]:
-        """Return per-token embeddings for a batch of documents.
-
-        Issues a single call to fast-plaid's ``get_embeddings``, which is
-        materially faster than calling :meth:`get_document_tokens` in a
-        loop.
-
-        :param docids: Internal document positions
-            (``0..num_docs-1``). External-to-internal mapping, if any,
-            is the caller's responsibility.
-        :returns: A list of ``(num_tokens, dim)`` float tensors, one per
-            input id, in the same order.
-        """
-        if not docids:
-            return []
-        fp = self._get_fast_plaid()
-        return fp.get_embeddings(subset=[int(d) for d in docids])
+        fp_search = _import_fast_plaid()
+        fp = fp_search.FastPlaid(index=str(self._plaid_dir()), device=device or None)
+        results = fp.get_embeddings(subset=internal_docids)
+        return results
 
 
 class PlaidIndexBuilder(Task):
@@ -184,10 +183,10 @@ class PlaidIndexBuilder(Task):
     """The ColBERT-style encoder used to produce per-token embeddings."""
 
     batch_size: Meta[int] = field(default=32, ignore_default=True)
-    """Encoder batch size. Warning, different from the batch size used internally by fast-plaid"""
+    """Encoder batch size. Warning, different from the batch size used internally by fast-plaid ('fast_plaid_batch_size')"""
 
-    warmup_docs: Param[int] = field(default=1000, ignore_default=True)
-    """Number of documents to encode and accumulate in RAM before creating the fast-plaid index and fitting the centroids.
+    buffer_size: Param[int] = field(default=1000, ignore_default=True)
+    """Number of documents to encode and accumulate in RAM before creating/updating the fast-plaid index and fitting the centroids.
     The token embeddings used to initialize the centroids will be sampled randomly from those documents by plaid
     (or they will all be used if n_samples_kmeans is 0)."""
 
@@ -223,6 +222,10 @@ class PlaidIndexBuilder(Task):
     low_memory: Param[bool] = field(default=True)
     """https://github.com/lightonai/fast-plaid#-search-speed-tip-low_memoryfalse
     If index fits on VRAM, set to False for faster search. Otherwise, keep True to avoid OOM errors."""
+
+    force_cpu_indexing: Param[bool] = field(default=False)
+    """When True, forces the use of CPU for indexing even if a GPU is available.
+    This can be useful to avoid GPU OOM errors during indexing, especially for large corpora."""
 
     fabric_config: Meta[FabricConfiguration] = field(
         default_factory=FabricConfiguration.C
@@ -261,7 +264,7 @@ class PlaidIndexBuilder(Task):
         plaid_dir = self.index_path / _PLAID_SUBDIR
         plaid_dir.mkdir(parents=True, exist_ok=True)
 
-        device = fabric.device or None
+        device = fabric.device if not self.force_cpu_indexing else "cpu"
         fast_plaid = fp_search.FastPlaid(
             index=str(plaid_dir), device=device, low_memory=self.low_memory
         )
@@ -269,7 +272,7 @@ class PlaidIndexBuilder(Task):
         total_docs = self.documents.documentcount or 0
         num_docs_seen = 0
         index_created = False
-        warmup_buffer: list = []
+        doc_buffer: list = []
 
         with torch.no_grad():
             pbar = tqdm(
@@ -282,20 +285,20 @@ class PlaidIndexBuilder(Task):
                 per_doc_cpu = [
                     t.detach().to("cpu", dtype=torch.float32) for t in per_doc
                 ]
+                doc_buffer.extend(per_doc_cpu)
 
-                if not index_created:
-                    warmup_buffer.extend(per_doc_cpu)
+                if len(doc_buffer) >= self.buffer_size:
+                    logging.debug(
+                        "Warmup buffer filled (%d documents, %d tokens). "
+                        "Creating the fast-plaid index and fitting centroids...",
+                        len(doc_buffer),
+                        sum(t.shape[0] for t in doc_buffer),
+                    )
 
-                    if num_docs_seen + len(per_doc_cpu) >= self.warmup_docs:
-                        logging.info(
-                            "Warmup buffer filled (%d documents, %d tokens). "
-                            "Creating the fast-plaid index and fitting centroids...",
-                            len(warmup_buffer),
-                            sum(t.shape[0] for t in warmup_buffer),
-                        )
+                    if not index_created:
                         # Enough docs accumulated — fit centroids and create index
                         create_kwargs = {
-                            "documents_embeddings": warmup_buffer,
+                            "documents_embeddings": doc_buffer,
                             "nbits": self.n_bits,
                             "kmeans_niters": self.kmeans_niters,
                             "batch_size": self.fast_plaid_batch_size,
@@ -321,38 +324,70 @@ class PlaidIndexBuilder(Task):
                             else:
                                 raise
 
-                        warmup_buffer.clear()  # free RAM immediately
+                        doc_buffer.clear()  # free RAM immediately
                         index_created = True
-                else:
-                    create_kwargs = {
-                        "kmeans_niters": self.kmeans_niters,
-                        "batch_size": self.fast_plaid_batch_size,
-                        "seed": self.seed,
-                        "max_points_per_centroid": self.max_points_per_centroid,
-                    }
-                    if self.n_samples_kmeans:
-                        create_kwargs["n_samples_kmeans"] = self.n_samples_kmeans
-                    if self.compress_only:
-                        create_kwargs["compress_only"] = True
+                    else:
+                        create_kwargs = {
+                            "kmeans_niters": self.kmeans_niters,
+                            "batch_size": self.fast_plaid_batch_size,
+                            "seed": self.seed,
+                            "max_points_per_centroid": self.max_points_per_centroid,
+                        }
+                        if self.n_samples_kmeans:
+                            create_kwargs["n_samples_kmeans"] = self.n_samples_kmeans
 
-                    fast_plaid.update(documents_embeddings=per_doc_cpu, **create_kwargs)
+                        fast_plaid.update(
+                            documents_embeddings=doc_buffer, **create_kwargs
+                        )
+                        doc_buffer.clear()  # free RAM immediately
 
+                # ID mapping — same logic regardless of create vs update path
                 num_docs_seen += len(per_doc_cpu)
                 pbar.update(len(per_doc_cpu))
             pbar.close()
 
         # In case the whole corpus was smaller than the warmup buffer, we still want to create the index
-        if not index_created and warmup_buffer:
+        if not index_created and doc_buffer:
             create_kwargs = {
-                "documents_embeddings": warmup_buffer,
+                "documents_embeddings": doc_buffer,
                 "nbits": self.n_bits,
                 "kmeans_niters": self.kmeans_niters,
                 "batch_size": self.fast_plaid_batch_size,
+                "seed": self.seed,
+                "max_points_per_centroid": self.max_points_per_centroid,
             }
             if self.n_samples_kmeans:
                 create_kwargs["n_samples_kmeans"] = self.n_samples_kmeans
-            fast_plaid.create(**create_kwargs)
-            warmup_buffer.clear()
+            if self.compress_only:
+                create_kwargs["compress_only"] = True
+            try:
+                fast_plaid.create(**create_kwargs)
+            except TypeError:
+                if self.compress_only:
+                    logger.warning(
+                        "compress_only is not supported by this "
+                        "version of fast-plaid; building the full "
+                        "index instead. See "
+                        "https://github.com/lightonai/fast-plaid/pull/41"
+                    )
+                    del create_kwargs["compress_only"]
+                    fast_plaid.create(**create_kwargs)
+                else:
+                    raise
+            doc_buffer.clear()
+        elif index_created and doc_buffer:
+            create_kwargs = {
+                "kmeans_niters": self.kmeans_niters,
+                "batch_size": self.fast_plaid_batch_size,
+                "seed": self.seed,
+                "max_points_per_centroid": self.max_points_per_centroid,
+            }
+            if self.n_samples_kmeans:
+                create_kwargs["n_samples_kmeans"] = self.n_samples_kmeans
+            fast_plaid.update(documents_embeddings=doc_buffer, **create_kwargs)
+            doc_buffer.clear()
+        else:
+            logger.info("No documents left to encode.")
 
         with (self.index_path / _METADATA_FILE).open("w") as fh:
             json.dump(

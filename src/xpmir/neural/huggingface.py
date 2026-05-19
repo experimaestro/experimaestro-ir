@@ -124,6 +124,17 @@ class HFQueryDocTokenizer(HFTokenizer):
             return [torch.tensor(ids, dtype=torch.long) for ids in enc["input_ids"]]
 
         query_tensors = _encode(queries, q_max)
+
+        # Warning if query takes all the space
+        if q_max >= content_limit and any(
+            q.size(0) >= content_limit for q in query_tensors
+        ):
+            logger.warning(
+                "One or more queries reached the content limit (%d), "
+                "leaving no room for document tokenization.",
+                content_limit,
+            )
+
         doc_tensors = _encode(docs, d_max)
 
         # Assemble [CLS] q [SEP] d [SEP], respecting combined_limit
