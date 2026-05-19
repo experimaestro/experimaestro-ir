@@ -5,21 +5,12 @@ from xpmir.neural.sentence_transformers import st_cross_scorer
 from xpmir.letor.records import PointwiseItems
 
 
-_GENERATIVE_RERANKER_SKIP = pytest.mark.skip(
-    reason="Generative reranker — sentence-transformers 5.3.0 loads it as "
-    "*ForSequenceClassification with a randomly-initialized score head, "
-    "so outputs are non-deterministic. Re-enable when ST adds native support."
-)
-
-
 @pytest.mark.parametrize(
     "model_id",
     [
-        pytest.param("Qwen/Qwen3-Reranker-0.6B", marks=_GENERATIVE_RERANKER_SKIP),
+        "Qwen/Qwen3-Reranker-0.6B",
         "cross-encoder/ms-marco-MiniLM-L6-v2",
-        pytest.param(
-            "mixedbread-ai/mxbai-rerank-base-v2", marks=_GENERATIVE_RERANKER_SKIP
-        ),
+        "mixedbread-ai/mxbai-rerank-base-v2",
     ],
 )
 def test_st_cross_encoder_parity(model_id):

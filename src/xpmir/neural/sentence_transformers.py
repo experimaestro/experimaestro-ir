@@ -249,14 +249,16 @@ class STCrossEncoder(AbstractModuleScorer):
         for qi, di in zip(q_ix, d_ix):
             pairs.append([queries[qi], documents[di]])
 
+        # Route through the ST Transformer module's preprocess so any prompt /
+        # chat template (e.g. Qwen3/mxbai generative rerankers) is applied
+        # identically to predict().
         max_length = options.max_length if options else self.max_length
-        r = self.st_model.tokenizer(
-            pairs,
-            padding=True,
-            truncation=True,
-            return_tensors="pt",
-            max_length=max_length,
+        processing_kwargs = (
+            {"text": {"max_length": max_length, "truncation": True}}
+            if max_length
+            else None
         )
+        r = self.st_model[0].preprocess(pairs, processing_kwargs=processing_kwargs)
 
         return TokenizedTexts(
             tokens=None,
@@ -323,11 +325,18 @@ class STCrossEncoder(AbstractModuleScorer):
                     tokenized.token_type_ids, self.device
                 )
 
-            logits = self.st_model.model(**features, return_dict=True).logits
-            result = self.st_model.activation_fn(logits)
+            # Match predict()'s inference semantics: it calls self.eval()
+            # internally so dropout/etc don't perturb scores.
+            self.st_model.eval()
 
-            # Match predict() behavior for single-label regression models
-            if self.st_model.config.num_labels == 1 and result.ndim > 1:
+            # Run the ST module pipeline so that CausalLM-based generative
+            # rerankers (5.4+) get their LogitScore reduction applied;
+            # classification CEs keep the same head-logit semantics.
+            output = self.st_model(features)
+            result = self.st_model.activation_fn(output["scores"])
+
+            # predict() returns scores without a trailing singleton dim
+            if result.ndim > 1 and result.shape[-1] == 1:
                 result = result.squeeze(-1)
 
         return result

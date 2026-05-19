@@ -31,8 +31,9 @@ _TINY_CONFIG = BertConfig(
 )
 
 # HF model ID for SpladeTextEncoder tests (needs a real tokenizer).
-# prajjwal1/bert-tiny is tiny (~17 MB) and cached after first download.
-_HF_MODEL_ID = "prajjwal1/bert-tiny"
+# hf-internal-testing/tiny-random-BertForMaskedLM is HF's own tiny test model
+# with a valid config.json, and is cached after first download.
+_HF_MODEL_ID = "hf-internal-testing/tiny-random-BertForMaskedLM"
 
 _CUDA_AVAILABLE = torch.cuda.is_available()
 
