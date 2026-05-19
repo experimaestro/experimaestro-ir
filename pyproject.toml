@@ -69,6 +69,7 @@ documentation = [
 ]
 test = [
     { include-group = "documentation" },
+    "experimaestro-ir[neural]",
     "pytest",
     "faiss-cpu",
     "ruff>=0.14",

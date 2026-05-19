@@ -785,7 +785,7 @@ wheels = [
 
 [[package]]
 name = "experimaestro"
-version = "2.3.6"
+version = "2.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "arpeggio" },
@@ -816,9 +816,9 @@ dependencies = [
     { name = "uvicorn", extra = ["standard"] },
     { name = "watchdog" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/50/f7/4d1ee42b4988e7a602cb1f9140459ce8d8dda4dde4df47b78ad9d59dacb1/experimaestro-2.3.6.tar.gz", hash = "sha256:6d5ed230b56c8c8603693248a4c1fbec94aae10365c60a2cbddb532e17400eef", size = 28579321, upload-time = "2026-05-12T09:15:44.369Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5a/f1/af3e42bf66952f3d682966b0b86b056da76f403b50f760436af4ecf8078d/experimaestro-2.4.0.tar.gz", hash = "sha256:bf2779a44f01827b6b6c88fcc9b9e0e2c9d90c7eb1c8521e3fbdba9c37833b8e", size = 28596077, upload-time = "2026-05-19T12:17:58.216Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/05/3f/9783d3bf71b70f556b5c50bd47cca7023196f1f792033d858779afe2d6ec/experimaestro-2.3.6-py3-none-any.whl", hash = "sha256:a60305f4ccda079a7ca507f6b4cc9473fd1cd02f08f23feaab9b120c667a7ce9", size = 3023746, upload-time = "2026-05-12T09:15:41.719Z" },
+    { url = "https://files.pythonhosted.org/packages/b2/3c/64276b08c926fbefd50d520fb7bb0edc8bddd25838e3ffdbc0263a4ae0a9/experimaestro-2.4.0-py3-none-any.whl", hash = "sha256:384a73bec3a1b1579aaf1b43794537f3cce8cc3f1da8fd1d8ee05f167f09907d", size = 3043363, upload-time = "2026-05-19T12:17:55.924Z" },
 ]
 
 [[package]]
@@ -878,6 +878,7 @@ documentation = [
     { name = "sphobjinv" },
 ]
 test = [
+    { name = "experimaestro-ir", extra = ["neural"] },
     { name = "faiss-cpu" },
     { name = "mock" },
     { name = "myst-parser" },
@@ -898,7 +899,7 @@ requires-dist = [
     { name = "datamaestro", specifier = ">=0.2.3" },
     { name = "datamaestro-ir", specifier = ">=0.2.0" },
     { name = "docstring-parser" },
-    { name = "experimaestro", specifier = ">=2.3.6" },
+    { name = "experimaestro", specifier = ">=2.4.0" },
     { name = "fast-plaid", marker = "extra == 'fast-plaid'" },
     { name = "impact-index", specifier = ">=1.2.0" },
     { name = "ir-measures", specifier = ">=0.3.3" },
@@ -909,7 +910,7 @@ requires-dist = [
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "pytorch-lightning" },
-    { name = "sentence-transformers", marker = "extra == 'neural'", specifier = ">=5.3.0" },
+    { name = "sentence-transformers", marker = "extra == 'neural'", specifier = ">=5.4.0" },
     { name = "tensorboard", marker = "extra == 'neural'" },
     { name = "toma" },
     { name = "torch", marker = "extra == 'neural'", specifier = ">=1.12" },
@@ -938,6 +939,7 @@ documentation = [
     { name = "sphobjinv" },
 ]
 test = [
+    { name = "experimaestro-ir", extras = ["neural"] },
     { name = "faiss-cpu" },
     { name = "mock" },
     { name = "myst-parser" },
@@ -4331,7 +4333,7 @@ wheels = [
 
 [[package]]
 name = "sentence-transformers"
-version = "5.3.0"
+version = "5.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "huggingface-hub" },
@@ -4346,9 +4348,9 @@ dependencies = [
     { name = "transformers" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/fe/26/448453925b6ce0c29d8b54327caa71ee4835511aef02070467402273079c/sentence_transformers-5.3.0.tar.gz", hash = "sha256:414a0a881f53a4df0e6cbace75f823bfcb6b94d674c42a384b498959b7c065e2", size = 403330, upload-time = "2026-03-12T14:53:40.778Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/2c/27/16d127a61303e05847d878b23687f3371868c76e738557fa80b4373a8c2b/sentence_transformers-5.5.0.tar.gz", hash = "sha256:9cec675e68bfe09d07466d1f13ab06d1d79d60a0f45b154baf433bde6ae159cb", size = 444908, upload-time = "2026-05-12T14:05:42.383Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e2/9c/2fa7224058cad8df68d84bafee21716f30892cecc7ad1ad73bde61d23754/sentence_transformers-5.3.0-py3-none-any.whl", hash = "sha256:dca6b98db790274a68185d27a65801b58b4caf653a4e556b5f62827509347c7d", size = 512390, upload-time = "2026-03-12T14:53:39.035Z" },
+    { url = "https://files.pythonhosted.org/packages/55/20/18416624bcbae866ec0b111979766cebabe8e5ff7563ab953ecbaf3ff9e7/sentence_transformers-5.5.0-py3-none-any.whl", hash = "sha256:75313fdcc2397ec4b58297c25d6187fcca5a6b2aeb09570a72eff5a3223d8d58", size = 588665, upload-time = "2026-05-12T14:05:40.899Z" },
 ]
 
 [[package]]
