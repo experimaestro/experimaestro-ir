@@ -12,15 +12,17 @@ via Contextualized Late Interaction over BERT" (SIGIR 2020).
 """
 
 from pathlib import Path
-from typing import List, Optional
+from typing import Iterable, List, Optional, Tuple
 from attrs import evolve
 
 import torch
 import torch.nn as nn
-from experimaestro import Param, field
+from experimaestro import Param, field, LightweightTask
 from datamaestro_ir.data import IDTextRecord
 from xpm_torch.learner import TrainerContext
 
+from xpmir.letor.records import BaseItems, ProductItems
+from xpmir.neural import DocsRep, QueriesRep
 from xpmir.neural.dual import DualVectorScorer
 from xpmir.rankers.scorer import AbstractModuleScorer
 from xpmir.text.encoders import (
@@ -206,7 +208,9 @@ class ColBERTEncoder(
 
 class PylateColBERT(AbstractModuleScorer):
     """Interface with Pylate to use a ColBERT model as a scorer."""
-
+    """ This classs isn't working as of right now. It needs specific changes
+    to the toml file to accomodate pylate requirements."""
+    
     model_id: Param[str]
     """The HuggingFace model ID or path."""
 
@@ -231,6 +235,15 @@ class PylateColBERT(AbstractModuleScorer):
         self.pl_model.compile()
 
         self._initialized = True
+
+    def _ensure_tensor_batch(self, representations: object) -> torch.Tensor:
+        if isinstance(representations, torch.Tensor):
+            return representations
+        if isinstance(representations, list):
+            return torch.stack(representations)
+        raise TypeError(
+            "Expected a torch.Tensor or list[torch.Tensor] from the Pylate model"
+        )
 
     @property
     def dimension(self) -> int:
@@ -261,6 +274,33 @@ class PylateColBERT(AbstractModuleScorer):
             normalize_embeddings=True,
             convert_to_tensor=True
         )
+    
+    def encode_documents(self, records: Iterable[IDTextRecord]) -> DocsRep:
+        """Encode a list of texts (document or query)
+
+        The return value is model dependent"""
+        representations = self.pl_model.encode(
+            [record["text_item"].text for record in records],
+            normalize_embeddings=True,
+            convert_to_tensor=True,
+            is_query=False
+        )
+        return self._ensure_tensor_batch(representations)
+
+    def encode_queries(self, records: Iterable[IDTextRecord]) -> QueriesRep:
+        """Encode a list of texts (document or query)
+
+        The return value is model dependent, but should be sequence
+
+        By default, uses `merge`
+        """
+        representations = self.pl_model.encode(
+            [record["text_item"].text for record in records],
+            normalize_embeddings=True,
+            convert_to_tensor=True,
+            is_query=True
+        )
+        return self._ensure_tensor_batch(representations)
 
     # --------------------------------------------------------------- scoring
 
@@ -276,16 +316,9 @@ class PylateColBERT(AbstractModuleScorer):
         between every query and every document; otherwise returns a vector of
         ``Nq == Nd`` scores for the aligned query/document pairs.
         """
-        q = queries.value
-        d = documents.value
-        doc_mask = self._token_mask(documents)
-        query_mask = self._token_mask(queries)
-        neg_inf = torch.finfo(q.dtype).min
-
         if all_pairs:
-            return self.pl_model.similarity_pairwise(q, d)
-        else: 
-            return self.pl_model.similarity(q, d)
+            return self.pl_model.similarity_pairwise(queries, documents)
+        return self.pl_model.similarity(queries, documents)
 
     def score_product(
         self,
@@ -303,6 +336,30 @@ class PylateColBERT(AbstractModuleScorer):
     ) -> torch.Tensor:
         return self._max_sim(queries, documents, all_pairs=False)
 
+    def forward(
+        self, inputs: BaseItems, info: Optional[TrainerContext] = None, **kwargs
+    ):
+        # Forward to model
+        enc_queries = self.encode_queries(list(inputs.unique_queries))
+        enc_documents = self.encode_documents(list(inputs.unique_documents))
+
+        # Score product
+        if isinstance(inputs, ProductItems):
+            return self.score_product(
+                enc_queries,
+                enc_documents,
+                info,
+            ).flatten()
+
+        # Score pairs
+        pairs = inputs.pairs()
+        q_ix, d_ix = pairs
+        return self.score_pairs(
+            enc_queries[q_ix],
+            enc_documents[d_ix],
+            info,
+        ).flatten()
+
     # ------------------------------------------------------ (de)serialisation
 
     def save_model(self, path: Path):
@@ -318,3 +375,35 @@ class PylateColBERT(AbstractModuleScorer):
         # proj_path = path / "projection.pth"
         # if proj_path.exists():
         #     self._projection.load_state_dict(torch.load(proj_path, map_location="cpu"))
+
+class InitPylateColBERT(LightweightTask):
+    """Initializes the PylateColBERT by loading the model."""
+
+    model: Param[AbstractModuleScorer]
+
+    def execute(self):
+        self.model.initialize()
+
+
+def pylate_colbert(
+    model_id: str,
+    document_length: int,
+    query_length: int,
+    embedding_size: int
+) -> Tuple[PylateColBERT, List[LightweightTask]]:
+    """Creates an PylateColBERT model.
+
+    :param model_id: The HuggingFace model ID
+    :param document_length: The maximum length of documents
+    :param query_length: The maximum length of queries
+    :param embedding_size: The size of the embedding vectors
+    :returns: (PylateColBERT, init_tasks)
+    """
+
+    scorer = PylateColBERT.C(
+        model_id=model_id,
+        doc_maxlen=document_length,
+        query_maxlen=query_length,
+        dim=embedding_size
+    ).tag("model_type", "colbert")
+    return scorer, [InitPylateColBERT.C(model=scorer)]
