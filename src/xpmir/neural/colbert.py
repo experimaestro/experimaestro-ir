@@ -25,17 +25,16 @@ from xpmir.letor.records import BaseItems, ProductItems
 from xpmir.neural import DocsRep, QueriesRep
 from xpmir.neural.dual import DualVectorScorer
 from xpmir.rankers.scorer import AbstractModuleScorer
-from xpmir.text.encoders import (
-    TokensRepresentationOutput,
-    TokenizedTextEncoderBase,
-)
-from xpmir.text.huggingface.tokenizers import get_default_max_len
-from xpmir.text.tokenizers import TokenizerOptions
+from xpmir.text.encoders import TokensRepresentationOutput
+from xpmir.text.huggingface.tokenizers import get_default_max_len  # noqa: F401
+from xpmir.text.tokenizers import TokenizedTexts, TokenizerOptions
 
 from pylate import models
 
 import logging
+
 logging.basicConfig(level=logging.INFO)
+
 
 class ColBERTEncoder(
     DualVectorScorer[TokensRepresentationOutput, TokensRepresentationOutput]
@@ -48,16 +47,14 @@ class ColBERTEncoder(
     inputs (providing the attention mask). A trainable linear projection
     reduces the per-token vectors to ``dim`` and the vectors are L2-normalised
     so the dot product amounts to a cosine similarity.
+
+    The :attr:`encoder` (and :attr:`query_encoder`) inherited from
+    :class:`~xpmir.neural.dual.DualVectorScorer` must in practice be a
+    :class:`~xpmir.text.encoders.TokenizedTextEncoder` returning
+    :class:`~xpmir.text.encoders.TokensRepresentationOutput`. The
+    :class:`~xpmir.text.encoders.TokenizedTextEncoder` exposes the
+    ``tokenize`` / ``forward_tokenized`` split that query augmentation needs.
     """
-
-    encoder: Param[TokenizedTextEncoderBase[IDTextRecord, TokensRepresentationOutput]]
-    """The document token encoder (returns one vector per token)."""
-
-    query_encoder: Param[
-        Optional[TokenizedTextEncoderBase[IDTextRecord, TokensRepresentationOutput]]
-    ]
-    """Optional separate query encoder. When unset, the document encoder is
-    used for queries too."""
 
     dim: Param[int] = field(default=128, ignore_default=True)
     """Output dimension of the per-token projection."""
@@ -68,10 +65,37 @@ class ColBERTEncoder(
     doc_maxlen: Param[int] = field(default=180, ignore_default=True)
     """Maximum number of tokens kept for a document."""
 
+    query_augmentation: Param[bool] = field(default=True)
+    """Whether to apply ColBERT's query augmentation: queries shorter than
+    ``query_maxlen`` are right-padded with ``[MASK]`` tokens (instead of
+    ``[PAD]``) and every position participates in MaxSim. This mirrors the
+    original ColBERT implementation. Disable to use plain padded queries with
+    padding excluded from MaxSim."""
+
     def __initialize__(self):
         super().__initialize__()
         hidden = self.encoder.dimension
         self._projection = nn.Linear(hidden, self.dim, bias=False)
+        if self.query_augmentation:
+            self._mask_token_id = self._lookup_mask_token_id(self._query_encoder)
+
+    @staticmethod
+    def _lookup_mask_token_id(encoder) -> int:
+        """Locate the underlying HF tokenizer's ``mask_token_id`` by walking
+        nested ``tokenizer`` attributes."""
+        obj = encoder
+        seen = set()
+        while obj is not None and id(obj) not in seen:
+            seen.add(id(obj))
+            mask_id = getattr(obj, "mask_token_id", None)
+            if mask_id is not None:
+                return mask_id
+            obj = getattr(obj, "tokenizer", None)
+        raise ValueError(
+            "Could not locate mask_token_id on the query encoder; set "
+            "query_augmentation=False or use an encoder backed by an HF "
+            "tokenizer exposing [MASK]."
+        )
 
     @property
     def dimension(self) -> int:
@@ -119,8 +143,55 @@ class ColBERTEncoder(
 
     def encode_queries(self, records: List[IDTextRecord]) -> TokensRepresentationOutput:
         options = TokenizerOptions(max_length=self.query_maxlen)
-        output = self._query_encoder(records, options=options)
+        if self.query_augmentation:
+            tokenized = self._query_encoder.tokenize(records, options=options)
+            tokenized = self._mask_pad_query(tokenized)
+            output = self._query_encoder.forward_tokenized(tokenized)
+        else:
+            output = self._query_encoder(records, options=options)
         return self._project(output)
+
+    def _mask_pad_query(self, tokenized: TokenizedTexts) -> TokenizedTexts:
+        """Apply ColBERT query augmentation: right-pad to ``query_maxlen``,
+        replace every padding position with ``[MASK]`` and set the attention
+        mask to 1 over those positions so they participate in MaxSim.
+        """
+        ids = tokenized.ids
+        mask = tokenized.mask
+        token_type_ids = tokenized.token_type_ids
+        batch_size, current_len = ids.shape
+
+        pad_len = self.query_maxlen - current_len
+        if pad_len > 0:
+            id_pad = torch.zeros(
+                (batch_size, pad_len), dtype=ids.dtype, device=ids.device
+            )
+            ids = torch.cat([ids, id_pad], dim=1)
+            if mask is not None:
+                mask_pad = torch.zeros(
+                    (batch_size, pad_len), dtype=mask.dtype, device=mask.device
+                )
+                mask = torch.cat([mask, mask_pad], dim=1)
+            if token_type_ids is not None:
+                tt_pad = torch.zeros(
+                    (batch_size, pad_len),
+                    dtype=token_type_ids.dtype,
+                    device=token_type_ids.device,
+                )
+                token_type_ids = torch.cat([token_type_ids, tt_pad], dim=1)
+
+        if mask is not None:
+            pad_positions = mask == 0
+            ids = ids.masked_fill(pad_positions, self._mask_token_id)
+            mask = torch.ones_like(mask)
+
+        return TokenizedTexts(
+            tokens=tokenized.tokens,
+            ids=ids,
+            lens=[self.query_maxlen] * batch_size,
+            mask=mask,
+            token_type_ids=token_type_ids,
+        )
 
     def encode_documents(
         self, records: List[IDTextRecord]
@@ -230,7 +301,7 @@ class PylateColBERT(AbstractModuleScorer):
             self.model_id,
             document_length=self.doc_maxlen,
             query_length=self.query_maxlen,
-            embedding_size=self.dim
+            embedding_size=self.dim,
         )
         self.pl_model.compile()
 
@@ -258,21 +329,15 @@ class PylateColBERT(AbstractModuleScorer):
         positions are filtered out.
         """
         return self.pl_model.encode_document(
-            records, 
-            normalize_embeddings=True,
-            convert_to_tensor=True
+            records, normalize_embeddings=True, convert_to_tensor=True
         )
-        
-    def query_token_embeddings(
-            self, records: List[IDTextRecord]
-    ) -> torch.Tensor:
+
+    def query_token_embeddings(self, records: List[IDTextRecord]) -> torch.Tensor:
         """Encode a batch of queries and return a dense
         ``(batch, query_maxlen, dim)`` tensor suitable for fast-plaid search.
         """
         return self.pl_model.encode_query(
-            records, 
-            normalize_embeddings=True,
-            convert_to_tensor=True
+            records, normalize_embeddings=True, convert_to_tensor=True
         )
     
     def encode_documents(self, records: Iterable[IDTextRecord]) -> DocsRep:

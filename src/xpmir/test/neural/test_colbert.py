@@ -5,15 +5,32 @@ These tests exercise the pure tensor code in
 encoder or network access. They build fake
 :class:`~xpmir.text.encoders.TokensRepresentationOutput` values and invoke the
 unbound ``_max_sim`` method directly.
+
+A separate integration test (:func:`test_pylate_parity`) checks that our
+encoder produces the same token embeddings and MaxSim scores as PyLate's
+reference ColBERT implementation when both models share the same backbone and
+projection weights.
 """
 
 import types
 
+import pytest
 import torch
 
+from datamaestro_ir.data import SimpleTextItem
+
 from xpmir.neural.colbert import ColBERTEncoder
-from xpmir.text.encoders import TokensRepresentationOutput
+from xpmir.text.encoders import (
+    TokenizedTextEncoder,
+    TokensRepresentationOutput,
+)
 from xpmir.text.tokenizers import TokenizedTexts
+from xpmir.text.adapters import TopicTextConverter
+from xpmir.text.huggingface.base import HFConfigID, HFModel
+from xpmir.text.huggingface.encoders import HFTokensEncoder
+from xpmir.text.huggingface.tokenizers import HFTokenizer, HFTokenizerAdapter
+
+from xpmir.test import skip_if_ci
 
 
 def _make_output(value: torch.Tensor, mask: torch.Tensor) -> TokensRepresentationOutput:
@@ -71,3 +88,159 @@ def test_max_sim_pairs_matches_diagonal():
     all_scores = ColBERTEncoder._max_sim(_dummy(), q_out, d_out, all_pairs=True)
     assert pair_scores.shape == (2,)
     assert torch.allclose(pair_scores, torch.diagonal(all_scores), atol=1e-5)
+
+
+# ---------------------------------------------------------------- PyLate parity
+
+
+_PYLATE_HF_ID = "hf-internal-testing/tiny-random-BertForMaskedLM"
+_PYLATE_EMBED_DIM = 8
+_PYLATE_QUERY_LEN = 8
+_PYLATE_DOC_LEN = 16
+
+
+def _records(texts):
+    return [{"text_item": SimpleTextItem(t)} for t in texts]
+
+
+def _build_pylate(seed: int):
+    """Build a PyLate ColBERT configured to match the original ColBERT
+    semantics implemented by :class:`ColBERTEncoder` (no [Q]/[D] prefixes,
+    no skiplist, mask-augmented queries that attend to expansion tokens)."""
+    from pylate import models
+
+    model = models.ColBERT(
+        _PYLATE_HF_ID,
+        embedding_size=_PYLATE_EMBED_DIM,
+        bias=False,
+        query_prefix="",
+        document_prefix="",
+        do_query_expansion=True,
+        attend_to_expansion_tokens=True,
+        skiplist_words=[],
+        query_length=_PYLATE_QUERY_LEN,
+        document_length=_PYLATE_DOC_LEN,
+    )
+    # Re-seed the random projection for reproducibility.
+    torch.manual_seed(seed)
+    torch.nn.init.xavier_uniform_(model[1].linear.weight)
+    model.to("cpu")
+    model.eval()
+    return model
+
+
+def _build_xpmir(pylate_model) -> ColBERTEncoder:
+    """Build an xpmir ColBERTEncoder sharing the BERT weights and projection
+    of ``pylate_model``."""
+    encoder = TokenizedTextEncoder.C(
+        tokenizer=HFTokenizerAdapter.C(
+            tokenizer=HFTokenizer.C(model_id=_PYLATE_HF_ID),
+            converter=TopicTextConverter.C(),
+        ),
+        encoder=HFTokensEncoder.C(
+            model=HFModel.C(config=HFConfigID.C(hf_id=_PYLATE_HF_ID))
+        ),
+    )
+    colbert = ColBERTEncoder.C(
+        encoder=encoder,
+        dim=_PYLATE_EMBED_DIM,
+        query_maxlen=_PYLATE_QUERY_LEN,
+        doc_maxlen=_PYLATE_DOC_LEN,
+        query_augmentation=True,
+    ).instance()
+    colbert.initialize()
+
+    # Share the BERT backbone and projection with the PyLate model so both
+    # models produce identical contextual embeddings.
+    bert = pylate_model[0].auto_model
+    colbert.encoder.encoder.model.model.load_state_dict(bert.state_dict())
+    colbert._projection.weight.data.copy_(pylate_model[1].linear.weight.data)
+    colbert.eval()
+    return colbert
+
+
+@skip_if_ci
+def test_pylate_parity_query_embeddings():
+    """Per-token query embeddings (with [MASK] augmentation) should match
+    PyLate's reference ColBERT implementation."""
+    pytest.importorskip("pylate")
+
+    pylate = _build_pylate(seed=0)
+    xpmir = _build_xpmir(pylate)
+
+    queries = ["what is colbert"]
+
+    with torch.no_grad():
+        py_emb = pylate.encode(
+            queries,
+            is_query=True,
+            padding=True,
+            convert_to_tensor=True,
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        )
+        # PyLate returns a list of (1, Lq, dim) tensors when batched per item.
+        py_q = torch.stack([e.squeeze(0) for e in py_emb])  # (B, Lq, dim)
+
+        xp_out = xpmir.encode_queries(_records(queries))
+        xp_q = xp_out.value.detach()
+
+    assert xp_q.shape == py_q.shape, (xp_q.shape, py_q.shape)
+    torch.testing.assert_close(xp_q, py_q, atol=1e-5, rtol=1e-4)
+
+
+@skip_if_ci
+def test_pylate_parity_maxsim_scores():
+    """The MaxSim score matrix should match PyLate's ``colbert_scores`` when
+    both models share weights."""
+    pytest.importorskip("pylate")
+    from pylate import scores as pylate_scores
+
+    pylate = _build_pylate(seed=1)
+    xpmir = _build_xpmir(pylate)
+
+    queries = ["what is colbert", "late interaction"]
+    documents = [
+        "colbert is a late interaction model",
+        "completely unrelated text about cats",
+    ]
+
+    with torch.no_grad():
+        py_q = torch.stack(
+            [
+                e.squeeze(0)
+                for e in pylate.encode(
+                    queries,
+                    is_query=True,
+                    padding=True,
+                    convert_to_tensor=True,
+                    normalize_embeddings=True,
+                    show_progress_bar=False,
+                )
+            ]
+        )
+        py_d_list = pylate.encode(
+            documents,
+            is_query=False,
+            padding=True,
+            convert_to_tensor=True,
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        )
+        # Pad PyLate's per-doc tensors to the longest length to build a mask.
+        py_d_squeezed = [e.squeeze(0) for e in py_d_list]
+        max_len = max(t.shape[0] for t in py_d_squeezed)
+        d_mask = torch.zeros(len(py_d_squeezed), max_len, dtype=torch.bool)
+        py_d = torch.zeros(len(py_d_squeezed), max_len, _PYLATE_EMBED_DIM)
+        for i, t in enumerate(py_d_squeezed):
+            py_d[i, : t.shape[0]] = t
+            d_mask[i, : t.shape[0]] = True
+
+        py_score = pylate_scores.colbert_scores(py_q, py_d, documents_mask=d_mask)
+
+        xp_q_out = xpmir.encode_queries(_records(queries))
+        xp_d_out = xpmir.encode_documents(_records(documents))
+        xp_score = xpmir.score_product(xp_q_out, xp_d_out).detach()
+
+    assert xp_score.shape == py_score.shape, (xp_score.shape, py_score.shape)
+    torch.testing.assert_close(xp_score, py_score, atol=1e-4, rtol=1e-4)
