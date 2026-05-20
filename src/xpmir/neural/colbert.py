@@ -29,7 +29,11 @@ from xpmir.text.encoders import TokensRepresentationOutput
 from xpmir.text.huggingface.tokenizers import get_default_max_len  # noqa: F401
 from xpmir.text.tokenizers import TokenizedTexts, TokenizerOptions
 
-from pylate import models
+
+try:
+    from pylate import models
+except Exception:  # ImportError or if pylate not available for any reason
+    models = None
 
 import logging
 
