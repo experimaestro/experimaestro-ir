@@ -71,6 +71,9 @@ representations to be pre-computed and indexed.
 .. autoxpmconfig:: xpmir.neural.colbert.ColBERTEncoder
     :members: encode_queries, encode_documents, document_token_embeddings, query_token_embeddings, score_product, score_pairs
 
+.. autoxpmconfig:: xpmir.neural.colbert.PylateColBERT
+.. autoxpmconfig:: xpmir.neural.colbert.InitPylateColBERT
+
 Sparse models (SPLADE)
 ----------------------
 

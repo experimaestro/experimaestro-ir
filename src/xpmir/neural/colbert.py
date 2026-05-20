@@ -301,6 +301,8 @@ class PylateColBERT(AbstractModuleScorer):
     def __initialize__(self):
         super().__initialize__()
 
+        from pylate import models
+
         self.pl_model = models.ColBERT(
             self.model_id,
             document_length=self.doc_maxlen,

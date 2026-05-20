@@ -163,7 +163,7 @@ def _build_xpmir(pylate_model) -> ColBERTEncoder:
 def test_pylate_parity_query_embeddings():
     """Per-token query embeddings (with [MASK] augmentation) should match
     PyLate's reference ColBERT implementation."""
-    pytest.importorskip("pylate")
+    pytest.importorskip("pylate.models", exc_type=ImportError)
 
     pylate = _build_pylate(seed=0)
     xpmir = _build_xpmir(pylate)
@@ -193,7 +193,8 @@ def test_pylate_parity_query_embeddings():
 def test_pylate_parity_maxsim_scores():
     """The MaxSim score matrix should match PyLate's ``colbert_scores`` when
     both models share weights."""
-    pytest.importorskip("pylate")
+    pytest.importorskip("pylate.models", exc_type=ImportError)
+    pytest.importorskip("pylate.scores", exc_type=ImportError)
     from pylate import scores as pylate_scores
 
     pylate = _build_pylate(seed=1)
