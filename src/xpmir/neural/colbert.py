@@ -27,12 +27,6 @@ from xpmir.text.encoders import TokensRepresentationOutput
 from xpmir.text.huggingface.tokenizers import get_default_max_len  # noqa: F401
 from xpmir.text.tokenizers import TokenizedTexts, TokenizerOptions
 
-from pylate import models
-
-import logging
-
-logging.basicConfig(level=logging.INFO)
-
 
 class ColBERTEncoder(
     DualVectorScorer[TokensRepresentationOutput, TokensRepresentationOutput]
@@ -292,6 +286,8 @@ class PylateColBERT(AbstractModuleScorer):
 
     def __initialize__(self):
         super().__initialize__()
+
+        from pylate import models
 
         self.pl_model = models.ColBERT(
             self.model_id,
