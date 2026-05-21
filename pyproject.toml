@@ -47,7 +47,7 @@ anserini = [
 ]
 
 neural = [
-    "torch>=1.12",
+    "torch>=2.10",
     "tensorboard",
     "transformers",
     "sentence_transformers>=5.4.0"
