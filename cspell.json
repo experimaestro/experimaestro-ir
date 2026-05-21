@@ -1,0 +1,25 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "words": [
+    "anserini",
+    "codeautolink",
+    "datamaestro",
+    "docutils",
+    "dotenv",
+    "experimaestro",
+    "faiss",
+    "filterwarnings",
+    "myst",
+    "omegaconf",
+    "Piwowarski",
+    "pyright",
+    "pyserini",
+    "pytest",
+    "pytorch",
+    "sdist",
+    "sphobjinv",
+    "tensorboard",
+    "xpmir"
+  ]
+}
