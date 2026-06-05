@@ -34,7 +34,7 @@ dependencies = [
     # Torch addons
     "toma",
     "pytorch-lightning",
-    "xpm-torch",  # local submodule: xpm-torch/
+    "xpm-torch>=0.2.0",
     "python-dotenv>=1.2.1",
     "pytest>=9.0.2",
     "pillow>=12.1.0",
@@ -112,7 +112,7 @@ include = [
 ]
 
 [tool.uv.sources]
-xpm-torch = { path = "xpm-torch", editable = true }
+# No local sources
 
 [tool.pytest.ini_options]
 markers = [
@@ -128,7 +128,7 @@ filterwarnings = [
 
 [tool.ruff]
 # Exclude submodules — they have their own ruff config
-exclude = ["xpm-torch", "datamaestro-text"]
+exclude = ["datamaestro-text"]
 
 [tool.pyright]
 include = ["xpmir"]

@@ -72,10 +72,10 @@ Experiments use `@ir_experiment()` or `@learning_experiment` decorators wrapping
 
 Built on `xpm_torch` / PyTorch Lightning. `TrainerContext` is passed through forward methods. `TrainingHook` system enables custom loss/regularization (e.g., `ScheduledFlopsRegularizer` for SPLADE).
 
-### Submodule Dependencies
+### Dependencies
 
-- `xpm-torch/` — PyTorch + experimaestro integration (local submodule)
-- `datamaestro-text/` — Text dataset management (local directory, no longer a submodule)
+- `xpm-torch` — PyTorch + experimaestro integration (dependency)
+- `datamaestro-text/` — Text dataset management (local directory)
 - `ir_datasets` — Pinned to custom fork in some projects
 
 ### Test Patterns
