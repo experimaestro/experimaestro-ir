@@ -283,9 +283,10 @@ class ColBERTEncoder(
 
 class PylateColBERT(AbstractModuleScorer):
     """Interface with Pylate to use a ColBERT model as a scorer."""
+
     """ This classs isn't working as of right now. It needs specific changes
     to the toml file to accomodate pylate requirements."""
-    
+
     model_id: Param[str]
     """The HuggingFace model ID or path."""
 
@@ -301,8 +302,12 @@ class PylateColBERT(AbstractModuleScorer):
     def __initialize__(self):
         super().__initialize__()
 
-        from pylate import models
-
+        try:
+            from pylate import models
+        except Exception:  # ImportError or if pylate not available for any reason
+            raise ImportError(
+                "Pylate is not available. Please install pylate to use PylateColBERT."
+            )
         self.pl_model = models.ColBERT(
             self.model_id,
             document_length=self.doc_maxlen,
@@ -345,7 +350,7 @@ class PylateColBERT(AbstractModuleScorer):
         return self.pl_model.encode_query(
             records, normalize_embeddings=True, convert_to_tensor=True
         )
-    
+
     def encode_documents(self, records: Iterable[IDTextRecord]) -> DocsRep:
         """Encode a list of texts (document or query)
 
@@ -354,7 +359,7 @@ class PylateColBERT(AbstractModuleScorer):
             [record["text_item"].text for record in records],
             normalize_embeddings=True,
             convert_to_tensor=True,
-            is_query=False
+            is_query=False,
         )
         return self._ensure_tensor_batch(representations)
 
@@ -369,7 +374,7 @@ class PylateColBERT(AbstractModuleScorer):
             [record["text_item"].text for record in records],
             normalize_embeddings=True,
             convert_to_tensor=True,
-            is_query=True
+            is_query=True,
         )
         return self._ensure_tensor_batch(representations)
 
@@ -447,6 +452,7 @@ class PylateColBERT(AbstractModuleScorer):
         # if proj_path.exists():
         #     self._projection.load_state_dict(torch.load(proj_path, map_location="cpu"))
 
+
 class InitPylateColBERT(LightweightTask):
     """Initializes the PylateColBERT by loading the model."""
 
@@ -457,10 +463,7 @@ class InitPylateColBERT(LightweightTask):
 
 
 def pylate_colbert(
-    model_id: str,
-    document_length: int,
-    query_length: int,
-    embedding_size: int
+    model_id: str, document_length: int, query_length: int, embedding_size: int
 ) -> Tuple[PylateColBERT, List[LightweightTask]]:
     """Creates an PylateColBERT model.
 
@@ -475,6 +478,6 @@ def pylate_colbert(
         model_id=model_id,
         doc_maxlen=document_length,
         query_maxlen=query_length,
-        dim=embedding_size
+        dim=embedding_size,
     ).tag("model_type", "colbert")
     return scorer, [InitPylateColBERT.C(model=scorer)]
