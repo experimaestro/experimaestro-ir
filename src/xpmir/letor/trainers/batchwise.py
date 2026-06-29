@@ -87,14 +87,20 @@ class BatchwiseTrainer(LossTrainer):
         batch = inputs["records"]
         tokenized_records = inputs.get("tokenized_records")
 
-        # Get the next batch and compute the scores for each query/document
-        # Get the scores
-        if tokenized_records is not None:
-            rel_scores = self.ranker(
-                batch, tokenized=tokenized_records, info=self.context
-            )
-        else:
-            rel_scores = self.ranker(batch, self.context)
+        # Expose the relevance matrix to hooks (e.g. for F_base / F_nce metrics).
+        # Shape: (n_queries, n_documents); cleared after the forward pass.
+        self.context.current_relevances = batch.relevances
+        try:
+            # Get the next batch and compute the scores for each query/document
+            # Get the scores
+            if tokenized_records is not None:
+                rel_scores = self.ranker(
+                    batch, tokenized=tokenized_records, info=self.context
+                )
+            else:
+                rel_scores = self.ranker(batch, self.context)
+        finally:
+            self.context.current_relevances = None
 
         if torch.isnan(rel_scores).any() or torch.isinf(rel_scores).any():
             self.logger.error("nan or inf relevance score detected. Aborting.")

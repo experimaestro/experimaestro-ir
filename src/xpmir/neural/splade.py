@@ -1,7 +1,7 @@
 import copy
 from pathlib import Path
 from typing import Optional, Generic
-from experimaestro import field, Config, Param
+from experimaestro import field, Config, Param, Meta
 import torch.nn as nn
 import torch
 from xpmir.text.huggingface.encoders import OneHotHuggingFaceEncoder
@@ -184,6 +184,62 @@ class SpladeTextEncoder(
         return False
 
 
+
+
+class MaskedSpladeTextEncoder(SpladeTextEncoder):
+    """SpladeTextEncoder that zeros out a fixed set of token IDs after aggregation.
+
+    The mask file is a ``Param`` — it **is** included in the experimaestro
+    job hash, so different mask files produce distinct retrieval jobs.
+
+    File format: one integer token ID per line, e.g.::
+
+        101
+        102
+        1045
+
+    Usage::
+
+        encoder = MaskedSpladeTextEncoder.C(
+            tokenizer=..., encoder=..., aggregation=..., maxlen=30,
+            mask_path="/path/to/blocked_token_ids.txt",
+        )
+    """
+
+    mask_path: Param[Optional[str]] = None
+    """Path to a text file with one token ID (int) per line to zero out.
+    Included in the job hash so different mask files produce distinct retrieval jobs."""
+
+    def __initialize__(self):
+        super().__initialize__()
+        if self.mask_path is not None:
+            with open(self.mask_path) as f:
+                ids = [int(line.strip()) for line in f if line.strip()]
+            # Stored on CPU; moved to the right device lazily in forward()
+            self._masked_ids = torch.tensor(ids, dtype=torch.long)
+            logger.info(
+                "MaskedSpladeTextEncoder: masking %d token IDs from %s (first 5: %s)",
+                len(ids), self.mask_path, ids[:5],
+            )
+        else:
+            self._masked_ids = None
+            logger.warning(
+                "MaskedSpladeTextEncoder: mask_path is None — no tokens will be masked!"
+            )
+
+    @initialized
+    def forward(self, texts: EncoderInputType) -> TextsRepresentationOutput:
+        # Inline parent logic instead of super().forward() to avoid the
+        # @initialized decorator on SpladeTextEncoder.forward overwriting
+        # this instance's 'forward' attribute on first call.
+        tokenized = self.tokenizer.tokenize(
+            texts, options=TokenizerOptions(self.maxlen)
+        )
+        value = self.aggregation(self.encoder(tokenized).logits, tokenized.mask)
+        if self._masked_ids is not None:
+            value[:, self._masked_ids.to(value.device)] = 0.0
+        return TextsRepresentationOutput(value, tokenized)
+
 class SpladeModuleLoader(SpladeLoaderMixin, DualModuleLoader):
     """ModuleLoader for SPLADE models with separate encoder DataPaths.
 
@@ -223,16 +279,17 @@ class SpladeScorer(DotDense):
 
     CONFIG_LOADER = SpladeModuleLoader.C
 
-    def _has_separate_query_model(self) -> bool:
-        """Check if query and doc encoders use different HF models."""
-        if self.query_encoder is None or self.query_encoder is self.encoder:
-            return False
-        # Both are SpladeTextEncoder — check if they share the HF model
-        if isinstance(self.encoder, SpladeTextEncoder) and isinstance(
-            self._query_encoder, SpladeTextEncoder
-        ):
-            return self.encoder.encoder is not self._query_encoder.encoder
-        return True
+    #def _has_separate_query_model(self) -> bool:
+    #    """Check if query and doc encoders use different HF models."""
+    #    if self.query_encoder is None or self.query_encoder is self.encoder:
+    #        return False
+    #    # Both are SpladeTextEncoder — check if they share the HF model
+    #    if isinstance(self.encoder, SpladeTextEncoder) and isinstance(
+    #        self._query_encoder, SpladeTextEncoder
+    #    ):  
+    #        #print('HAS SEPERATE QUERY MODEL: ', self.encoder.encoder is not self._query_encoder.encoder)
+    #        return self.encoder.encoder is not self._query_encoder.encoder
+    #    return True
 
 
 def _splade(

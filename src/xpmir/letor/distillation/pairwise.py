@@ -180,10 +180,19 @@ class DistillationPairwiseTrainer(LossTrainer):
         # for ix, record in enumerate(records):
         #     teacher_scores_[ix, 0] = record.positive_document["score"]
         #     teacher_scores_[ix, 1] = record.negative_document["score"]
-        # Get the next batch and compute the scores for each query/document pair
-        scores = (
-            self.model(records, tokenized=tokenized_records).reshape(2, len(records)).T
-        )
+        # Signal the pairwise layout to dual_representation_metrics:
+        #   documents tensor will be (2N, V) interleaved [d0+, d0-, d1+, d1-, …]
+        #   queries tensor will be   (2N, V) with each query duplicated.
+        # Cleared in the finally block, mirroring BatchwiseTrainer's pattern.
+        self.context.current_relevances = "pairwise"
+        try:
+            scores = (
+                self.model(records, tokenized=tokenized_records, info=self.context)
+                .reshape(2, len(records))
+                .T
+            )
+        finally:
+            self.context.current_relevances = None
 
         if torch.isnan(scores).any() or torch.isinf(scores).any():
             self.logger.error(

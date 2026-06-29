@@ -68,6 +68,16 @@ class DocumentIterator:
         self.max_docs = max_docs
         self.batch_size = batch_size
 
+    def __getstate__(self):
+        # impact_index.DocumentStore (Rust C extension) cannot be pickled.
+        # It is cached in documents.__dict__['_store'] via @cached_property.
+        # Drop it so the subprocess can re-open the store from disk on first access.
+        state = self.__dict__.copy()
+        docs = state.get("documents")
+        if docs is not None:
+            docs.__dict__.pop("_store", None)
+        return state
+    
     @cached_property
     def iterator(self):
         start = 0 if self.last_doc_id is None else self.last_doc_id + 1
@@ -340,10 +350,17 @@ class SparseRetriever(Retriever, Generic[InputType]):
         super().initialize()
         logger.info("Initializing the encoder")
         self.encoder.initialize()
+
+        # DEBUG: confirm weights are loaded
+        for name, param in self.encoder.named_parameters():
+            print(f"{name}: mean={param.data.mean():.6f}, std={param.data.std():.6f}")
+            break  # just check the first layer as a sanity check
+
         logger.info("Initializing the index")
         self.index.initialize(self.in_memory)
 
         logger.info("Moving everything to Fabric")
+
 
     def retrieve_all(
         self, queries: Dict[str, InputType]
@@ -370,6 +387,12 @@ class SparseRetriever(Retriever, Generic[InputType]):
             queue: asyncio.Queue,
         ):
             x = self.encoder([topic for _, topic in batch]).value.cpu().detach().numpy()
+
+            # DEBUG: inspect the raw embeddings
+            print(f"Batch size: {len(batch)}, embedding matrix shape: {x.shape}")
+            print(f"Sample vector stats — min: {x[0].min():.4f}, max: {x[0].max():.4f}, "
+                f"non-zeros: {(x[0] != 0).sum()}")
+    
             assert len(x) == len(batch), (
                 f"Discrepancy between counts of vectors ({len(x)})"
                 f" and number queries ({len(batch)})"
@@ -377,6 +400,11 @@ class SparseRetriever(Retriever, Generic[InputType]):
             for (key, _), vector in zip(batch, x):
                 (ix,) = vector.nonzero()
                 query = {ix: float(v) for ix, v in zip(ix, vector[ix])}
+
+                # DEBUG: inspect the sparse query dict
+                print(f"Query '{key}': {len(query)} non-zero dims, "
+                    f"top terms: {sorted(query.items(), key=lambda kv: -kv[1])[:5]}")
+
                 logger.debug("Adding topic %s to the queue", key)
                 await queue.put((key, query, self.topk))
                 logger.debug("[done] Adding topic %s to the queue", key)
