@@ -8,8 +8,10 @@ experimaestro-IR (XPMIR) is a Python Information Retrieval framework built on [e
 
 ## Commands
 
+This project uses [uv](https://docs.astral.sh/uv/) as the package manager. All Python commands should be run via `uv run` to use the project's virtual environment.
+
 ```sh
-# Install dependencies
+# Install dependencies (creates .venv automatically)
 uv sync --group test
 
 # Run all tests
@@ -70,11 +72,10 @@ Experiments use `@ir_experiment()` or `@learning_experiment` decorators wrapping
 
 Built on `xpm_torch` / PyTorch Lightning. `TrainerContext` is passed through forward methods. `TrainingHook` system enables custom loss/regularization (e.g., `ScheduledFlopsRegularizer` for SPLADE).
 
-### Submodule Dependencies
+### Dependencies
 
-- `datamaestro-ir/` — IR dataset management (local submodule)
-- `xpm-torch/` — PyTorch + experimaestro integration (local submodule)
-- `datamaestro-text/` — Text dataset management (local directory, no longer a submodule)
+- `xpm-torch` — PyTorch + experimaestro integration (dependency)
+- `datamaestro-text/` — Text dataset management (local directory)
 - `ir_datasets` — Pinned to custom fork in some projects
 
 ### Test Patterns
@@ -82,3 +83,14 @@ Built on `xpm_torch` / PyTorch Lightning. `TrainerContext` is passed through for
 - Parametrized model tests using `@registermodel` decorator and `modelfactories` list
 - `skip_if_ci` marker from `xpmir.test` for expensive tests
 - `conftest.py` sets `KMP_DUPLICATE_LIB_OK=TRUE` for macOS compatibility
+
+### Documentation
+
+Config classes must be documented in the Sphinx RST files under `docs/source/` using the `autoxpmconfig` directive. The `test_documented` test verifies all `Config` subclasses are documented.
+
+```rst
+.. autoxpmconfig:: xpmir.module.path.ClassName
+   :members: method1, method2
+```
+
+Use the **full module path** (matching `ClassName.__module__`), not re-export aliases. For example, use `xpmir.rankers.scorer.Scorer` not `xpmir.rankers.Scorer`.

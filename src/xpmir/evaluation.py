@@ -34,7 +34,7 @@ from xpm_torch.configuration import FabricConfiguration
 import xpmir.measures as m
 from xpmir.measures import Measure
 from xpmir.metrics import evaluator
-from xpmir.rankers import Retriever
+from xpmir.rankers import Retriever, RunRetriever
 from experimaestro.launchers import Launcher
 
 
@@ -84,6 +84,11 @@ class BaseEvaluation(Task):
 
     def _execute(self, run: AdhocRunDict, assessments):
         """Evaluate an IR ad-hoc run with trec-eval"""
+        from experimaestro import taskglobals
+
+        if taskglobals.Env.instance().slave:
+            logging.info("Slave process: skipping evaluation write")
+            return
 
         if self.with_run:
             logging.info("Writing the run")
@@ -173,16 +178,20 @@ class Evaluate(BaseEvaluation, Task):
     """Runtime configuration, managed by Fabric"""
 
     def execute(self):
-        self.retriever.initialize()
-
-        # instanciate the Fabirc object
+        # 1. Initialize Fabric first
         fabric = self.fabric_config.get_fabric()
         fabric.launch()
 
-        # Wrap all necessary children with fabric
+        # 2. Initialize the retriever (loads the model)
+        self.retriever.initialize()
+
+        # 3. Wrap necessary children with fabric
         self.retriever.setup_with_fabric(fabric)
 
         run = get_run(self.retriever, self.dataset)
+
+        if fabric.world_size > 1:
+            fabric.barrier()
         self._execute(run, self.dataset.assessments)
 
 
@@ -479,3 +488,49 @@ class EvaluationsCollection:
                 value = values.get(metric, "")
                 file.write(f" | {value}")
             file.write(" |\n")
+
+
+class MultiRunRetrieverFactory(RetrieverFactory):
+    """A factory that returns the appropriate `RunRetriever` for a given dataset"""
+
+    def __init__(self, retriever_name: str):
+        self.retriever_name = retriever_name
+        self.runs: Dict[str, AdhocRun] = {}
+        self.documents: Dict[str, Documents] = {}
+
+    def add_run(self, key: str, documents: Documents, run: AdhocRun):
+        """Register a run for a given document collection"""
+        if key in self.runs.keys():
+            logger.warning(
+                f"{key} Retrival run already stored for {self.retriever_name}"
+            )
+        self.runs[key] = run
+        self.documents[key] = documents
+
+    def __call__(self, dataset: Documents, key: str = None) -> RunRetriever:
+        # Try to find the run by key first, then by dataset ID
+        run = self.runs.get(key) if key else None
+        if run is None:
+            # Fallback to dataset ID if key not provided or not found
+            # This is less specific but better than nothing
+            for k, docs in self.documents.items():
+                if docs.id == dataset.id:
+                    run = self.runs[k]
+                    break
+
+        if run is None:
+            raise KeyError(
+                f"No run found for dataset key='{key}' or id='{dataset.id}'"
+                f"Available: {','.join(self.runs.keys())}"
+            )
+
+        return RunRetriever.C(run=run, documents=dataset).tag(
+            "first_stage", self.retriever_name
+        )
+
+    @classmethod
+    def from_results(cls, name: str, results: List) -> "MultiRunRetrieverFactory":
+        factory = cls(name)
+        for res in results:
+            factory.add_run(res.key, res.task.dataset.documents, res.run)
+        return factory

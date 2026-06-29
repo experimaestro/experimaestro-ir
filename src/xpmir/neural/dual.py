@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Any
 from attrs import evolve
 import torch
 from experimaestro import DataPath, OptionalDataPath, field, Param
@@ -106,10 +106,10 @@ class DualVectorScorer(DualRepresentationScorer[QueriesRep, DocsRep]):
 
     CONFIG_LOADER = DualModuleLoader.C
 
-    encoder: Param[TextEncoderBase]
+    encoder: Param[TextEncoderBase[Any, Any]]
     """The document (and potentially query) encoder"""
 
-    query_encoder: Param[Optional[TextEncoderBase]]
+    query_encoder: Param[Optional[TextEncoderBase[Any, Any]]]
     """The query encoder (optional, if not defined uses the query_encoder)"""
 
     def __initialize__(self):

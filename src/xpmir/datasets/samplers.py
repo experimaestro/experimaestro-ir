@@ -167,8 +167,7 @@ def msmarco_rankdistillm_colbert_top50() -> SamplerAdapter:
     Guido Zuccon, Benno Stein, Martin Potthast, Matthias Hagen), 2025
     """
     train_ranks_distil = prepare_dataset(
-        "com.github.webis-de."
-        "rank-distillm.rankzephyr_colbert_10000_sampled_50_annotated"
+        "com.github.webis-de.rank-distillm.rankzephyr.colbert10000.sampled50.annotated"
     )
 
     # Access to topic text

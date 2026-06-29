@@ -9,7 +9,24 @@ loading instructions via
 """
 
 import json
+import torch
 from pathlib import Path
+from typing import Optional, List, Tuple
+
+from sentence_transformers import CrossEncoder
+
+from experimaestro import Param, field, LightweightTask
+from xpmir.text.huggingface.tokenizers import get_default_max_len
+from xpmir.text import TokenizedTexts
+from xpmir.letor.records import BaseItems
+from xpmir.rankers import AbstractModuleScorer
+from xpm_torch.utils import to_device
+from xpmir.text.tokenizers import TokenizerOptions, TokenizerBase
+
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 MLM_TYPE = "sentence_transformers.sparse_encoder.models.MLMTransformer.MLMTransformer"
@@ -170,3 +187,192 @@ class SpladeLoaderMixin:
                 before="usage",
             ),
         ]
+
+
+class STCrossEncoder(AbstractModuleScorer):
+    """A cross-encoder model leveraging the sentence-transformers library.
+
+    It supports both direct raw text input and pre-tokenized input, utilizing the
+    ST model's native tokenization and forward pass for consistency.
+
+    Example:
+        >>> from xpmir.neural.sentence_transformers import st_cross_scorer
+        >>> model, init_tasks = st_cross_scorer(model_id="mixedbread-ai/mxbai-rerank-base-v1")
+    """
+
+    model_id: Param[str]
+    """The HuggingFace model ID or path."""
+
+    max_length: Param[Optional[int]] = field(default=None)
+    """Maximum sequence length for tokenization."""
+
+    st_model: CrossEncoder
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        if self.max_length is None:
+            # try to infer it from config
+            self.max_length = get_default_max_len(self.model_id)
+            logger.warning(
+                f"No max_len provided for STCrossEncoder, using default hf: {self.max_length}"
+            )
+
+    def __initialize__(self):
+        super().__initialize__()
+
+        self.st_model = CrossEncoder(
+            self.model_id,
+            max_length=self.max_length,
+        )
+        self._initialized = True
+
+    @property
+    def tokenizer(self) -> TokenizerBase:
+        """Returns a tokenizer that uses the ST model's native tokenization."""
+        return self.st_model.tokenizer
+
+    def tokenize(
+        self,
+        input_records: BaseItems,
+        options: Optional[TokenizerOptions] = None,
+    ) -> TokenizedTexts:
+        # Prepare raw texts
+        queries = [record["text_item"].text for record in input_records.unique_topics]
+        documents = [
+            record["text_item"].text for record in input_records.unique_documents
+        ]
+
+        # Reconstruct pairs
+        pairs = []
+        q_ix, d_ix = input_records.pairs()
+        for qi, di in zip(q_ix, d_ix):
+            pairs.append([queries[qi], documents[di]])
+
+        # Route through the ST Transformer module's preprocess so any prompt /
+        # chat template (e.g. Qwen3/mxbai generative rerankers) is applied
+        # identically to predict().
+        max_length = options.max_length if options else self.max_length
+        processing_kwargs = (
+            {"text": {"max_length": max_length, "truncation": True}}
+            if max_length
+            else None
+        )
+        r = self.st_model[0].preprocess(pairs, processing_kwargs=processing_kwargs)
+
+        return TokenizedTexts(
+            tokens=None,
+            ids=r["input_ids"],
+            lens=r.get("length", None),
+            mask=r.get("attention_mask", None),
+            token_type_ids=r.get("token_type_ids", None),
+        )
+
+    def vocabulary_size(self) -> int:
+        return self.st_model.tokenizer.vocab_size
+
+    def tok2id(self, tok: str) -> int:
+        return self.st_model.tokenizer.convert_tokens_to_ids(tok)
+
+    def id2tok(self, idx: int) -> str:
+        return self.st_model.tokenizer.convert_ids_to_tokens(idx)
+
+    def batch_tokenize(
+        self,
+        input_records: BaseItems,
+        options: Optional[TokenizerOptions] = None,
+    ) -> TokenizedTexts:
+        """Transform the text to tokens by using the tokenizer."""
+        return self.tokenize(input_records, options=options)
+
+    def get_tokenizer_fn(self):
+        return self.batch_tokenize
+
+    def forward(
+        self,
+        inputs: BaseItems,
+        tokenized: Optional[TokenizedTexts] = None,
+    ):
+        if not self._initialized:
+            self.initialize()
+
+        if tokenized is None:
+            # Extract raw pairs from inputs
+            queries = [record["text_item"].text for record in inputs.unique_topics]
+            documents = [record["text_item"].text for record in inputs.unique_documents]
+            pairs = []
+            q_ix, d_ix = inputs.pairs()
+            for qi, di in zip(q_ix, d_ix):
+                pairs.append([queries[qi], documents[di]])
+
+            # Use raw ST predict function
+            scores = self.st_model.predict(
+                pairs,
+                batch_size=len(pairs),
+                convert_to_tensor=True,
+                show_progress_bar=False,
+            )
+
+            return to_device(scores, self.device)
+
+        with torch.set_grad_enabled(torch.is_grad_enabled()):
+            features = {
+                "input_ids": to_device(tokenized.ids, self.device),
+                "attention_mask": to_device(tokenized.mask, self.device),
+            }
+            if tokenized.token_type_ids is not None:
+                features["token_type_ids"] = to_device(
+                    tokenized.token_type_ids, self.device
+                )
+
+            # Match predict()'s inference semantics: it calls self.eval()
+            # internally so dropout/etc don't perturb scores.
+            self.st_model.eval()
+
+            # Run the ST module pipeline so that CausalLM-based generative
+            # rerankers (5.4+) get their LogitScore reduction applied;
+            # classification CEs keep the same head-logit semantics.
+            output = self.st_model(features)
+            result = self.st_model.activation_fn(output["scores"])
+
+            # predict() returns scores without a trailing singleton dim
+            if result.ndim > 1 and result.shape[-1] == 1:
+                result = result.squeeze(-1)
+
+        return result
+
+
+class InitSTCrossEncoder(LightweightTask):
+    """Initializes the STCrossEncoder by loading the model."""
+
+    model: Param[STCrossEncoder]
+
+    def execute(self):
+        self.model.initialize()
+
+
+def st_cross_scorer(
+    model_id: str,
+    max_length: Optional[int] = None,
+) -> Tuple[STCrossEncoder, List[LightweightTask]]:
+    """Creates an STCrossEncoder model.
+
+    :param model_id: The HuggingFace model ID
+    :param max_length: Maximum sequence length
+    :returns: (STCrossEncoder, init_tasks)
+    """
+    default_max_len = get_default_max_len(model_id)
+
+    if max_length and default_max_len > max_length:
+        max_len = max_length
+    else:
+        logging.warning(
+            f"No max_length provided or default max_length {default_max_len} is not greater than provided max_length {max_length}."
+            f"Using default max_len {default_max_len} for CrossEncoder {model_id}"
+        )
+        max_len = None
+    scorer = STCrossEncoder.C(
+        model_id=model_id,
+        max_length=max_len,
+    )
+    return scorer, [InitSTCrossEncoder.C(model=scorer)]

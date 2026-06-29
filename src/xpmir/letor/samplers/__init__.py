@@ -425,16 +425,18 @@ class TSVPairwiseSampleDataset(PairwiseSampleDataset):
 
 
 class JSONLPairwiseSampleDataset(PairwiseSampleDataset):
-    """Transform a jsonl file to a pairwise dataset
-    General format:
-    {
-        queries: [str, str],
-        pos_ids: [id, id],
-        neg_ids: {
-            "bm25": [id, id],
-            "random": [id, id]
+    """Transform a JSONL file to a pairwise dataset.
+
+    General format::
+
+        {
+            "queries": ["str", "str"],
+            "pos_ids": ["id", "id"],
+            "neg_ids": {
+                "bm25": ["id", "id"],
+                "random": ["id", "id"]
+            }
         }
-    }
     """
 
     path: Param[Path]

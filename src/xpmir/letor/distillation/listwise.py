@@ -11,7 +11,7 @@ from xpmir.letor.records import (
     PointwiseItems,
 )
 from xpm_torch.trainers import TrainerContext, LossTrainer
-from xpm_torch.losses import Loss, ModuleOutputType
+from xpm_torch.losses import Loss, ModuleOutputType, bce_with_logits_loss
 
 from .samplers import ListwiseDistillationSample
 import numpy as np
@@ -155,7 +155,7 @@ class ListwiseSoftmaxCrossEntropy(DistillationListwiseLoss):
     batchwise losses, adapted to listwise distillation.
 
     The original formula is:
-      -logsumexp(normalize(scores) + (1 - 1.0 / relevances), dim=-1).mean()
+      `-logsumexp(normalize(scores) + (1 - 1.0 / relevances), dim=-1).mean()`
 
     where `normalize` depends on the model output type.
     """
@@ -192,7 +192,7 @@ class ListwiseInfoNCE(DistillationListwiseLoss):
 
     This loss expects binary relevance labels (1 for positive, 0 for negative).
     If multiple positives are present, it averages the cross-entropy loss over them.
-    TODO CHECK 
+    TODO CHECK
     """
 
     NAME = "listwise-infonce"
@@ -229,6 +229,76 @@ class ListwiseInfoNCE(DistillationListwiseLoss):
         loss = (loss * mask).sum() / torch.clamp(mask.sum(), min=1.0)
 
         return loss
+
+
+class ListwiseBCE(DistillationListwiseLoss):
+    """Point-wise cross-entropy loss for listwise samples.
+    Computes BCE for each document in the list, adapting to the student's output type.
+    """
+
+    NAME = "bce"
+
+    def initialize(self, ranker: AbstractModuleScorer):
+        super().initialize(ranker)
+        self.output_type = ranker.outputType
+
+        if self.output_type == ModuleOutputType.REAL:
+            self.loss_fn = nn.BCEWithLogitsLoss()
+        elif self.output_type == ModuleOutputType.PROBABILITY:
+            self.loss_fn = nn.BCELoss()
+        elif self.output_type == ModuleOutputType.LOG_PROBABILITY:
+            # Using your custom autograd function for log-space stability
+            self.loss_fn = bce_with_logits_loss
+        else:
+            raise NotImplementedError(f"Output type {self.output_type} not supported.")
+
+    def compute(
+        self, student_scores: Tensor, teacher_scores: Tensor, context: TrainerContext
+    ) -> torch.Tensor:
+        # student_scores: (Batch, NumPassages)
+        # teacher_scores: (Batch, NumPassages) - binary 1s and 0s
+
+        # Ensure targets match the student's precision and device
+        targets = teacher_scores.to(student_scores.dtype)
+
+        if self.output_type == ModuleOutputType.LOG_PROBABILITY:
+            # Your custom BCEWithLogLoss expects vectors (1D tensors)
+            # Flattening ensures compatibility regardless of batch size/list length
+            return self.loss_fn(student_scores.flatten(), targets.flatten())
+
+        # For standard nn.Modules, (Batch, NumPassages) is handled automatically
+        return self.loss_fn(student_scores, targets)
+
+
+class ListwiseHingeLoss(DistillationListwiseLoss):
+    """Pairwise Hinge loss for listwise samples.
+    Computes max(0, margin - (s_pos - s_neg)) for each negative.
+
+    This implementation assumes a fixed number of positives per query
+    (typically 1) as provided by the DistillationNegativesSampler.
+    """
+
+    NAME = "hinge"
+    margin: Param[float] = field(default=1.0, ignore_default=True)
+
+    def compute(
+        self, student_scores: Tensor, teacher_scores: Tensor, context: TrainerContext
+    ) -> torch.Tensor:
+        # teacher_scores are binary (1 for positive, 0 for negative)
+        is_positive = teacher_scores > 0
+
+        # We assume that each query has at least one positive and one negative
+        # DistillationNegativesSampler gives exactly 1 pos and passages_per_query - 1 negs.
+
+        # Flattening and reshaping is risky unless shapes are guaranteed.
+        # If using fixed 1-pos, many-neg:
+        batch_size = student_scores.shape[0]
+        pos_scores = student_scores[is_positive].reshape(batch_size, -1)  # (B, P)
+        neg_scores = student_scores[~is_positive].reshape(batch_size, -1)  # (B, N)
+
+        # (B, num_pos, 1) - (B, 1, num_neg) -> (B, num_pos, num_neg)
+        loss = F.relu(self.margin - pos_scores.unsqueeze(2) + neg_scores.unsqueeze(1))
+        return loss.mean()
 
 
 ### Trainer

@@ -136,6 +136,16 @@ class HFMaskedLanguageModel(HFModel):
     def automodel(self):
         return AutoModelForMaskedLM
 
+    def decompose(self):
+        """Decompose into (backbone, transform, decoder).
+
+        See :func:`~xpmir.text.huggingface.decompose.decompose_mlm_model`
+        for details.
+        """
+        from xpmir.text.huggingface.decompose import decompose_mlm_model
+
+        return decompose_mlm_model(self.model)
+
 
 class HFSequenceClassification(HFModel):
     """HuggingFace model for sequence classification"""
@@ -161,7 +171,7 @@ class HFSequenceClassification(HFModel):
             # ensure that num_labels is one for a Cross-encoder
             if hasattr(hf_config, "num_labels"):
                 if hf_config.num_labels != self.n_labels:
-                    logger.info(
+                    logger.debug(
                         f"hf config 'n_labels' was {hf_config.num_labels}, setting it to {self.n_labels}"
                     )
                 hf_config.num_labels = self.n_labels

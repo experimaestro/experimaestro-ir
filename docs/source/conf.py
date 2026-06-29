@@ -1,7 +1,5 @@
 import builtins
-import mock
-import sys
-import logging
+from experimaestro.experiments.mockmodule import mock_modules
 from xpmir import version
 
 # Configuration file for the Sphinx documentation builder.
@@ -99,6 +97,8 @@ intersphinx_mapping = {
         None,
     ),
     "xpm-torch": ("https://xpm-torch.readthedocs.io/en/latest/", None),
+    "python": ("https://docs.python.org/3/", None),
+    "torch": ("https://pytorch.org/docs/stable/", None),
 }
 
 # Autodoc options
@@ -108,55 +108,25 @@ autodoc_default_options = {
 }
 
 autodoc_mock_imports = [
-    # "torch",
     "faiss",
     "pandas",
     "bs4",
     "pytorch_transformers",
     "pytrec_eval",
     "apex",
-    "pytorch_lightning",
     "ir_measures",
+    "huggingface_hub",
 ]
 
-
-def side_effect(*args, **kwargs):
-    logging.error("Side effect %s / %s", args, kwargs)
-
-
-class DocMock(mock.Mock):
-    def __repr__(self):
-        names = []
-        mock = self
-        while mock is not None:
-            names.append(mock._mock_name)
-            mock = mock._mock_parent
-
-        return ".".join(names[::-1])
-
-
-for name in [
-    "torch",
-    "torch.nn",
-    "torch.distributed",
-    "torch.optim",
-    "torch.nn.functional",
-    "torch.functional",
-    "torch.multiprocessing",
-    "torch.utils",
-    "torch.utils.tensorboard",
-    "torch.utils.tensorboard.writer",
-    "torch.optim.lr_scheduler",
-    "transformers",
-]:
-    sys.modules[name] = DocMock(side_effect=side_effect, name=name)
-
-import torch.nn as nn  # noqa: E402
-
-
-class TorchModule:
-    to = None
-    train = None
-
-
-nn.Module = TorchModule
+# Use experimaestro's mock module system for torch and transformers.
+# This handles class inheritance, subscripting, decorators, and torch.autograd.Function.
+mock_modules(
+    [
+        "torch",
+        "transformers",
+        "torchdata",
+        "lightning",
+        "lightning_fabric",
+        "pytorch_lightning",
+    ]
+)

@@ -21,9 +21,9 @@ classifiers = [
 
 dependencies = [
     # Experimaestro
-    "experimaestro>=2.3",
-    "datamaestro>=1.0.1",
-    "datamaestro-ir>=2025.7.28",
+    "experimaestro>=2.4.0",
+    "datamaestro>=0.2.3",
+    "datamaestro-ir>=0.2.0",
     "docstring_parser",
     "impact-index>=1.2.0",
     "omegaconf>=2.2",
@@ -34,7 +34,11 @@ dependencies = [
     # Torch addons
     "toma",
     "pytorch-lightning",
-    "xpm-torch",  # local submodule: xpm-torch/
+    "xpm-torch>=0.2.0",
+    "python-dotenv>=1.2.1",
+    "pytest>=9.0.2",
+    "pillow>=12.1.0",
+    "transformers>=5.8.1",
 ]
 
 [project.optional-dependencies]
@@ -43,10 +47,14 @@ anserini = [
 ]
 
 neural = [
-    "torch>=1.12",
+    "torch>=2.10",
     "tensorboard",
     "transformers",
-    "sentence_transformers>=5.3.0"
+    "sentence_transformers>=5.4.0"
+]
+
+fast-plaid = [
+    "fast-plaid"
 ]
 
 [dependency-groups]
@@ -61,6 +69,7 @@ documentation = [
 ]
 test = [
     { include-group = "documentation" },
+    "experimaestro-ir[neural]",
     "pytest",
     "faiss-cpu",
     "ruff>=0.14",
@@ -103,8 +112,7 @@ include = [
 ]
 
 [tool.uv.sources]
-xpm-torch = { path = "xpm-torch", editable = true }
-datamaestro-ir = { path = "datamaestro-ir", editable = true }
+# No local sources
 
 [tool.pytest.ini_options]
 markers = [
@@ -120,7 +128,7 @@ filterwarnings = [
 
 [tool.ruff]
 # Exclude submodules — they have their own ruff config
-exclude = ["xpm-torch", "datamaestro-ir", "datamaestro-text"]
+exclude = ["datamaestro-text"]
 
 [tool.pyright]
 include = ["xpmir"]

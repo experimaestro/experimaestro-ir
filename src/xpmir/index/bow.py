@@ -1,5 +1,6 @@
 """Bag-of-Words index with BM25 scoring using impact_index"""
 
+import gc
 import logging
 import shutil
 import sys
@@ -210,9 +211,23 @@ class BOWSparseRetrieverIndexBuilder(Task):
             )
             raw_index.compress(str(compressed_path))
 
-            # Replace uncompressed index with compressed one
-            shutil.rmtree(self.index_path)
+            # Drop the reference so mmap'd files are closed before rmtree
+            # (otherwise NFS leaves .nfs* files and rmdir fails with ENOTEMPTY)
+            del raw_index
+            gc.collect()
+
+            # Replace uncompressed index with compressed one. Move the old
+            # directory aside first so the compressed index is in place even
+            # if removal fails (e.g. NFS .nfs* leftovers).
+            old_path = self.index_path.with_name(self.index_path.name + "_old")
+            self.index_path.rename(old_path)
             compressed_path.rename(self.index_path)
+            try:
+                shutil.rmtree(old_path)
+            except OSError as e:
+                logger.warning(
+                    "Could not fully remove old index at %s: %s", old_path, e
+                )
             logger.info("Index compressed")
 
     def task_outputs(self, dep):

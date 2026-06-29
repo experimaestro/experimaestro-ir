@@ -1,13 +1,21 @@
 Dataset adapters
 ================
 
-Adapters can be used when a collection is derived from another one by
-subsampling document and/or queries.
+Adapters derive new datasets from existing ones by subsampling documents,
+topics, or relevance assessments. They are useful for creating train/validation
+splits, restricting evaluation to a subset of topics, or building
+retriever-based collections for re-ranking experiments.
 
 .. currentmodule:: xpmir.datasets.adapters
 
+.. contents:: On this page
+   :local:
+   :depth: 2
+
 Adhoc datasets
 --------------
+
+Split or combine ad-hoc retrieval datasets into folds.
 
 .. autoxpmconfig:: RandomFold
     :members: folds
@@ -17,6 +25,9 @@ Adhoc datasets
 Documents
 ---------
 
+Create document subsets, e.g. restricting a collection to documents returned by
+a first-stage retriever.
+
 .. autoxpmconfig:: RetrieverBasedCollection
 
 .. autoxpmconfig:: DocumentSubset
@@ -24,12 +35,16 @@ Documents
 Assessments
 -----------
 
+Fold relevance assessments (qrels) by topic ID or topic object.
+
 .. autoxpmconfig:: AbstractAdhocAssessmentFold
 .. autoxpmconfig:: AdhocAssessmentFold
 .. autoxpmconfig:: IDAdhocAssessmentFold
 
 Topics
 ------
+
+Fold or generate topic sets.
 
 .. autoxpmconfig:: AbstractTopicFold
 .. autoxpmconfig:: TopicFold

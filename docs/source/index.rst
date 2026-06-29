@@ -1,40 +1,42 @@
 Welcome to Experimaestro IR documentation!
 ==========================================
 
-experimaestro-IR (XPMIR) is a library for learning IR (neural) models.
-XPMIR defines a large set of components that can be composed arbitrarily,
-allowing to re-use easily components to build your own experiments.
+experimaestro-IR (XPMIR) is a library for building and evaluating Information
+Retrieval models, with a focus on neural approaches. XPMIR defines a large set
+of composable components -- scorers, retrievers, text encoders, samplers, and
+evaluation pipelines -- that can be combined to build reproducible experiments.
+
 XPMIR is built upon `experimaestro <https://experimaestro-python.readthedocs.io/en/latest/>`_,
-a library which allows to build complex experimental plans while tracking parameters
-and to execute them locally or on a cluster.
+a framework that tracks parameters, manages dependencies, and executes
+experimental plans locally or on a cluster.
 
 
 Install
 =======
 
-Base experimaestro-IR can be installed with `pip install xpmir`.
-Functionalities can be added by installing optional dependencies:
+Base experimaestro-IR can be installed with ``pip install xpmir``.
+Optional dependencies unlock additional functionality:
 
-- `pip install xpmir[neural]` to install neural-IR packages
-- `pip install xpmir[anserini]` to install Anserini related packages
-
+- ``pip install xpmir[neural]`` -- PyTorch, Transformers, and Sentence
+  Transformers for neural IR models
+- ``pip install xpmir[anserini]`` -- Anserini/Pyserini for classical IR models
 
 
 Example
 =======
 
-
-Below is an example of a simple experiment that runs BM25 and evaluates the run (on TREC-1).
-Note that you need the dataset to be prepared using
+Below is a minimal experiment that indexes a collection, runs BM25, and
+evaluates the results on TREC-1. First, prepare the dataset:
 
 .. code-block:: sh
 
    datamaestro datafolders set gov.nist.trec.tipster TIPSTER_PATH
    datamaestro prepare gov.nist.trec.adhoc.1
 
-with `TIPSTER_PATH` the path containg the TIPSTER collection (i.e. the folders `Disk1`, `Disk2`, etc.)
+where ``TIPSTER_PATH`` is the path containing the TIPSTER collection (i.e. the
+folders ``Disk1``, ``Disk2``, etc.).
 
-You can then execute the following file:
+Then execute the following file:
 
 .. literalinclude:: ../../examples/bm25.py
 
@@ -50,11 +52,10 @@ Table of Contents
    evaluation
    letor/index
    neural
-   hooks
    text/index
+   hooks
    misc
    experiments
-   papers/index
    pretrained
    cli
 
