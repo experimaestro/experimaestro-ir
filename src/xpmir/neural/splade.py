@@ -192,6 +192,20 @@ class SpladeTextEncoder(
         path.mkdir(parents=True, exist_ok=True)
         self.encoder.model.save_pretrained(path)
         self.tokenizer.tokenizer.tokenizer.save_pretrained(path)
+#
+    #def load_model(self, path: Path):
+    #    """Load from HF pretrained format, or fall back to safetensors/pth."""
+    #    config_path = path / "config.json"
+    #    if config_path.exists():
+    #        from transformers import AutoModelForMaskedLM
+#
+    #        self.encoder.model = AutoModelForMaskedLM.from_pretrained(path)
+    #        backbone, transform, decoder = self.encoder.decompose()
+    #        self._backbone = backbone
+    #        self._head = self.aggregation.get_output_module(transform, decoder)
+    #    else:
+    #        super().load_model(path)
+#
 
     def load_model(self, path: Path):
         """Load from HF pretrained format, or fall back to safetensors/pth."""
@@ -199,13 +213,28 @@ class SpladeTextEncoder(
         if config_path.exists():
             from transformers import AutoModelForMaskedLM
 
-            self.encoder.model = AutoModelForMaskedLM.from_pretrained(path)
+            # Device the current model sits on (Fabric placed it before this load)
+            try:
+                device = next(self.encoder.model.parameters()).device
+            except (StopIteration, AttributeError):
+                device = None
+
+            loaded = AutoModelForMaskedLM.from_pretrained(path)
+            if device is not None:
+                loaded = loaded.to(device)
+            self.encoder.model = loaded
+
             backbone, transform, decoder = self.encoder.decompose()
             self._backbone = backbone
             self._head = self.aggregation.get_output_module(transform, decoder)
+
+            logger.warning(
+                "load_model: model on device %s",
+                next(self.encoder.model.parameters()).device,
+            )
         else:
             super().load_model(path)
-
+            
     @property
     def dimension(self):
         return self.encoder.model.config.vocab_size

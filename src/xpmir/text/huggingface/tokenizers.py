@@ -101,7 +101,7 @@ class HFTokenizer(Config, Initializable):
             list(texts),
             max_length=max_length,
             truncation=True,
-            padding=True,
+            padding="max_length",
             return_tensors="pt",
             return_length=options.return_length,
             return_attention_mask=options.return_mask,
