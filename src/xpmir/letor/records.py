@@ -181,10 +181,13 @@ class PointwiseItems(BaseItems[PointwiseItem]):
     # The relevances
     relevances: List[float]
 
-    def __init__(self):
+    def __init__(self, items: Optional[Iterable[PointwiseItem]] = None):
         self.topics = []
         self.documents = []
         self.relevances = []
+        if items is not None:
+            for item in items:
+                self.add(item)
 
     def add(self, record: PointwiseItem):
         self.queries.append(record.query)
@@ -279,10 +282,13 @@ class PairwiseItems(BaseItems):
     # The scores of the retriever
     negatives: List[IDTextRecord]
 
-    def __init__(self):
+    def __init__(self, items: Optional[Iterable[PairwiseItem]] = None):
         self._topics = []
         self.positives = []
         self.negatives = []
+        if items is not None:
+            for item in items:
+                self.add(item)
 
     def add(self, record: PairwiseItem):
         self._topics.append(record.query)
@@ -343,9 +349,12 @@ class PairwiseItemsWithTarget(PairwiseItems):
 
     target: List[int]
 
-    def __init__(self):
+    def __init__(self, items: Optional[Iterable[PairwiseItemWithTarget]] = None):
         super().__init__()
         self.target = []
+        if items is not None:
+            for item in items:
+                self.add(item)
 
     def add(self, record: PairwiseItemWithTarget):
         self._topics.append(record.query)
@@ -407,9 +416,12 @@ class ListwiseItems(BaseItems):
     # The list of documents per query
     _documents: List[List[IDTextRecord]]
 
-    def __init__(self):
+    def __init__(self, items: Optional[Iterable[ListwiseItem]] = None):
         self._topics = []
         self._documents = []
+        if items is not None:
+            for item in items:
+                self.add(item)
 
     def add(self, record: ListwiseItem):
         self._topics.append(record.query)
@@ -603,9 +615,12 @@ class DocumentRecords(List[IDTextRecord]):
     # Text of the documents
     documents: List[IDTextRecord]
 
-    def __init__(self):
+    def __init__(self, items: Optional[Iterable[IDTextRecord]] = None):
         super().__init__()
         self.documents = []
+        if items is not None:
+            for item in items:
+                self.add(item)
 
     def add(self, record: IDTextRecord):
         self.documents.append(record)

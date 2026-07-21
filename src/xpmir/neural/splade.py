@@ -199,7 +199,11 @@ class SpladeTextEncoder(
         if config_path.exists():
             from transformers import AutoModelForMaskedLM
 
-            self.encoder.model = AutoModelForMaskedLM.from_pretrained(path)
+            # We MUST load the weights into the existing model rather than replacing it!
+            # Replacing the module object after PyTorch Lightning Fabric has wrapped it
+            # breaks the Fabric wrappers and leaves the new module stranded on the CPU.
+            new_model = AutoModelForMaskedLM.from_pretrained(path)
+            self.encoder.model.load_state_dict(new_model.state_dict())
             backbone, transform, decoder = self.encoder.decompose()
             self._backbone = backbone
             self._head = self.aggregation.get_output_module(transform, decoder)

@@ -43,15 +43,15 @@ class PairwiseTrainer(LossTrainer):
         context: TrainerContext,
     ):
         super().initialize(random, context)
-        self.lossfn.initialize(self.ranker)
+        self.lossfn.initialize(self.model)
         for hook in context.hooks(PairwiseLoss):
-            hook.initialize(self.ranker)
+            hook.initialize(self.model)
         self.sampler.initialize(random)
 
         dataset = self.sampler.as_dataset()
 
-        if hasattr(self.ranker, "get_tokenizer_fn"):
-            tokenization_fn = self.ranker.get_tokenizer_fn()
+        if hasattr(self.model, "get_tokenizer_fn"):
+            tokenization_fn = self.model.get_tokenizer_fn()
 
             def collate_fn_with_tokenization(
                 samples: List[PairwiseItem],
@@ -72,9 +72,9 @@ class PairwiseTrainer(LossTrainer):
 
         # Get the next batch and compute the scores for each query/document
         if tokenized_records is not None:
-            rel_scores = self.ranker(records, tokenized=tokenized_records)
+            rel_scores = self.model(records, tokenized=tokenized_records)
         else:
-            rel_scores = self.ranker(records)
+            rel_scores = self.model(records)
 
         if torch.isnan(rel_scores).any() or torch.isinf(rel_scores).any():
             self.logger.error("nan or inf relevance score detected. Aborting.")

@@ -279,15 +279,50 @@ class InitCEFromHFID(HFModelInitBase):
     Uses ``model.config.hf_id`` to resolve the model.
     """
 
+    attn_implementation: Param[Optional[str]] = None
+    """The attention implementation to use (e.g., 'flash_attention_2', 'sdpa', 'eager')"""
+
     def execute(self):
         hf_id = self.model.config.hf_id
         model_id_or_path = _resolve_model_path(hf_id, self.model.automodel)
+
+        kwargs = {}
+        if self.attn_implementation is not None:
+            kwargs["attn_implementation"] = self.attn_implementation
+            if self.attn_implementation == "flash_attention_2":
+                kwargs["torch_dtype"] = (
+                    torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+                )
+        else:
+            try:
+                from transformers.utils import is_flash_attn_2_available
+
+                flash_avail = is_flash_attn_2_available()
+                cuda_avail = torch.cuda.is_available()
+
+                logger.info(
+                    f"DEBUG: is_flash_attn_2_available()={flash_avail}, torch.cuda.is_available()={cuda_avail}"
+                )
+
+                if flash_avail and cuda_avail:
+                    bf16_support = torch.cuda.is_bf16_supported()
+                    logger.info(f"DEBUG: torch.cuda.is_bf16_supported()={bf16_support}")
+                    kwargs["attn_implementation"] = "flash_attention_2"
+                    kwargs["torch_dtype"] = (
+                        torch.bfloat16 if bf16_support else torch.float16
+                    )
+                else:
+                    kwargs["attn_implementation"] = "sdpa"
+            except Exception as e:
+                logger.info(f"DEBUG: Exception checking flash_attn: {e}")
+                kwargs["attn_implementation"] = "sdpa"
 
         config = self.model.autoconfig.from_pretrained(
             model_id_or_path,
             trust_remote_code=True,
             dtype=torch.float32,
             local_files_only=is_local_files_only(),
+            **kwargs,
         )
 
         # ensure that num_labels is one for a Cross-encoder
@@ -311,7 +346,14 @@ class InitCEFromHFID(HFModelInitBase):
                 config=config,
                 trust_remote_code=True,
                 local_files_only=is_local_files_only(),
+                **kwargs,
             )
+
+        attn_impl = getattr(
+            self.model.model.config, "_attn_implementation", "default (unspecified)"
+        )
+        logger.info("Using attention implementation: '%s'", attn_impl)
+
         self.model._initialized = True
 
     def hub_readme_sections(self) -> list:
@@ -350,10 +392,11 @@ class HFCrossScorer(AbstractModuleScorer):
 
     def forward(
         self,
-        inputs: BaseItems,
+        inputs: Optional[BaseItems] = None,
         tokenized: Optional[TokenizedTexts] = None,
     ):
         if tokenized is None:
+            assert inputs is not None, "Either inputs or tokenized must be provided"
             tokenized = self.batch_tokenize(inputs)
 
         # strange that some existing models on the huggingface don't use the token_type
@@ -377,7 +420,11 @@ class HFCrossScorer(AbstractModuleScorer):
         """Load from HF pretrained format."""
         from transformers import AutoModelForSequenceClassification
 
-        self.encoder.model = AutoModelForSequenceClassification.from_pretrained(path)
+        # We MUST load the weights into the existing model rather than replacing it!
+        # Replacing the module object after PyTorch Lightning Fabric has wrapped it
+        # breaks the Fabric wrappers and leaves the new module stranded on the CPU.
+        new_model = AutoModelForSequenceClassification.from_pretrained(path)
+        self.encoder.model.load_state_dict(new_model.state_dict())
 
     def loader_config(self, path: Path, *, settings=None) -> "CrossEncoderModuleLoader":
         return CrossEncoderModuleLoader.C(
@@ -430,6 +477,7 @@ def hf_cross_scorer(
     max_length: Optional[int] = None,
     max_query_length: Optional[int] = None,
     max_doc_length: Optional[int] = None,
+    attn_implementation: Optional[str] = None,
 ) -> Tuple[HFCrossScorer, List[LightweightTask]]:
     """Creates an HFCrossScorer model from a pre-trained HuggingFace checkpoint.
     Usage example:
@@ -463,7 +511,9 @@ def hf_cross_scorer(
         max_length = default_max_len
 
     encoder = HFSequenceClassification.C(config=HFConfigID.C(hf_id=hf_id))
-    init_tasks = [InitCEFromHFID.C(model=encoder)]
+    init_tasks = [
+        InitCEFromHFID.C(model=encoder, attn_implementation=attn_implementation)
+    ]
     tokenizer = HFQueryDocTokenizer.C(
         model_id=hf_id,
         max_length=max_length,

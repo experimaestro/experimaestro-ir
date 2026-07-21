@@ -67,8 +67,8 @@ class BatchwiseTrainer(LossTrainer):
 
         dataset = self.sampler.as_dataset()
 
-        if hasattr(self.ranker, "get_tokenizer_fn"):
-            tokenization_fn = self.ranker.get_tokenizer_fn()
+        if hasattr(self.model, "get_tokenizer_fn"):
+            tokenization_fn = self.model.get_tokenizer_fn()
 
             def collate_fn_with_tokenization(
                 samples: List[PairwiseItem],
@@ -90,9 +90,9 @@ class BatchwiseTrainer(LossTrainer):
         # Get the next batch and compute the scores for each query/document
         # Get the scores
         if tokenized_records is not None:
-            rel_scores = self.ranker(batch, tokenized=tokenized_records)
+            rel_scores = self.model(batch, tokenized=tokenized_records)
         else:
-            rel_scores = self.ranker(batch)
+            rel_scores = self.model(batch)
 
         if torch.isnan(rel_scores).any() or torch.isinf(rel_scores).any():
             self.logger.error("nan or inf relevance score detected. Aborting.")

@@ -176,7 +176,7 @@ class RandomScorer(Scorer):
 class AbstractModuleScorerCall(Protocol):
     def __call__(
         self,
-        inputs: "BaseItems",
+        inputs: Optional["BaseItems"] = None,
         *,
         tokenized: Optional[TokenizedTexts] = None,
     ): ...
