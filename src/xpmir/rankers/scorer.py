@@ -14,6 +14,7 @@ from typing import (
 from typing_extensions import ReadOnly
 from xpmir.text import TokenizedTexts
 import torch
+import contextlib
 import torch.nn as nn
 from lightning_fabric import Fabric
 from experimaestro import Param, Config, Meta, field, tqdm
@@ -371,10 +372,6 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
             collate_fn=collate_fn,
         )
 
-        fabric: Fabric = getattr(self, "fabric", None)
-        if fabric:
-            dataloader = fabric.setup_dataloaders(dataloader)
-
         return dataloader
 
     @torch.no_grad()
@@ -399,6 +396,8 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
 
         fabric: Fabric = getattr(self, "fabric", None)
         dataloader = self.build_reranking_dataloader(queries)
+        if fabric:
+            dataloader = fabric.setup_dataloaders(dataloader)
 
         # Process in batches
         scored_results = {qid: [] for qid in queries}
@@ -450,46 +449,47 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
             batch = inputs["batch"]
             tokenized_records = inputs.get("tokenized_records")
 
-            if issubclass(scorer_type, AbstractModuleScorer):
-                # Use scorer.forward if it's an AbstractModuleScorer to batch across queries
+            with fabric.autocast() if fabric else contextlib.nullcontext():
+                if issubclass(scorer_type, AbstractModuleScorer):
+                    # Use scorer.forward if it's an AbstractModuleScorer to batch across queries
 
-                scores = (
-                    self.scorer(batch_items, tokenized=tokenized_records)
-                    .cpu()
-                    .float()
-                    .numpy()
-                )
-
-                for score, item in zip(scores, batch):
-                    qid = item.topic["id"]
-                    if qid not in seen_qids:
-                        seen_qids.add(qid)
-                        if pbar is not None:
-                            pbar.update(1)
-                    scored_results[qid].append(
-                        to_device(
-                            ScoredDocument(item.document, float(score.item())),
-                            "cpu",
-                        )
-                    )
-            else:
-                # Fallback: group by query and use rsv (score one by one)
-                by_query = {}
-                for item in batch:
-                    qid = item.topic["id"]
-                    if qid not in seen_qids:
-                        seen_qids.add(qid)
-                        if pbar is not None:
-                            pbar.update(1)
-                    by_query.setdefault(qid, []).append(
-                        to_device(
-                            ScoredDocument(item.document, item.relevance),
-                            "cpu",
-                        )
+                    scores = (
+                        self.scorer(batch_items, tokenized=tokenized_records)
+                        .cpu()
+                        .float()
+                        .numpy()
                     )
 
-                for qid, docs in by_query.items():
-                    scored_results[qid].extend(self.scorer.rsv(queries[qid], docs))
+                    for score, item in zip(scores, batch):
+                        qid = item.topic["id"]
+                        if qid not in seen_qids:
+                            seen_qids.add(qid)
+                            if pbar is not None:
+                                pbar.update(1)
+                        scored_results[qid].append(
+                            to_device(
+                                ScoredDocument(item.document, float(score.item())),
+                                "cpu",
+                            )
+                        )
+                else:
+                    # Fallback: group by query and use rsv (score one by one)
+                    by_query = {}
+                    for item in batch:
+                        qid = item.topic["id"]
+                        if qid not in seen_qids:
+                            seen_qids.add(qid)
+                            if pbar is not None:
+                                pbar.update(1)
+                        by_query.setdefault(qid, []).append(
+                            to_device(
+                                ScoredDocument(item.document, item.relevance),
+                                "cpu",
+                            )
+                        )
+
+                    for qid, docs in by_query.items():
+                        scored_results[qid].extend(self.scorer.rsv(queries[qid], docs))
 
         if pbar is not None:
             pbar.close()

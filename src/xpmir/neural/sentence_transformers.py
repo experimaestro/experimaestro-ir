@@ -13,6 +13,8 @@ import torch
 from pathlib import Path
 from typing import Optional, List, Tuple
 
+from transformers import AutoConfig
+
 from sentence_transformers import CrossEncoder
 
 from experimaestro import Param, field, LightweightTask
@@ -206,6 +208,9 @@ class STCrossEncoder(AbstractModuleScorer):
     max_length: Param[Optional[int]] = field(default=None)
     """Maximum sequence length for tokenization."""
 
+    pref_attn_implementation: Param[Optional[str]] = field(default=None)
+    """Attention implementation to use (e.g. 'flash_attention_2', 'sdpa', or None)."""
+
     st_model: CrossEncoder
 
     def __post_init__(self):
@@ -221,10 +226,56 @@ class STCrossEncoder(AbstractModuleScorer):
     def __initialize__(self):
         super().__initialize__()
 
+        model_kwargs = {}
+        if self.pref_attn_implementation:
+            model_kwargs["attn_implementation"] = self.pref_attn_implementation
+            logger.info(
+                f"Using attention implementation: '{self.pref_attn_implementation}'"
+            )
+        else:
+            logger.info("Using default attention implementation (None specified)")
+
+        # Warn if no classification head is found
+        try:
+            config = AutoConfig.from_pretrained(self.model_id, trust_remote_code=True)
+            archs = getattr(config, "architectures", [])
+            if not any("ForSequenceClassification" in arch for arch in archs):
+                logger.warning(
+                    f"No sequence classification head found in '{self.model_id}'. "
+                    f"Are you sure you are loading a CrossEncoder? "
+                    f"If you are fine-tuning from an encoder, use build_STCrossEncoder."
+                )
+        except Exception:
+            pass
+
         self.st_model = CrossEncoder(
             self.model_id,
             max_length=self.max_length,
+            model_kwargs=model_kwargs,
         )
+
+        actual_attn = getattr(self.st_model.model.config, "_attn_implementation", None)
+        if not (actual_attn and "flash" in actual_attn.lower()):
+            logger.warning(
+                f"FA2 may not be active (attn_impl={actual_attn!r}); training will be slower."
+            )
+
+        self._initialized = True
+
+    def save_model(self, path: Path):
+        """Save the model in native SentenceTransformers format."""
+        if path.suffix == ".safetensors":
+            # ModuleLoader's default tries to save a safetensors file directly.
+            # We intercept it to save the whole directory instead.
+            path = path.parent
+        self.st_model.save(str(path))
+
+    def load_model(self, path: Path):
+        """Load the model from a native SentenceTransformers directory."""
+        if path.is_file():
+            path = path.parent
+        self.model_id = str(path)
+        self.st_model = CrossEncoder(self.model_id)
         self._initialized = True
 
     @property
@@ -260,12 +311,16 @@ class STCrossEncoder(AbstractModuleScorer):
         )
         r = self.st_model[0].preprocess(pairs, processing_kwargs=processing_kwargs)
 
+        standard_keys = {"input_ids", "length", "attention_mask", "token_type_ids"}
+        kwargs = {k: v for k, v in r.items() if k not in standard_keys}
+
         return TokenizedTexts(
             tokens=None,
             ids=r["input_ids"],
             lens=r.get("length", None),
             mask=r.get("attention_mask", None),
             token_type_ids=r.get("token_type_ids", None),
+            kwargs=kwargs if kwargs else None,
         )
 
     def vocabulary_size(self) -> int:
@@ -290,13 +345,14 @@ class STCrossEncoder(AbstractModuleScorer):
 
     def forward(
         self,
-        inputs: BaseItems,
+        inputs: Optional[BaseItems] = None,
         tokenized: Optional[TokenizedTexts] = None,
     ):
         if not self._initialized:
             self.initialize()
 
         if tokenized is None:
+            assert inputs is not None, "Either inputs or tokenized must be provided"
             # Extract raw pairs from inputs
             queries = [record["text_item"].text for record in inputs.unique_topics]
             documents = [record["text_item"].text for record in inputs.unique_documents]
@@ -318,22 +374,24 @@ class STCrossEncoder(AbstractModuleScorer):
         with torch.set_grad_enabled(torch.is_grad_enabled()):
             features = {
                 "input_ids": to_device(tokenized.ids, self.device),
-                "attention_mask": to_device(tokenized.mask, self.device),
             }
+            if tokenized.mask is not None:
+                features["attention_mask"] = to_device(tokenized.mask, self.device)
             if tokenized.token_type_ids is not None:
                 features["token_type_ids"] = to_device(
                     tokenized.token_type_ids, self.device
                 )
-
-            # Match predict()'s inference semantics: it calls self.eval()
-            # internally so dropout/etc don't perturb scores.
-            self.st_model.eval()
+            if getattr(tokenized, "kwargs", None) is not None:
+                for k, v in tokenized.kwargs.items():
+                    features[k] = (
+                        to_device(v, self.device) if isinstance(v, torch.Tensor) else v
+                    )
 
             # Run the ST module pipeline so that CausalLM-based generative
             # rerankers (5.4+) get their LogitScore reduction applied;
             # classification CEs keep the same head-logit semantics.
             output = self.st_model(features)
-            result = self.st_model.activation_fn(output["scores"])
+            result = output["scores"]
 
             # predict() returns scores without a trailing singleton dim
             if result.ndim > 1 and result.shape[-1] == 1:
@@ -354,6 +412,7 @@ class InitSTCrossEncoder(LightweightTask):
 def st_cross_scorer(
     model_id: str,
     max_length: Optional[int] = None,
+    pref_attn_implementation: Optional[str] = None,
 ) -> Tuple[STCrossEncoder, List[LightweightTask]]:
     """Creates an STCrossEncoder model.
 
@@ -374,5 +433,6 @@ def st_cross_scorer(
     scorer = STCrossEncoder.C(
         model_id=model_id,
         max_length=max_len,
+        pref_attn_implementation=pref_attn_implementation,
     )
     return scorer, [InitSTCrossEncoder.C(model=scorer)]

@@ -19,6 +19,7 @@ from xpm_torch.learner import (
 
 from xpmir.evaluation import evaluate
 from xpmir.rankers import Retriever
+from xpm_torch.learner import UpdateModelHook
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,12 @@ class ValidationListener(LearnerListener):
 
     def initialize(self, learner: Learner, context: TrainerContext):
         super().initialize(learner, context)
+        fabric = getattr(context, "fabric", None)
+        # If we are using fabric, model will be later wrapped for device / DDP
+        # we need to acess the wrapped model to manage autocast
+
+        if fabric is not None:
+            context.add_hook(UpdateModelHook(self.retriever, learner.model, fabric))
 
         self.retriever.initialize()
         self.bestpath.mkdir(exist_ok=True, parents=True)
