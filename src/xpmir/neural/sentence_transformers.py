@@ -13,14 +13,7 @@ import torch
 from pathlib import Path
 from typing import Optional, List, Tuple
 
-import os
-from transformers import AutoConfig
-from huggingface_hub import file_exists
-
 from sentence_transformers import CrossEncoder
-from sentence_transformers.cross_encoder import CrossEncoderModelCardData
-from sentence_transformers.models import Transformer, Pooling, Dense, LayerNorm
-from torch import nn
 
 from experimaestro import Param, field, LightweightTask
 from xpmir.text.huggingface.tokenizers import get_default_max_len
@@ -213,9 +206,6 @@ class STCrossEncoder(AbstractModuleScorer):
     max_length: Param[Optional[int]] = field(default=None)
     """Maximum sequence length for tokenization."""
 
-    pref_attn_implementation: Param[Optional[str]] = field(default=None)
-    """Attention implementation to use (e.g. 'flash_attention_2', 'sdpa', or None)."""
-
     st_model: CrossEncoder
 
     def __post_init__(self):
@@ -231,94 +221,10 @@ class STCrossEncoder(AbstractModuleScorer):
     def __initialize__(self):
         super().__initialize__()
 
-        model_kwargs = {}
-        if self.pref_attn_implementation:
-            model_kwargs["attn_implementation"] = self.pref_attn_implementation
-            logger.info(
-                f"Using attention implementation: '{self.pref_attn_implementation}'"
-            )
-        else:
-            logger.info("Using default attention implementation (None specified)")
-
-        # Auto-detect if the checkpoint already contains a classification head
-        has_head = False
-        if os.path.isdir(self.model_id):
-            if os.path.exists(os.path.join(self.model_id, "modules.json")):
-                has_head = True
-        else:
-            try:
-                if file_exists(self.model_id, "modules.json"):
-                    has_head = True
-            except Exception:
-                pass
-
-        if not has_head:
-            try:
-                config = AutoConfig.from_pretrained(
-                    self.model_id, trust_remote_code=True
-                )
-                archs = getattr(config, "architectures", [])
-                if any("ForSequenceClassification" in arch for arch in archs):
-                    has_head = True
-            except Exception:
-                pass
-
-        if not has_head:
-            logger.info(
-                f"No sequence classification head found in '{self.model_id}'. Building custom distillation head."
-            )
-            transformer = Transformer(
-                self.model_id, max_seq_length=self.max_length, model_kwargs=model_kwargs
-            )
-            transformer.model.config.num_labels = 1
-            embedding_dimension = transformer.get_embedding_dimension()
-            pooling = Pooling(
-                embedding_dimension=embedding_dimension, pooling_mode="cls"
-            )
-            dense_inner = Dense(
-                in_features=embedding_dimension,
-                out_features=embedding_dimension,
-                bias=False,
-                activation_function=nn.GELU(),
-                module_input_name="sentence_embedding",
-                module_output_name="sentence_embedding",
-            )
-            norm = LayerNorm(dimension=embedding_dimension)
-            dense_score = Dense(
-                in_features=embedding_dimension,
-                out_features=1,
-                bias=True,
-                activation_function=nn.Identity(),
-                module_input_name="sentence_embedding",
-                module_output_name="scores",
-            )
-            self.st_model = CrossEncoder(
-                modules=[transformer, pooling, dense_inner, norm, dense_score],
-                num_labels=1,
-                activation_fn=nn.Identity(),
-                model_card_data=CrossEncoderModelCardData(
-                    model_name=f"Sentence-Transformers CrossEncoder ({self.model_id})",
-                    language="en",
-                ),
-            )
-        else:
-            logger.info(
-                f"Sequence classification head found in '{self.model_id}'. Using standard CrossEncoder initialization."
-            )
-            self.st_model = CrossEncoder(
-                self.model_id,
-                max_length=self.max_length,
-                model_kwargs=model_kwargs,
-            )
-
-        actual_attn = getattr(
-            self.st_model[0].model.config, "_attn_implementation", None
+        self.st_model = CrossEncoder(
+            self.model_id,
+            max_length=self.max_length,
         )
-        if not (actual_attn and "flash" in actual_attn.lower()):
-            logger.warning(
-                f"FA2 may not be active (attn_impl={actual_attn!r}); training will be slower."
-            )
-
         self._initialized = True
 
     @property
@@ -384,14 +290,13 @@ class STCrossEncoder(AbstractModuleScorer):
 
     def forward(
         self,
-        inputs: Optional[BaseItems] = None,
+        inputs: BaseItems,
         tokenized: Optional[TokenizedTexts] = None,
     ):
         if not self._initialized:
             self.initialize()
 
         if tokenized is None:
-            assert inputs is not None, "Either inputs or tokenized must be provided"
             # Extract raw pairs from inputs
             queries = [record["text_item"].text for record in inputs.unique_topics]
             documents = [record["text_item"].text for record in inputs.unique_documents]
@@ -420,11 +325,15 @@ class STCrossEncoder(AbstractModuleScorer):
                     tokenized.token_type_ids, self.device
                 )
 
+            # Match predict()'s inference semantics: it calls self.eval()
+            # internally so dropout/etc don't perturb scores.
+            self.st_model.eval()
+
             # Run the ST module pipeline so that CausalLM-based generative
             # rerankers (5.4+) get their LogitScore reduction applied;
             # classification CEs keep the same head-logit semantics.
             output = self.st_model(features)
-            result = output["scores"]
+            result = self.st_model.activation_fn(output["scores"])
 
             # predict() returns scores without a trailing singleton dim
             if result.ndim > 1 and result.shape[-1] == 1:
@@ -445,7 +354,6 @@ class InitSTCrossEncoder(LightweightTask):
 def st_cross_scorer(
     model_id: str,
     max_length: Optional[int] = None,
-    attn_implementation: Optional[str] = None,
 ) -> Tuple[STCrossEncoder, List[LightweightTask]]:
     """Creates an STCrossEncoder model.
 
@@ -466,6 +374,5 @@ def st_cross_scorer(
     scorer = STCrossEncoder.C(
         model_id=model_id,
         max_length=max_len,
-        pref_attn_implementation=attn_implementation,
     )
     return scorer, [InitSTCrossEncoder.C(model=scorer)]
