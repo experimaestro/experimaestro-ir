@@ -362,6 +362,11 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
                 return inputs
 
         else:
+            logger.warning(
+                "Scorer %s does not implement `get_tokenizer_fn()`. "
+                "Inputs will not be pre-tokenized on CPU workers during data loading.",
+                type(scorer).__name__,
+            )
             collate_fn = reranking_collate
 
         dataloader = StatefulDataLoader(

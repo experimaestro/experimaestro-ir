@@ -18,6 +18,11 @@ from xpmir.letor.records import (
 )
 
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 class PairwiseInputs(TypedDict):
     records: ReadOnly[PairwiseItems]
     tokenized_records: ReadOnly[TokenizedTexts]
@@ -62,6 +67,11 @@ class PairwiseTrainer(LossTrainer):
 
             collate_fn = collate_fn_with_tokenization
         else:
+            logger.warning(
+                "Model %s does not implement `get_tokenizer_fn()`. "
+                "Inputs will not be pre-tokenized on CPU workers during data loading.",
+                type(self.model).__name__,
+            )
             collate_fn = pairwise_collate
 
         self._create_dataloader(dataset, collate_fn=collate_fn)

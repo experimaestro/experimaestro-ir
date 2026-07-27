@@ -14,6 +14,10 @@ from xpmir.letor.records import (
     ProductItems,
 )
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class BatchwiseInputs(TypedDict):
     records: ReadOnly[ProductItems]
@@ -79,6 +83,11 @@ class BatchwiseTrainer(LossTrainer):
 
             collate_fn = collate_fn_with_tokenization
         else:
+            logger.warning(
+                "Model %s does not implement `get_tokenizer_fn()`. "
+                "Inputs will not be pre-tokenized on CPU workers during data loading.",
+                type(self.model).__name__,
+            )
             collate_fn = batchwise_collate
 
         self._create_dataloader(dataset, collate_fn=collate_fn)

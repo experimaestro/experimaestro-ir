@@ -19,6 +19,11 @@ from xpmir.text import TokenizedTexts
 from xpmir.rankers import AbstractModuleScorer
 
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 class DistillationPairwiseLoss(Config, nn.Module):
     """The abstract loss for pairwise distillation"""
 
@@ -165,6 +170,11 @@ class DistillationPairwiseTrainer(LossTrainer):
 
             collate_fn = collate_fn_with_tokenization
         else:
+            logger.warning(
+                "Model %s does not implement `get_tokenizer_fn()`. "
+                "Inputs will not be pre-tokenized on CPU workers during data loading.",
+                type(self.model).__name__,
+            )
             collate_fn = distillation_pairwise_collate
 
         self._create_dataloader(dataset, collate_fn=collate_fn)
