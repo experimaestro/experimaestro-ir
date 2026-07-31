@@ -210,8 +210,12 @@ class AbstractModuleScorer(Scorer, Module):
         return self
 
     def get_forward_methods(self) -> list:
-        """Returns the list of forward methods for this scorer. By default, it is just `forward`, but it can be extended to support multiple forward methods (e.g. for different scoring strategies)"""
-        return ["rsv"]
+        """Returns the list of forward methods for this scorer. Appends rsv to base Module methods."""
+        try:
+            base_methods = super().get_forward_methods()
+        except AttributeError:
+            base_methods = ["save_model", "load_model"]
+        return base_methods + ["rsv"]
 
     def compute(
         self, topic: IDTextRecord, scored_documents: Iterable[ScoredDocument]
