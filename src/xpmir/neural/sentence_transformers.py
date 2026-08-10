@@ -18,13 +18,13 @@ from transformers import AutoConfig
 from sentence_transformers import CrossEncoder
 
 from experimaestro import Param, field, LightweightTask
-from xpmir.text.huggingface.tokenizers import get_default_max_len
+from xpmir.text.huggingface.tokenizers import get_default_max_len, HFTokenizer
 from xpmir.text import TokenizedTexts
 from xpmir.letor.records import BaseItems
 from xpmir.rankers import AbstractModuleScorer
 from xpm_torch.module import fallback_fa2_if_incompatible_precision
 from xpm_torch.utils import to_device
-from xpmir.text.tokenizers import TokenizerOptions, TokenizerBase
+from xpmir.text.tokenizers import TokenizerOptions
 
 
 import logging
@@ -212,6 +212,9 @@ class STCrossEncoder(AbstractModuleScorer):
     pref_attn_implementation: Param[Optional[str]] = field(default=None)
     """Attention implementation to use (e.g. 'flash_attention_2', 'sdpa', or None)."""
 
+    tokenizer: Param[Optional[HFTokenizer]] = field(default=None, ignore_default=True)
+    """The tokenizer for the cross-scorer - if none use default from sentence-transformers (recommended)"""
+
     st_model: CrossEncoder
 
     def setup_with_fabric(self, fabric) -> torch.nn.Module:
@@ -269,6 +272,9 @@ class STCrossEncoder(AbstractModuleScorer):
                 f"FA2 may not be active (attn_impl={actual_attn!r}); training will be slower."
             )
 
+        if self.tokenizer is not None:
+            self.tokenizer.initialize()
+
         self._initialized = True
 
     def save_model(self, path: Path):
@@ -287,9 +293,10 @@ class STCrossEncoder(AbstractModuleScorer):
         self.st_model = CrossEncoder(self.model_id)
         self._initialized = True
 
-    @property
-    def tokenizer(self) -> TokenizerBase:
-        """Returns a tokenizer that uses the ST model's native tokenization."""
+    def get_tokenizer(self):
+        """Returns a tokenizer for the cross-scorer (custom or ST native)."""
+        if self.tokenizer is not None:
+            return self.tokenizer
         return self.st_model.tokenizer
 
     def tokenize(
@@ -297,6 +304,9 @@ class STCrossEncoder(AbstractModuleScorer):
         input_records: BaseItems,
         options: Optional[TokenizerOptions] = None,
     ) -> TokenizedTexts:
+        if self.tokenizer is not None:
+            return self.tokenizer.tokenize(input_records, options=options)
+
         # Prepare raw texts
         queries = [record["text_item"].text for record in input_records.unique_topics]
         documents = [
@@ -362,23 +372,28 @@ class STCrossEncoder(AbstractModuleScorer):
 
         if tokenized is None:
             assert inputs is not None, "Either inputs or tokenized must be provided"
-            # Extract raw pairs from inputs
-            queries = [record["text_item"].text for record in inputs.unique_topics]
-            documents = [record["text_item"].text for record in inputs.unique_documents]
-            pairs = []
-            q_ix, d_ix = inputs.pairs()
-            for qi, di in zip(q_ix, d_ix):
-                pairs.append([queries[qi], documents[di]])
+            if self.tokenizer is not None:
+                tokenized = self.batch_tokenize(inputs)
+            else:
+                # Extract raw pairs from inputs
+                queries = [record["text_item"].text for record in inputs.unique_topics]
+                documents = [
+                    record["text_item"].text for record in inputs.unique_documents
+                ]
+                pairs = []
+                q_ix, d_ix = inputs.pairs()
+                for qi, di in zip(q_ix, d_ix):
+                    pairs.append([queries[qi], documents[di]])
 
-            # Use raw ST predict function
-            scores = self.st_model.predict(
-                pairs,
-                batch_size=len(pairs),
-                convert_to_tensor=True,
-                show_progress_bar=False,
-            )
+                # Use raw ST predict function
+                scores = self.st_model.predict(
+                    pairs,
+                    batch_size=len(pairs),
+                    convert_to_tensor=True,
+                    show_progress_bar=False,
+                )
 
-            return to_device(scores, self.device)
+                return to_device(scores, self.device)
 
         with torch.set_grad_enabled(torch.is_grad_enabled()):
             features = {
@@ -427,11 +442,14 @@ def st_cross_scorer(
     model_id: str,
     max_length: Optional[int] = None,
     pref_attn_implementation: Optional[str] = None,
+    tokenizer: Optional[HFTokenizer] = None,
 ) -> Tuple[STCrossEncoder, List[LightweightTask]]:
     """Creates an STCrossEncoder model.
 
     :param model_id: The HuggingFace model ID
     :param max_length: Maximum sequence length
+    :param pref_attn_implementation: Preferred attention implementation
+    :param tokenizer: Optional custom tokenizer configuration overriding ST native tokenization
     :returns: (STCrossEncoder, init_tasks)
     """
     default_max_len = get_default_max_len(model_id)
@@ -448,5 +466,6 @@ def st_cross_scorer(
         model_id=model_id,
         max_length=max_len,
         pref_attn_implementation=pref_attn_implementation,
+        tokenizer=tokenizer,
     )
     return scorer, [InitSTCrossEncoder.C(model=scorer)]

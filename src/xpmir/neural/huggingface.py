@@ -433,14 +433,20 @@ class HFCrossScorer(AbstractModuleScorer):
             assert inputs is not None, "Either inputs or tokenized must be provided"
             tokenized = self.batch_tokenize(inputs)
 
-        # strange that some existing models on the huggingface don't use the token_type
         with torch.set_grad_enabled(torch.is_grad_enabled()):
+            kwargs = {}
+            type_vocab_size = getattr(self.encoder.model.config, "type_vocab_size", 1)
+            if tokenized.token_type_ids is not None and type_vocab_size > 1:
+                kwargs["token_type_ids"] = to_device(
+                    tokenized.token_type_ids, self.device
+                )
+
             # to_device are no op here as wrapped with fabric and already on the right device,
             # but ensures compatibility if the model is used outside of fabric
             result = self.encoder.model(
                 to_device(tokenized.ids, self.device),
                 attention_mask=to_device(tokenized.mask, self.device),
-                token_type_ids=to_device(tokenized.token_type_ids, self.device),
+                **kwargs,
             ).logits  # Tensor[float] of length records size
         return result
 
