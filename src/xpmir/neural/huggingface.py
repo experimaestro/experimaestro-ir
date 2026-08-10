@@ -3,12 +3,16 @@ from typing import List, Tuple, Optional
 import torch
 import torch.nn.functional as F
 
-from experimaestro import DataPath, Param, LightweightTask
+from experimaestro import DataPath, Param, LightweightTask, field
 
 from xpmir.text import TokenizedTexts
 from xpmir.letor.records import BaseItems
 from xpmir.rankers import AbstractModuleScorer
-from xpm_torch.module import ModuleLoader, ReadmeSection
+from xpm_torch.module import (
+    ModuleLoader,
+    ReadmeSection,
+    fallback_fa2_if_incompatible_precision,
+)
 from xpm_torch.utils import to_device
 
 from xpmir.text.huggingface.base import (
@@ -279,7 +283,7 @@ class InitCEFromHFID(HFModelInitBase):
     Uses ``model.config.hf_id`` to resolve the model.
     """
 
-    attn_implementation: Param[Optional[str]] = None
+    pref_attn_implementation: Param[Optional[str]] = None
     """The attention implementation to use (e.g., 'flash_attention_2', 'sdpa', 'eager')"""
 
     def execute(self):
@@ -287,12 +291,31 @@ class InitCEFromHFID(HFModelInitBase):
         model_id_or_path = _resolve_model_path(hf_id, self.model.automodel)
 
         kwargs = {}
-        if self.attn_implementation is not None:
-            kwargs["attn_implementation"] = self.attn_implementation
-            if self.attn_implementation == "flash_attention_2":
-                kwargs["torch_dtype"] = (
-                    torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-                )
+        if self.pref_attn_implementation is not None:
+            if self.pref_attn_implementation == "flash_attention_2":
+                try:
+                    from transformers.utils import is_flash_attn_2_available
+
+                    flash_avail = is_flash_attn_2_available()
+                    cuda_avail = torch.cuda.is_available()
+                except Exception:
+                    flash_avail = False
+                    cuda_avail = False
+
+                if flash_avail and cuda_avail:
+                    kwargs["attn_implementation"] = "flash_attention_2"
+                    kwargs["torch_dtype"] = (
+                        torch.bfloat16
+                        if torch.cuda.is_bf16_supported()
+                        else torch.float16
+                    )
+                else:
+                    logger.warning(
+                        "FlashAttention-2 requested ('flash_attention_2') but flash-attn package or CUDA GPU is not available on this environment. Falling back to 'sdpa'."
+                    )
+                    kwargs["attn_implementation"] = "sdpa"
+            else:
+                kwargs["attn_implementation"] = self.pref_attn_implementation
         else:
             try:
                 from transformers.utils import is_flash_attn_2_available
@@ -373,6 +396,17 @@ class HFCrossScorer(AbstractModuleScorer):
 
     tokenizer: Param[HFTokenizer]
     """The tokenizer for the cross-scorer"""
+
+    pref_attn_implementation: Param[Optional[str]] = field(default=None)
+    """Attention implementation to use (e.g. 'flash_attention_2', 'sdpa', or None)."""
+
+    def setup_with_fabric(self, fabric) -> torch.nn.Module:
+        """Sets up the module with PyTorch Lightning Fabric, checking precision compatibility.
+
+        If Fabric runs in float32 precision, FlashAttention-2 is automatically downgraded to 'sdpa'.
+        """
+        fallback_fa2_if_incompatible_precision(self, fabric)
+        return super().setup_with_fabric(fabric)
 
     def __initialize__(self):
         super().__initialize__()
@@ -477,7 +511,7 @@ def hf_cross_scorer(
     max_length: Optional[int] = None,
     max_query_length: Optional[int] = None,
     max_doc_length: Optional[int] = None,
-    attn_implementation: Optional[str] = None,
+    pref_attn_implementation: Optional[str] = None,
 ) -> Tuple[HFCrossScorer, List[LightweightTask]]:
     """Creates an HFCrossScorer model from a pre-trained HuggingFace checkpoint.
     Usage example:
@@ -493,6 +527,7 @@ def hf_cross_scorer(
     :param max_length: Maximum context len
     :param max_query_length: Maximum query length
     :param max_doc_length: Maximum document length
+    :param pref_attn_implementation: Preferred attention implementation (e.g. 'flash_attention_2', 'sdpa')
     :returns: (model, init_tasks) tuple
     """
     default_max_len = get_default_max_len(hf_id)
@@ -512,7 +547,9 @@ def hf_cross_scorer(
 
     encoder = HFSequenceClassification.C(config=HFConfigID.C(hf_id=hf_id))
     init_tasks = [
-        InitCEFromHFID.C(model=encoder, attn_implementation=attn_implementation)
+        InitCEFromHFID.C(
+            model=encoder, pref_attn_implementation=pref_attn_implementation
+        )
     ]
     tokenizer = HFQueryDocTokenizer.C(
         model_id=hf_id,
@@ -521,5 +558,9 @@ def hf_cross_scorer(
         max_doc_length=max_doc_length,
     )
 
-    scorer = HFCrossScorer.C(encoder=encoder, tokenizer=tokenizer)
+    scorer = HFCrossScorer.C(
+        encoder=encoder,
+        tokenizer=tokenizer,
+        pref_attn_implementation=pref_attn_implementation,
+    )
     return scorer, init_tasks

@@ -22,6 +22,7 @@ from xpmir.text.huggingface.tokenizers import get_default_max_len
 from xpmir.text import TokenizedTexts
 from xpmir.letor.records import BaseItems
 from xpmir.rankers import AbstractModuleScorer
+from xpm_torch.module import fallback_fa2_if_incompatible_precision
 from xpm_torch.utils import to_device
 from xpmir.text.tokenizers import TokenizerOptions, TokenizerBase
 
@@ -212,6 +213,14 @@ class STCrossEncoder(AbstractModuleScorer):
     """Attention implementation to use (e.g. 'flash_attention_2', 'sdpa', or None)."""
 
     st_model: CrossEncoder
+
+    def setup_with_fabric(self, fabric) -> torch.nn.Module:
+        """Sets up the module with PyTorch Lightning Fabric, checking precision compatibility.
+
+        If Fabric runs in float32 precision, FlashAttention-2 is automatically downgraded to 'sdpa'.
+        """
+        fallback_fa2_if_incompatible_precision(self, fabric)
+        return super().setup_with_fabric(fabric)
 
     def __post_init__(self):
         super().__post_init__()
