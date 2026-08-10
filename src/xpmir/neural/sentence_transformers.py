@@ -393,6 +393,11 @@ class STCrossEncoder(AbstractModuleScorer):
             output = self.st_model(features)
             result = output["scores"]
 
+            # st_model.forward() only runs the module pipeline and does not apply activation_fn
+            # (which is handled inside st_model.predict()). Apply it here for parity when tokenized inputs are provided.
+            if self.st_model.activation_fn is not None:
+                result = self.st_model.activation_fn(result)
+
             # predict() returns scores without a trailing singleton dim
             if result.ndim > 1 and result.shape[-1] == 1:
                 result = result.squeeze(-1)
