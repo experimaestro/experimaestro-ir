@@ -82,9 +82,11 @@ class PairwiseTrainer(LossTrainer):
 
         # Get the next batch and compute the scores for each query/document
         if tokenized_records is not None:
-            rel_scores = self.model(records, tokenized=tokenized_records)
+            rel_scores = self.model(
+                records, tokenized=tokenized_records, info=self.context
+            )
         else:
-            rel_scores = self.model(records)
+            rel_scores = self.model(records, info=self.context)
 
         if torch.isnan(rel_scores).any() or torch.isinf(rel_scores).any():
             self.logger.error("nan or inf relevance score detected. Aborting.")

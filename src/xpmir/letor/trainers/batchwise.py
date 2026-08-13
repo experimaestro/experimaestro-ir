@@ -99,9 +99,11 @@ class BatchwiseTrainer(LossTrainer):
         # Get the next batch and compute the scores for each query/document
         # Get the scores
         if tokenized_records is not None:
-            rel_scores = self.model(batch, tokenized=tokenized_records)
+            rel_scores = self.model(
+                batch, tokenized=tokenized_records, info=self.context
+            )
         else:
-            rel_scores = self.model(batch)
+            rel_scores = self.model(batch, info=self.context)
 
         if torch.isnan(rel_scores).any() or torch.isinf(rel_scores).any():
             self.logger.error("nan or inf relevance score detected. Aborting.")

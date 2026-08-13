@@ -191,9 +191,14 @@ class DistillationPairwiseTrainer(LossTrainer):
         #     teacher_scores_[ix, 0] = record.positive_document["score"]
         #     teacher_scores_[ix, 1] = record.negative_document["score"]
         # Get the next batch and compute the scores for each query/document pair
-        scores = (
-            self.model(records, tokenized=tokenized_records).reshape(2, len(records)).T
-        )
+        if tokenized_records is not None:
+            scores = (
+                self.model(records, tokenized=tokenized_records, info=self.context)
+                .reshape(2, len(records))
+                .T
+            )
+        else:
+            scores = self.model(records, info=self.context).reshape(2, len(records)).T
 
         if torch.isnan(scores).any() or torch.isinf(scores).any():
             self.logger.error(
