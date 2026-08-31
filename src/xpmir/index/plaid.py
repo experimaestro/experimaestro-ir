@@ -37,6 +37,7 @@ from experimaestro import (
 from datamaestro_ir.data import DocumentStore, IDTextRecord
 
 from xpm_torch.configuration import FabricConfiguration
+from xpm_torch.utils.fabric import fallback_fa2_if_incompatible_precision
 from xpmir.rankers import Retriever, ScoredDocument
 from xpmir.rankers.scorer import AbstractModuleScorer
 from xpmir.text.encoders import TextEncoderBase
@@ -291,6 +292,10 @@ class PlaidIndexBuilder(Task):
 
         with fabric.init_module():
             self.encoder.initialize()
+            # PlaidIndexBuilder calls fabric.setup() directly rather than a
+            # setup_with_fabric() hook, so the FA2->SDPA downgrade normally
+            # applied during training never runs here; do it explicitly.
+            fallback_fa2_if_incompatible_precision(self.encoder.model, fabric)
             self.encoder = fabric.setup(self.encoder)
             self.encoder.eval()
 
