@@ -180,6 +180,8 @@ class AbstractModuleScorerCall(Protocol):
         inputs: Optional["BaseItems"] = None,
         *,
         tokenized: Optional[TokenizedTexts] = None,
+        info: Optional[TrainerContext] = None,
+        **kwargs,
     ): ...
 
 

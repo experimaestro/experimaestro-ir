@@ -24,6 +24,7 @@ from xpmir.letor.records import BaseItems
 from xpmir.rankers import AbstractModuleScorer
 from xpm_torch.module import fallback_fa2_if_incompatible_precision
 from xpm_torch.utils import to_device
+from xpm_torch.trainers import TrainerContext
 from xpmir.text.tokenizers import TokenizerOptions
 
 
@@ -366,6 +367,8 @@ class STCrossEncoder(AbstractModuleScorer):
         self,
         inputs: Optional[BaseItems] = None,
         tokenized: Optional[TokenizedTexts] = None,
+        info: Optional[TrainerContext] = None,
+        **kwargs,
     ):
         if not self._initialized:
             self.initialize()

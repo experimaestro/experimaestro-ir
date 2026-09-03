@@ -12,8 +12,10 @@ from xpm_torch.module import (
     ModuleLoader,
     ReadmeSection,
     fallback_fa2_if_incompatible_precision,
+    is_fa2_available,
 )
 from xpm_torch.utils import to_device
+from xpm_torch.trainers import TrainerContext
 
 from xpmir.text.huggingface.base import (
     HFConfigID,
@@ -293,14 +295,8 @@ class InitCEFromHFID(HFModelInitBase):
         kwargs = {}
         if self.pref_attn_implementation is not None:
             if self.pref_attn_implementation == "flash_attention_2":
-                try:
-                    from transformers.utils import is_flash_attn_2_available
-
-                    flash_avail = is_flash_attn_2_available()
-                    cuda_avail = torch.cuda.is_available()
-                except Exception:
-                    flash_avail = False
-                    cuda_avail = False
+                flash_avail = is_fa2_available()
+                cuda_avail = torch.cuda.is_available()
 
                 if flash_avail and cuda_avail:
                     kwargs["attn_implementation"] = "flash_attention_2"
@@ -311,33 +307,27 @@ class InitCEFromHFID(HFModelInitBase):
                     )
                 else:
                     logger.warning(
-                        "FlashAttention-2 requested ('flash_attention_2') but flash-attn package or CUDA GPU is not available on this environment. Falling back to 'sdpa'."
+                        "FlashAttention-2 requested ('flash_attention_2') but flash-attn/kernels package or CUDA GPU (SM 8.0+) is not available on this environment. Falling back to 'sdpa'."
                     )
                     kwargs["attn_implementation"] = "sdpa"
             else:
                 kwargs["attn_implementation"] = self.pref_attn_implementation
         else:
-            try:
-                from transformers.utils import is_flash_attn_2_available
+            flash_avail = is_fa2_available()
+            cuda_avail = torch.cuda.is_available()
 
-                flash_avail = is_flash_attn_2_available()
-                cuda_avail = torch.cuda.is_available()
+            logger.info(
+                f"DEBUG: is_fa2_available()={flash_avail}, torch.cuda.is_available()={cuda_avail}"
+            )
 
-                logger.info(
-                    f"DEBUG: is_flash_attn_2_available()={flash_avail}, torch.cuda.is_available()={cuda_avail}"
+            if flash_avail and cuda_avail:
+                bf16_support = torch.cuda.is_bf16_supported()
+                logger.info(f"DEBUG: torch.cuda.is_bf16_supported()={bf16_support}")
+                kwargs["attn_implementation"] = "flash_attention_2"
+                kwargs["torch_dtype"] = (
+                    torch.bfloat16 if bf16_support else torch.float16
                 )
-
-                if flash_avail and cuda_avail:
-                    bf16_support = torch.cuda.is_bf16_supported()
-                    logger.info(f"DEBUG: torch.cuda.is_bf16_supported()={bf16_support}")
-                    kwargs["attn_implementation"] = "flash_attention_2"
-                    kwargs["torch_dtype"] = (
-                        torch.bfloat16 if bf16_support else torch.float16
-                    )
-                else:
-                    kwargs["attn_implementation"] = "sdpa"
-            except Exception as e:
-                logger.info(f"DEBUG: Exception checking flash_attn: {e}")
+            else:
                 kwargs["attn_implementation"] = "sdpa"
 
         config = self.model.autoconfig.from_pretrained(
@@ -428,6 +418,8 @@ class HFCrossScorer(AbstractModuleScorer):
         self,
         inputs: Optional[BaseItems] = None,
         tokenized: Optional[TokenizedTexts] = None,
+        info: Optional[TrainerContext] = None,
+        **kwargs,
     ):
         if tokenized is None:
             assert inputs is not None, "Either inputs or tokenized must be provided"
