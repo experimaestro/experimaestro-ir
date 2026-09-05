@@ -11,13 +11,13 @@ loading instructions via
 import json
 import torch
 from pathlib import Path
-from typing import Optional, List, Tuple
+from typing import Optional
 
 from transformers import AutoConfig
 
 from sentence_transformers import CrossEncoder
 
-from experimaestro import Param, field, LightweightTask
+from experimaestro import Param, field
 from xpmir.text.huggingface.tokenizers import get_default_max_len, HFTokenizer
 from xpmir.text import TokenizedTexts
 from xpmir.letor.records import BaseItems
@@ -201,7 +201,7 @@ class STCrossEncoder(AbstractModuleScorer):
 
     Example:
         >>> from xpmir.neural.sentence_transformers import st_cross_scorer
-        >>> model, init_tasks = st_cross_scorer(model_id="mixedbread-ai/mxbai-rerank-base-v1")
+        >>> model = st_cross_scorer(model_id="mixedbread-ai/mxbai-rerank-base-v1")
     """
 
     model_id: Param[str]
@@ -216,8 +216,6 @@ class STCrossEncoder(AbstractModuleScorer):
     tokenizer: Param[Optional[HFTokenizer]] = field(default=None, ignore_default=True)
     """The tokenizer for the cross-scorer - if none use default from sentence-transformers (recommended)"""
 
-    st_model: CrossEncoder
-
     def setup_with_fabric(self, fabric) -> torch.nn.Module:
         """Sets up the module with PyTorch Lightning Fabric, checking precision compatibility.
 
@@ -227,7 +225,9 @@ class STCrossEncoder(AbstractModuleScorer):
         return super().setup_with_fabric(fabric)
 
     def __post_init__(self):
+        """called when instanciating the model, Before initialization"""
         super().__post_init__()
+        self.st_model = None
 
         if self.max_length is None:
             # try to infer it from config
@@ -236,8 +236,21 @@ class STCrossEncoder(AbstractModuleScorer):
                 f"No max_len provided for STCrossEncoder, using default hf: {self.max_length}"
             )
 
+    def _check_initialized(self):
+        if self.st_model is None:
+            raise RuntimeError(
+                f"STCrossEncoder('{self.model_id}') has not been initialized (st_model is None). "
+                f"You must call initialize() or execute an initialization task before using the model."
+            )
+
     def __initialize__(self):
         super().__initialize__()
+        if self.st_model is not None:
+            self._initialized = True
+            return
+
+        if self.tokenizer is not None:
+            self.tokenizer.initialize()
 
         model_kwargs = {}
         if self.pref_attn_implementation:
@@ -248,7 +261,6 @@ class STCrossEncoder(AbstractModuleScorer):
         else:
             logger.info("Using default attention implementation (None specified)")
 
-        # Warn if no classification head is found
         try:
             config = AutoConfig.from_pretrained(self.model_id, trust_remote_code=True)
             archs = getattr(config, "architectures", [])
@@ -258,8 +270,8 @@ class STCrossEncoder(AbstractModuleScorer):
                     f"Are you sure you are loading a CrossEncoder? "
                     f"If you are fine-tuning from an encoder, use build_STCrossEncoder."
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Could not inspect config for '{self.model_id}': {e}")
 
         self.st_model = CrossEncoder(
             self.model_id,
@@ -273,13 +285,19 @@ class STCrossEncoder(AbstractModuleScorer):
                 f"FA2 may not be active (attn_impl={actual_attn!r}); training will be slower."
             )
 
-        if self.tokenizer is not None:
-            self.tokenizer.initialize()
-
         self._initialized = True
+
+    @property
+    def device(self):
+        self._check_initialized()
+        try:
+            return next(self.st_model.parameters()).device
+        except (StopIteration, AttributeError):
+            return torch.device("cpu")
 
     def save_model(self, path: Path):
         """Save the model in native SentenceTransformers format."""
+        self._check_initialized()
         if path.suffix == ".safetensors":
             # ModuleLoader's default tries to save a safetensors file directly.
             # We intercept it to save the whole directory instead.
@@ -288,6 +306,7 @@ class STCrossEncoder(AbstractModuleScorer):
 
     def load_model(self, path: Path):
         """Load the model from a native SentenceTransformers directory."""
+        path = Path(path)
         if path.is_file():
             path = path.parent
         self.model_id = str(path)
@@ -298,6 +317,7 @@ class STCrossEncoder(AbstractModuleScorer):
         """Returns a tokenizer for the cross-scorer (custom or ST native)."""
         if self.tokenizer is not None:
             return self.tokenizer
+        self._check_initialized()
         return self.st_model.tokenizer
 
     def tokenize(
@@ -307,6 +327,8 @@ class STCrossEncoder(AbstractModuleScorer):
     ) -> TokenizedTexts:
         if self.tokenizer is not None:
             return self.tokenizer.tokenize(input_records, options=options)
+
+        self._check_initialized()
 
         # Prepare raw texts
         queries = [record["text_item"].text for record in input_records.unique_topics]
@@ -344,12 +366,16 @@ class STCrossEncoder(AbstractModuleScorer):
         )
 
     def vocabulary_size(self) -> int:
+        """Returns the size of the vocabulary used by the model's tokenizer."""
+        self._check_initialized()
         return self.st_model.tokenizer.vocab_size
 
     def tok2id(self, tok: str) -> int:
+        self._check_initialized()
         return self.st_model.tokenizer.convert_tokens_to_ids(tok)
 
     def id2tok(self, idx: int) -> str:
+        self._check_initialized()
         return self.st_model.tokenizer.convert_ids_to_tokens(idx)
 
     def batch_tokenize(
@@ -370,8 +396,7 @@ class STCrossEncoder(AbstractModuleScorer):
         info: Optional[TrainerContext] = None,
         **kwargs,
     ):
-        if not self._initialized:
-            self.initialize()
+        self._check_initialized()
 
         if tokenized is None:
             assert inputs is not None, "Either inputs or tokenized must be provided"
@@ -432,25 +457,20 @@ class STCrossEncoder(AbstractModuleScorer):
         return result
 
 
-class InitSTCrossEncoder(LightweightTask):
-    """Initializes the STCrossEncoder by loading the model."""
-
-    model: Param[STCrossEncoder]
-
-    def execute(self):
-        self.model.initialize()
-
-
 def st_cross_scorer(
     model_id: str,
     max_length: Optional[int] = None,
+    max_query_length: Optional[int] = None,
+    max_doc_length: Optional[int] = None,
     pref_attn_implementation: Optional[str] = None,
     tokenizer: Optional[HFTokenizer] = None,
-) -> Tuple[STCrossEncoder, List[LightweightTask]]:
+) -> STCrossEncoder:
     """Creates an STCrossEncoder model.
 
     :param model_id: The HuggingFace model ID
     :param max_length: Maximum sequence length
+    :param max_query_length: Maximum query sequence length
+    :param max_doc_length: Maximum document sequence length
     :param pref_attn_implementation: Preferred attention implementation
     :param tokenizer: Optional custom tokenizer configuration overriding ST native tokenization
     :returns: (STCrossEncoder, init_tasks)
@@ -465,10 +485,21 @@ def st_cross_scorer(
             f"Using default max_len {default_max_len} for CrossEncoder {model_id}"
         )
         max_len = None
+
+    if tokenizer is None and (max_query_length or max_doc_length):
+        from xpmir.neural.huggingface import HFQueryDocTokenizer
+
+        tokenizer = HFQueryDocTokenizer.C(
+            model_id=model_id,
+            max_length=max_len,
+            max_query_length=max_query_length,
+            max_doc_length=max_doc_length,
+        )
+
     scorer = STCrossEncoder.C(
         model_id=model_id,
         max_length=max_len,
         pref_attn_implementation=pref_attn_implementation,
         tokenizer=tokenizer,
     )
-    return scorer, [InitSTCrossEncoder.C(model=scorer)]
+    return scorer

@@ -202,13 +202,13 @@ class AbstractModuleScorer(Scorer, Module):
     train = nn.Module.train
 
     def __init__(self):
-        logger.info(f"Initializing {self.__class__.__name__}")
         nn.Module.__init__(self)
         super().__init__()
         self._initialized = False
 
     def __initialize__(self):
         """Initialize a learnable scorer (structure only)"""
+        logger.info(f"Initializing {self.__class__.__name__}")
         return self
 
     def get_forward_methods(self) -> list:
