@@ -232,9 +232,11 @@ class STCrossEncoder(AbstractModuleScorer):
         if self.max_length is None:
             # try to infer it from config
             self.max_length = get_default_max_len(self.model_id)
-            logger.warning(
-                f"No max_len provided for STCrossEncoder, using default hf: {self.max_length}"
-            )
+            if self.tokenizer is None:
+                # if we have a custom tokenizer, it will handle max_len itself, so we don't need to warn
+                logger.warning(
+                    f"No max_len (or query/doc len) provided for STCrossEncoder, using default hf: {self.max_length}"
+                )
 
     def _check_initialized(self):
         if self.st_model is None:
@@ -481,7 +483,7 @@ def st_cross_scorer(
         max_len = max_length
     else:
         logging.warning(
-            f"No max_length provided or default max_length {default_max_len} is not greater than provided max_length {max_length}."
+            f"No max_length provided or provided max_length {max_length} too large compared to default max_length {default_max_len}."
             f"Using default max_len {default_max_len} for CrossEncoder {model_id}"
         )
         max_len = None

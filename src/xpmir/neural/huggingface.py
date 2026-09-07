@@ -67,8 +67,16 @@ class HFQueryDocTokenizer(HFTokenizer):
     """Preferred attention implementation (e.g. 'flash_attention_2', 'sdpa')."""
 
     def __post_init__(self):
-        super().__post_init__()
+        super(HFTokenizer, self).__post_init__()
         self.data_collator = None
+
+        if self.max_length is None:
+            # set it to max length of the model if not provided
+            self.max_length = get_default_max_len(self.model_id)
+            if self.max_query_length is None or self.max_doc_length is None:
+                logger.warning(
+                    f"No max_len (or query/doc len) provided, using default hf: {self.max_length}"
+                )
 
         # Sanity Check - max len should be set in parent class
         # Default behavior is doc_max_len = max_len | max_query_len = max_len // 2
