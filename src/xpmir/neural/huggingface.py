@@ -57,8 +57,18 @@ class HFQueryDocTokenizer(HFTokenizer):
     max_doc_length: Param[Optional[int]]
     """maximum number of tokens for the document side (defaults to max_length)"""
 
+    flatten: Param[Optional[bool]] = field(default=None, ignore_default=True)
+    """Whether to flatten sequences into 1D unpadded format with cu_seq_lens_q kwargs.
+    If None, automatically determines whether to flatten based on pref_attn_implementation."""
+
+    pref_attn_implementation: Param[Optional[str]] = field(
+        default=None, ignore_default=True
+    )
+    """Preferred attention implementation (e.g. 'flash_attention_2', 'sdpa')."""
+
     def __post_init__(self):
         super().__post_init__()
+        self.data_collator = None
 
         # Sanity Check - max len should be set in parent class
         # Default behavior is doc_max_len = max_len | max_query_len = max_len // 2
@@ -79,6 +89,48 @@ class HFQueryDocTokenizer(HFTokenizer):
 
         assert isinstance(self.max_doc_length, int)
         assert isinstance(self.max_query_length, int)
+
+    def should_flatten(self) -> bool:
+        """Determine whether to flatten inputs for FA2 varlen functions, following ST logic."""
+        if self.flatten is not None:
+            return self.flatten
+
+        if not self.pref_attn_implementation:
+            return False
+
+        try:
+            from transformers.modeling_flash_attention_utils import (
+                lazy_import_flash_attention,
+            )
+            from transformers.utils.generic import is_flash_attention_requested
+        except ImportError:
+            return False
+
+        if not is_flash_attention_requested(
+            requested_attention_implementation=self.pref_attn_implementation
+        ):
+            return False
+
+        (_, flash_varlen_fn, *_), _ = lazy_import_flash_attention(
+            self.pref_attn_implementation
+        )
+        return flash_varlen_fn is not None
+
+    def __initialize__(self):
+        super().__initialize__()
+        if self.should_flatten():
+            from transformers import DataCollatorWithFlattening
+
+            logger.info(
+                "Initializing DataCollatorWithFlattening for HFQueryDocTokenizer (FA2 unpadded mode)"
+            )
+            self.data_collator = DataCollatorWithFlattening(
+                return_seq_idx=True,
+                return_flash_attn_kwargs=True,
+                return_position_ids=True,
+            )
+        else:
+            self.data_collator = None
 
     def tokenize(
         self,
@@ -171,6 +223,23 @@ class HFQueryDocTokenizer(HFTokenizer):
             sequences.append(seq)
             lengths.append(seq.size(0))
             final_q_lengths.append(q_ids.size(0) + 2)  # [CLS] + q + [SEP]
+
+        # Flatten inputs to avoid padding overhead when using flash attention variable-length functions
+        if self.data_collator is not None:
+            per_sample = [{"input_ids": seq} for seq in sequences]
+            batch = self.data_collator(per_sample)
+            batch.pop("labels", None)
+            kwargs = {k: v for k, v in batch.items() if k != "input_ids"}
+            kwargs["modality"] = "text"
+
+            return TokenizedTexts(
+                tokens=None,
+                ids=batch["input_ids"],
+                lens=lengths,
+                mask=None,
+                token_type_ids=None,
+                kwargs=kwargs,
+            )
 
         # Pad to max length in batch using F.pad
         max_len = max(lengths)

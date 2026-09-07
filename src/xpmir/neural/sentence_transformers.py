@@ -494,6 +494,7 @@ def st_cross_scorer(
             max_length=max_len,
             max_query_length=max_query_length,
             max_doc_length=max_doc_length,
+            pref_attn_implementation=pref_attn_implementation,
         )
 
     scorer = STCrossEncoder.C(
