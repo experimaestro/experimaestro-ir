@@ -103,7 +103,15 @@ class HFQueryDocTokenizer(HFTokenizer):
         if self.flatten is not None:
             return self.flatten
 
-        if not self.pref_attn_implementation:
+        if (
+            not self.pref_attn_implementation
+            or "flash" not in str(self.pref_attn_implementation).lower()
+        ):
+            return False
+
+        from xpm_torch.utils.fabric import is_fa2_available
+
+        if not is_fa2_available():
             return False
 
         try:

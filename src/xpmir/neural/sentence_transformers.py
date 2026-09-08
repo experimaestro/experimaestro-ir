@@ -17,12 +17,12 @@ from transformers import AutoConfig
 
 from sentence_transformers import CrossEncoder
 
-from experimaestro import Param, field
+from experimaestro import Config, Param, field
 from xpmir.text.huggingface.tokenizers import get_default_max_len, HFTokenizer
 from xpmir.text import TokenizedTexts
 from xpmir.letor.records import BaseItems
 from xpmir.rankers import AbstractModuleScorer
-from xpm_torch.module import fallback_fa2_if_incompatible_precision
+from xpm_torch.module import SimpleModuleLoader, fallback_fa2_if_incompatible_precision
 from xpm_torch.utils import to_device
 from xpm_torch.trainers import TrainerContext
 from xpmir.text.tokenizers import TokenizerOptions
@@ -193,6 +193,22 @@ class SpladeLoaderMixin:
         ]
 
 
+class STCrossEncoderModuleLoader(SimpleModuleLoader):
+    """ModuleLoader for STCrossEncoder models.
+
+    Invert the orderbecause model architecture is deferred to SentenceTransformers
+    initialize() is then called _after_ ST Loading.
+    """
+
+    def execute(self):
+        path = Path(self.path)
+        logger.info(
+            "[STCrossEncoderModuleLoader] Loading STCrossEncoder model from disk"
+        )
+        self.value.load_model(path)
+        self.value.initialize()
+
+
 class STCrossEncoder(AbstractModuleScorer):
     """A cross-encoder model leveraging the sentence-transformers library.
 
@@ -254,12 +270,22 @@ class STCrossEncoder(AbstractModuleScorer):
         if self.tokenizer is not None:
             self.tokenizer.initialize()
 
+        attn_impl = self.pref_attn_implementation
+        if attn_impl and "flash" in str(attn_impl).lower():
+            from xpm_torch.utils.fabric import is_fa2_available
+
+            if not is_fa2_available():
+                logger.warning(
+                    f"Flash Attention 2 requested ('{attn_impl}'), but is not supported in this environment "
+                    f"(CUDA available: {torch.cuda.is_available()}, FA2 SM 8.0+ available: False). "
+                    f"Falling back to `_attn_implementation='sdpa'`."
+                )
+                attn_impl = "sdpa"
+
         model_kwargs = {}
-        if self.pref_attn_implementation:
-            model_kwargs["attn_implementation"] = self.pref_attn_implementation
-            logger.info(
-                f"Using attention implementation: '{self.pref_attn_implementation}'"
-            )
+        if attn_impl:
+            model_kwargs["attn_implementation"] = attn_impl
+            logger.info(f"Using attention implementation: '{attn_impl}'")
         else:
             logger.info("Using default attention implementation (None specified)")
 
@@ -283,9 +309,10 @@ class STCrossEncoder(AbstractModuleScorer):
 
         actual_attn = getattr(self.st_model.model.config, "_attn_implementation", None)
         if not (actual_attn and "flash" in actual_attn.lower()):
-            logger.warning(
-                f"FA2 may not be active (attn_impl={actual_attn!r}); training will be slower."
-            )
+            if attn_impl and "flash" in str(attn_impl).lower():
+                logger.warning(
+                    f"FA2 may not be active (attn_impl={actual_attn!r}); training will be slower."
+                )
 
         self._initialized = True
 
@@ -312,8 +339,38 @@ class STCrossEncoder(AbstractModuleScorer):
         if path.is_file():
             path = path.parent
         self.model_id = str(path)
-        self.st_model = CrossEncoder(self.model_id)
+
+        if self.tokenizer is not None:
+            self.tokenizer.initialize()
+
+        attn_impl = self.pref_attn_implementation
+        if attn_impl and "flash" in str(attn_impl).lower():
+            from xpm_torch.utils.fabric import is_fa2_available
+
+            if not is_fa2_available():
+                logger.warning(
+                    f"Flash Attention 2 requested ('{attn_impl}'), but is not supported in this environment "
+                    f"(CUDA available: {torch.cuda.is_available()}, FA2 SM 8.0+ available: False). "
+                    f"Falling back to `_attn_implementation='sdpa'`."
+                )
+                attn_impl = "sdpa"
+
+        model_kwargs = {}
+        if attn_impl:
+            model_kwargs["attn_implementation"] = attn_impl
+
+        self.st_model = CrossEncoder(
+            self.model_id,
+            max_length=self.max_length,
+            model_kwargs=model_kwargs if model_kwargs else None,
+        )
         self._initialized = True
+
+    def loader_config(
+        self, path: Path, *, settings: Optional[Config] = None
+    ) -> STCrossEncoderModuleLoader:
+        """Returns an STCrossEncoderModuleLoader config for loading this model."""
+        return STCrossEncoderModuleLoader.C(value=self, path=path, settings=settings)
 
     def get_tokenizer(self):
         """Returns a tokenizer for the cross-scorer (custom or ST native)."""
