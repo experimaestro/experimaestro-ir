@@ -22,7 +22,7 @@ import json
 import logging
 import shutil
 from pathlib import Path
-from typing import List
+from typing import List, Union
 
 import torch
 from experimaestro import (
@@ -215,7 +215,7 @@ class PlaidIndexBuilder(Task):
     documents: Param[DocumentStore]
     """Set of documents to index."""
 
-    encoder: Param[TextEncoderBase]
+    encoder: Param[Union[TextEncoderBase, AbstractModuleScorer]]
     """The ColBERT-style encoder used to produce per-token embeddings."""
 
     batch_size: Meta[int] = field(default=32, ignore_default=True)

@@ -11,16 +11,17 @@ loading instructions via
 import json
 import torch
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Union, Tuple, Any
 
 from transformers import AutoConfig
 
-from sentence_transformers import CrossEncoder
+from sentence_transformers import CrossEncoder, MultiVectorEncoder
 
 from experimaestro import Config, Param, field
+from datamaestro_ir.data import IDTextRecord
 from xpmir.text.huggingface.tokenizers import get_default_max_len, HFTokenizer
 from xpmir.text import TokenizedTexts
-from xpmir.letor.records import BaseItems
+from xpmir.letor.records import BaseItems, ProductItems
 from xpmir.rankers import AbstractModuleScorer
 from xpm_torch.module import SimpleModuleLoader, fallback_fa2_if_incompatible_precision
 from xpm_torch.utils import to_device
@@ -193,20 +194,24 @@ class SpladeLoaderMixin:
         ]
 
 
-class STCrossEncoderModuleLoader(SimpleModuleLoader):
-    """ModuleLoader for STCrossEncoder models.
+class STModuleLoader(SimpleModuleLoader):
+    """ModuleLoader for SentenceTransformers models (STCrossEncoder, STMultiVectorEncoder, etc.).
 
-    Invert the orderbecause model architecture is deferred to SentenceTransformers
-    initialize() is then called _after_ ST Loading.
+    Invert the order because model architecture is deferred to SentenceTransformers:
+    load_model() is called first, and initialize() is called _after_ ST loading.
     """
 
     def execute(self):
         path = Path(self.path)
         logger.info(
-            "[STCrossEncoderModuleLoader] Loading STCrossEncoder model from disk"
+            f"[{self.__class__.__name__}] Loading {self.value.__class__.__name__} model from disk: {path}"
         )
         self.value.load_model(path)
         self.value.initialize()
+
+
+# Backwards compatibility alias
+STCrossEncoderModuleLoader = STModuleLoader
 
 
 class STCrossEncoder(AbstractModuleScorer):
@@ -563,3 +568,448 @@ def st_cross_scorer(
         tokenizer=tokenizer,
     )
     return scorer
+
+
+def _extract_text(record: Union[IDTextRecord, str, dict]) -> str:
+    """Extracts raw text string from an IDTextRecord, dict, or string."""
+    if isinstance(record, str):
+        return record
+    if isinstance(record, dict) and "text_item" in record:
+        item = record["text_item"]
+        return getattr(item, "text", item) if not isinstance(item, str) else item
+    if hasattr(record, "text"):
+        return record.text
+    return str(record)
+
+
+def _extract_text_pairs(
+    inputs: Union[BaseItems, List[Any]],
+) -> Tuple[List[str], List[str], bool]:
+    """Extracts query and document texts from inputs (BaseItems or list of items).
+
+    Returns:
+        Tuple of (queries, documents, is_product)
+    """
+    if hasattr(inputs, "unique_topics"):
+        queries = [_extract_text(record) for record in inputs.unique_topics]
+        documents = [_extract_text(record) for record in inputs.unique_documents]
+        if isinstance(inputs, ProductItems) or getattr(inputs, "is_product", False):
+            return queries, documents, True
+        q_ix, d_ix = inputs.pairs()
+        return [queries[qi] for qi in q_ix], [documents[di] for di in d_ix], False
+
+    if isinstance(inputs, (list, tuple)):
+        paired_queries = []
+        paired_documents = []
+        for item in inputs:
+            if hasattr(item, "query") and hasattr(item, "document"):
+                q, d = item.query, item.document
+            elif hasattr(item, "topic") and hasattr(item, "document"):
+                q, d = item.topic, item.document
+            elif isinstance(item, (list, tuple)) and len(item) >= 2:
+                q, d = item[0], item[1]
+            elif isinstance(item, dict):
+                q = item.get("query", item.get("topic"))
+                d = item.get("document", item.get("doc"))
+            else:
+                raise ValueError(
+                    f"Cannot extract query and document from item of type {type(item)}: {item}"
+                )
+
+            paired_queries.append(_extract_text(q))
+            paired_documents.append(_extract_text(d))
+        return paired_queries, paired_documents, False
+
+    raise ValueError(
+        f"Unsupported inputs type for STMultiVectorEncoder: {type(inputs)}"
+    )
+
+
+class STMultiVectorEncoder(AbstractModuleScorer):
+    """A multi-vector / late-interaction encoder model leveraging sentence-transformers (v6+).
+
+    Supports ColBERT-style token-level MaxSim scoring and integrates directly with Fast-PLAID indexing.
+
+    Example:
+        >>> from xpmir.neural.sentence_transformers import st_multivector_scorer
+        >>> model = st_multivector_scorer(model_id="answerdotai/answerai-colbert-small-v1")
+    """
+
+    model_id: Param[str]
+    """The HuggingFace model ID or path."""
+
+    dim: Param[Optional[int]] = field(default=None)
+    """Projection dimension of the per-token vectors (if None, inferred from model)."""
+
+    query_maxlen: Param[Optional[int]] = field(default=None)
+    """Maximum sequence length for queries."""
+
+    doc_maxlen: Param[Optional[int]] = field(default=None)
+    """Maximum sequence length for documents."""
+
+    pref_attn_implementation: Param[Optional[str]] = field(default=None)
+    """Attention implementation to use (e.g. 'flash_attention_2', 'sdpa', or None)."""
+
+    similarity_fn_name: Param[Optional[str]] = field(default="maxsim")
+    """Similarity function name to use ('maxsim' or 'meanmaxsim')."""
+
+    query_prompt: Param[Optional[str]] = field(default=None)
+    """Optional query prompt prefix override (e.g. '[Q] ' or '[unused0] ')."""
+
+    doc_prompt: Param[Optional[str]] = field(default=None)
+    """Optional document prompt prefix override (e.g. '[D] ' or '[unused1] ')."""
+
+    normalize_embeddings: Param[bool] = field(default=True)
+    """Whether to L2-normalize token embeddings."""
+
+    def setup_with_fabric(self, fabric) -> torch.nn.Module:
+        """Sets up the module with PyTorch Lightning Fabric, checking precision compatibility."""
+        fallback_fa2_if_incompatible_precision(self, fabric)
+        return super().setup_with_fabric(fabric)
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.st_model = None
+
+    def _check_initialized(self):
+        if self.st_model is None:
+            raise RuntimeError(
+                f"STMultiVectorEncoder('{self.model_id}') has not been initialized (st_model is None). "
+                f"You must call initialize() or execute an initialization task before using the model."
+            )
+
+    def __initialize__(self):
+        super().__initialize__()
+        if self.st_model is not None:
+            self._initialized = True
+            return
+
+        attn_impl = self.pref_attn_implementation
+        if attn_impl and "flash" in str(attn_impl).lower():
+            from xpm_torch.utils.fabric import is_fa2_available
+
+            if not is_fa2_available():
+                logger.warning(
+                    f"Flash Attention 2 requested ('{attn_impl}'), but is not supported in this environment "
+                    f"(CUDA available: {torch.cuda.is_available()}, FA2 SM 8.0+ available: False). "
+                    f"Falling back to `_attn_implementation='sdpa'`."
+                )
+                attn_impl = "sdpa"
+
+        model_kwargs = {}
+        if attn_impl:
+            model_kwargs["attn_implementation"] = attn_impl
+            logger.info(f"Using attention implementation: '{attn_impl}'")
+        else:
+            logger.info("Using default attention implementation (None specified)")
+
+        prompts = None
+        if self.query_prompt or self.doc_prompt:
+            prompts = {}
+            if self.query_prompt:
+                prompts["query"] = self.query_prompt
+            if self.doc_prompt:
+                prompts["document"] = self.doc_prompt
+
+        init_kwargs = {
+            "model_kwargs": model_kwargs if model_kwargs else None,
+            "similarity_fn_name": self.similarity_fn_name,
+        }
+        if prompts:
+            init_kwargs["prompts"] = prompts
+
+        self.st_model = MultiVectorEncoder(self.model_id, **init_kwargs)
+        self._initialized = True
+
+    @property
+    def model(self) -> torch.nn.Module:
+        """Underlying HuggingFace transformer model (for Fabric FA2 inspection and PlaidIndexBuilder)."""
+        self._check_initialized()
+        if hasattr(self.st_model, "transformers_model"):
+            return self.st_model.transformers_model
+        if len(self.st_model) > 0 and hasattr(self.st_model[0], "model"):
+            return self.st_model[0].model
+        return self.st_model
+
+    @property
+    def dimension(self) -> int:
+        """Token embedding dimension."""
+        if self.dim is not None:
+            return self.dim
+        self._check_initialized()
+        return self.st_model.get_embedding_dimension()
+
+    @property
+    def device(self) -> torch.device:
+        self._check_initialized()
+        try:
+            return next(self.st_model.parameters()).device
+        except (StopIteration, AttributeError):
+            return torch.device("cpu")
+
+    def save_model(self, path: Path):
+        """Save the model in native SentenceTransformers format."""
+        self._check_initialized()
+        path = Path(path)
+        if path.suffix in {".pth", ".safetensors", ".bin"}:
+            path = path.parent
+        self.st_model.save(str(path))
+
+    def load_model(self, path: Path):
+        """Load the model from a native SentenceTransformers directory."""
+        path = Path(path)
+        if path.is_file():
+            path = path.parent
+        self.model_id = str(path)
+
+        attn_impl = self.pref_attn_implementation
+        if attn_impl and "flash" in str(attn_impl).lower():
+            from xpm_torch.utils.fabric import is_fa2_available
+
+            if not is_fa2_available():
+                logger.warning(
+                    f"Flash Attention 2 requested ('{attn_impl}'), but is not supported in this environment. "
+                    f"Falling back to `_attn_implementation='sdpa'`."
+                )
+                attn_impl = "sdpa"
+
+        model_kwargs = {}
+        if attn_impl:
+            model_kwargs["attn_implementation"] = attn_impl
+
+        self.st_model = MultiVectorEncoder(
+            self.model_id,
+            model_kwargs=model_kwargs if model_kwargs else None,
+            similarity_fn_name=self.similarity_fn_name,
+        )
+        self._initialized = True
+
+    def loader_config(
+        self, path: Path, *, settings: Optional[Config] = None
+    ) -> STModuleLoader:
+        """Returns an STModuleLoader config for loading this model."""
+        return STModuleLoader.C(value=self, path=path, settings=settings)
+
+    # ------------------------------------------------------------------ Tokenizer
+    def get_tokenizer(self):
+        """Returns the underlying tokenizer from the SentenceTransformer model."""
+        self._check_initialized()
+        return self.st_model.tokenizer
+
+    def vocabulary_size(self) -> int:
+        """Returns the size of the vocabulary used by the model's tokenizer."""
+        self._check_initialized()
+        return self.st_model.tokenizer.vocab_size
+
+    def tok2id(self, tok: str) -> int:
+        self._check_initialized()
+        return self.st_model.tokenizer.convert_tokens_to_ids(tok)
+
+    def id2tok(self, idx: int) -> str:
+        self._check_initialized()
+        return self.st_model.tokenizer.convert_ids_to_tokens(idx)
+
+    def batch_tokenize(
+        self,
+        input_records: Union[BaseItems, List[Any]],
+        options: Optional[TokenizerOptions] = None,
+    ) -> dict:
+        """Tokenize query and document texts in parallel worker processes."""
+        self._check_initialized()
+        queries, documents, is_product = _extract_text_pairs(input_records)
+        q_kwargs = (
+            {
+                "processing_kwargs": {
+                    "text": {"max_length": self.query_maxlen, "truncation": True}
+                }
+            }
+            if self.query_maxlen
+            else {}
+        )
+        d_kwargs = (
+            {
+                "processing_kwargs": {
+                    "text": {"max_length": self.doc_maxlen, "truncation": True}
+                }
+            }
+            if self.doc_maxlen
+            else {}
+        )
+        q_prompt = (
+            self.st_model._resolve_prompt(self.query_prompt, "query")
+            if hasattr(self.st_model, "_resolve_prompt")
+            else self.query_prompt
+        )
+        d_prompt = (
+            self.st_model._resolve_prompt(self.doc_prompt, "document")
+            if hasattr(self.st_model, "_resolve_prompt")
+            else self.doc_prompt
+        )
+        q_feat = self.st_model.preprocess(
+            queries, prompt=q_prompt, task="query", **q_kwargs
+        )
+        d_feat = self.st_model.preprocess(
+            documents, prompt=d_prompt, task="document", **d_kwargs
+        )
+        return {"query": q_feat, "document": d_feat, "is_product": is_product}
+
+    def get_tokenizer_fn(self):
+        return self.batch_tokenize
+
+    # ------------------------------------------------------------------ Fast-PLAID
+    def document_token_embeddings(
+        self, records: List[Union[IDTextRecord, str]]
+    ) -> List[torch.Tensor]:
+        """Encode a batch of documents and return the list of per-token embeddings,
+        one 2D tensor ``(num_tokens, dim)`` per document.
+        """
+        self._check_initialized()
+        texts = [_extract_text(r) for r in records]
+        embs = self.st_model.encode_document(
+            texts,
+            normalize_embeddings=self.normalize_embeddings,
+            convert_to_numpy=False,
+            device=self.device,
+            show_progress_bar=False,
+        )
+        if isinstance(embs, torch.Tensor):
+            return [embs[i] for i in range(embs.shape[0])]
+        return list(embs)
+
+    def query_token_embeddings(
+        self, records: List[Union[IDTextRecord, str]]
+    ) -> torch.Tensor:
+        """Encode a batch of queries and return a 3D tensor
+        ``(batch, query_maxlen, dim)`` suitable for fast-plaid search.
+        """
+        self._check_initialized()
+        texts = [_extract_text(r) for r in records]
+        embs = self.st_model.encode_query(
+            texts,
+            normalize_embeddings=self.normalize_embeddings,
+            convert_to_numpy=False,
+            device=self.device,
+            show_progress_bar=False,
+        )
+        if isinstance(embs, torch.Tensor):
+            if embs.ndim == 2:
+                return embs.unsqueeze(0)
+            return embs
+        return torch.nn.utils.rnn.pad_sequence(embs, batch_first=True)
+
+    # ------------------------------------------------------------------ Scoring
+    def score_product(
+        self,
+        queries: Union[List[torch.Tensor], torch.Tensor],
+        documents: Union[List[torch.Tensor], torch.Tensor],
+        info: Optional[TrainerContext] = None,
+        **kwargs,
+    ) -> torch.Tensor:
+        """Compute all-pairs MaxSim matrix between queries and documents."""
+        self._check_initialized()
+        return self.st_model.similarity(queries, documents, **kwargs)
+
+    def score_pairs(
+        self,
+        queries: Union[List[torch.Tensor], torch.Tensor],
+        documents: Union[List[torch.Tensor], torch.Tensor],
+        info: Optional[TrainerContext] = None,
+        **kwargs,
+    ) -> torch.Tensor:
+        """Compute pairwise MaxSim scores for paired queries and documents."""
+        self._check_initialized()
+        return self.st_model.similarity_pairwise(queries, documents, **kwargs)
+
+    def forward(
+        self,
+        inputs: Optional[Union[BaseItems, List[Any]]] = None,
+        tokenized: Optional[Any] = None,
+        info: Optional[TrainerContext] = None,
+        **kwargs,
+    ) -> torch.Tensor:
+        """Forward pass conforming to the xpmir.letor contract using pure ST native MaxSim."""
+        self._check_initialized()
+
+        if (
+            tokenized is not None
+            and isinstance(tokenized, dict)
+            and "query" in tokenized
+        ):
+            q_feat = tokenized["query"]
+            d_feat = tokenized["document"]
+            is_product = tokenized.get("is_product", False)
+        else:
+            assert inputs is not None, "Either inputs or tokenized must be provided"
+            features = self.batch_tokenize(inputs)
+            q_feat, d_feat, is_product = (
+                features["query"],
+                features["document"],
+                features["is_product"],
+            )
+
+        with torch.set_grad_enabled(torch.is_grad_enabled()):
+            q_feat = {
+                k: to_device(v, self.device) if isinstance(v, torch.Tensor) else v
+                for k, v in q_feat.items()
+            }
+            d_feat = {
+                k: to_device(v, self.device) if isinstance(v, torch.Tensor) else v
+                for k, v in d_feat.items()
+            }
+
+            q_out = self.st_model(q_feat, task="query")
+            d_out = self.st_model(d_feat, task="document")
+
+            if is_product:
+                scores = self.st_model.similarity(
+                    q_out["token_embeddings"],
+                    d_out["token_embeddings"],
+                    a_mask=q_feat.get("attention_mask"),
+                    b_mask=d_feat.get("attention_mask"),
+                )
+                return to_device(scores.flatten(), self.device)
+
+            scores = self.st_model.similarity_pairwise(
+                q_out["token_embeddings"],
+                d_out["token_embeddings"],
+                a_mask=q_feat.get("attention_mask"),
+                b_mask=d_feat.get("attention_mask"),
+            )
+            return to_device(scores, self.device)
+
+
+def st_multivector_scorer(
+    model_id: str,
+    dim: Optional[int] = None,
+    query_maxlen: Optional[int] = None,
+    doc_maxlen: Optional[int] = None,
+    pref_attn_implementation: Optional[str] = None,
+    similarity_fn_name: Optional[str] = "maxsim",
+    query_prompt: Optional[str] = None,
+    doc_prompt: Optional[str] = None,
+    normalize_embeddings: bool = True,
+) -> STMultiVectorEncoder:
+    """Creates an STMultiVectorEncoder model.
+
+    :param model_id: The HuggingFace model ID or path
+    :param dim: The embedding dimension (optional, inferred by default)
+    :param query_maxlen: Maximum sequence length for queries
+    :param doc_maxlen: Maximum sequence length for documents
+    :param pref_attn_implementation: Preferred attention implementation ('sdpa', 'flash_attention_2')
+    :param similarity_fn_name: Similarity function ('maxsim' or 'meanmaxsim')
+    :param query_prompt: Optional prompt prefix for queries
+    :param doc_prompt: Optional prompt prefix for documents
+    :param normalize_embeddings: Whether to normalize embeddings
+    :returns: Configured STMultiVectorEncoder
+    """
+    return STMultiVectorEncoder.C(
+        model_id=model_id,
+        dim=dim,
+        query_maxlen=query_maxlen,
+        doc_maxlen=doc_maxlen,
+        pref_attn_implementation=pref_attn_implementation,
+        similarity_fn_name=similarity_fn_name,
+        query_prompt=query_prompt,
+        doc_prompt=doc_prompt,
+        normalize_embeddings=normalize_embeddings,
+    )

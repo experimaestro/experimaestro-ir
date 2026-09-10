@@ -146,8 +146,23 @@ class PointwiseDistillationTrainer(LossTrainer):
 
         dataset = self.sampler.as_dataset()
 
+        tokenization_fn = None
         if hasattr(self.model, "get_tokenizer_fn"):
             tokenization_fn = self.model.get_tokenizer_fn()
+            if tokenization_fn is None:
+                logger.warning(
+                    "Model %s implements `get_tokenizer_fn()`, but failed to grab preprocessing function (returned None). "
+                    "Inputs will not be pre-tokenized on CPU workers during data loading.",
+                    type(self.model).__name__,
+                )
+        else:
+            logger.warning(
+                "Model %s does not implement `get_tokenizer_fn()`. "
+                "Inputs will not be pre-tokenized on CPU workers during data loading.",
+                type(self.model).__name__,
+            )
+
+        if tokenization_fn is not None:
 
             def collate_fn_with_tokenization(
                 samples: List[PointwiseDistillationSample],
