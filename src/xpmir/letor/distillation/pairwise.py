@@ -17,6 +17,7 @@ from .samplers import PairwiseDistillationSample
 
 from xpmir.text import TokenizedTexts
 from xpmir.rankers import AbstractModuleScorer
+from xpmir.letor.trainers.utils import wrap_collate_with_tokenizer
 
 
 import logging
@@ -157,39 +158,16 @@ class DistillationPairwiseTrainer(LossTrainer):
 
         dataset = self.sampler.as_dataset()
 
-        # if we can extract the tokenization function from model, we wrap the collate with it.
-        if hasattr(self.model, "get_tokenizer_fn"):
-            tokenization_fn = self.model.get_tokenizer_fn()
-
-            def collate_fn_with_tokenization(
-                samples: List[PairwiseDistillationSample],
-            ) -> DistillationPairwiseInputs:
-                inputs = distillation_pairwise_collate(samples)
-                inputs["tokenized_records"] = tokenization_fn(inputs["records"])
-                return inputs
-
-            collate_fn = collate_fn_with_tokenization
-        else:
-            logger.warning(
-                "Model %s does not implement `get_tokenizer_fn()`. "
-                "Inputs will not be pre-tokenized on CPU workers during data loading.",
-                type(self.model).__name__,
-            )
-            collate_fn = distillation_pairwise_collate
-
+        collate_fn = wrap_collate_with_tokenizer(
+            self.model, distillation_pairwise_collate, log=logger
+        )
         self._create_dataloader(dataset, collate_fn=collate_fn)
 
     def train_batch(self, inputs: DistillationPairwiseInputs):
         # Builds records and teacher score matrix
-        records, teacher_scores, tokenized_records = (
-            inputs["records"],
-            inputs["teacher_scores"],
-            inputs["tokenized_records"],
-        )
-        # teacher_scores_ = torch.empty(len(records), 2)
-        # for ix, record in enumerate(records):
-        #     teacher_scores_[ix, 0] = record.positive_document["score"]
-        #     teacher_scores_[ix, 1] = record.negative_document["score"]
+        records, teacher_scores = inputs["records"], inputs["teacher_scores"]
+        tokenized_records = inputs.get("tokenized_records")
+
         # Get the next batch and compute the scores for each query/document pair
         if tokenized_records is not None:
             scores = (

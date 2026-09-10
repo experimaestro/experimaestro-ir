@@ -13,6 +13,7 @@ from xpmir.letor.records import (
     PairwiseItem,
     ProductItems,
 )
+from .utils import wrap_collate_with_tokenizer
 
 import logging
 
@@ -71,25 +72,9 @@ class BatchwiseTrainer(LossTrainer):
 
         dataset = self.sampler.as_dataset()
 
-        if hasattr(self.model, "get_tokenizer_fn"):
-            tokenization_fn = self.model.get_tokenizer_fn()
-
-            def collate_fn_with_tokenization(
-                samples: List[PairwiseItem],
-            ) -> BatchwiseInputs:
-                inputs = batchwise_collate(samples)
-                inputs["tokenized_records"] = tokenization_fn(inputs["records"])
-                return inputs
-
-            collate_fn = collate_fn_with_tokenization
-        else:
-            logger.warning(
-                "Model %s does not implement `get_tokenizer_fn()`. "
-                "Inputs will not be pre-tokenized on CPU workers during data loading.",
-                type(self.model).__name__,
-            )
-            collate_fn = batchwise_collate
-
+        collate_fn = wrap_collate_with_tokenizer(
+            self.model, batchwise_collate, log=logger
+        )
         self._create_dataloader(dataset, collate_fn=collate_fn)
 
     def train_batch(self, inputs: BatchwiseInputs):
@@ -97,7 +82,6 @@ class BatchwiseTrainer(LossTrainer):
         tokenized_records = inputs.get("tokenized_records")
 
         # Get the next batch and compute the scores for each query/document
-        # Get the scores
         if tokenized_records is not None:
             rel_scores = self.model(
                 batch, tokenized=tokenized_records, info=self.context

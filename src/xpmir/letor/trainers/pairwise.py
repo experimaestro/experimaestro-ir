@@ -16,6 +16,7 @@ from xpmir.letor.records import (
     PairwiseItem,
     PairwiseItems,
 )
+from .utils import wrap_collate_with_tokenizer
 
 
 import logging
@@ -55,25 +56,9 @@ class PairwiseTrainer(LossTrainer):
 
         dataset = self.sampler.as_dataset()
 
-        if hasattr(self.model, "get_tokenizer_fn"):
-            tokenization_fn = self.model.get_tokenizer_fn()
-
-            def collate_fn_with_tokenization(
-                samples: List[PairwiseItem],
-            ) -> PairwiseInputs:
-                inputs = pairwise_collate(samples)
-                inputs["tokenized_records"] = tokenization_fn(inputs["records"])
-                return inputs
-
-            collate_fn = collate_fn_with_tokenization
-        else:
-            logger.warning(
-                "Model %s does not implement `get_tokenizer_fn()`. "
-                "Inputs will not be pre-tokenized on CPU workers during data loading.",
-                type(self.model).__name__,
-            )
-            collate_fn = pairwise_collate
-
+        collate_fn = wrap_collate_with_tokenizer(
+            self.model, pairwise_collate, log=logger
+        )
         self._create_dataloader(dataset, collate_fn=collate_fn)
 
     def train_batch(self, inputs: PairwiseInputs):

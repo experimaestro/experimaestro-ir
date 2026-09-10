@@ -42,6 +42,7 @@ from xpmir.letor.records import (
 )
 from datamaestro_ir.data.base import ScoredDocument
 from .retriever import Retriever
+from xpmir.letor.trainers.utils import wrap_collate_with_tokenizer
 
 import logging
 
@@ -356,24 +357,9 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
         # We don't materialise everything, but iterate on the fly
         dataset = ReRankingDataset(queries, self.retriever)
 
-        # get underlying module if wrapped (e.g. Fabric)
-        scorer = self.scorer.module if hasattr(self.scorer, "module") else self.scorer
-
-        if hasattr(scorer, "get_tokenizer_fn"):
-            tokenization_fn = scorer.get_tokenizer_fn()
-
-            def collate_fn(batch: List[PointwiseItem]) -> RerankingInputs:
-                inputs = reranking_collate(batch)
-                inputs["tokenized_records"] = tokenization_fn(inputs["records"])
-                return inputs
-
-        else:
-            logger.warning(
-                "Scorer %s does not implement `get_tokenizer_fn()`. "
-                "Inputs will not be pre-tokenized on CPU workers during data loading.",
-                type(scorer).__name__,
-            )
-            collate_fn = reranking_collate
+        collate_fn = wrap_collate_with_tokenizer(
+            self.scorer, reranking_collate, log=logger
+        )
 
         dataloader = StatefulDataLoader(
             dataset,
