@@ -1,6 +1,6 @@
 """Pointwise distillation sampler and trainer for Experimaestro-IR."""
 
-from typing import List, TypedDict, Iterator
+from typing import List, TypedDict, Iterator, Optional
 from typing_extensions import ReadOnly
 from pathlib import Path
 import sys
@@ -105,7 +105,10 @@ class DistillationPointwiseLoss(Config, nn.Module):
         info.add_loss(Loss(f"pointwise-{self.NAME}", loss, self.weight))
 
     def compute(
-        self, student_scores: Tensor, teacher_scores: Tensor, context: TrainerContext
+        self,
+        student_scores: Tensor,
+        teacher_scores: Tensor,
+        context: Optional[TrainerContext] = None,
     ) -> torch.Tensor:
         """Compute the loss
 
@@ -114,6 +117,14 @@ class DistillationPointwiseLoss(Config, nn.Module):
             teacher_scores: A batch tensor of teacher scores
         """
         raise NotImplementedError()
+
+    def forward(
+        self,
+        student_scores: Tensor,
+        teacher_scores: Tensor,
+        context: Optional[TrainerContext] = None,
+    ) -> torch.Tensor:
+        return self.compute(student_scores, teacher_scores, context)
 
 
 class PointwiseMSELoss(DistillationPointwiseLoss):

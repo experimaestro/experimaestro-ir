@@ -9,9 +9,10 @@ loading instructions via
 """
 
 import json
+import string
 import torch
 from pathlib import Path
-from typing import Optional, List, Union, Tuple, Any
+from typing import Optional, List, Union, Tuple, Any, Dict
 
 from transformers import AutoConfig
 
@@ -625,6 +626,18 @@ def _extract_text_pairs(
     )
 
 
+class AffineScaler(torch.nn.Module):
+    """Learnable affine calibration: s_scaled = scale * s + bias."""
+
+    def __init__(self, init_scale: float = 50.0, init_bias: float = -35.0):
+        super().__init__()
+        self.scale = torch.nn.Parameter(torch.tensor(init_scale, dtype=torch.float32))
+        self.bias = torch.nn.Parameter(torch.tensor(init_bias, dtype=torch.float32))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.scale * x + self.bias
+
+
 class STMultiVectorEncoder(AbstractModuleScorer):
     """A multi-vector / late-interaction encoder model leveraging sentence-transformers (v6+).
 
@@ -641,26 +654,43 @@ class STMultiVectorEncoder(AbstractModuleScorer):
     dim: Param[Optional[int]] = field(default=None)
     """Projection dimension of the per-token vectors (if None, inferred from model)."""
 
-    query_maxlen: Param[Optional[int]] = field(default=None)
+    query_maxlen: Param[Optional[int]] = field(default=32)
     """Maximum sequence length for queries."""
 
-    doc_maxlen: Param[Optional[int]] = field(default=None)
+    doc_maxlen: Param[Optional[int]] = field(default=300)
     """Maximum sequence length for documents."""
 
     pref_attn_implementation: Param[Optional[str]] = field(default=None)
     """Attention implementation to use (e.g. 'flash_attention_2', 'sdpa', or None)."""
 
     similarity_fn_name: Param[Optional[str]] = field(default="maxsim")
-    """Similarity function name to use ('maxsim' or 'meanmaxsim')."""
+    """Similarity function name to use ('meanmaxsim' or 'maxsim'). Defaults to 'maxsim'."""
 
-    query_prompt: Param[Optional[str]] = field(default=None)
+    query_prompt: Param[Optional[str]] = field(default="[Q] ")
     """Optional query prompt prefix override (e.g. '[Q] ' or '[unused0] ')."""
 
-    doc_prompt: Param[Optional[str]] = field(default=None)
+    doc_prompt: Param[Optional[str]] = field(default="[D] ")
     """Optional document prompt prefix override (e.g. '[D] ' or '[unused1] ')."""
+
+    query_expansion: Param[Optional[Union[Dict[str, Union[str, int, bool]], bool]]] = (
+        field(default=None)
+    )
+    """ColBERT query expansion configuration dict, e.g. {'strategy': 'fixed', 'attend': False, 'token': '[MASK]', 'length': 32}."""
+
+    skiplist_words: Param[Optional[List[str]]] = field(default=None)
+    """List of words/tokens to drop from document scoring (defaults to string.punctuation for ColBERT)."""
 
     normalize_embeddings: Param[bool] = field(default=True)
     """Whether to L2-normalize token embeddings."""
+
+    affine_scaling: Param[bool] = field(default=False)
+    """Whether to apply learnable affine scaling (scale * scores + bias) at the end of forward."""
+
+    init_scale: Param[float] = field(default=50.0, ignore_default=True)
+    """Initial scale factor for affine scaling."""
+
+    init_bias: Param[float] = field(default=-35.0, ignore_default=True)
+    """Initial bias offset for affine scaling."""
 
     def setup_with_fabric(self, fabric) -> torch.nn.Module:
         """Sets up the module with PyTorch Lightning Fabric, checking precision compatibility."""
@@ -670,6 +700,7 @@ class STMultiVectorEncoder(AbstractModuleScorer):
     def __post_init__(self):
         super().__post_init__()
         self.st_model = None
+        self.scaler = None
 
     def _check_initialized(self):
         if self.st_model is None:
@@ -703,22 +734,142 @@ class STMultiVectorEncoder(AbstractModuleScorer):
         else:
             logger.info("Using default attention implementation (None specified)")
 
-        prompts = None
-        if self.query_prompt or self.doc_prompt:
-            prompts = {}
-            if self.query_prompt:
-                prompts["query"] = self.query_prompt
-            if self.doc_prompt:
-                prompts["document"] = self.doc_prompt
-
         init_kwargs = {
             "model_kwargs": model_kwargs if model_kwargs else None,
-            "similarity_fn_name": self.similarity_fn_name,
         }
-        if prompts:
-            init_kwargs["prompts"] = prompts
+        sim_name = (
+            self.similarity_fn_name.lower() if self.similarity_fn_name else "maxsim"
+        )
+        init_kwargs["similarity_fn_name"] = sim_name
 
         self.st_model = MultiVectorEncoder(self.model_id, **init_kwargs)
+
+        # Inspect checkpoint / base model configuration
+        loaded_prompts = getattr(self.st_model, "prompts", {}) or {}
+        loaded_qe = (
+            getattr(self.st_model[0], "query_expansion", None)
+            if len(self.st_model) > 0
+            else None
+        )
+        loaded_skip = (
+            getattr(self.st_model[2], "skiplist_words", [])
+            if len(self.st_model) > 2 and hasattr(self.st_model[2], "skiplist_words")
+            else []
+        )
+        loaded_sim = getattr(self.st_model, "similarity_fn_name", None)
+
+        def apply_override(
+            attr_name: str, self_val, ckpt_val, default_val=None, setter_fn=None
+        ):
+            has_ckpt_val = ckpt_val not in (None, "", [], {})
+            if has_ckpt_val:
+                if self_val is not None and self_val != ckpt_val:
+                    logger.warning(
+                        f"[STMultiVectorEncoder Config Override] Overriding checkpoint parameter '{attr_name}' "
+                        f"from '{ckpt_val}' (loaded from {self.model_id}) to '{self_val}' "
+                        f"(specified on {self.__class__.__name__}). "
+                        "This creates an architectural/configuration discrepancy with pre-trained weights and may require retraining!"
+                    )
+                    final_val = self_val
+                else:
+                    final_val = ckpt_val
+            else:
+                final_val = self_val if self_val is not None else default_val
+
+            if setter_fn is not None:
+                setter_fn(final_val)
+            setattr(self, attr_name, final_val)
+            return final_val
+
+        apply_override(
+            "query_prompt",
+            self.query_prompt,
+            loaded_prompts.get("query"),
+            default_val="[Q] ",
+            setter_fn=lambda v: self.st_model.prompts.update({"query": v})
+            if hasattr(self.st_model, "prompts")
+            else None,
+        )
+        apply_override(
+            "doc_prompt",
+            self.doc_prompt,
+            loaded_prompts.get("document"),
+            default_val="[D] ",
+            setter_fn=lambda v: self.st_model.prompts.update({"document": v})
+            if hasattr(self.st_model, "prompts")
+            else None,
+        )
+
+        # Normalize query_expansion if provided before applying override
+        if self.query_expansion is True:
+            self.query_expansion = {
+                "strategy": "fixed",
+                "attend": False,
+                "token": "[MASK]",
+                "length": self.query_maxlen or 32,
+            }
+        elif isinstance(self.query_expansion, dict):
+            qe_dict = dict(self.query_expansion)
+            if "strategy" not in qe_dict:
+                qe_dict["strategy"] = "fixed"
+            if "token" not in qe_dict:
+                qe_dict["token"] = "[MASK]"
+            qe_dict["attend"] = bool(qe_dict.get("attend", False))
+            if "length" not in qe_dict:
+                qe_dict["length"] = int(self.query_maxlen or 32)
+            else:
+                qe_dict["length"] = int(qe_dict["length"])
+                if self.query_maxlen and qe_dict["length"] != self.query_maxlen:
+                    logger.warning(
+                        f"query_expansion length ({qe_dict['length']}) differs from query_maxlen ({self.query_maxlen}). "
+                        f"Updating query_maxlen to match query_expansion length."
+                    )
+            self.query_maxlen = qe_dict["length"]
+            self.query_expansion = qe_dict
+
+        apply_override(
+            "query_expansion",
+            self.query_expansion,
+            loaded_qe,
+            default_val=None,
+            setter_fn=lambda v: setattr(self.st_model[0], "query_expansion", v)
+            if len(self.st_model) > 0
+            else None,
+        )
+
+        def _set_skiplist(v):
+            if len(self.st_model) > 2 and hasattr(self.st_model[2], "skiplist_words"):
+                self.st_model[2].skiplist_words = list(v) if v else []
+                if (
+                    hasattr(self.st_model, "tokenizer")
+                    and self.st_model.tokenizer is not None
+                ):
+                    self.st_model[2].resolve_with_tokenizer(self.st_model.tokenizer)
+
+        apply_override(
+            "skiplist_words",
+            self.skiplist_words,
+            loaded_skip,
+            default_val=list(string.punctuation),
+            setter_fn=_set_skiplist,
+        )
+
+        apply_override(
+            "similarity_fn_name",
+            self.similarity_fn_name.lower() if self.similarity_fn_name else "maxsim",
+            loaded_sim,
+            default_val="maxsim",
+            setter_fn=lambda v: setattr(
+                self.st_model, "similarity_fn_name", v.lower() if v else "maxsim"
+            ),
+        )
+
+        if self.affine_scaling:
+            self.scaler = AffineScaler(self.init_scale, self.init_bias)
+            self.scaler.to(self.st_model.device)
+        else:
+            self.scaler = None
+
         self._initialized = True
 
     @property
@@ -761,28 +912,8 @@ class STMultiVectorEncoder(AbstractModuleScorer):
         if path.is_file():
             path = path.parent
         self.model_id = str(path)
-
-        attn_impl = self.pref_attn_implementation
-        if attn_impl and "flash" in str(attn_impl).lower():
-            from xpm_torch.utils.fabric import is_fa2_available
-
-            if not is_fa2_available():
-                logger.warning(
-                    f"Flash Attention 2 requested ('{attn_impl}'), but is not supported in this environment. "
-                    f"Falling back to `_attn_implementation='sdpa'`."
-                )
-                attn_impl = "sdpa"
-
-        model_kwargs = {}
-        if attn_impl:
-            model_kwargs["attn_implementation"] = attn_impl
-
-        self.st_model = MultiVectorEncoder(
-            self.model_id,
-            model_kwargs=model_kwargs if model_kwargs else None,
-            similarity_fn_name=self.similarity_fn_name,
-        )
-        self._initialized = True
+        self.st_model = None
+        self.__initialize__()
 
     def loader_config(
         self, path: Path, *, settings: Optional[Config] = None
@@ -817,15 +948,17 @@ class STMultiVectorEncoder(AbstractModuleScorer):
         """Tokenize query and document texts in parallel worker processes."""
         self._check_initialized()
         queries, documents, is_product = _extract_text_pairs(input_records)
-        q_kwargs = (
-            {
+        # For queries: if query_expansion is active, SentenceTransformers Transformer module
+        # enforces padding='max_length' to expansion['length']. Passing max_length in processing_kwargs
+        # triggers a warning: "processing_kwargs overrides the text padding or max_length...".
+        # Therefore, only pass processing_kwargs when query_expansion is NOT active!
+        q_kwargs = {}
+        if self.query_maxlen and not self.query_expansion:
+            q_kwargs = {
                 "processing_kwargs": {
                     "text": {"max_length": self.query_maxlen, "truncation": True}
                 }
             }
-            if self.query_maxlen
-            else {}
-        )
         d_kwargs = (
             {
                 "processing_kwargs": {
@@ -835,15 +968,15 @@ class STMultiVectorEncoder(AbstractModuleScorer):
             if self.doc_maxlen
             else {}
         )
-        q_prompt = (
-            self.st_model._resolve_prompt(self.query_prompt, "query")
+        q_prompt = self.query_prompt or (
+            self.st_model._resolve_prompt(None, "query")
             if hasattr(self.st_model, "_resolve_prompt")
-            else self.query_prompt
+            else None
         )
-        d_prompt = (
-            self.st_model._resolve_prompt(self.doc_prompt, "document")
+        d_prompt = self.doc_prompt or (
+            self.st_model._resolve_prompt(None, "document")
             if hasattr(self.st_model, "_resolve_prompt")
-            else self.doc_prompt
+            else None
         )
         q_feat = self.st_model.preprocess(
             queries, prompt=q_prompt, task="query", **q_kwargs
@@ -858,30 +991,21 @@ class STMultiVectorEncoder(AbstractModuleScorer):
 
     # ------------------------------------------------------------------ Fast-PLAID
     def document_token_embeddings(
-        self, records: List[Union[IDTextRecord, str]]
+        self, records: List[IDTextRecord]
     ) -> List[torch.Tensor]:
-        """Encode a batch of documents and return the list of per-token embeddings,
-        one 2D tensor ``(num_tokens, dim)`` per document.
-        """
+        """Encodes documents into a list of per-token embedding tensors."""
         self._check_initialized()
         texts = [_extract_text(r) for r in records]
-        embs = self.st_model.encode_document(
+        return self.st_model.encode_document(
             texts,
             normalize_embeddings=self.normalize_embeddings,
             convert_to_numpy=False,
             device=self.device,
             show_progress_bar=False,
         )
-        if isinstance(embs, torch.Tensor):
-            return [embs[i] for i in range(embs.shape[0])]
-        return list(embs)
 
-    def query_token_embeddings(
-        self, records: List[Union[IDTextRecord, str]]
-    ) -> torch.Tensor:
-        """Encode a batch of queries and return a 3D tensor
-        ``(batch, query_maxlen, dim)`` suitable for fast-plaid search.
-        """
+    def query_token_embeddings(self, records: List[IDTextRecord]) -> torch.Tensor:
+        """Encodes queries into a batch tensor of token embeddings."""
         self._check_initialized()
         texts = [_extract_text(r) for r in records]
         embs = self.st_model.encode_query(
@@ -964,30 +1088,40 @@ class STMultiVectorEncoder(AbstractModuleScorer):
                 scores = self.st_model.similarity(
                     q_out["token_embeddings"],
                     d_out["token_embeddings"],
-                    a_mask=q_feat.get("attention_mask"),
-                    b_mask=d_feat.get("attention_mask"),
+                    a_mask=q_out.get("attention_mask", q_feat.get("attention_mask")),
+                    b_mask=d_out.get("attention_mask", d_feat.get("attention_mask")),
                 )
-                return to_device(scores.flatten(), self.device)
+                scores = to_device(scores.flatten(), self.device)
+            else:
+                scores = self.st_model.similarity_pairwise(
+                    q_out["token_embeddings"],
+                    d_out["token_embeddings"],
+                    a_mask=q_out.get("attention_mask", q_feat.get("attention_mask")),
+                    b_mask=d_out.get("attention_mask", d_feat.get("attention_mask")),
+                )
+                scores = to_device(scores, self.device)
 
-            scores = self.st_model.similarity_pairwise(
-                q_out["token_embeddings"],
-                d_out["token_embeddings"],
-                a_mask=q_feat.get("attention_mask"),
-                b_mask=d_feat.get("attention_mask"),
-            )
-            return to_device(scores, self.device)
+            if self.scaler is not None:
+                scores = self.scaler(scores)
+
+            return scores
 
 
 def st_multivector_scorer(
     model_id: str,
     dim: Optional[int] = None,
-    query_maxlen: Optional[int] = None,
-    doc_maxlen: Optional[int] = None,
+    query_maxlen: Optional[int] = 32,
+    doc_maxlen: Optional[int] = 300,
     pref_attn_implementation: Optional[str] = None,
     similarity_fn_name: Optional[str] = "maxsim",
-    query_prompt: Optional[str] = None,
-    doc_prompt: Optional[str] = None,
+    query_prompt: Optional[str] = "[Q] ",
+    doc_prompt: Optional[str] = "[D] ",
+    query_expansion: Optional[Union[Dict[str, Union[str, int, bool]], bool]] = None,
+    skiplist_words: Optional[List[str]] = None,
     normalize_embeddings: bool = True,
+    affine_scaling: bool = False,
+    init_scale: float = 50.0,
+    init_bias: float = -35.0,
 ) -> STMultiVectorEncoder:
     """Creates an STMultiVectorEncoder model.
 
@@ -999,7 +1133,12 @@ def st_multivector_scorer(
     :param similarity_fn_name: Similarity function ('maxsim' or 'meanmaxsim')
     :param query_prompt: Optional prompt prefix for queries
     :param doc_prompt: Optional prompt prefix for documents
+    :param query_expansion: Query expansion configuration or bool
+    :param skiplist_words: Optional list of words/punctuation to skip in similarity
     :param normalize_embeddings: Whether to normalize embeddings
+    :param affine_scaling: Whether to apply learnable affine scaling at the end of forward
+    :param init_scale: Initial scale factor for affine scaling
+    :param init_bias: Initial bias offset for affine scaling
     :returns: Configured STMultiVectorEncoder
     """
     return STMultiVectorEncoder.C(
@@ -1011,5 +1150,10 @@ def st_multivector_scorer(
         similarity_fn_name=similarity_fn_name,
         query_prompt=query_prompt,
         doc_prompt=doc_prompt,
+        query_expansion=query_expansion,
+        skiplist_words=skiplist_words,
         normalize_embeddings=normalize_embeddings,
+        affine_scaling=affine_scaling,
+        init_scale=init_scale,
+        init_bias=init_bias,
     )
