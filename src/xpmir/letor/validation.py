@@ -19,6 +19,7 @@ from xpm_torch.learner import (
 
 from xpmir.evaluation import evaluate
 from xpmir.rankers import Retriever
+from xpm_torch.learner import UpdateModelHook
 
 logger = logging.getLogger(__name__)
 
@@ -92,10 +93,17 @@ class ValidationListener(LearnerListener):
 
     def initialize(self, learner: Learner, context: TrainerContext):
         super().initialize(learner, context)
+        fabric = getattr(context, "fabric", None)
+        # If we are using fabric, model will be later wrapped for device / DDP
+        # we need to acess the wrapped model to manage autocast
+
+        if fabric is not None:
+            context.add_hook(UpdateModelHook(self.retriever, learner.model, fabric))
 
         self.retriever.initialize()
         self.bestpath.mkdir(exist_ok=True, parents=True)
 
+        self.last_means = {}
         # Checkpoint start
         try:
             with self.info.open("rt") as fp:
@@ -141,18 +149,23 @@ class ValidationListener(LearnerListener):
 
     def _log_and_track_ir_metrics(self, means, details, state: TrainState):
         """Log IR metrics to tensorboard and update best checkpoints."""
+        writer = self.context.writer
+        if writer is None:
+            return
+
         for metric, keep in self.metrics.items():
-            value = means[metric]
+            value = means.get(metric, None)
+            if value is None:
+                continue
 
-            self.context.writer.add_scalar(
-                f"{self.id}/{metric}/mean", value, state.step
-            )
+            writer.add_scalar(f"{self.id}/{metric}/mean", value, state.step)
 
-            self.context.writer.add_histogram(
-                f"{self.id}/{metric}",
-                np.array(list(details[metric].values()), dtype=np.float32),
-                state.step,
-            )
+            if details and metric in details:
+                writer.add_histogram(
+                    f"{self.id}/{metric}",
+                    np.array(list(details[metric].values()), dtype=np.float32),
+                    state.step,
+                )
 
             # Update the top validation
             if state.epoch >= self.warmup:
@@ -167,6 +180,8 @@ class ValidationListener(LearnerListener):
                             f"Saving the checkpoint {state.epoch} for metric {metric}"
                         )
                         self.context.copy(self.bestpath / metric)
+
+        writer.flush()
 
     def _on_validation(self, means, details, state: TrainState):
         """Called after IR metrics are computed. Override to add custom metrics.
@@ -191,13 +206,14 @@ class ValidationListener(LearnerListener):
             means, details = evaluate(
                 self.retriever, self.dataset, list(self.metrics.keys()), True
             )
+            self.last_means = means
 
-            self._log_and_track_ir_metrics(means, details, state)
-            self._on_validation(means, details, state)
-
-            # Update information
-            with self.info.open("wt") as fp:
-                json.dump(self.top, fp)
+            # Log metrics and update top dict ONLY on rank 0
+            if self.context.is_global_zero():
+                self._log_and_track_ir_metrics(means, details, state)
+                self._on_validation(means, details, state)
+                with self.info.open("wt") as fp:
+                    json.dump(self.top, fp)
 
         for hook in self.hooks:
             hook.after(self.context)
@@ -322,6 +338,9 @@ class AggregatorValidationListener(LearnerListener):
         return LearnerListenerStatus.DONT_STOP
 
     def __call__(self, state: TrainState):
+        # If we are not on the global zero rank, return NO_DECISION (aggregated metrics logged on rank 0)
+        if not self.context.is_global_zero():
+            return LearnerListenerStatus.NO_DECISION
         # Check that we did not stop earlier (when loading from checkpoint / if other
         # listeners have not stopped yet)
         if self.should_stop(state.epoch - 1) == LearnerListenerStatus.STOP:
@@ -334,32 +353,40 @@ class AggregatorValidationListener(LearnerListener):
             values = defaultdict(list)
 
             for d in self.listeners:
-                for k, v in d.top.items():
-                    values[k].append(v["value"])
+                means_dict = getattr(d, "last_means", None)
+                if not means_dict and hasattr(d, "top"):
+                    means_dict = {
+                        k: v["value"] for k, v in d.top.items() if "value" in v
+                    }
+                if means_dict:
+                    for k, v in means_dict.items():
+                        values[k].append(v)
 
-            mean_metrics = {k: mean(values[k]) for k in values}
+            mean_metrics = {k: mean(values[k]) for k in values if values[k]}
 
-            for metric, keep in self.metrics.items():
-                value = mean_metrics[metric]
+            writer = self.context.writer
+            if writer is not None:
+                for metric, keep in self.metrics.items():
+                    if metric in mean_metrics:
+                        value = mean_metrics[metric]
+                        writer.add_scalar(f"{self.id}/{metric}/mean", value, state.step)
 
-                self.context.writer.add_scalar(
-                    f"{self.id}/{metric}/mean", value, state.step
-                )
+                        # Update the top validation
+                        if state.epoch >= self.warmup:
+                            topstate = self.top.get(metric, None)
+                            if topstate is None or value > topstate["value"]:
+                                self.top[metric] = {
+                                    "value": value,
+                                    "epoch": self.context.epoch,
+                                }
+                                if keep:
+                                    logging.info(
+                                        f"Saving the checkpoint {state.epoch}"
+                                        f" for metric {metric}"
+                                    )
+                                    self.context.copy(self.bestpath / metric)
 
-                # Update the top validation
-                if state.epoch >= self.warmup:
-                    topstate = self.top.get(metric, None)
-                    if topstate is None or value > topstate["value"]:
-                        # Save the new top JSON
-                        self.top[metric] = {"value": value, "epoch": self.context.epoch}
-
-                        # Copy in corresponding directory
-                        if keep:
-                            logging.info(
-                                f"Saving the checkpoint {state.epoch}"
-                                f" for metric {metric}"
-                            )
-                            self.context.copy(self.bestpath / metric)
+                writer.flush()
 
             # Update information
             with self.info.open("wt") as fp:
