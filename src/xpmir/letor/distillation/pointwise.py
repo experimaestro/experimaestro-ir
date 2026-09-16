@@ -132,6 +132,12 @@ class PointwiseMSELoss(DistillationPointwiseLoss):
 
     NAME = "MSE"
 
+    teacher_scale: Param[Optional[float]] = field(default=None, ignore_default=True)
+    """Optional multiplicative scale applied to teacher scores before MSE computation"""
+
+    teacher_bias: Param[Optional[float]] = field(default=None, ignore_default=True)
+    """Optional additive bias applied to teacher scores before MSE computation"""
+
     def initialize(self, ranker: AbstractModuleScorer):
         super().initialize(ranker)
         self.loss = nn.MSELoss()
@@ -139,6 +145,10 @@ class PointwiseMSELoss(DistillationPointwiseLoss):
     def compute(
         self, student_scores: Tensor, teacher_scores: Tensor, context: TrainerContext
     ) -> Tensor:
+        if self.teacher_scale is not None or self.teacher_bias is not None:
+            scale = self.teacher_scale if self.teacher_scale is not None else 1.0
+            bias = self.teacher_bias if self.teacher_bias is not None else 0.0
+            teacher_scores = teacher_scores * scale + bias
         return self.loss(student_scores.view(-1), teacher_scores.view(-1))
 
 

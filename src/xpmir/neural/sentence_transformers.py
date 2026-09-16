@@ -626,18 +626,6 @@ def _extract_text_pairs(
     )
 
 
-class AffineScaler(torch.nn.Module):
-    """Learnable affine calibration: s_scaled = scale * s + bias."""
-
-    def __init__(self, init_scale: float = 50.0, init_bias: float = -35.0):
-        super().__init__()
-        self.scale = torch.nn.Parameter(torch.tensor(init_scale, dtype=torch.float32))
-        self.bias = torch.nn.Parameter(torch.tensor(init_bias, dtype=torch.float32))
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.scale * x + self.bias
-
-
 class STMultiVectorEncoder(AbstractModuleScorer):
     """A multi-vector / late-interaction encoder model leveraging sentence-transformers (v6+).
 
@@ -683,15 +671,6 @@ class STMultiVectorEncoder(AbstractModuleScorer):
     normalize_embeddings: Param[bool] = field(default=True)
     """Whether to L2-normalize token embeddings."""
 
-    affine_scaling: Param[bool] = field(default=False)
-    """Whether to apply learnable affine scaling (scale * scores + bias) at the end of forward."""
-
-    init_scale: Param[float] = field(default=50.0, ignore_default=True)
-    """Initial scale factor for affine scaling."""
-
-    init_bias: Param[float] = field(default=-35.0, ignore_default=True)
-    """Initial bias offset for affine scaling."""
-
     def setup_with_fabric(self, fabric) -> torch.nn.Module:
         """Sets up the module with PyTorch Lightning Fabric, checking precision compatibility."""
         fallback_fa2_if_incompatible_precision(self, fabric)
@@ -700,7 +679,6 @@ class STMultiVectorEncoder(AbstractModuleScorer):
     def __post_init__(self):
         super().__post_init__()
         self.st_model = None
-        self.scaler = None
 
     def _check_initialized(self):
         if self.st_model is None:
@@ -863,12 +841,6 @@ class STMultiVectorEncoder(AbstractModuleScorer):
                 self.st_model, "similarity_fn_name", v.lower() if v else "maxsim"
             ),
         )
-
-        if self.affine_scaling:
-            self.scaler = AffineScaler(self.init_scale, self.init_bias)
-            self.scaler.to(self.st_model.device)
-        else:
-            self.scaler = None
 
         self._initialized = True
 
@@ -1101,9 +1073,6 @@ class STMultiVectorEncoder(AbstractModuleScorer):
                 )
                 scores = to_device(scores, self.device)
 
-            if self.scaler is not None:
-                scores = self.scaler(scores)
-
             return scores
 
 
@@ -1119,9 +1088,6 @@ def st_multivector_scorer(
     query_expansion: Optional[Union[Dict[str, Union[str, int, bool]], bool]] = None,
     skiplist_words: Optional[List[str]] = None,
     normalize_embeddings: bool = True,
-    affine_scaling: bool = False,
-    init_scale: float = 50.0,
-    init_bias: float = -35.0,
 ) -> STMultiVectorEncoder:
     """Creates an STMultiVectorEncoder model.
 
@@ -1136,9 +1102,6 @@ def st_multivector_scorer(
     :param query_expansion: Query expansion configuration or bool
     :param skiplist_words: Optional list of words/punctuation to skip in similarity
     :param normalize_embeddings: Whether to normalize embeddings
-    :param affine_scaling: Whether to apply learnable affine scaling at the end of forward
-    :param init_scale: Initial scale factor for affine scaling
-    :param init_bias: Initial bias offset for affine scaling
     :returns: Configured STMultiVectorEncoder
     """
     return STMultiVectorEncoder.C(
@@ -1153,7 +1116,4 @@ def st_multivector_scorer(
         query_expansion=query_expansion,
         skiplist_words=skiplist_words,
         normalize_embeddings=normalize_embeddings,
-        affine_scaling=affine_scaling,
-        init_scale=init_scale,
-        init_bias=init_bias,
     )
