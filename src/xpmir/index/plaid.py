@@ -227,7 +227,7 @@ class PlaidIndexBuilder(Task):
     (or they will all be used if n_samples_kmeans is 0)."""
 
     fast_plaid_batch_size: Meta[int] = field(default=32, ignore_default=True)
-    """Fast plaid internal batch size."""
+    """Fast plaid internal batch size. If the value is 0 means using the auto"""
 
     n_bits: Param[int] = field(default=2, ignore_default=True)
     """Number of bits used by fast-plaid for residual quantisation."""
@@ -350,10 +350,11 @@ class PlaidIndexBuilder(Task):
                             "documents_embeddings": doc_buffer,
                             "nbits": self.n_bits,
                             "kmeans_niters": self.kmeans_niters,
-                            "batch_size": self.fast_plaid_batch_size,
                             "seed": self.seed,
                             "max_points_per_centroid": self.max_points_per_centroid,
                         }
+                        if self.fast_plaid_batch_size:
+                            create_kwargs["batch_size"] = self.fast_plaid_batch_size
                         if self.n_samples_kmeans:
                             create_kwargs["n_samples_kmeans"] = self.n_samples_kmeans
                         if self.compress_only:
@@ -378,10 +379,11 @@ class PlaidIndexBuilder(Task):
                     else:
                         create_kwargs = {
                             "kmeans_niters": self.kmeans_niters,
-                            "batch_size": self.fast_plaid_batch_size,
                             "seed": self.seed,
                             "max_points_per_centroid": self.max_points_per_centroid,
                         }
+                        if self.fast_plaid_batch_size:
+                            create_kwargs["batch_size"] = self.fast_plaid_batch_size
                         if self.n_samples_kmeans:
                             create_kwargs["n_samples_kmeans"] = self.n_samples_kmeans
 
@@ -401,10 +403,11 @@ class PlaidIndexBuilder(Task):
                 "documents_embeddings": doc_buffer,
                 "nbits": self.n_bits,
                 "kmeans_niters": self.kmeans_niters,
-                "batch_size": self.fast_plaid_batch_size,
                 "seed": self.seed,
                 "max_points_per_centroid": self.max_points_per_centroid,
             }
+            if self.fast_plaid_batch_size:
+                create_kwargs["batch_size"] = self.fast_plaid_batch_size
             if self.n_samples_kmeans:
                 create_kwargs["n_samples_kmeans"] = self.n_samples_kmeans
             if self.compress_only:
@@ -427,10 +430,11 @@ class PlaidIndexBuilder(Task):
         elif index_created and doc_buffer:
             create_kwargs = {
                 "kmeans_niters": self.kmeans_niters,
-                "batch_size": self.fast_plaid_batch_size,
                 "seed": self.seed,
                 "max_points_per_centroid": self.max_points_per_centroid,
             }
+            if self.fast_plaid_batch_size:
+                create_kwargs["batch_size"] = self.fast_plaid_batch_size
             if self.n_samples_kmeans:
                 create_kwargs["n_samples_kmeans"] = self.n_samples_kmeans
             fast_plaid.update(documents_embeddings=doc_buffer, **create_kwargs)
@@ -505,6 +509,11 @@ class PlaidRetriever(Retriever):
             self.encoder.initialize()
             self.encoder = fabric.setup(self.encoder)
             self.encoder.eval()
+            # query_token_embeddings (called directly from retrieve() below,
+            # not via forward()) needs to be explicitly whitelisted -- under
+            # strategies that wrap the module (e.g. DDP), Fabric only
+            # auto-instruments forward() by default.
+            self.encoder.mark_forward_method("query_token_embeddings")
 
         logger.info("PLAID retriever (2/2): opening the fast-plaid index")
         fp_search = _import_fast_plaid()
