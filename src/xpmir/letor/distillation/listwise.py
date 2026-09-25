@@ -16,6 +16,11 @@ from xpm_torch.losses import Loss, ModuleOutputType, bce_with_logits_loss
 from .samplers import ListwiseDistillationSample
 import numpy as np
 from xpmir.rankers import AbstractModuleScorer
+from xpmir.letor.trainers.utils import wrap_collate_with_tokenizer
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 ### Losses
 
@@ -346,33 +351,21 @@ class DistillationListwiseTrainer(LossTrainer):
 
         dataset = self.sampler.as_dataset()
 
-        # if we can extract the tokenization function from model, we wrap the collate with it.
-        if hasattr(self.model, "get_tokenizer_fn"):
-            tokenization_fn = self.model.get_tokenizer_fn()
-
-            def collate_fn_with_tokenization(
-                samples: List[ListwiseDistillationSample],
-            ) -> DistillationListwiseInputs:
-                inputs = distillation_listwise_collate(samples)
-                inputs["tokenized_records"] = tokenization_fn(inputs["records"])
-                return inputs
-
-            collate_fn = collate_fn_with_tokenization
-        else:
-            collate_fn = distillation_listwise_collate
-
+        collate_fn = wrap_collate_with_tokenizer(
+            self.model, distillation_listwise_collate, log=logger
+        )
         self._create_dataloader(dataset, collate_fn=collate_fn)
 
     def train_batch(self, inputs: DistillationListwiseInputs):
         # Builds records and teacher score matrix
-        records, teacher_scores, tokenized_records = (
-            inputs["records"],
-            inputs["teacher_scores"],
-            inputs.get("tokenized_records", None),
-        )
+        records, teacher_scores = inputs["records"], inputs["teacher_scores"]
+        tokenized_records = inputs.get("tokenized_records", None)
 
         # Get the next batch and compute the scores for each query/document
-        scores = self.model(records, tokenized=tokenized_records)
+        if tokenized_records is not None:
+            scores = self.model(records, tokenized=tokenized_records, info=self.context)
+        else:
+            scores = self.model(records, info=self.context)
 
         if torch.isnan(scores).any() or torch.isinf(scores).any():
             self.logger.error(

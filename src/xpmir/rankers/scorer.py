@@ -14,6 +14,7 @@ from typing import (
 from typing_extensions import ReadOnly
 from xpmir.text import TokenizedTexts
 import torch
+import contextlib
 import torch.nn as nn
 from lightning_fabric import Fabric
 from experimaestro import Param, Config, Meta, field, tqdm
@@ -41,6 +42,7 @@ from xpmir.letor.records import (
 )
 from datamaestro_ir.data.base import ScoredDocument
 from .retriever import Retriever
+from xpmir.letor.trainers.utils import wrap_collate_with_tokenizer
 
 import logging
 
@@ -179,6 +181,8 @@ class AbstractModuleScorerCall(Protocol):
         inputs: Optional["BaseItems"] = None,
         *,
         tokenized: Optional[TokenizedTexts] = None,
+        info: Optional[TrainerContext] = None,
+        **kwargs,
     ): ...
 
 
@@ -199,18 +203,22 @@ class AbstractModuleScorer(Scorer, Module):
     train = nn.Module.train
 
     def __init__(self):
-        logger.info(f"Initializing {self.__class__.__name__}")
         nn.Module.__init__(self)
         super().__init__()
         self._initialized = False
 
     def __initialize__(self):
         """Initialize a learnable scorer (structure only)"""
+        logger.info(f"Initializing {self.__class__.__name__}")
         return self
 
     def get_forward_methods(self) -> list:
-        """Returns the list of forward methods for this scorer. By default, it is just `forward`, but it can be extended to support multiple forward methods (e.g. for different scoring strategies)"""
-        return ["rsv"]
+        """Returns the list of forward methods for this scorer. Appends rsv to base Module methods."""
+        try:
+            base_methods = super().get_forward_methods()
+        except AttributeError:
+            base_methods = ["save_model", "load_model"]
+        return base_methods + ["rsv"]
 
     def compute(
         self, topic: IDTextRecord, scored_documents: Iterable[ScoredDocument]
@@ -349,19 +357,9 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
         # We don't materialise everything, but iterate on the fly
         dataset = ReRankingDataset(queries, self.retriever)
 
-        # get underlying module if wrapped (e.g. Fabric)
-        scorer = self.scorer.module if hasattr(self.scorer, "module") else self.scorer
-
-        if hasattr(scorer, "get_tokenizer_fn"):
-            tokenization_fn = scorer.get_tokenizer_fn()
-
-            def collate_fn(batch: List[PointwiseItem]) -> RerankingInputs:
-                inputs = reranking_collate(batch)
-                inputs["tokenized_records"] = tokenization_fn(inputs["records"])
-                return inputs
-
-        else:
-            collate_fn = reranking_collate
+        collate_fn = wrap_collate_with_tokenizer(
+            self.scorer, reranking_collate, log=logger
+        )
 
         dataloader = StatefulDataLoader(
             dataset,
@@ -370,10 +368,6 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
             pin_memory=True if torch.cuda.is_available() else False,
             collate_fn=collate_fn,
         )
-
-        fabric: Fabric = getattr(self, "fabric", None)
-        if fabric:
-            dataloader = fabric.setup_dataloaders(dataloader)
 
         return dataloader
 
@@ -399,6 +393,8 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
 
         fabric: Fabric = getattr(self, "fabric", None)
         dataloader = self.build_reranking_dataloader(queries)
+        if fabric:
+            dataloader = fabric.setup_dataloaders(dataloader)
 
         # Process in batches
         scored_results = {qid: [] for qid in queries}
@@ -450,46 +446,47 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
             batch = inputs["batch"]
             tokenized_records = inputs.get("tokenized_records")
 
-            if issubclass(scorer_type, AbstractModuleScorer):
-                # Use scorer.forward if it's an AbstractModuleScorer to batch across queries
+            with fabric.autocast() if fabric else contextlib.nullcontext():
+                if issubclass(scorer_type, AbstractModuleScorer):
+                    # Use scorer.forward if it's an AbstractModuleScorer to batch across queries
 
-                scores = (
-                    self.scorer(batch_items, tokenized=tokenized_records)
-                    .cpu()
-                    .float()
-                    .numpy()
-                )
-
-                for score, item in zip(scores, batch):
-                    qid = item.topic["id"]
-                    if qid not in seen_qids:
-                        seen_qids.add(qid)
-                        if pbar is not None:
-                            pbar.update(1)
-                    scored_results[qid].append(
-                        to_device(
-                            ScoredDocument(item.document, float(score.item())),
-                            "cpu",
-                        )
-                    )
-            else:
-                # Fallback: group by query and use rsv (score one by one)
-                by_query = {}
-                for item in batch:
-                    qid = item.topic["id"]
-                    if qid not in seen_qids:
-                        seen_qids.add(qid)
-                        if pbar is not None:
-                            pbar.update(1)
-                    by_query.setdefault(qid, []).append(
-                        to_device(
-                            ScoredDocument(item.document, item.relevance),
-                            "cpu",
-                        )
+                    scores = (
+                        self.scorer(batch_items, tokenized=tokenized_records)
+                        .cpu()
+                        .float()
+                        .numpy()
                     )
 
-                for qid, docs in by_query.items():
-                    scored_results[qid].extend(self.scorer.rsv(queries[qid], docs))
+                    for score, item in zip(scores, batch):
+                        qid = item.topic["id"]
+                        if qid not in seen_qids:
+                            seen_qids.add(qid)
+                            if pbar is not None:
+                                pbar.update(1)
+                        scored_results[qid].append(
+                            to_device(
+                                ScoredDocument(item.document, float(score.item())),
+                                "cpu",
+                            )
+                        )
+                else:
+                    # Fallback: group by query and use rsv (score one by one)
+                    by_query = {}
+                    for item in batch:
+                        qid = item.topic["id"]
+                        if qid not in seen_qids:
+                            seen_qids.add(qid)
+                            if pbar is not None:
+                                pbar.update(1)
+                        by_query.setdefault(qid, []).append(
+                            to_device(
+                                ScoredDocument(item.document, item.relevance),
+                                "cpu",
+                            )
+                        )
+
+                    for qid, docs in by_query.items():
+                        scored_results[qid].extend(self.scorer.rsv(queries[qid], docs))
 
         if pbar is not None:
             pbar.close()

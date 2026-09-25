@@ -44,13 +44,10 @@ def test_st_cross_encoder_parity(model_id):
     raw_scores = torch.cat(raw_scores)
 
     # 2. Setup xpmir STCrossEncoder implementation
-    scorer, init_tasks = st_cross_scorer(model_id=model_id)
+    scorer = st_cross_scorer(model_id=model_id)
     scorer = scorer.instance()
     scorer.to(device)
-
-    # Run initialization tasks
-    for task in init_tasks:
-        task.instance().execute()
+    scorer.initialize()
 
     # 3. Compare scores
     for i in range(len(queries)):

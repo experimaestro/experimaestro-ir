@@ -22,7 +22,7 @@ import json
 import logging
 import shutil
 from pathlib import Path
-from typing import List
+from typing import List, Union
 
 import torch
 from experimaestro import (
@@ -37,6 +37,7 @@ from experimaestro import (
 from datamaestro_ir.data import DocumentStore, IDTextRecord
 
 from xpm_torch.configuration import FabricConfiguration
+from xpm_torch.utils.fabric import fallback_fa2_if_incompatible_precision
 from xpmir.rankers import Retriever, ScoredDocument
 from xpmir.rankers.scorer import AbstractModuleScorer
 from xpmir.text.encoders import TextEncoderBase
@@ -64,6 +65,7 @@ def _import_fast_plaid():
 
 _PLAID_SUBDIR = "plaid"
 _METADATA_FILE = "metadata.json"
+_EXT2INT_FILE = "docid_ext2int.json"
 
 
 class PlaidIndex(Config):
@@ -106,6 +108,33 @@ class PlaidIndex(Config):
     def _plaid_dir(self) -> Path:
         return self.index_path / _PLAID_SUBDIR
 
+    def _ext2int_file(self) -> Path:
+        return self.index_path / _EXT2INT_FILE
+
+    def _load_ext2int(self) -> dict[str, int]:
+        cached = getattr(self, "_ext2int", None)
+        if cached is not None:
+            return cached
+        path = self._ext2int_file()
+        if path.exists():
+            with path.open("r") as fh:
+                ext2int = json.load(fh)
+        else:
+            logger.info(
+                "Building external-to-internal docid mapping for %s...", self.index_path
+            )
+            ext2int = {}
+            for doc in self.documents.iter_documents():
+                doc_id = (
+                    doc.get("id") if isinstance(doc, dict) else getattr(doc, "id", None)
+                )
+                if doc_id is not None:
+                    ext2int[str(doc_id)] = len(ext2int)
+            with path.open("w") as fh:
+                json.dump(ext2int, fh)
+        self._ext2int = ext2int
+        return ext2int
+
     def _get_fast_plaid(self):
         """Return a cached ``FastPlaid`` instance for this index.
 
@@ -127,39 +156,46 @@ class PlaidIndex(Config):
 
     def get_document_tokens(
         self,
-        docids: list[int | str],
+        docids: list[int | str] | int | str,
         device: str = "",
-    ) -> torch.Tensor:
-        """Return the (approximate) per-token embeddings for a document.
+    ) -> list[torch.Tensor] | torch.Tensor:
+        """Return the (approximate) per-token embeddings for a document or batch of documents.
 
         The vectors are reconstructed from fast-plaid's compressed
         centroid + residual storage using ``FastPlaid.get_embeddings``.
         The reconstruction quality depends on :attr:`n_bits`.
 
-        :param docid: The document identifiers. Integers are interpreted as
+        :param docids: The document identifier(s). Integers are interpreted as
             internal positions in the index (``0..num_docs-1``); strings are
             looked up in the external-to-internal map written at indexing
             time.
         :param device: Device for the fast-plaid instance used to decompress
             (``""`` = auto).
-        :returns: A ``(num_tokens, dim)`` float tensor containing the
-            reconstructed token embeddings.
+        :returns: A single ``(num_tokens, dim)`` tensor if docids is a single ID,
+            or a list of float tensors if docids is a list of IDs.
         """
-        if isinstance(docids[0], str):
+        is_single = isinstance(docids, (str, int))
+        docids_list = [docids] if is_single else list(docids)
+
+        if not docids_list:
+            return torch.empty(0) if is_single else []
+
+        if isinstance(docids_list[0], str):
             ext2int = self._load_ext2int()
-            internal_docids: list = []
-            for docid in docids:
+            internal_docids: list[int] = []
+            for docid in docids_list:
                 if docid not in ext2int:
                     raise KeyError(
                         f"External document id {docid!r} is unknown to this index"
                     )
                 internal_docids.append(int(ext2int[docid]))
         else:
-            internal_docids = [int(docid) for docid in docids]
+            internal_docids = [int(docid) for docid in docids_list]
 
-        fp_search = _import_fast_plaid()
-        fp = fp_search.FastPlaid(index=str(self._plaid_dir()), device=device or None)
+        fp = self._get_fast_plaid()
         results = fp.get_embeddings(subset=internal_docids)
+        if is_single:
+            return results[0]
         return results
 
 
@@ -179,7 +215,7 @@ class PlaidIndexBuilder(Task):
     documents: Param[DocumentStore]
     """Set of documents to index."""
 
-    encoder: Param[TextEncoderBase]
+    encoder: Param[Union[TextEncoderBase, AbstractModuleScorer]]
     """The ColBERT-style encoder used to produce per-token embeddings."""
 
     batch_size: Meta[int] = field(default=32, ignore_default=True)
@@ -191,7 +227,7 @@ class PlaidIndexBuilder(Task):
     (or they will all be used if n_samples_kmeans is 0)."""
 
     fast_plaid_batch_size: Meta[int] = field(default=32, ignore_default=True)
-    """Fast plaid internal batch size."""
+    """Fast plaid internal batch size. If the value is 0 means using the auto"""
 
     n_bits: Param[int] = field(default=2, ignore_default=True)
     """Number of bits used by fast-plaid for residual quantisation."""
@@ -256,6 +292,10 @@ class PlaidIndexBuilder(Task):
 
         with fabric.init_module():
             self.encoder.initialize()
+            # PlaidIndexBuilder calls fabric.setup() directly rather than a
+            # setup_with_fabric() hook, so the FA2->SDPA downgrade normally
+            # applied during training never runs here; do it explicitly.
+            fallback_fa2_if_incompatible_precision(self.encoder.model, fabric)
             self.encoder = fabric.setup(self.encoder)
             self.encoder.eval()
 
@@ -274,6 +314,7 @@ class PlaidIndexBuilder(Task):
         index_created = False
         doc_buffer: list = []
 
+        ext2int: dict = {}
         with torch.no_grad():
             pbar = tqdm(
                 total=total_docs or None,
@@ -281,6 +322,14 @@ class PlaidIndexBuilder(Task):
                 unit="doc",
             )
             for batch in batchiter(self.batch_size, self.documents.iter_documents()):
+                for doc in batch:
+                    doc_id = (
+                        doc.get("id")
+                        if isinstance(doc, dict)
+                        else getattr(doc, "id", None)
+                    )
+                    if doc_id is not None:
+                        ext2int[str(doc_id)] = len(ext2int)
                 per_doc = self.encoder.document_token_embeddings(batch)
                 per_doc_cpu = [
                     t.detach().to("cpu", dtype=torch.float32) for t in per_doc
@@ -301,10 +350,11 @@ class PlaidIndexBuilder(Task):
                             "documents_embeddings": doc_buffer,
                             "nbits": self.n_bits,
                             "kmeans_niters": self.kmeans_niters,
-                            "batch_size": self.fast_plaid_batch_size,
                             "seed": self.seed,
                             "max_points_per_centroid": self.max_points_per_centroid,
                         }
+                        if self.fast_plaid_batch_size:
+                            create_kwargs["batch_size"] = self.fast_plaid_batch_size
                         if self.n_samples_kmeans:
                             create_kwargs["n_samples_kmeans"] = self.n_samples_kmeans
                         if self.compress_only:
@@ -329,10 +379,11 @@ class PlaidIndexBuilder(Task):
                     else:
                         create_kwargs = {
                             "kmeans_niters": self.kmeans_niters,
-                            "batch_size": self.fast_plaid_batch_size,
                             "seed": self.seed,
                             "max_points_per_centroid": self.max_points_per_centroid,
                         }
+                        if self.fast_plaid_batch_size:
+                            create_kwargs["batch_size"] = self.fast_plaid_batch_size
                         if self.n_samples_kmeans:
                             create_kwargs["n_samples_kmeans"] = self.n_samples_kmeans
 
@@ -352,10 +403,11 @@ class PlaidIndexBuilder(Task):
                 "documents_embeddings": doc_buffer,
                 "nbits": self.n_bits,
                 "kmeans_niters": self.kmeans_niters,
-                "batch_size": self.fast_plaid_batch_size,
                 "seed": self.seed,
                 "max_points_per_centroid": self.max_points_per_centroid,
             }
+            if self.fast_plaid_batch_size:
+                create_kwargs["batch_size"] = self.fast_plaid_batch_size
             if self.n_samples_kmeans:
                 create_kwargs["n_samples_kmeans"] = self.n_samples_kmeans
             if self.compress_only:
@@ -378,16 +430,20 @@ class PlaidIndexBuilder(Task):
         elif index_created and doc_buffer:
             create_kwargs = {
                 "kmeans_niters": self.kmeans_niters,
-                "batch_size": self.fast_plaid_batch_size,
                 "seed": self.seed,
                 "max_points_per_centroid": self.max_points_per_centroid,
             }
+            if self.fast_plaid_batch_size:
+                create_kwargs["batch_size"] = self.fast_plaid_batch_size
             if self.n_samples_kmeans:
                 create_kwargs["n_samples_kmeans"] = self.n_samples_kmeans
             fast_plaid.update(documents_embeddings=doc_buffer, **create_kwargs)
             doc_buffer.clear()
         else:
             logger.info("No documents left to encode.")
+
+        with (self.index_path / _EXT2INT_FILE).open("w") as fh:
+            json.dump(ext2int, fh)
 
         with (self.index_path / _METADATA_FILE).open("w") as fh:
             json.dump(
@@ -453,6 +509,11 @@ class PlaidRetriever(Retriever):
             self.encoder.initialize()
             self.encoder = fabric.setup(self.encoder)
             self.encoder.eval()
+            # query_token_embeddings (called directly from retrieve() below,
+            # not via forward()) needs to be explicitly whitelisted -- under
+            # strategies that wrap the module (e.g. DDP), Fabric only
+            # auto-instruments forward() by default.
+            self.encoder.mark_forward_method("query_token_embeddings")
 
         logger.info("PLAID retriever (2/2): opening the fast-plaid index")
         fp_search = _import_fast_plaid()

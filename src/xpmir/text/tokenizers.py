@@ -43,6 +43,9 @@ class TokenizedTexts(NamedTuple):
     token_type_ids: Optional[torch.LongTensor] = None
     """Type of each token"""
 
+    kwargs: Optional[dict] = None
+    """Additional arguments from the tokenizer, e.g. cu_seq_lens_q for unpadded flash attention"""
+
     def __len__(self):
         return len(self.ids)
 
@@ -53,11 +56,19 @@ class TokenizedTexts(NamedTuple):
             opt_slice(self.lens, ix),
             opt_slice(self.mask, ix),
             opt_slice(self.token_type_ids, ix),
+            self.kwargs,
         )
 
     def to(self, device: torch.device):
         if device is self.ids.device:
             return self
+
+        kwargs_to = None
+        if self.kwargs:
+            kwargs_to = {
+                k: to_device(v, device) if isinstance(v, torch.Tensor) else v
+                for k, v in self.kwargs.items()
+            }
 
         return TokenizedTexts(
             self.tokens,
@@ -65,6 +76,7 @@ class TokenizedTexts(NamedTuple):
             self.lens,
             to_device(self.mask, device),
             to_device(self.token_type_ids, device),
+            kwargs_to,
         )
 
     def subset(self, ids: torch.Tensor) -> "TokenizedTexts":

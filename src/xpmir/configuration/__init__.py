@@ -39,9 +39,9 @@ def omegaconf_argument(
 
     YAML_SUFFIX = ".yaml"
 
-    assert (
-        folder is None or package is None
-    ), "folder and package cannot be used at the same time"
+    assert folder is None or package is None, (
+        "folder and package cannot be used at the same time"
+    )
 
     if folder is not None:
         if isinstance(folder, str):

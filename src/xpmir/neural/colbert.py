@@ -12,7 +12,7 @@ via Contextualized Late Interaction over BERT" (SIGIR 2020).
 """
 
 from pathlib import Path
-from typing import Iterable, List, Optional, Tuple
+from typing import List, Optional, Tuple
 from attrs import evolve
 
 import torch
@@ -21,13 +21,14 @@ from experimaestro import Param, field, LightweightTask
 from datamaestro_ir.data import IDTextRecord
 from xpm_torch.learner import TrainerContext
 
-from xpmir.letor.records import BaseItems, ProductItems
-from xpmir.neural import DocsRep, QueriesRep
 from xpmir.neural.dual import DualVectorScorer
 from xpmir.rankers.scorer import AbstractModuleScorer
 from xpmir.text.encoders import TokensRepresentationOutput
 from xpmir.text.huggingface.tokenizers import get_default_max_len  # noqa: F401
 from xpmir.text.tokenizers import TokenizedTexts, TokenizerOptions
+
+import warnings
+from xpmir.neural.sentence_transformers import STMultiVectorEncoder
 
 
 try:
@@ -37,7 +38,7 @@ except Exception:  # ImportError or if pylate not available for any reason
 
 import logging
 
-logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 class ColBERTEncoder(
@@ -281,14 +282,12 @@ class ColBERTEncoder(
             self._projection.load_state_dict(torch.load(proj_path, map_location="cpu"))
 
 
-class PylateColBERT(AbstractModuleScorer):
-    """Interface with Pylate to use a ColBERT model as a scorer."""
+class PylateColBERT(STMultiVectorEncoder):
+    """[DEPRECATED] Interface with ColBERT models.
 
-    """ This classs isn't working as of right now. It needs specific changes
-    to the toml file to accomodate pylate requirements."""
-
-    model_id: Param[str]
-    """The HuggingFace model ID or path."""
+    Deprecated in favor of :class:`~xpmir.neural.sentence_transformers.STMultiVectorEncoder`.
+    Backed by sentence-transformers v6+ MultiVectorEncoder.
+    """
 
     dim: Param[int] = field(default=128, ignore_default=True)
     """Output dimension of the per-token projection."""
@@ -299,158 +298,18 @@ class PylateColBERT(AbstractModuleScorer):
     doc_maxlen: Param[int] = field(default=180, ignore_default=True)
     """Maximum number of tokens kept for a document."""
 
-    def __initialize__(self):
-        super().__initialize__()
-
-        try:
-            from pylate import models
-        except Exception:  # ImportError or if pylate not available for any reason
-            raise ImportError(
-                "Pylate is not available. Please install pylate to use PylateColBERT."
-            )
-        self.pl_model = models.ColBERT(
-            self.model_id,
-            document_length=self.doc_maxlen,
-            query_length=self.query_maxlen,
-            embedding_size=self.dim,
+    def __post_init__(self):
+        logger.warning(
+            "[DEPRECATION] PylateColBERT is deprecated and will be removed in a future release. "
+            "Please use STMultiVectorEncoder from xpmir.neural.sentence_transformers instead."
         )
-        self.pl_model.compile()
-
-        self._initialized = True
-
-    def _ensure_tensor_batch(self, representations: object) -> torch.Tensor:
-        if isinstance(representations, torch.Tensor):
-            return representations
-        if isinstance(representations, list):
-            return torch.stack(representations)
-        raise TypeError(
-            "Expected a torch.Tensor or list[torch.Tensor] from the Pylate model"
+        warnings.warn(
+            "PylateColBERT is deprecated and will be removed in a future release. "
+            "Please use STMultiVectorEncoder from xpmir.neural.sentence_transformers instead.",
+            DeprecationWarning,
+            stacklevel=2,
         )
-
-    @property
-    def dimension(self) -> int:
-        """Projection dimension (returned per token)."""
-        return self.dim
-
-    def document_token_embeddings(
-        self, records: List[IDTextRecord]
-    ) -> List[torch.Tensor]:
-        """Encode a batch of documents and return the list of per-token
-        embeddings, one tensor ``(num_tokens, dim)`` per document. Padding
-        positions are filtered out.
-        """
-        return self.pl_model.encode_document(
-            records, normalize_embeddings=True, convert_to_tensor=True
-        )
-
-    def query_token_embeddings(self, records: List[IDTextRecord]) -> torch.Tensor:
-        """Encode a batch of queries and return a dense
-        ``(batch, query_maxlen, dim)`` tensor suitable for fast-plaid search.
-        """
-        return self.pl_model.encode_query(
-            records, normalize_embeddings=True, convert_to_tensor=True
-        )
-
-    def encode_documents(self, records: Iterable[IDTextRecord]) -> DocsRep:
-        """Encode a list of texts (document or query)
-
-        The return value is model dependent"""
-        representations = self.pl_model.encode(
-            [record["text_item"].text for record in records],
-            normalize_embeddings=True,
-            convert_to_tensor=True,
-            is_query=False,
-        )
-        return self._ensure_tensor_batch(representations)
-
-    def encode_queries(self, records: Iterable[IDTextRecord]) -> QueriesRep:
-        """Encode a list of texts (document or query)
-
-        The return value is model dependent, but should be sequence
-
-        By default, uses `merge`
-        """
-        representations = self.pl_model.encode(
-            [record["text_item"].text for record in records],
-            normalize_embeddings=True,
-            convert_to_tensor=True,
-            is_query=True,
-        )
-        return self._ensure_tensor_batch(representations)
-
-    # --------------------------------------------------------------- scoring
-
-    def _max_sim(
-        self,
-        queries: torch.Tensor,
-        documents: torch.Tensor,
-        all_pairs: bool,
-    ) -> torch.Tensor:
-        """Compute the MaxSim operator.
-
-        When ``all_pairs`` is True, returns an ``(Nq, Nd)`` matrix of scores
-        between every query and every document; otherwise returns a vector of
-        ``Nq == Nd`` scores for the aligned query/document pairs.
-        """
-        if all_pairs:
-            return self.pl_model.similarity_pairwise(queries, documents)
-        return self.pl_model.similarity(queries, documents)
-
-    def score_product(
-        self,
-        queries: TokensRepresentationOutput,
-        documents: TokensRepresentationOutput,
-        info: Optional[TrainerContext] = None,
-    ) -> torch.Tensor:
-        return self._max_sim(queries, documents, all_pairs=True)
-
-    def score_pairs(
-        self,
-        queries: TokensRepresentationOutput,
-        documents: TokensRepresentationOutput,
-        info: Optional[TrainerContext] = None,
-    ) -> torch.Tensor:
-        return self._max_sim(queries, documents, all_pairs=False)
-
-    def forward(
-        self, inputs: BaseItems, info: Optional[TrainerContext] = None, **kwargs
-    ):
-        # Forward to model
-        enc_queries = self.encode_queries(list(inputs.unique_queries))
-        enc_documents = self.encode_documents(list(inputs.unique_documents))
-
-        # Score product
-        if isinstance(inputs, ProductItems):
-            return self.score_product(
-                enc_queries,
-                enc_documents,
-                info,
-            ).flatten()
-
-        # Score pairs
-        pairs = inputs.pairs()
-        q_ix, d_ix = pairs
-        return self.score_pairs(
-            enc_queries[q_ix],
-            enc_documents[d_ix],
-            info,
-        ).flatten()
-
-    # ------------------------------------------------------ (de)serialisation
-
-    def save_model(self, path: Path):
-        path.mkdir(parents=True, exist_ok=True)
-        # self.encoder.save_model(path / "encoder")
-        # if self.query_encoder is not None and self.query_encoder is not self.encoder:
-        #     self._query_encoder.save_model(path / "query_encoder")
-        self.pl_model.save(path / "model.pth")
-
-    def load_model(self, path: Path):
-        if (path / "model.pth").exists():
-            self.pl_model.load(path / "model.pth")
-        # proj_path = path / "projection.pth"
-        # if proj_path.exists():
-        #     self._projection.load_state_dict(torch.load(proj_path, map_location="cpu"))
+        super().__post_init__()
 
 
 class InitPylateColBERT(LightweightTask):
@@ -463,9 +322,13 @@ class InitPylateColBERT(LightweightTask):
 
 
 def pylate_colbert(
-    model_id: str, document_length: int, query_length: int, embedding_size: int
+    model_id: str,
+    document_length: int = 180,
+    query_length: int = 32,
+    embedding_size: int = 128,
+    **kwargs,
 ) -> Tuple[PylateColBERT, List[LightweightTask]]:
-    """Creates an PylateColBERT model.
+    """[DEPRECATED] Creates a PylateColBERT model.
 
     :param model_id: The HuggingFace model ID
     :param document_length: The maximum length of documents
@@ -473,11 +336,21 @@ def pylate_colbert(
     :param embedding_size: The size of the embedding vectors
     :returns: (PylateColBERT, init_tasks)
     """
-
+    logger.warning(
+        "[DEPRECATION] pylate_colbert is deprecated and will be removed in a future release. "
+        "Please use st_multivector_scorer from xpmir.neural.sentence_transformers instead."
+    )
+    warnings.warn(
+        "pylate_colbert is deprecated and will be removed in a future release. "
+        "Please use st_multivector_scorer from xpmir.neural.sentence_transformers instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     scorer = PylateColBERT.C(
         model_id=model_id,
         doc_maxlen=document_length,
         query_maxlen=query_length,
         dim=embedding_size,
+        **kwargs,
     ).tag("model_type", "colbert")
     return scorer, [InitPylateColBERT.C(model=scorer)]

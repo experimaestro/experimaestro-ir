@@ -87,7 +87,7 @@ class HFTokenizer(Config, Initializable):
 
     def tokenize(
         self,
-        texts: HFTokenizerInput, #FIXME : not true, but might want to implement it.
+        texts: HFTokenizerInput,  # FIXME : not true, but might want to implement it.
         options: Optional[TokenizerOptions] = None,
     ) -> TokenizedTexts:
         options = options or HFTokenizer.DEFAULT_OPTIONS
