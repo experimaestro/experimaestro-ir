@@ -507,6 +507,7 @@ class PlaidRetriever(Retriever):
         # 1. Initialize Fabric first
         fabric = self.fabric_config.get_fabric()
         fabric.launch()
+        self.fabric = fabric
 
         with fabric.init_module():
             self.encoder.initialize()
@@ -562,21 +563,46 @@ class PlaidRetriever(Retriever):
         """Retrieves documents for a set of queries in batches.
 
         Processes queries in batches of size `self.batch_size` to optimize
-        GPU utilization and query encoding speed.
+        GPU utilization and query encoding speed. Supports multi-GPU distributed
+        evaluation via Lightning Fabric / torch.distributed.
         """
         documents = self.index.documents
         results: Dict[str, List[ScoredDocument]] = {}
         items = list(queries.items())
 
+        fabric = getattr(self, "fabric", None)
+        is_distributed = fabric is not None and fabric.world_size > 1
+
+        if is_distributed:
+            world_size = fabric.world_size
+            rank = fabric.global_rank
+            local_items = items[rank::world_size]
+            desc = f"(Rank {rank}): PLAID retrieval (batch_size={self.batch_size})"
+            logger.info(
+                f"{desc} ({len(local_items)}/{len(items)} queries on this rank)"
+            )
+            disable_tqdm = not fabric.is_global_zero
+        else:
+            local_items = items
+            desc = f"PLAID retrieval (batch_size={self.batch_size})"
+            disable_tqdm = False
+
         search_kwargs = {"top_k": self.topk, "n_ivf_probe": self.n_ivf_probe}
         if self.n_full_scores:
             search_kwargs["n_full_scores"] = self.n_full_scores
 
-        for i in tqdm(
-            range(0, len(items), self.batch_size),
-            desc=f"PLAID retrieval (batch_size={self.batch_size})",
-        ):
-            batch_items = items[i : i + self.batch_size]
+        pbar = (
+            tqdm(
+                total=len(local_items),
+                desc=desc,
+                unit="query",
+            )
+            if not disable_tqdm
+            else None
+        )
+
+        for i in range(0, len(local_items), self.batch_size):
+            batch_items = local_items[i : i + self.batch_size]
             batch_keys = [k for k, _ in batch_items]
             batch_records = [r for _, r in batch_items]
 
@@ -596,5 +622,30 @@ class PlaidRetriever(Retriever):
                     ScoredDocument(documents.document_int(int(doc_index)), float(score))
                     for doc_index, score in query_results
                 ]
+
+            if pbar is not None:
+                pbar.update(len(batch_items))
+
+        if pbar is not None:
+            pbar.close()
+
+        if is_distributed:
+            import torch.distributed as dist
+
+            # Gather results from all GPUs
+            local_data = list(results.items())
+            gathered_data = [None] * fabric.world_size
+            dist.all_gather_object(gathered_data, local_data)
+
+            if fabric.is_global_zero:
+                # Merge into master dictionary
+                final_results = {}
+                for rank_data in gathered_data:
+                    for key, scored_docs in rank_data:
+                        final_results[key] = scored_docs
+                # Preserve original query ordering
+                results = {k: final_results.get(k, []) for k in queries}
+            else:
+                return {}
 
         return results
