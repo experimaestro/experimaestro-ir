@@ -3,6 +3,11 @@
 
 name: Python package
 
+# Cancel in-progress runs for the same ref when a new commit is pushed
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [master, xpmir-V2]
