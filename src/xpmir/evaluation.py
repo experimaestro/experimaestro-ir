@@ -233,6 +233,7 @@ class Evaluations:
         *,
         init_tasks=[],
         with_run=False,
+        fabric_config=None,
     ) -> "EvaluationResult":
         """Evaluates a retriever
 
@@ -248,6 +249,7 @@ class Evaluations:
             dataset=self.dataset,
             topic_wrapper=self.topic_wrapper,
             with_run=with_run,
+            fabric_config=fabric_config,
         ).tag("dataset", key)
 
         evaluation = task.submit(launcher=launcher, init_tasks=init_tasks)
@@ -398,6 +400,7 @@ class EvaluationsCollection:
         overwrite: bool = False,
         with_run: bool = False,
         init_tasks=[],
+        fabric_config=None,
     ) -> list[EvaluationResult]:
         """Evaluate a retriever for all the evaluations in this collection (the
         tasks are submitted to the experimaestro scheduler)
@@ -413,7 +416,12 @@ class EvaluationsCollection:
         results = []
         for key, evaluations in self.collection.items():
             result = evaluations.evaluate_retriever(
-                key, retriever, launcher, init_tasks=init_tasks, with_run=with_run
+                key,
+                retriever,
+                launcher,
+                init_tasks=init_tasks,
+                with_run=with_run,
+                fabric_config=fabric_config,
             )
             results.append(result)
 

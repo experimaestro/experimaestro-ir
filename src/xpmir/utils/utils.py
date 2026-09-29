@@ -20,7 +20,7 @@ import tempfile
 from experimaestro import SubmitHook, Job, Launcher
 from threading import Thread
 from functools import lru_cache as cache
-from xpm_torch.utils.logging import  EasyLogger  # noqa: F401
+from xpm_torch.utils.logging import EasyLogger  # noqa: F401
 
 T = TypeVar("T")
 

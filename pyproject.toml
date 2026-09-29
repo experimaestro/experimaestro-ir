@@ -50,7 +50,7 @@ neural = [
     "torch>=2.10",
     "tensorboard",
     "transformers",
-    "sentence_transformers>=5.4.0"
+    "sentence_transformers>=6.0.0"
 ]
 
 fast-plaid = [
