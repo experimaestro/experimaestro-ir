@@ -963,29 +963,49 @@ class STMultiVectorEncoder(AbstractModuleScorer):
 
     # ------------------------------------------------------------------ Fast-PLAID
     def document_token_embeddings(
-        self, records: List[IDTextRecord]
+        self, records: List[IDTextRecord], max_doc_length: Optional[int] = None
     ) -> List[torch.Tensor]:
         """Encodes documents into a list of per-token embedding tensors."""
         self._check_initialized()
         texts = [_extract_text(r) for r in records]
+        effective_max_doc = (
+            max_doc_length if max_doc_length is not None else self.doc_maxlen
+        )
+        d_kwargs = {}
+        if effective_max_doc:
+            d_kwargs["processing_kwargs"] = {
+                "text": {"max_length": effective_max_doc, "truncation": True}
+            }
         return self.st_model.encode_document(
             texts,
             normalize_embeddings=self.normalize_embeddings,
             convert_to_numpy=False,
             device=self.device,
             show_progress_bar=False,
+            **d_kwargs,
         )
 
-    def query_token_embeddings(self, records: List[IDTextRecord]) -> torch.Tensor:
+    def query_token_embeddings(
+        self, records: List[IDTextRecord], max_query_length: Optional[int] = None
+    ) -> torch.Tensor:
         """Encodes queries into a batch tensor of token embeddings."""
         self._check_initialized()
         texts = [_extract_text(r) for r in records]
+        effective_max_q = (
+            max_query_length if max_query_length is not None else self.query_maxlen
+        )
+        q_kwargs = {}
+        if effective_max_q and not self.query_expansion:
+            q_kwargs["processing_kwargs"] = {
+                "text": {"max_length": effective_max_q, "truncation": True}
+            }
         embs = self.st_model.encode_query(
             texts,
             normalize_embeddings=self.normalize_embeddings,
             convert_to_numpy=False,
             device=self.device,
             show_progress_bar=False,
+            **q_kwargs,
         )
         if isinstance(embs, torch.Tensor):
             if embs.ndim == 2:

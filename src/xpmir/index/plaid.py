@@ -22,7 +22,7 @@ import json
 import logging
 import shutil
 from pathlib import Path
-from typing import List, Union
+from typing import Dict, List, Union
 
 import torch
 from experimaestro import (
@@ -487,6 +487,9 @@ class PlaidRetriever(Retriever):
     """Number of candidates for which fast-plaid computes full scores
     (0 = fast-plaid default)."""
 
+    batch_size: Meta[int] = field(default=64, ignore_default=True)
+    """Query encoding and search batch size for retrieve_all."""
+
     fabric_config: Meta[FabricConfiguration] = field(
         default_factory=FabricConfiguration.C
     )
@@ -517,7 +520,10 @@ class PlaidRetriever(Retriever):
 
         logger.info("PLAID retriever (2/2): opening the fast-plaid index")
         fp_search = _import_fast_plaid()
-        device = fabric.device or None
+        if fabric.device and fabric.device.type == "cuda":
+            device = str(fabric.device)
+        else:
+            device = "cpu"
         self._fast_plaid = fp_search.FastPlaid(
             index=str(self.index._plaid_dir()), device=device
         )
@@ -549,3 +555,46 @@ class PlaidRetriever(Retriever):
                 ScoredDocument(documents.document_int(int(doc_index)), float(score))
             )
         return out
+
+    def retrieve_all(
+        self, queries: Dict[str, IDTextRecord]
+    ) -> Dict[str, List[ScoredDocument]]:
+        """Retrieves documents for a set of queries in batches.
+
+        Processes queries in batches of size `self.batch_size` to optimize
+        GPU utilization and query encoding speed.
+        """
+        documents = self.index.documents
+        results: Dict[str, List[ScoredDocument]] = {}
+        items = list(queries.items())
+
+        search_kwargs = {"top_k": self.topk, "n_ivf_probe": self.n_ivf_probe}
+        if self.n_full_scores:
+            search_kwargs["n_full_scores"] = self.n_full_scores
+
+        for i in tqdm(
+            range(0, len(items), self.batch_size),
+            desc=f"PLAID retrieval (batch_size={self.batch_size})",
+        ):
+            batch_items = items[i : i + self.batch_size]
+            batch_keys = [k for k, _ in batch_items]
+            batch_records = [r for _, r in batch_items]
+
+            with torch.no_grad():
+                batch_embeddings = self.encoder.query_token_embeddings(batch_records)
+                batch_embeddings = batch_embeddings.detach().to(
+                    "cpu", dtype=torch.float32
+                )
+                batch_results = self._fast_plaid.search(
+                    queries_embeddings=batch_embeddings,
+                    show_progress=False,
+                    **search_kwargs,
+                )
+
+            for key, query_results in zip(batch_keys, batch_results):
+                results[key] = [
+                    ScoredDocument(documents.document_int(int(doc_index)), float(score))
+                    for doc_index, score in query_results
+                ]
+
+        return results
