@@ -375,6 +375,8 @@ class PlaidIndexBuilder(Task):
                                 raise
 
                         doc_buffer.clear()  # free RAM immediately
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
                         index_created = True
                     else:
                         create_kwargs = {
@@ -387,10 +389,14 @@ class PlaidIndexBuilder(Task):
                         if self.n_samples_kmeans:
                             create_kwargs["n_samples_kmeans"] = self.n_samples_kmeans
 
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
                         fast_plaid.update(
                             documents_embeddings=doc_buffer, **create_kwargs
                         )
                         doc_buffer.clear()  # free RAM immediately
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
 
                 # ID mapping — same logic regardless of create vs update path
                 num_docs_seen += len(per_doc_cpu)
@@ -427,6 +433,8 @@ class PlaidIndexBuilder(Task):
                 else:
                     raise
             doc_buffer.clear()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
         elif index_created and doc_buffer:
             create_kwargs = {
                 "kmeans_niters": self.kmeans_niters,
@@ -437,8 +445,12 @@ class PlaidIndexBuilder(Task):
                 create_kwargs["batch_size"] = self.fast_plaid_batch_size
             if self.n_samples_kmeans:
                 create_kwargs["n_samples_kmeans"] = self.n_samples_kmeans
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
             fast_plaid.update(documents_embeddings=doc_buffer, **create_kwargs)
             doc_buffer.clear()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
         else:
             logger.info("No documents left to encode.")
 

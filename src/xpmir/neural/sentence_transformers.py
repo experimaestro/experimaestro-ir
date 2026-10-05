@@ -971,7 +971,7 @@ class STMultiVectorEncoder(AbstractModuleScorer):
         effective_max_doc = (
             max_doc_length if max_doc_length is not None else self.doc_maxlen
         )
-        d_kwargs = {}
+        d_kwargs = {"batch_size": len(texts)}
         if effective_max_doc:
             d_kwargs["processing_kwargs"] = {
                 "text": {"max_length": effective_max_doc, "truncation": True}
