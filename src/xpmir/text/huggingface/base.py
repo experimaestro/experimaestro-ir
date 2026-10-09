@@ -105,7 +105,7 @@ class HFModel(Module, Generic[ConfigT]):
             )
             self.hf_config = hf_config
             logging.info(
-                "Creating model structure from config (%s) with %s.%s",
+                "Creating **random init** model structure from config (%s) with %s.%s",
                 hf_id,
                 self.automodel.__module__,
                 self.automodel.__name__,

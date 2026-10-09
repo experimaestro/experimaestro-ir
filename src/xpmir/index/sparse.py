@@ -371,7 +371,7 @@ class SparseRetriever(Retriever, Generic[InputType]):
         logger.info("Moving everything to Fabric")
 
     def retrieve_all(
-        self, queries: Dict[str, InputType]
+        self, queries: Dict[str, InputType], shard_and_gather: bool = True
     ) -> Dict[str, List[ScoredDocument]]:
         """Input queries: {id: text}"""
 
@@ -379,7 +379,7 @@ class SparseRetriever(Retriever, Generic[InputType]):
         items = list(queries.items())
 
         # Shard the items if using multi-GPU
-        if fabric and fabric.world_size > 1:
+        if shard_and_gather and fabric and fabric.world_size > 1:
             items = items[fabric.global_rank :: fabric.world_size]
             if fabric.is_global_zero:
                 logger.warning(
@@ -466,7 +466,7 @@ class SparseRetriever(Retriever, Generic[InputType]):
             )
         results = asyncio.run(aio_process())
 
-        if fabric and fabric.world_size > 1:
+        if shard_and_gather and fabric and fabric.world_size > 1:
             # Gather results from all GPUs
             local_results = list(results.items())
             gathered_data = [None] * fabric.world_size
