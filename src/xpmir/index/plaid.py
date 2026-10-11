@@ -135,7 +135,18 @@ class PlaidIndex(Config):
         self._ext2int = ext2int
         return ext2int
 
-    def _get_fast_plaid(self):
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state.pop("_fast_plaid", None)
+        state.pop("_fast_plaid_device", None)
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self._fast_plaid = None
+        self._fast_plaid_device = None
+
+    def _get_fast_plaid(self, device: str = ""):
         """Return a cached ``FastPlaid`` instance for this index.
 
         The instance is constructed lazily on first access and reused
@@ -143,15 +154,21 @@ class PlaidIndex(Config):
         :meth:`get_document_tokens`) avoid reloading the index.
         """
         cached = getattr(self, "_fast_plaid", None)
-        if cached is not None:
+        cached_device = getattr(self, "_fast_plaid_device", None)
+        target_device = device or self.device or None
+        if cached is not None and (
+            target_device is None or target_device == cached_device
+        ):
             return cached
+
         fp_search = _import_fast_plaid()
         fp = fp_search.FastPlaid(
             index=str(self._plaid_dir()),
-            device=self.device or None,
+            device=target_device,
             low_memory=not self.in_memory,
         )
         self._fast_plaid = fp
+        self._fast_plaid_device = target_device
         return fp
 
     def get_document_tokens(
@@ -192,7 +209,7 @@ class PlaidIndex(Config):
         else:
             internal_docids = [int(docid) for docid in docids_list]
 
-        fp = self._get_fast_plaid()
+        fp = self._get_fast_plaid(device=device)
         results = fp.get_embeddings(subset=internal_docids)
         if is_single:
             return results[0]
