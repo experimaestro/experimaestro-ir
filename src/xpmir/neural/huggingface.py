@@ -1,3 +1,5 @@
+import os
+import json
 from pathlib import Path
 from typing import List, Tuple, Optional
 import torch
@@ -57,6 +59,12 @@ class HFQueryDocTokenizer(HFTokenizer):
     max_doc_length: Param[Optional[int]]
     """maximum number of tokens for the document side (defaults to max_length)"""
 
+    query_prompt: Param[Optional[str]] = field(default=None, ignore_default=True)
+    """Optional prompt template/prefix for queries (e.g. '[Q] ' or 'query: {text}')"""
+
+    doc_prompt: Param[Optional[str]] = field(default=None, ignore_default=True)
+    """Optional prompt template/prefix for documents (e.g. '[D] ' or 'passage: {text}')"""
+
     flatten: Param[Optional[bool]] = field(default=None, ignore_default=True)
     """Whether to flatten sequences into 1D unpadded format with cu_seq_lens_q kwargs.
     If None, automatically determines whether to flatten based on pref_attn_implementation."""
@@ -70,12 +78,24 @@ class HFQueryDocTokenizer(HFTokenizer):
         super(HFTokenizer, self).__post_init__()
         self.data_collator = None
 
+        default_max = get_default_max_len(self.model_id)
         if self.max_length is None:
-            # set it to max length of the model if not provided
-            self.max_length = get_default_max_len(self.model_id)
+            # set it to max length of the model if not provided, bounded by query+doc lengths
+            if self.max_query_length is not None and self.max_doc_length is not None:
+                self.max_length = min(
+                    default_max, self.max_query_length + self.max_doc_length + 3
+                )
+            else:
+                self.max_length = default_max
+
             if self.max_query_length is None or self.max_doc_length is None:
                 logger.warning(
                     f"No max_len (or query/doc len) provided, using default hf: {self.max_length}"
+                )
+        else:
+            if self.max_query_length is not None and self.max_doc_length is not None:
+                self.max_length = min(
+                    self.max_length, self.max_query_length + self.max_doc_length + 3
                 )
 
         # Sanity Check - max len should be set in parent class
@@ -132,8 +152,88 @@ class HFQueryDocTokenizer(HFTokenizer):
         )
         return flash_varlen_fn is not None
 
+    @staticmethod
+    def format_prompt(prompt: Optional[str], text: str) -> str:
+        """Apply a prompt prefix or format template to a text."""
+        if not prompt:
+            return text
+        if "{text}" in prompt:
+            return prompt.format(text=text)
+        if "{query}" in prompt:
+            return prompt.format(query=text)
+        if "{document}" in prompt:
+            return prompt.format(document=text)
+        if "{passage}" in prompt:
+            return prompt.format(passage=text)
+        return prompt + text
+
     def __initialize__(self):
         super().__initialize__()
+
+        if self.query_prompt is None or self.doc_prompt is None:
+            loaded_prompts = {}
+            model_id_or_path = self.model_id
+            if model_path := os.environ.get("XPMIR_TRANSFORMERS_CACHE", None):
+                path = Path(model_path) / "tokenizers" / Path(self.model_id)
+                if path.is_dir():
+                    model_id_or_path = path
+
+            candidate_paths = []
+            if isinstance(model_id_or_path, (str, Path)):
+                p = Path(model_id_or_path)
+                if p.is_dir():
+                    candidate_paths.append(p / "config_sentence_transformers.json")
+                    candidate_paths.append(p / "tokenizer_config.json")
+
+            for cp in candidate_paths:
+                if cp.is_file():
+                    try:
+                        with open(cp, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                        if "prompts" in data and isinstance(data["prompts"], dict):
+                            loaded_prompts = data["prompts"]
+                            break
+                    except Exception as e:
+                        logger.debug("Could not read prompts from %s: %s", cp, e)
+
+            if (
+                not loaded_prompts
+                and isinstance(model_id_or_path, str)
+                and not Path(model_id_or_path).exists()
+            ):
+                try:
+                    from transformers.utils import cached_file
+
+                    resolved = cached_file(
+                        model_id_or_path,
+                        "config_sentence_transformers.json",
+                        _raise_exceptions_for_missing_entries=False,
+                    )
+                    if resolved and Path(resolved).is_file():
+                        with open(resolved, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                        if "prompts" in data and isinstance(data["prompts"], dict):
+                            loaded_prompts = data["prompts"]
+                except Exception as e:
+                    logger.debug(
+                        "Could not resolve config_sentence_transformers.json from HF: %s",
+                        e,
+                    )
+
+            if loaded_prompts:
+                if self.query_prompt is None and "query" in loaded_prompts:
+                    self.query_prompt = loaded_prompts["query"]
+                    logger.info(
+                        "HFQueryDocTokenizer loaded query_prompt: '%s'",
+                        self.query_prompt,
+                    )
+                if self.doc_prompt is None and "document" in loaded_prompts:
+                    self.doc_prompt = loaded_prompts["document"]
+                    logger.info(
+                        "HFQueryDocTokenizer loaded doc_prompt: '%s'",
+                        self.doc_prompt,
+                    )
+
         if self.should_flatten():
             from transformers import DataCollatorWithFlattening
 
@@ -172,6 +272,11 @@ class HFQueryDocTokenizer(HFTokenizer):
 
         queries = [input_records.unique_topics[i]["text_item"].text for i in ix_qs]
         docs = [input_records.unique_documents[i]["text_item"].text for i in ix_ds]
+
+        if self.query_prompt:
+            queries = [self.format_prompt(self.query_prompt, q) for q in queries]
+        if self.doc_prompt:
+            docs = [self.format_prompt(self.doc_prompt, d) for d in docs]
 
         # Special token IDs (BERT-style= [CLS] q [SEP] d [SEP])
         cls_id = self.tokenizer.cls_token_id  # [CLS]

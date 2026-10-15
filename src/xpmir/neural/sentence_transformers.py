@@ -542,16 +542,36 @@ def st_cross_scorer(
     """
     default_max_len = get_default_max_len(model_id)
 
-    if max_length and default_max_len > max_length:
-        max_len = max_length
-    else:
-        logging.warning(
-            f"No max_length provided or provided max_length {max_length} too large compared to default max_length {default_max_len}."
-            f"Using default max_len {default_max_len} for CrossEncoder {model_id}"
-        )
-        max_len = None
+    max_len = None
+    if max_length is not None:
+        if max_length > default_max_len:
+            logging.warning(
+                f"Provided max_length {max_length} is larger than default max_length {default_max_len} for {model_id}."
+            )
+        max_len = min(default_max_len, max_length)
 
-    if tokenizer is None and (max_query_length or max_doc_length):
+    if max_query_length is not None and max_doc_length is not None:
+        combined_bound = min(default_max_len, max_query_length + max_doc_length + 3)
+        if max_len is None or max_len > combined_bound:
+            max_len = combined_bound
+    elif (max_query_length is not None) ^ (max_doc_length is not None):
+        if max_len is None:
+            raise ValueError(
+                f"Incomplete sequence length configuration for model '{model_id}': "
+                f"both max_query_length ({max_query_length}) and max_doc_length ({max_doc_length}) "
+                "must be specified when max_length is not provided."
+            )
+
+    if max_len is None:
+        logging.warning(
+            f"No max_length (or query/doc len) provided for STCrossEncoder {model_id}. "
+            f"Using default model max_len: {default_max_len}"
+        )
+        max_len = default_max_len
+
+    if tokenizer is None and (
+        max_query_length is not None or max_doc_length is not None
+    ):
         from xpmir.neural.huggingface import HFQueryDocTokenizer
 
         tokenizer = HFQueryDocTokenizer.C(
