@@ -24,7 +24,8 @@ from xpmir.text.huggingface.tokenizers import get_default_max_len, HFTokenizer
 from xpmir.text import TokenizedTexts
 from xpmir.letor.records import BaseItems, ProductItems
 from xpmir.rankers import AbstractModuleScorer
-from xpm_torch.module import SimpleModuleLoader, fallback_fa2_if_incompatible_precision
+from xpm_torch.module import SimpleModuleLoader
+from xpm_torch.utils.fabric import fallback_fa2_if_incompatible_precision
 from xpm_torch.utils import to_device
 from xpm_torch.trainers import TrainerContext
 from xpmir.text.tokenizers import TokenizerOptions

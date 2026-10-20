@@ -10,15 +10,13 @@ from experimaestro import DataPath, Param, LightweightTask, field
 from xpmir.text import TokenizedTexts
 from xpmir.letor.records import BaseItems
 from xpmir.rankers import AbstractModuleScorer
-from xpm_torch.module import (
-    ModuleLoader,
-    ReadmeSection,
+from xpm_torch.module import ModuleLoader, ReadmeSection
+from xpm_torch.trainers import TrainerContext
+from xpm_torch.utils import to_device
+from xpm_torch.utils.fabric import (
     fallback_fa2_if_incompatible_precision,
     is_fa2_available,
 )
-from xpm_torch.utils import to_device
-from xpm_torch.trainers import TrainerContext
-
 from xpmir.text.huggingface.base import (
     HFConfigID,
     HFSequenceClassification,
