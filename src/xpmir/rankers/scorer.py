@@ -4,6 +4,7 @@ from typing import (
     Any,
     Dict,
     Iterable,
+    Iterator,
     List,
     Optional,
     Protocol,
@@ -27,10 +28,11 @@ from datamaestro_ir.data import (
 )
 import os
 import torch.distributed as dist
+from torch.utils.data import IterableDataset, get_worker_info
 from xpm_torch import Module, Random
 from xpm_torch.utils.utils import Initializable, to_device
 from xpm_torch.utils.logging import EasyLogger
-from xpm_torch.datasets import IndexedDataset, ShardedIterableDataset
+from xpm_torch.datasets import IndexedDataset
 from torchdata.stateful_dataloader import StatefulDataLoader
 from xpm_torch.losses import ModuleOutputType
 from xpmir.letor.records import (
@@ -311,8 +313,12 @@ def reranking_collate(
     return RerankingInputs(records=batch_items, batch=batch, tokenized_records=None)
 
 
-class ReRankingDataset(ShardedIterableDataset):
-    """A dataset that yields PointwiseItem records for re-ranking from pre-retrieved candidates."""
+class ReRankingDataset(IterableDataset):
+    """A dataset that yields PointwiseItem records for re-ranking from pre-retrieved candidates.
+
+    Candidates are already sharded across GPU ranks by TwoStageRetriever.retrieve_all, so
+    this dataset only shards across DataLoader worker processes.
+    """
 
     def __init__(
         self,
@@ -321,19 +327,15 @@ class ReRankingDataset(ShardedIterableDataset):
         super().__init__()
         self.candidates = candidates
 
-    def iter_shard(self, shard_id: int, num_shards: int):
-        import os
+    def __iter__(self) -> Iterator[PointwiseItem]:
+        worker_info = get_worker_info()
+        if worker_info is not None:
+            shard_id = worker_info.id
+            num_shards = worker_info.num_workers
+        else:
+            shard_id = 0
+            num_shards = 1
 
-        rank = os.environ.get(
-            "SLURM_PROCID", os.environ.get("RANK", os.environ.get("LOCAL_RANK", "0"))
-        )
-        logger.debug(
-            "ReRankingDataset (rank %s): shard %d/%d starting (total candidates: %d)",
-            rank,
-            shard_id,
-            num_shards,
-            len(self.candidates),
-        )
         for i in range(shard_id, len(self.candidates), num_shards):
             query, scored_docs = self.candidates[i]
             for sd in scored_docs:
@@ -605,15 +607,13 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
             gathered_data = [None] * fabric.world_size
             dist.all_gather_object(gathered_data, local_results)
 
-            if fabric.is_global_zero:
-                # Merge them back into one master dictionary
-                final_results = {qid: [] for qid in queries}
-                for rank_results in gathered_data:
+            # Merge them back into one master dictionary on all ranks
+            final_results = {qid: [] for qid in queries}
+            for rank_results in gathered_data:
+                if rank_results:
                     for qid, docs in rank_results:
                         final_results[qid].extend(docs)
-                scored_results = final_results
-            else:
-                return {}
+            scored_results = final_results
 
         # Sort and truncate
         for qid in scored_results:
