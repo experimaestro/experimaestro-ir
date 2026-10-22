@@ -1,6 +1,6 @@
 [project]
 name = "experimaestro-ir"
-requires-python = ">=3.10,<3.15"
+requires-python = ">=3.11,<3.15"
 keywords = ["neural information retrieval", "information retrieval", "experiments"]
 description = "Experimaestro common module for IR experiments"
 dynamic = ["version"]
@@ -23,7 +23,7 @@ dependencies = [
     # Experimaestro
     "experimaestro>=2.4.0",
     "datamaestro>=0.2.3",
-    "datamaestro-ir>=0.2.0",
+    "datamaestro-ir>=0.5.0",
     "docstring_parser",
     "impact-index>=1.7.0",
     "omegaconf>=2.2",
