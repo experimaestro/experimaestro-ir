@@ -1,6 +1,6 @@
 [project]
 name = "experimaestro-ir"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.15"
 keywords = ["neural information retrieval", "information retrieval", "experiments"]
 description = "Experimaestro common module for IR experiments"
 dynamic = ["version"]
@@ -34,7 +34,7 @@ dependencies = [
     # Torch addons
     "toma",
     "pytorch-lightning",
-    "xpm-torch>=0.2.0",
+    "xpm-torch>=0.3.0",
     "python-dotenv>=1.2.1",
     "pytest>=9.0.2",
     "pillow>=12.1.0",

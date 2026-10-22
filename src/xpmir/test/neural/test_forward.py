@@ -179,7 +179,7 @@ def test_forward_types(modelfactory, inputfactory):
 
     inputs = inputfactory()
 
-    logging.debug("%s", model(inputs, None))
+    logging.debug("%s", model(inputs))
 
 
 @pytest.mark.parametrize("modelfactory", modelfactories)
@@ -200,7 +200,7 @@ def test_forward_consistency(modelfactory, inputfactoriescouple):
     with torch.no_grad():
         for f in inputfactoriescouple:
             input = f()
-            outputs.append(model(input, None))
+            outputs.append(model(input))
             maps.append(
                 {
                     (qr["text_item"].text, dr["text_item"].text): ix

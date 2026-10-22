@@ -153,7 +153,8 @@ class DualVectorScorer(DualRepresentationScorer[QueriesRep, DocsRep]):
 class Dense(DualVectorScorer[QueriesRep, DocsRep]):
     """A scorer based on a pair of (query, document) dense vectors"""
 
-    def score_product(self, queries, documents, info: Optional[TrainerContext] = None):
+    def score_product(self, queries, documents):
+        info = TrainerContext.current()
         # Gather the representations across all processes
         if info is not None and info.fabric is not None:
             fabric = info.fabric
@@ -174,7 +175,7 @@ class Dense(DualVectorScorer[QueriesRep, DocsRep]):
 
         return scores
 
-    def score_pairs(self, queries, documents, info: Optional[TrainerContext] = None):
+    def score_pairs(self, queries, documents):
         scores = (
             (queries.value.unsqueeze(1) @ documents.value.unsqueeze(2))
             .squeeze(-1)
@@ -182,6 +183,7 @@ class Dense(DualVectorScorer[QueriesRep, DocsRep]):
         )
 
         # Apply the dual vector hook
+        info = TrainerContext.current()
         if info is not None:
             for hook in info.hooks(DualVectorListener):
                 hook(info, queries, documents)

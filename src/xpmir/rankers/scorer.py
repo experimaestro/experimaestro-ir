@@ -32,7 +32,6 @@ from xpm_torch.utils.utils import Initializable, to_device
 from xpm_torch.utils.logging import EasyLogger
 from xpm_torch.datasets import IndexedDataset, ShardedIterableDataset
 from torchdata.stateful_dataloader import StatefulDataLoader
-from xpm_torch.learner import TrainerContext
 from xpm_torch.losses import ModuleOutputType
 from xpmir.letor.records import (
     BaseItems,
@@ -190,7 +189,6 @@ class AbstractModuleScorerCall(Protocol):
         inputs: Optional["BaseItems"] = None,
         *,
         tokenized: Optional[TokenizedTexts] = None,
-        info: Optional[TrainerContext] = None,
         **kwargs,
     ): ...
 
@@ -262,7 +260,7 @@ class AbstractModuleScorer(Scorer, Module):
 class DuoLearnableScorer(AbstractModuleScorer):
     """Base class for models that can score a triplet (query, document 1, document 2)"""
 
-    def forward(self, inputs: "PairwiseItems", info: Optional[TrainerContext]):
+    def forward(self, inputs: "PairwiseItems"):
         """Returns scores for pairs of documents (given a query)"""
         raise NotImplementedError(f"abstract __call__ in {self.__class__}")
 

@@ -148,9 +148,9 @@ class ValidationListener(LearnerListener):
         return LearnerListenerStatus.DONT_STOP
 
     def _log_and_track_ir_metrics(self, means, details, state: TrainState):
-        """Log IR metrics to tensorboard and update best checkpoints."""
-        writer = self.context.writer
-        if writer is None:
+        """Log IR metrics to metrics logger and update best checkpoints."""
+        metrics_logger = getattr(self.context, "metrics_logger", None)
+        if metrics_logger is None:
             return
 
         for metric, keep in self.metrics.items():
@@ -158,10 +158,10 @@ class ValidationListener(LearnerListener):
             if value is None:
                 continue
 
-            writer.add_scalar(f"{self.id}/{metric}/mean", value, state.step)
+            metrics_logger.log_scalar(f"{self.id}/{metric}/mean", value, state.step)
 
             if details and metric in details:
-                writer.add_histogram(
+                metrics_logger.log_histogram(
                     f"{self.id}/{metric}",
                     np.array(list(details[metric].values()), dtype=np.float32),
                     state.step,
@@ -181,7 +181,7 @@ class ValidationListener(LearnerListener):
                         )
                         self.context.copy(self.bestpath / metric)
 
-        writer.flush()
+        metrics_logger.flush()
 
     def _on_validation(self, means, details, state: TrainState):
         """Called after IR metrics are computed. Override to add custom metrics.
@@ -364,12 +364,14 @@ class AggregatorValidationListener(LearnerListener):
 
             mean_metrics = {k: mean(values[k]) for k in values if values[k]}
 
-            writer = self.context.writer
-            if writer is not None:
+            metrics_logger = getattr(self.context, "metrics_logger", None)
+            if metrics_logger is not None:
                 for metric, keep in self.metrics.items():
                     if metric in mean_metrics:
                         value = mean_metrics[metric]
-                        writer.add_scalar(f"{self.id}/{metric}/mean", value, state.step)
+                        metrics_logger.log_scalar(
+                            f"{self.id}/{metric}/mean", value, state.step
+                        )
 
                         # Update the top validation
                         if state.epoch >= self.warmup:
@@ -386,7 +388,7 @@ class AggregatorValidationListener(LearnerListener):
                                     )
                                     self.context.copy(self.bestpath / metric)
 
-                writer.flush()
+                metrics_logger.flush()
 
             # Update information
             with self.info.open("wt") as fp:

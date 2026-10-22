@@ -179,11 +179,9 @@ class PointwiseDistillationTrainer(LossTrainer):
         tokenized_records = inputs.get("tokenized_records")
 
         if tokenized_records is not None:
-            student_scores = self.model(
-                records, tokenized=tokenized_records, info=self.context
-            )
+            student_scores = self.model(records, tokenized=tokenized_records)
         else:
-            student_scores = self.model(records, info=self.context)
+            student_scores = self.model(records)
 
         if torch.isnan(student_scores).any() or torch.isinf(student_scores).any():
             self.logger.error(

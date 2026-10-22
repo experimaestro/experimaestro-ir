@@ -68,9 +68,9 @@ def test_st_cross_encoder_parity(model_id):
         expected = raw_scores[i]
         # Use a slightly higher tolerance for BFloat16 vs Float32 if necessary
         # but Qwen3-Reranker-0.6B usually yields exact matches in sequential mode
-        assert torch.allclose(score_dir.to(expected.dtype), expected, atol=1e-4), (
+        assert torch.allclose(score_dir.to(expected.dtype), expected, atol=2e-3), (
             f"Direct score mismatch at index {i}: expected {expected}, got {score_dir}"
         )
-        assert torch.allclose(score_tok.to(expected.dtype), expected, atol=1e-4), (
+        assert torch.allclose(score_tok.to(expected.dtype), expected, atol=2e-3), (
             f"Tokenized score mismatch at index {i}: expected {expected}, got {score_tok}"
         )

@@ -11,7 +11,6 @@ from xpmir.text import TokenizedTexts
 from xpmir.letor.records import BaseItems
 from xpmir.rankers import AbstractModuleScorer
 from xpm_torch.module import ModuleLoader, ReadmeSection
-from xpm_torch.trainers import TrainerContext
 from xpm_torch.utils import to_device
 from xpm_torch.utils.fabric import (
     fallback_fa2_if_incompatible_precision,
@@ -606,7 +605,6 @@ class HFCrossScorer(AbstractModuleScorer):
         self,
         inputs: Optional[BaseItems] = None,
         tokenized: Optional[TokenizedTexts] = None,
-        info: Optional[TrainerContext] = None,
         **kwargs,
     ):
         if tokenized is None:

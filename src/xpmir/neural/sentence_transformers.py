@@ -27,7 +27,6 @@ from xpmir.rankers import AbstractModuleScorer
 from xpm_torch.module import SimpleModuleLoader
 from xpm_torch.utils.fabric import fallback_fa2_if_incompatible_precision
 from xpm_torch.utils import to_device
-from xpm_torch.trainers import TrainerContext
 from xpmir.text.tokenizers import TokenizerOptions
 
 
@@ -459,7 +458,6 @@ class STCrossEncoder(AbstractModuleScorer):
         self,
         inputs: Optional[BaseItems] = None,
         tokenized: Optional[TokenizedTexts] = None,
-        info: Optional[TrainerContext] = None,
         **kwargs,
     ):
         self._check_initialized()
@@ -785,18 +783,22 @@ class STMultiVectorEncoder(AbstractModuleScorer):
             self.query_prompt,
             loaded_prompts.get("query"),
             default_val="[Q] ",
-            setter_fn=lambda v: self.st_model.prompts.update({"query": v})
-            if hasattr(self.st_model, "prompts")
-            else None,
+            setter_fn=lambda v: (
+                self.st_model.prompts.update({"query": v})
+                if hasattr(self.st_model, "prompts")
+                else None
+            ),
         )
         apply_override(
             "doc_prompt",
             self.doc_prompt,
             loaded_prompts.get("document"),
             default_val="[D] ",
-            setter_fn=lambda v: self.st_model.prompts.update({"document": v})
-            if hasattr(self.st_model, "prompts")
-            else None,
+            setter_fn=lambda v: (
+                self.st_model.prompts.update({"document": v})
+                if hasattr(self.st_model, "prompts")
+                else None
+            ),
         )
 
         # Normalize query_expansion if provided before applying override
@@ -831,9 +833,11 @@ class STMultiVectorEncoder(AbstractModuleScorer):
             self.query_expansion,
             loaded_qe,
             default_val=None,
-            setter_fn=lambda v: setattr(self.st_model[0], "query_expansion", v)
-            if len(self.st_model) > 0
-            else None,
+            setter_fn=lambda v: (
+                setattr(self.st_model[0], "query_expansion", v)
+                if len(self.st_model) > 0
+                else None
+            ),
         )
 
         def _set_skiplist(v):
@@ -1039,7 +1043,6 @@ class STMultiVectorEncoder(AbstractModuleScorer):
         self,
         queries: Union[List[torch.Tensor], torch.Tensor],
         documents: Union[List[torch.Tensor], torch.Tensor],
-        info: Optional[TrainerContext] = None,
         **kwargs,
     ) -> torch.Tensor:
         """Compute all-pairs MaxSim matrix between queries and documents."""
@@ -1050,7 +1053,6 @@ class STMultiVectorEncoder(AbstractModuleScorer):
         self,
         queries: Union[List[torch.Tensor], torch.Tensor],
         documents: Union[List[torch.Tensor], torch.Tensor],
-        info: Optional[TrainerContext] = None,
         **kwargs,
     ) -> torch.Tensor:
         """Compute pairwise MaxSim scores for paired queries and documents."""
@@ -1061,7 +1063,6 @@ class STMultiVectorEncoder(AbstractModuleScorer):
         self,
         inputs: Optional[Union[BaseItems, List[Any]]] = None,
         tokenized: Optional[Any] = None,
-        info: Optional[TrainerContext] = None,
         **kwargs,
     ) -> torch.Tensor:
         """Forward pass conforming to the xpmir.letor contract using pure ST native MaxSim."""

@@ -363,9 +363,9 @@ class DistillationListwiseTrainer(LossTrainer):
 
         # Get the next batch and compute the scores for each query/document
         if tokenized_records is not None:
-            scores = self.model(records, tokenized=tokenized_records, info=self.context)
+            scores = self.model(records, tokenized=tokenized_records)
         else:
-            scores = self.model(records, info=self.context)
+            scores = self.model(records)
 
         if torch.isnan(scores).any() or torch.isinf(scores).any():
             self.logger.error(

@@ -19,7 +19,6 @@ import torch
 import torch.nn as nn
 from experimaestro import Param, field, LightweightTask
 from datamaestro_ir.data import IDTextRecord
-from xpm_torch.learner import TrainerContext
 
 from xpmir.neural.dual import DualVectorScorer
 from xpmir.rankers.scorer import AbstractModuleScorer
@@ -251,7 +250,6 @@ class ColBERTEncoder(
         self,
         queries: TokensRepresentationOutput,
         documents: TokensRepresentationOutput,
-        info: Optional[TrainerContext] = None,
     ) -> torch.Tensor:
         return self._max_sim(queries, documents, all_pairs=True)
 
@@ -259,7 +257,6 @@ class ColBERTEncoder(
         self,
         queries: TokensRepresentationOutput,
         documents: TokensRepresentationOutput,
-        info: Optional[TrainerContext] = None,
     ) -> torch.Tensor:
         return self._max_sim(queries, documents, all_pairs=False)
 
