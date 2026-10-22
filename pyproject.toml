@@ -21,12 +21,11 @@ classifiers = [
 
 dependencies = [
     # Experimaestro
-    "experimaestro>=2.4.0",
+    "experimaestro>=2.7.0",
     "datamaestro>=0.2.3",
     "datamaestro-ir>=0.5.0",
     "docstring_parser",
     "impact-index>=1.7.0",
-    "omegaconf>=2.2",
     "pandas",
     "attrs",
     # Information retrieval libraries
