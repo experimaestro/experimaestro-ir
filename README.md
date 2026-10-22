@@ -21,7 +21,7 @@
 
 Built on top of [xpm-torch](https://github.com/experimaestro/xpm-torch) and [datamaestro](https://datamaestro-ir.readthedocs.io/), `xpmir` bridges research experiments and distributed production pipelines:
 - **Reproducible by Design**: Every dataset preparation, index, training run, and evaluation metric is a declared Experimaestro task with content-based caching and dependency tracking.
-- **Modern Neural IR Architectures**: Native support for Cross-Encoders, Learned Sparse Retrieval (SPLADE, SEISMIC), Late-Interaction / Multi-Vector (ColBERT, PLAID), and Dense Bi-Encoders.
+- **Modern Neural IR Architectures**: Native support for Cross-Encoders, Learned Sparse Retrieval (SPLADE, SEISMIC), Late-Interaction / Multi-Vector (ColBERT, PLAID), and Dense Bi-Encoders, as well as direct [`sentence-transformers`](https://www.sbert.net/index.html) loading, evaluation and export.
 - **Advanced LETOR & Distillation**: Pointwise, Pairwise (MarginMSE, RankNet), and Listwise (InfoNCE) training objectives, hard negative sampling, and teacher-student distillation.
 - **Scalable Evaluation**: Automated benchmarking against MS MARCO, TREC-DL, BEIR, NanoBEIR, and Robust04 using `ir-measures`, featuring multi-GPU distributed evaluation.
 
@@ -55,51 +55,6 @@ pip install "experimaestro-ir[neural]"
 
 ---
 
-## ⚡ Quickstart: Evaluating a Two-Stage Pipeline
-
-The following minimal example sets up a two-stage re-ranking experiment (first-stage retrieval + neural cross-encoder scorer) and evaluates it on a benchmark dataset:
-
-```python
-import logging
-from pathlib import Path
-from datamaestro import prepare_dataset
-from experimaestro import experiment
-
-from xpmir.neural.cross import CrossEncoderScorer
-from xpmir.rankers.retriever import TwoStageRetriever
-from xpmir.evaluation import Evaluate
-
-logging.basicConfig(level=logging.INFO)
-
-# Define experiment plan
-with experiment(Path("./experiments/demo"), "two_stage_reranking") as xp:
-    # 1. Load benchmark dataset (e.g. TREC Deep Learning or NanoBEIR)
-    dataset = prepare_dataset("irds.msmarco-passage.trec-dl-2019")
-
-    # 2. Define first-stage retriever (e.g., BM25 or SPLADE)
-    # first_stage = ...
-
-    # 3. Define neural re-ranker
-    scorer = CrossEncoderScorer(
-        model_id="cross-encoder/ms-marco-MiniLM-L-6-v2"
-    )
-
-    # 4. Compose two-stage retriever (retrieve top 1000, rerank top 100)
-    retriever = TwoStageRetriever(
-        retriever=first_stage,
-        k=1000,
-        scorer=scorer,
-        rerank_k=100,
-    ).tag("model", "minilm-reranker")
-
-    # 5. Submit evaluation task (computes nDCG@10, MRR@10, MAP via ir-measures)
-    eval_task = Evaluate(dataset=dataset, retriever=retriever).submit()
-
-print(f"Results path: {eval_task.results.path}")
-```
-
----
-
 ## 🧩 Core Architecture & Modules
 
 ```
@@ -122,11 +77,89 @@ xpmir/
 | **[Datasets & Collections](https://experimaestro-ir.readthedocs.io/en/latest/data/index.html)** | Datamaestro and `ir-datasets` adapters, document tokenization, collection partitioning. |
 | **[Experiments & Distributed](https://experimaestro-ir.readthedocs.io/en/latest/experiments.html)** | Declarative pipelines, multi-GPU Lightning Fabric training, SLURM cluster scheduling. |
 
+
+---
+
+## ⚡ Quickstart: Evaluating a Two-Stage Pipeline
+
+The following minimal example sets up a complete two-stage re-ranking experiment (Lightweigh NanoBEIR FEVER dataset from [Datamaestro](https://github.com/experimaestro/datamaestro), BM25 first-stage candidate retrieval, and cross-encoder re-ranking using [MiniLM](https://huggingface.co/microsoft/MiniLM-L12-H384-uncased) reranker loaded trough sentence-transformers):
+
+(Its light enough so you can run it locally with `uv run examples/bm25_miniLM.py`)
+```python
+import logging
+from pathlib import Path
+from datamaestro import prepare_dataset
+from experimaestro import experiment
+
+from xpmir.rankers.standard import BM25
+from xpmir.index.bow import BOWSparseRetrieverIndexBuilder, BOWRetriever
+from xpmir.neural.sentence_transformers import STCrossEncoder
+from xpmir.rankers import TwoStageRetriever
+from xpmir.evaluation import Evaluate
+
+logging.basicConfig(level=logging.INFO)
+
+# Define experiment plan
+with experiment(Path("./experiments/demo"), "nano_fever_bm25_minilm") as xp:
+    # 1. Load benchmark dataset from Datamaestro
+    dataset = prepare_dataset("co.huggingface.nano-beir.fever")
+
+    # 2. Index documents (This experimaestro Task writes de BoW index)
+    index = BOWSparseRetrieverIndexBuilder.C(documents=dataset.documents).submit()
+
+    # 3. Define First stage BM25 retriever
+    first_stage = BOWRetriever.C(
+        index=index,
+        model=BM25.C(),
+        topk=100,
+    ).tag("first_stage", "bm25")
+
+    # 4. Define neural cross-encoder re-ranker
+    scorer = STCrossEncoder.C(
+        model_id="microsoft/MiniLM-L12-H384-uncased"
+    )
+
+    # 4. Compose two-stage retriever: rerank top 50 with Cross-Encoder
+    retriever = TwoStageRetriever.C(
+        retriever=first_stage,
+        scorer=scorer,
+        top_k=50,
+        batchsize=32,
+    ).tag("model", "bm25_minilm_reranker")
+
+    # 5. Submit evaluation task (computes nDCG@20, RR, AP via ir-measures)
+    eval_task = Evaluate.C(dataset=dataset, retriever=retriever).submit()
+
+print(f"Results written to: {eval_task.results}")
+with open(eval_task.results) as f:
+    metrics = f.read()
+    print(f"Evaluation Metrics for \"microsoft/MiniLM-L12-H384-uncased\":\n{metrics}")
+```
+
+When executed, Experimaestro prepares the dataset, indexes the documents with BM25, re-ranks candidate passages with the Cross-Encoder, and computes standard IR evaluation metrics:
+
+```text
+Evaluation Metrics for "microsoft/MiniLM-L12-H384-uncased":
+P@20                      all        0.0070
+nDCG@20                   all        0.0386
+RR                        all        0.0239
+AP                        all        0.0218
+nDCG                      all        0.0869
+```
+
+> [!TIP]
+> **Hint: Try re-running it!** The results appear immediately! Because [`experimaestro`](https://github.com/experimaestro/experimaestro-python) cached all `Tasks` execution for you. Each task gets a unique hash ID and is stored in its own folder, so when you try to run the same task a second time, it is not relaunched. (you can even draw the DAG of tasks with `uv run experimaestro dag -w ./experiments/demo nano_fever_bm25_minilm`)
+
+
+> [!NOTE]
+> **More Complete example:** You can find a more complex pipeline for training Cross-encoders (featuring Grid searches, SoTa training recipes, Evaluations across full BEIR/Lotte/TREC collections with cached SPLADE first stage pre-computation ...) in the [xpmir Cross-Encoders repo](https://github.com/xpmir/cross-encoders).
+
+
 ---
 
 ## 🛠️ CLI & Experiment Management
 
-`xpmir` seamlessly integrates with Experimaestro's command line to run declarative YAML or Python experiments:
+`xpmir` rely on Experimaestro's command line to run declarative YAML or Python experiments:
 
 ```bash
 # Validate task dependencies and launchers before running (Dry Run)

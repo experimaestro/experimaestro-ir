@@ -377,7 +377,7 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
         dataloader = StatefulDataLoader(
             dataset,
             batch_size=self.batchsize,
-            num_workers=min(int(os.environ.get("SLURM_CPUS_PER_TASK", 4)), 4),
+            num_workers=min(int(os.environ.get("SLURM_CPUS_PER_TASK", 0)), 4),
             pin_memory=True if torch.cuda.is_available() else False,
             collate_fn=collate_fn,
         )
