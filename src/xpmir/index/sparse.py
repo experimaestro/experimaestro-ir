@@ -86,6 +86,9 @@ class DocumentIterator:
             ),
         )
 
+    def __iter__(self):
+        return self
+
     def __next__(self):
         return next(self.iterator)
 
@@ -149,9 +152,14 @@ class AbstractSparseRetrieverIndexBuilder(Task, ABC, Generic[InputType]):
         if last_doc_id:
             logging.info(f" -- recovering from last indexed document: {last_doc_id}")
 
-        iter_batches = MultiprocessIterator(
-            DocumentIterator(self.documents, last_doc_id, max_docs, self.batch_size)
-        ).detach()
+        if fabric.world_size == 1:
+            iter_batches = DocumentIterator(
+                self.documents, last_doc_id, max_docs, self.batch_size
+            )
+        else:
+            iter_batches = MultiprocessIterator(
+                DocumentIterator(self.documents, last_doc_id, max_docs, self.batch_size)
+            ).detach()
 
         try:
             fabric.launch(
@@ -363,7 +371,7 @@ class SparseRetriever(Retriever, Generic[InputType]):
         logger.info("Moving everything to Fabric")
 
     def retrieve_all(
-        self, queries: Dict[str, InputType]
+        self, queries: Dict[str, InputType], shard_and_gather: bool = True
     ) -> Dict[str, List[ScoredDocument]]:
         """Input queries: {id: text}"""
 
@@ -371,7 +379,7 @@ class SparseRetriever(Retriever, Generic[InputType]):
         items = list(queries.items())
 
         # Shard the items if using multi-GPU
-        if fabric and fabric.world_size > 1:
+        if shard_and_gather and fabric and fabric.world_size > 1:
             items = items[fabric.global_rank :: fabric.world_size]
             if fabric.is_global_zero:
                 logger.warning(
@@ -458,7 +466,7 @@ class SparseRetriever(Retriever, Generic[InputType]):
             )
         results = asyncio.run(aio_process())
 
-        if fabric and fabric.world_size > 1:
+        if shard_and_gather and fabric and fabric.world_size > 1:
             # Gather results from all GPUs
             local_results = list(results.items())
             gathered_data = [None] * fabric.world_size
@@ -777,3 +785,138 @@ class BMPSparseRetrieverIndexBuilder(SparseRetrieverIndexBuilder[InputType]):
         logger.info("Removing the old index path")
         index = None
         shutil.rmtree(self.index_path, ignore_errors=True)
+
+
+# ---
+# --- Sparse index with the Seismic library
+# --- https://github.com/TusKANNy/seismic (SIGIR 2024)
+# ---
+
+
+class SeismicSparseRetriever(SparseRetriever):
+    """An approximate learned sparse retriever using Seismic"""
+
+    query_cut: Param[int] = 10
+    """Only the query_cut highest-weighted query terms are traversed"""
+
+    heap_factor: Param[float] = 0.7
+    """Blocks scoring below heap_factor * current k-th score are skipped (1.0 = no summary pruning)"""
+
+    n_knn: Param[int] = 0
+    """Number of kNN neighbours used to refine the results (requires knn > 0 at build time)"""
+
+    def get_retrieval_options(self) -> dict[str, Any]:
+        """Returns extra retrieval options to be used when retrieving"""
+        return {
+            "query_cut": self.query_cut,
+            "heap_factor": self.heap_factor,
+            "n_knn": self.n_knn,
+        }
+
+
+class SeismicSparseRetrieverIndex(AbstractSparseRetrieverIndex):
+    Retriever = SeismicSparseRetriever
+
+    index_path: Meta[Path]
+    """The path of the Seismic index directory"""
+
+    def initialize(self, in_memory: bool = False):
+        if not hasattr(impact_index, "SeismicSearcher"):
+            raise RuntimeError(
+                "impact_index was compiled without Seismic support. "
+                "Ensure impact-index>=1.7.0 is installed."
+            )
+        logger.info("Loading Seismic index from %s", self.index_path)
+        self.searcher = impact_index.SeismicSearcher(str(self.index_path))
+
+    def retrieve(
+        self,
+        query: Dict[int, float],
+        top_k: int,
+        query_cut: int = 10,
+        heap_factor: float = 0.7,
+        n_knn: int = 0,
+    ) -> List[ScoredDocument]:
+        results = []
+        # Seismic expects int term IDs and float weights
+        int_query = {int(k): float(v) for k, v in query.items()}
+        scored_docs = self.searcher.search(
+            int_query,
+            top_k=top_k,
+            query_cut=query_cut,
+            heap_factor=heap_factor,
+            n_knn=n_knn,
+        )
+
+        for sd in scored_docs:
+            results.append(
+                ScoredDocument(
+                    self.documents.document_int(int(sd.docid)),
+                    float(sd.score),
+                )
+            )
+
+        return results
+
+    async def aio_retrieve(
+        self, query: Dict[int, float], top_k: int, **kwargs
+    ) -> List[ScoredDocument]:
+        return self.retrieve(query, top_k, **kwargs)
+
+
+class Sparse2SeismicConverter(Task):
+    """Converts a SparseRetrieverIndex to a Seismic approximate index"""
+
+    index: Param[SparseRetrieverIndex]
+    """The source sparse index"""
+
+    seismic_index_path: Meta[Path] = field(
+        default_factory=PathGenerator("index.seismic")
+    )
+    """The directory path for the Seismic index"""
+
+    n_postings: Param[int] = field(default=6000, ignore_default=True)
+    """Average number of postings kept per term (global budget pruning)"""
+
+    centroid_fraction: Param[float] = field(default=0.1, ignore_default=True)
+    """Number of blocks (k-means centroids) per posting list, as a fraction of its length"""
+
+    summary_energy: Param[float] = field(default=0.4, ignore_default=True)
+    """Fraction of the L1 mass kept in each block summary"""
+
+    max_fraction: Param[float] = field(default=1.5, ignore_default=True)
+    """Maximum posting list length, as a multiple of n_postings"""
+
+    knn: Param[int] = field(default=0, ignore_default=True)
+    """Number of nearest neighbours stored per document (0 = no kNN graph)"""
+
+    def task_outputs(self, dep):
+        """Returns a SeismicSparseRetrieverIndex for efficient approximate search"""
+        return dep(
+            SeismicSparseRetrieverIndex.C(
+                index_path=self.seismic_index_path,
+                documents=self.index.documents,
+            )
+        )
+
+    def execute(self):
+        logger.info("Loading source sparse index from %s", self.index.index_path)
+        self.index.initialize(False)
+
+        if not hasattr(self.index.index, "to_seismic"):
+            raise RuntimeError(
+                "impact_index does not support to_seismic. "
+                "Ensure impact-index>=1.7.0 is installed."
+            )
+
+        self.seismic_index_path.mkdir(parents=True, exist_ok=True)
+        logger.info("Converting index to Seismic at %s", self.seismic_index_path)
+        self.index.index.to_seismic(
+            str(self.seismic_index_path),
+            n_postings=self.n_postings,
+            centroid_fraction=self.centroid_fraction,
+            summary_energy=self.summary_energy,
+            max_fraction=self.max_fraction,
+            knn=self.knn,
+        )
+        logger.info("Seismic conversion completed successfully")

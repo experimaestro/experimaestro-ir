@@ -1,16 +1,21 @@
+import os
+import json
 from pathlib import Path
 from typing import List, Tuple, Optional
 import torch
 import torch.nn.functional as F
 
-from experimaestro import DataPath, Param, LightweightTask
+from experimaestro import DataPath, Param, LightweightTask, field
 
 from xpmir.text import TokenizedTexts
 from xpmir.letor.records import BaseItems
 from xpmir.rankers import AbstractModuleScorer
 from xpm_torch.module import ModuleLoader, ReadmeSection
 from xpm_torch.utils import to_device
-
+from xpm_torch.utils.fabric import (
+    fallback_fa2_if_incompatible_precision,
+    is_fa2_available,
+)
 from xpmir.text.huggingface.base import (
     HFConfigID,
     HFSequenceClassification,
@@ -51,8 +56,44 @@ class HFQueryDocTokenizer(HFTokenizer):
     max_doc_length: Param[Optional[int]]
     """maximum number of tokens for the document side (defaults to max_length)"""
 
+    query_prompt: Param[Optional[str]] = field(default=None, ignore_default=True)
+    """Optional prompt template/prefix for queries (e.g. '[Q] ' or 'query: {text}')"""
+
+    doc_prompt: Param[Optional[str]] = field(default=None, ignore_default=True)
+    """Optional prompt template/prefix for documents (e.g. '[D] ' or 'passage: {text}')"""
+
+    flatten: Param[Optional[bool]] = field(default=None, ignore_default=True)
+    """Whether to flatten sequences into 1D unpadded format with cu_seq_lens_q kwargs.
+    If None, automatically determines whether to flatten based on pref_attn_implementation."""
+
+    pref_attn_implementation: Param[Optional[str]] = field(
+        default=None, ignore_default=True
+    )
+    """Preferred attention implementation (e.g. 'flash_attention_2', 'sdpa')."""
+
     def __post_init__(self):
-        super().__post_init__()
+        super(HFTokenizer, self).__post_init__()
+        self.data_collator = None
+
+        default_max = get_default_max_len(self.model_id)
+        if self.max_length is None:
+            # set it to max length of the model if not provided, bounded by query+doc lengths
+            if self.max_query_length is not None and self.max_doc_length is not None:
+                self.max_length = min(
+                    default_max, self.max_query_length + self.max_doc_length + 3
+                )
+            else:
+                self.max_length = default_max
+
+            if self.max_query_length is None or self.max_doc_length is None:
+                logger.warning(
+                    f"No max_len (or query/doc len) provided, using default hf: {self.max_length}"
+                )
+        else:
+            if self.max_query_length is not None and self.max_doc_length is not None:
+                self.max_length = min(
+                    self.max_length, self.max_query_length + self.max_doc_length + 3
+                )
 
         # Sanity Check - max len should be set in parent class
         # Default behavior is doc_max_len = max_len | max_query_len = max_len // 2
@@ -73,6 +114,136 @@ class HFQueryDocTokenizer(HFTokenizer):
 
         assert isinstance(self.max_doc_length, int)
         assert isinstance(self.max_query_length, int)
+
+    def should_flatten(self) -> bool:
+        """Determine whether to flatten inputs for FA2 varlen functions, following ST logic."""
+        if self.flatten is not None:
+            return self.flatten
+
+        if (
+            not self.pref_attn_implementation
+            or "flash" not in str(self.pref_attn_implementation).lower()
+        ):
+            return False
+
+        from xpm_torch.utils.fabric import is_fa2_available
+
+        if not is_fa2_available():
+            return False
+
+        try:
+            from transformers.modeling_flash_attention_utils import (
+                lazy_import_flash_attention,
+            )
+            from transformers.utils.generic import is_flash_attention_requested
+        except ImportError:
+            return False
+
+        if not is_flash_attention_requested(
+            requested_attention_implementation=self.pref_attn_implementation
+        ):
+            return False
+
+        (_, flash_varlen_fn, *_), _ = lazy_import_flash_attention(
+            self.pref_attn_implementation
+        )
+        return flash_varlen_fn is not None
+
+    @staticmethod
+    def format_prompt(prompt: Optional[str], text: str) -> str:
+        """Apply a prompt prefix or format template to a text."""
+        if not prompt:
+            return text
+        if "{text}" in prompt:
+            return prompt.format(text=text)
+        if "{query}" in prompt:
+            return prompt.format(query=text)
+        if "{document}" in prompt:
+            return prompt.format(document=text)
+        if "{passage}" in prompt:
+            return prompt.format(passage=text)
+        return prompt + text
+
+    def __initialize__(self):
+        super().__initialize__()
+
+        if self.query_prompt is None or self.doc_prompt is None:
+            loaded_prompts = {}
+            model_id_or_path = self.model_id
+            if model_path := os.environ.get("XPMIR_TRANSFORMERS_CACHE", None):
+                path = Path(model_path) / "tokenizers" / Path(self.model_id)
+                if path.is_dir():
+                    model_id_or_path = path
+
+            candidate_paths = []
+            if isinstance(model_id_or_path, (str, Path)):
+                p = Path(model_id_or_path)
+                if p.is_dir():
+                    candidate_paths.append(p / "config_sentence_transformers.json")
+                    candidate_paths.append(p / "tokenizer_config.json")
+
+            for cp in candidate_paths:
+                if cp.is_file():
+                    try:
+                        with open(cp, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                        if "prompts" in data and isinstance(data["prompts"], dict):
+                            loaded_prompts = data["prompts"]
+                            break
+                    except Exception as e:
+                        logger.debug("Could not read prompts from %s: %s", cp, e)
+
+            if (
+                not loaded_prompts
+                and isinstance(model_id_or_path, str)
+                and not Path(model_id_or_path).exists()
+            ):
+                try:
+                    from transformers.utils import cached_file
+
+                    resolved = cached_file(
+                        model_id_or_path,
+                        "config_sentence_transformers.json",
+                        _raise_exceptions_for_missing_entries=False,
+                    )
+                    if resolved and Path(resolved).is_file():
+                        with open(resolved, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                        if "prompts" in data and isinstance(data["prompts"], dict):
+                            loaded_prompts = data["prompts"]
+                except Exception as e:
+                    logger.debug(
+                        "Could not resolve config_sentence_transformers.json from HF: %s",
+                        e,
+                    )
+
+            if loaded_prompts:
+                if self.query_prompt is None and "query" in loaded_prompts:
+                    self.query_prompt = loaded_prompts["query"]
+                    logger.info(
+                        "HFQueryDocTokenizer loaded query_prompt: '%s'",
+                        self.query_prompt,
+                    )
+                if self.doc_prompt is None and "document" in loaded_prompts:
+                    self.doc_prompt = loaded_prompts["document"]
+                    logger.info(
+                        "HFQueryDocTokenizer loaded doc_prompt: '%s'",
+                        self.doc_prompt,
+                    )
+
+        if self.should_flatten():
+            from transformers import DataCollatorWithFlattening
+
+            logger.info(
+                "Initializing DataCollatorWithFlattening for HFQueryDocTokenizer (FA2 unpadded mode)"
+            )
+            self.data_collator = DataCollatorWithFlattening(
+                return_seq_idx=True,
+                return_flash_attn_kwargs=True,
+                return_position_ids=True,
+            )
+        else:
+            self.data_collator = None
 
     def tokenize(
         self,
@@ -98,6 +269,11 @@ class HFQueryDocTokenizer(HFTokenizer):
 
         queries = [input_records.unique_topics[i]["text_item"].text for i in ix_qs]
         docs = [input_records.unique_documents[i]["text_item"].text for i in ix_ds]
+
+        if self.query_prompt:
+            queries = [self.format_prompt(self.query_prompt, q) for q in queries]
+        if self.doc_prompt:
+            docs = [self.format_prompt(self.doc_prompt, d) for d in docs]
 
         # Special token IDs (BERT-style= [CLS] q [SEP] d [SEP])
         cls_id = self.tokenizer.cls_token_id  # [CLS]
@@ -165,6 +341,23 @@ class HFQueryDocTokenizer(HFTokenizer):
             sequences.append(seq)
             lengths.append(seq.size(0))
             final_q_lengths.append(q_ids.size(0) + 2)  # [CLS] + q + [SEP]
+
+        # Flatten inputs to avoid padding overhead when using flash attention variable-length functions
+        if self.data_collator is not None:
+            per_sample = [{"input_ids": seq} for seq in sequences]
+            batch = self.data_collator(per_sample)
+            batch.pop("labels", None)
+            kwargs = {k: v for k, v in batch.items() if k != "input_ids"}
+            kwargs["modality"] = "text"
+
+            return TokenizedTexts(
+                tokens=None,
+                ids=batch["input_ids"],
+                lens=lengths,
+                mask=None,
+                token_type_ids=None,
+                kwargs=kwargs,
+            )
 
         # Pad to max length in batch using F.pad
         max_len = max(lengths)
@@ -279,7 +472,7 @@ class InitCEFromHFID(HFModelInitBase):
     Uses ``model.config.hf_id`` to resolve the model.
     """
 
-    attn_implementation: Param[Optional[str]] = None
+    pref_attn_implementation: Param[Optional[str]] = None
     """The attention implementation to use (e.g., 'flash_attention_2', 'sdpa', 'eager')"""
 
     def execute(self):
@@ -287,34 +480,41 @@ class InitCEFromHFID(HFModelInitBase):
         model_id_or_path = _resolve_model_path(hf_id, self.model.automodel)
 
         kwargs = {}
-        if self.attn_implementation is not None:
-            kwargs["attn_implementation"] = self.attn_implementation
-            if self.attn_implementation == "flash_attention_2":
-                kwargs["torch_dtype"] = (
-                    torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-                )
-        else:
-            try:
-                from transformers.utils import is_flash_attn_2_available
-
-                flash_avail = is_flash_attn_2_available()
+        if self.pref_attn_implementation is not None:
+            if self.pref_attn_implementation == "flash_attention_2":
+                flash_avail = is_fa2_available()
                 cuda_avail = torch.cuda.is_available()
 
-                logger.info(
-                    f"DEBUG: is_flash_attn_2_available()={flash_avail}, torch.cuda.is_available()={cuda_avail}"
-                )
-
                 if flash_avail and cuda_avail:
-                    bf16_support = torch.cuda.is_bf16_supported()
-                    logger.info(f"DEBUG: torch.cuda.is_bf16_supported()={bf16_support}")
                     kwargs["attn_implementation"] = "flash_attention_2"
                     kwargs["torch_dtype"] = (
-                        torch.bfloat16 if bf16_support else torch.float16
+                        torch.bfloat16
+                        if torch.cuda.is_bf16_supported()
+                        else torch.float16
                     )
                 else:
+                    logger.warning(
+                        "FlashAttention-2 requested ('flash_attention_2') but flash-attn/kernels package or CUDA GPU (SM 8.0+) is not available on this environment. Falling back to 'sdpa'."
+                    )
                     kwargs["attn_implementation"] = "sdpa"
-            except Exception as e:
-                logger.info(f"DEBUG: Exception checking flash_attn: {e}")
+            else:
+                kwargs["attn_implementation"] = self.pref_attn_implementation
+        else:
+            flash_avail = is_fa2_available()
+            cuda_avail = torch.cuda.is_available()
+
+            logger.info(
+                f"DEBUG: is_fa2_available()={flash_avail}, torch.cuda.is_available()={cuda_avail}"
+            )
+
+            if flash_avail and cuda_avail:
+                bf16_support = torch.cuda.is_bf16_supported()
+                logger.info(f"DEBUG: torch.cuda.is_bf16_supported()={bf16_support}")
+                kwargs["attn_implementation"] = "flash_attention_2"
+                kwargs["torch_dtype"] = (
+                    torch.bfloat16 if bf16_support else torch.float16
+                )
+            else:
                 kwargs["attn_implementation"] = "sdpa"
 
         config = self.model.autoconfig.from_pretrained(
@@ -374,6 +574,17 @@ class HFCrossScorer(AbstractModuleScorer):
     tokenizer: Param[HFTokenizer]
     """The tokenizer for the cross-scorer"""
 
+    pref_attn_implementation: Param[Optional[str]] = field(default=None)
+    """Attention implementation to use (e.g. 'flash_attention_2', 'sdpa', or None)."""
+
+    def setup_with_fabric(self, fabric) -> torch.nn.Module:
+        """Sets up the module with PyTorch Lightning Fabric, checking precision compatibility.
+
+        If Fabric runs in float32 precision, FlashAttention-2 is automatically downgraded to 'sdpa'.
+        """
+        fallback_fa2_if_incompatible_precision(self, fabric)
+        return super().setup_with_fabric(fabric)
+
     def __initialize__(self):
         super().__initialize__()
         self.encoder.initialize()
@@ -394,19 +605,26 @@ class HFCrossScorer(AbstractModuleScorer):
         self,
         inputs: Optional[BaseItems] = None,
         tokenized: Optional[TokenizedTexts] = None,
+        **kwargs,
     ):
         if tokenized is None:
             assert inputs is not None, "Either inputs or tokenized must be provided"
             tokenized = self.batch_tokenize(inputs)
 
-        # strange that some existing models on the huggingface don't use the token_type
         with torch.set_grad_enabled(torch.is_grad_enabled()):
+            kwargs = {}
+            type_vocab_size = getattr(self.encoder.model.config, "type_vocab_size", 1)
+            if tokenized.token_type_ids is not None and type_vocab_size > 1:
+                kwargs["token_type_ids"] = to_device(
+                    tokenized.token_type_ids, self.device
+                )
+
             # to_device are no op here as wrapped with fabric and already on the right device,
             # but ensures compatibility if the model is used outside of fabric
             result = self.encoder.model(
                 to_device(tokenized.ids, self.device),
                 attention_mask=to_device(tokenized.mask, self.device),
-                token_type_ids=to_device(tokenized.token_type_ids, self.device),
+                **kwargs,
             ).logits  # Tensor[float] of length records size
         return result
 
@@ -477,7 +695,7 @@ def hf_cross_scorer(
     max_length: Optional[int] = None,
     max_query_length: Optional[int] = None,
     max_doc_length: Optional[int] = None,
-    attn_implementation: Optional[str] = None,
+    pref_attn_implementation: Optional[str] = None,
 ) -> Tuple[HFCrossScorer, List[LightweightTask]]:
     """Creates an HFCrossScorer model from a pre-trained HuggingFace checkpoint.
     Usage example:
@@ -493,6 +711,7 @@ def hf_cross_scorer(
     :param max_length: Maximum context len
     :param max_query_length: Maximum query length
     :param max_doc_length: Maximum document length
+    :param pref_attn_implementation: Preferred attention implementation (e.g. 'flash_attention_2', 'sdpa')
     :returns: (model, init_tasks) tuple
     """
     default_max_len = get_default_max_len(hf_id)
@@ -512,7 +731,9 @@ def hf_cross_scorer(
 
     encoder = HFSequenceClassification.C(config=HFConfigID.C(hf_id=hf_id))
     init_tasks = [
-        InitCEFromHFID.C(model=encoder, attn_implementation=attn_implementation)
+        InitCEFromHFID.C(
+            model=encoder, pref_attn_implementation=pref_attn_implementation
+        )
     ]
     tokenizer = HFQueryDocTokenizer.C(
         model_id=hf_id,
@@ -521,5 +742,9 @@ def hf_cross_scorer(
         max_doc_length=max_doc_length,
     )
 
-    scorer = HFCrossScorer.C(encoder=encoder, tokenizer=tokenizer)
+    scorer = HFCrossScorer.C(
+        encoder=encoder,
+        tokenizer=tokenizer,
+        pref_attn_implementation=pref_attn_implementation,
+    )
     return scorer, init_tasks

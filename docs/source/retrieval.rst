@@ -184,3 +184,9 @@ Adapters for `Faster Learned Sparse Retrieval with Block-Max Pruning
 .. autoxpmconfig:: xpmir.index.sparse.BMPSparseRetrieverIndex
 .. autoxpmconfig:: xpmir.index.sparse.BMPSparseRetrieverIndexBuilder
 .. autoxpmconfig:: xpmir.index.sparse.BMPSparseRetriever
+
+**Seismic Index**
+
+.. autoxpmconfig:: xpmir.index.sparse.SeismicSparseRetrieverIndex
+.. autoxpmconfig:: xpmir.index.sparse.SeismicSparseRetriever
+.. autoxpmconfig:: xpmir.index.sparse.Sparse2SeismicConverter

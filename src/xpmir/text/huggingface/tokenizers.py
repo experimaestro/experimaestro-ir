@@ -78,7 +78,9 @@ class HFTokenizer(Config, Initializable):
                 )
 
         self.tokenizer = AutoTokenizer.from_pretrained(
-            model_id_or_path, model_max_length=self.max_length
+            model_id_or_path,
+            model_max_length=self.max_length,
+            trust_remote_code=True,
         )
 
         self.cls = self.tokenizer.cls_token
@@ -87,7 +89,7 @@ class HFTokenizer(Config, Initializable):
 
     def tokenize(
         self,
-        texts: HFTokenizerInput, #FIXME : not true, but might want to implement it.
+        texts: HFTokenizerInput,  # FIXME : not true, but might want to implement it.
         options: Optional[TokenizerOptions] = None,
     ) -> TokenizedTexts:
         options = options or HFTokenizer.DEFAULT_OPTIONS

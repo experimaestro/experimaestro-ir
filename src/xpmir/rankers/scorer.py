@@ -1,6 +1,7 @@
 # This package contains all rankers
 from abc import ABC, abstractmethod
 from typing import (
+    Any,
     Dict,
     Iterable,
     List,
@@ -13,7 +14,9 @@ from typing import (
 )
 from typing_extensions import ReadOnly
 from xpmir.text import TokenizedTexts
+import numpy as np
 import torch
+import contextlib
 import torch.nn as nn
 from lightning_fabric import Fabric
 from experimaestro import Param, Config, Meta, field, tqdm
@@ -29,7 +32,6 @@ from xpm_torch.utils.utils import Initializable, to_device
 from xpm_torch.utils.logging import EasyLogger
 from xpm_torch.datasets import IndexedDataset, ShardedIterableDataset
 from torchdata.stateful_dataloader import StatefulDataLoader
-from xpm_torch.learner import TrainerContext
 from xpm_torch.losses import ModuleOutputType
 from xpmir.letor.records import (
     BaseItems,
@@ -41,6 +43,7 @@ from xpmir.letor.records import (
 )
 from datamaestro_ir.data.base import ScoredDocument
 from .retriever import Retriever
+from xpmir.letor.trainers.utils import wrap_collate_with_tokenizer
 
 import logging
 
@@ -119,6 +122,7 @@ class Scorer(Config, Initializable, EasyLogger, ABC):
         batch_size: int,
         top_k=None,
         device=None,
+        chunk_size: Optional[int] = None,
     ):
         """Returns a two stage re-ranker from this retriever and a scorer
 
@@ -127,12 +131,15 @@ class Scorer(Config, Initializable, EasyLogger, ABC):
         :param batch_size: The number of documents in each batch
 
         :param top_k: Number of documents to re-rank (or None for all)
+
+        :param chunk_size: Micro-batch chunk size for Stage 1 candidate retrieval and Stage 2 reranking. If None, retrieves all queries in one go before reranking.
         """
         return TwoStageRetriever.C(
             retriever=retriever,
             scorer=self,
             batchsize=batch_size,
             top_k=top_k if top_k else None,
+            chunk_size=chunk_size,
         )
 
 
@@ -142,6 +149,7 @@ def scorer_retriever(
     retrievers: "RetrieverFactory",
     scorer: Scorer,
     key: str = None,
+    chunk_size: Optional[int] = None,
     **kwargs,
 ):
     """Helper function that returns a two stage retriever. This is useful
@@ -154,7 +162,9 @@ def scorer_retriever(
     """
     assert retrievers is not None, "The retrievers have not been given"
     assert scorer is not None, "The scorer has not been given"
-    return scorer.getRetriever(retrievers(documents, key=key), **kwargs)
+    return scorer.getRetriever(
+        retrievers(documents, key=key), chunk_size=chunk_size, **kwargs
+    )
 
 
 class RandomScorer(Scorer):
@@ -179,6 +189,7 @@ class AbstractModuleScorerCall(Protocol):
         inputs: Optional["BaseItems"] = None,
         *,
         tokenized: Optional[TokenizedTexts] = None,
+        **kwargs,
     ): ...
 
 
@@ -199,18 +210,22 @@ class AbstractModuleScorer(Scorer, Module):
     train = nn.Module.train
 
     def __init__(self):
-        logger.info(f"Initializing {self.__class__.__name__}")
         nn.Module.__init__(self)
         super().__init__()
         self._initialized = False
 
     def __initialize__(self):
         """Initialize a learnable scorer (structure only)"""
+        logger.info(f"Initializing {self.__class__.__name__}")
         return self
 
     def get_forward_methods(self) -> list:
-        """Returns the list of forward methods for this scorer. By default, it is just `forward`, but it can be extended to support multiple forward methods (e.g. for different scoring strategies)"""
-        return ["rsv"]
+        """Returns the list of forward methods for this scorer. Appends rsv to base Module methods."""
+        try:
+            base_methods = super().get_forward_methods()
+        except AttributeError:
+            base_methods = ["save_model", "load_model"]
+        return base_methods + ["rsv"]
 
     def compute(
         self, topic: IDTextRecord, scored_documents: Iterable[ScoredDocument]
@@ -245,7 +260,7 @@ class AbstractModuleScorer(Scorer, Module):
 class DuoLearnableScorer(AbstractModuleScorer):
     """Base class for models that can score a triplet (query, document 1, document 2)"""
 
-    def forward(self, inputs: "PairwiseItems", info: Optional[TrainerContext]):
+    def forward(self, inputs: "PairwiseItems"):
         """Returns scores for pairs of documents (given a query)"""
         raise NotImplementedError(f"abstract __call__ in {self.__class__}")
 
@@ -264,6 +279,9 @@ class AbstractTwoStageRetriever(Retriever):
 
     batchsize: Meta[int] = field(default=0, ignore_default=True)
     """The batch size for the re-ranker"""
+
+    chunk_size: Meta[Optional[int]] = field(default=None, ignore_default=True)
+    """Micro-batch chunk size for Stage 1 candidate retrieval. If None, retrieves all queries in one go before Stage 2."""
 
     def initialize(self):
         self.retriever.initialize()
@@ -294,12 +312,14 @@ def reranking_collate(
 
 
 class ReRankingDataset(ShardedIterableDataset):
-    """A dataset that yields PointwiseItem records for re-ranking"""
+    """A dataset that yields PointwiseItem records for re-ranking from pre-retrieved candidates."""
 
-    def __init__(self, queries: Dict[str, IDTextRecord], retriever: Retriever):
+    def __init__(
+        self,
+        candidates: List[Tuple[IDTextRecord, List[ScoredDocument]]],
+    ):
         super().__init__()
-        self.queries = list(queries.items())
-        self.retriever = retriever
+        self.candidates = candidates
 
     def iter_shard(self, shard_id: int, num_shards: int):
         import os
@@ -308,16 +328,14 @@ class ReRankingDataset(ShardedIterableDataset):
             "SLURM_PROCID", os.environ.get("RANK", os.environ.get("LOCAL_RANK", "0"))
         )
         logger.debug(
-            "ReRankingDataset (rank %s): shard %d/%d starting (total queries: %d)",
+            "ReRankingDataset (rank %s): shard %d/%d starting (total candidates: %d)",
             rank,
             shard_id,
             num_shards,
-            len(self.queries),
+            len(self.candidates),
         )
-        for i in range(shard_id, len(self.queries), num_shards):
-            qid, query = self.queries[i]
-            # Pull first-stage results on-the-fly to avoid materialising everything
-            scored_docs = self.retriever.retrieve(query)
+        for i in range(shard_id, len(self.candidates), num_shards):
+            query, scored_docs = self.candidates[i]
             for sd in scored_docs:
                 yield PointwiseItem(query, sd.document, sd.score)
 
@@ -342,26 +360,17 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
         _scoredDocuments.sort(reverse=True)
         return _scoredDocuments[: (self.top_k or len(_scoredDocuments))]
 
-    def build_reranking_dataloader(self, queries: Dict[str, IDTextRecord]):
-        """Builds a dataloader for re-ranking all documents for a set of queries
+    def build_reranking_dataloader(
+        self, candidates: List[Tuple[IDTextRecord, List[ScoredDocument]]]
+    ):
+        """Builds a dataloader for re-ranking all documents for a set of pre-retrieved candidates.
         Allows for efficient two-stage retrieval with cross-query batching on GPU when the scorer supports it (i.e. is an AbstractModuleScorer and batchsize > 0).
         """
-        # We don't materialise everything, but iterate on the fly
-        dataset = ReRankingDataset(queries, self.retriever)
+        dataset = ReRankingDataset(candidates)
 
-        # get underlying module if wrapped (e.g. Fabric)
-        scorer = self.scorer.module if hasattr(self.scorer, "module") else self.scorer
-
-        if hasattr(scorer, "get_tokenizer_fn"):
-            tokenization_fn = scorer.get_tokenizer_fn()
-
-            def collate_fn(batch: List[PointwiseItem]) -> RerankingInputs:
-                inputs = reranking_collate(batch)
-                inputs["tokenized_records"] = tokenization_fn(inputs["records"])
-                return inputs
-
-        else:
-            collate_fn = reranking_collate
+        collate_fn = wrap_collate_with_tokenizer(
+            self.scorer, reranking_collate, log=logger
+        )
 
         dataloader = StatefulDataLoader(
             dataset,
@@ -371,20 +380,42 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
             collate_fn=collate_fn,
         )
 
-        fabric: Fabric = getattr(self, "fabric", None)
-        if fabric:
-            dataloader = fabric.setup_dataloaders(dataloader)
-
         return dataloader
+
+    def score_batch(
+        self, inputs: Dict[str, Any], scorer_type: type
+    ) -> Optional[np.ndarray]:
+        """Score a batch of items from the reranking dataloader.
+
+        Subclasses can override this method to customize how scores are computed.
+        Returns a numpy array of scores of length len(inputs['batch']), or None to
+        fall back to per-query rsv.
+        """
+        fabric: Optional[Fabric] = getattr(self, "fabric", None) or getattr(
+            self.scorer, "fabric", None
+        )
+        with fabric.autocast() if fabric else contextlib.nullcontext():
+            if issubclass(scorer_type, AbstractModuleScorer):
+                batch_items = inputs["records"]
+                tokenized_records = inputs.get("tokenized_records")
+                return (
+                    self.scorer(batch_items, tokenized=tokenized_records)
+                    .cpu()
+                    .float()
+                    .numpy()
+                )
+            return None
 
     @torch.no_grad()
     def retrieve_all(
         self, queries: Dict[str, IDTextRecord]
     ) -> Dict[str, List[ScoredDocument]]:
-        """Retrieves documents for all queries in an efficient two - stage fashion:
-        - populate a `PointWiseItem` dataset with the documents from first stage
-        - reranks them on the fly with the scorer with given batch size
-        - if self.batchsize is 0, scores all documents from the same query at once (will cause OOM large top_k first stages)
+        """Retrieves documents for all queries in an efficient two-stage fashion:
+        - Shards queries across Fabric ranks if running multi-GPU
+        - Pre-retrieves candidates for this rank's queries in the main process (safe from CUDA fork issues)
+        - Populates a `PointWiseItem` dataset with the documents from first stage
+        - Reranks them with the scorer with given batch size
+        - If self.batchsize is 0, scores all documents from the same query at once
         """
         # Scorer in evaluation mode
         self.scorer.eval()
@@ -398,32 +429,25 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
         scorer_type = type(scorer)
 
         fabric: Fabric = getattr(self, "fabric", None)
-        dataloader = self.build_reranking_dataloader(queries)
 
-        # Process in batches
-        scored_results = {qid: [] for qid in queries}
-        seen_qids = set()
-
-        disable_tqdm = fabric is not None and not fabric.is_global_zero
-
-        # Calculate local total for the progress bar to reach 100% on rank 0
-        total_to_process = len(queries)
+        # Shard queries across Fabric ranks
+        query_items = list(queries.items())
         if fabric and fabric.world_size > 1:
-            # ReRankingDataset shards such that rank R handles indices i where (i // num_workers) % world_size == R
-            _dataloader = (
-                dataloader.dataloader
-                if hasattr(dataloader, "dataloader")
-                else dataloader
-            )
-            num_workers = max(1, getattr(_dataloader, "num_workers", 0))
-            total_to_process = sum(
-                1
-                for i in range(len(queries))
-                if (i // num_workers) % fabric.world_size == fabric.global_rank
-            )
-            desc = f"(Rank {fabric.global_rank if fabric else 0}): Re-Ranking"
+            local_query_items = query_items[fabric.global_rank :: fabric.world_size]
+            desc = f"(Rank {fabric.global_rank}): Evaluation"
         else:
-            desc = "Re-Ranking"
+            local_query_items = query_items
+            desc = "Evaluation"
+
+        # Determine chunk size:
+        # If self.chunk_size is set (> 0), use micro-batch streaming chunks.
+        # If self.chunk_size is None (default), retrieve all queries on this rank in one go.
+        if self.chunk_size is not None and self.chunk_size > 0:
+            chunk_size = self.chunk_size
+            mode_desc = f"Micro-batch streaming (chunk_size={chunk_size})"
+        else:
+            chunk_size = len(local_query_items)
+            mode_desc = "Full candidate retrieval (all-in-one-go)"
 
         batch_size_info = (
             f"batch size {self.batchsize}"
@@ -431,13 +455,25 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
             else "rsv (one-by-one)"
         )
         logger.info(
-            f"{desc} with '{scorer_type.__name__}' using {batch_size_info}... "
-            f"({total_to_process}/{len(queries)} queries on this rank)"
+            f"{desc}: {mode_desc}, Stage 2 {batch_size_info} "
+            f"for {len(local_query_items)}/{len(queries)} queries on this rank..."
         )
 
+        import time
+        import inspect
+
+        t0_pipeline = time.perf_counter()
+        total_stage1_duration = 0.0
+        total_stage2_duration = 0.0
+
+        scored_results = {qid: [] for qid in queries}
+        seen_qids = set()
+        self.last_candidates = []
+
+        disable_tqdm = fabric is not None and not fabric.is_global_zero
         pbar = (
             tqdm(
-                total=total_to_process,
+                total=len(local_query_items),
                 desc=desc,
                 unit="query",
             )
@@ -445,54 +481,118 @@ class TwoStageRetriever(AbstractTwoStageRetriever):
             else None
         )
 
-        for inputs in dataloader:
-            batch_items = inputs["records"]
-            batch = inputs["batch"]
-            tokenized_records = inputs.get("tokenized_records")
+        # Candidate retrieval and GPU reranking loop
+        for chunk_idx in range(0, len(local_query_items), chunk_size):
+            chunk_items = local_query_items[chunk_idx : chunk_idx + chunk_size]
+            chunk_dict = {qid: q for qid, q in chunk_items}
 
-            if issubclass(scorer_type, AbstractModuleScorer):
-                # Use scorer.forward if it's an AbstractModuleScorer to batch across queries
-
-                scores = (
-                    self.scorer(batch_items, tokenized=tokenized_records)
-                    .cpu()
-                    .float()
-                    .numpy()
-                )
-
-                for score, item in zip(scores, batch):
-                    qid = item.topic["id"]
-                    if qid not in seen_qids:
-                        seen_qids.add(qid)
-                        if pbar is not None:
-                            pbar.update(1)
-                    scored_results[qid].append(
-                        to_device(
-                            ScoredDocument(item.document, float(score.item())),
-                            "cpu",
+            # --- Stage 1: Fast multi-CPU candidate retrieval for this chunk ---
+            t0_s1 = time.perf_counter()
+            with torch.no_grad():
+                # Check if retriever has an optimized retrieve_all method
+                if hasattr(self.retriever, "retrieve_all"):
+                    sig = inspect.signature(self.retriever.retrieve_all)
+                    if "shard_and_gather" in sig.parameters:
+                        # Disable distributed re-sharding since TwoStageRetriever already sharded
+                        chunk_results = self.retriever.retrieve_all(
+                            chunk_dict, shard_and_gather=False
                         )
-                    )
-            else:
-                # Fallback: group by query and use rsv (score one by one)
-                by_query = {}
-                for item in batch:
-                    qid = item.topic["id"]
-                    if qid not in seen_qids:
-                        seen_qids.add(qid)
-                        if pbar is not None:
-                            pbar.update(1)
-                    by_query.setdefault(qid, []).append(
-                        to_device(
-                            ScoredDocument(item.document, item.relevance),
-                            "cpu",
-                        )
-                    )
+                    else:
+                        chunk_results = self.retriever.retrieve_all(chunk_dict)
+                    chunk_candidates: List[
+                        Tuple[IDTextRecord, List[ScoredDocument]]
+                    ] = [
+                        (chunk_dict[qid], chunk_results.get(qid, []))
+                        for qid in chunk_dict
+                    ]
+                else:
+                    chunk_candidates = []
+                    for _, query in chunk_items:
+                        scored_docs = self.retriever.retrieve(query)
+                        chunk_candidates.append((query, scored_docs))
+            t1_s1 = time.perf_counter()
+            total_stage1_duration += t1_s1 - t0_s1
+            self.last_candidates.extend(chunk_candidates)
 
-                for qid, docs in by_query.items():
-                    scored_results[qid].extend(self.scorer.rsv(queries[qid], docs))
+            # --- Stage 2: Immediate GPU cross-query batched reranking for this chunk ---
+            t0_s2 = time.perf_counter()
+            chunk_dataloader = self.build_reranking_dataloader(chunk_candidates)
+
+            for inputs in chunk_dataloader:
+                batch = inputs["batch"]
+                scores = self.score_batch(inputs, scorer_type)
+
+                if scores is not None:
+                    for score, item in zip(scores, batch):
+                        qid = item.topic["id"]
+                        if qid not in seen_qids:
+                            seen_qids.add(qid)
+                            if pbar is not None:
+                                pbar.update(1)
+                        scored_results[qid].append(
+                            to_device(
+                                ScoredDocument(
+                                    item.document,
+                                    float(
+                                        score.item()
+                                        if hasattr(score, "item")
+                                        else score
+                                    ),
+                                ),
+                                "cpu",
+                            )
+                        )
+                else:
+                    # Fallback: group by query and use rsv
+                    by_query = {}
+                    for item in batch:
+                        qid = item.topic["id"]
+                        if qid not in seen_qids:
+                            seen_qids.add(qid)
+                            if pbar is not None:
+                                pbar.update(1)
+                        by_query.setdefault(qid, []).append(
+                            to_device(
+                                ScoredDocument(item.document, item.relevance),
+                                "cpu",
+                            )
+                        )
+
+                    for qid, docs in by_query.items():
+                        scored_results[qid].extend(self.scorer.rsv(queries[qid], docs))
+            t1_s2 = time.perf_counter()
+            total_stage2_duration += t1_s2 - t0_s2
 
         if pbar is not None:
             pbar.close()
+
+        t1_pipeline = time.perf_counter()
+        total_duration = max(t1_pipeline - t0_pipeline, 1e-6)
+        total_qps = len(local_query_items) / total_duration
+        total_ms_per_q = (total_duration * 1000.0) / max(len(local_query_items), 1)
+
+        stage1_qps = len(local_query_items) / max(total_stage1_duration, 1e-6)
+        stage1_ms_per_q = (total_stage1_duration * 1000.0) / max(
+            len(local_query_items), 1
+        )
+
+        stage2_qps = len(local_query_items) / max(total_stage2_duration, 1e-6)
+        stage2_ms_per_q = (total_stage2_duration * 1000.0) / max(
+            len(local_query_items), 1
+        )
+
+        logger.info(
+            f"{desc}: Stage 1 retrieval total time {total_stage1_duration:.2f}s "
+            f"({stage1_ms_per_q:.2f} ms/query, {stage1_qps:.2f} queries/s)"
+        )
+        logger.info(
+            f"{desc}: Stage 2 reranking total time {total_stage2_duration:.2f}s "
+            f"({stage2_ms_per_q:.2f} ms/query, {stage2_qps:.2f} queries/s)"
+        )
+        logger.info(
+            f"{desc}: Full two-stage pipeline completed in {total_duration:.2f}s "
+            f"({total_ms_per_q:.2f} ms/query, {total_qps:.2f} queries/s)"
+        )
 
         if fabric and fabric.world_size > 1:
             # Gather results from all GPUs

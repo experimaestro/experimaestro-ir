@@ -17,11 +17,13 @@ Samplers that pair documents with teacher scores for distillation training.
 
 .. autoxpmconfig:: xpmir.letor.distillation.samplers.DistillationPairwiseSampler
 .. autoxpmconfig:: xpmir.letor.samplers.TeacherModelBasedHardNegativesTripletSampler
+.. autoxpmconfig:: xpmir.letor.distillation.pointwise.PointwiseDistillationSampler
 
 Trainer
 -------
 
 .. autoxpmconfig:: xpmir.letor.distillation.pairwise.DistillationPairwiseTrainer
+.. autoxpmconfig:: xpmir.letor.distillation.pointwise.PointwiseDistillationTrainer
 
 Pairwise losses
 ---------------
@@ -34,6 +36,16 @@ Losses operating on pairs of documents with teacher scores.
 .. autoxpmconfig:: xpmir.letor.distillation.pairwise.MSEDifferenceLoss
 .. autoxpmconfig:: xpmir.letor.distillation.pairwise.DistillationKLLoss
 .. autoxpmconfig:: xpmir.letor.distillation.listwise.ListwiseInfoNCE
+
+Pointwise losses
+----------------
+
+Losses operating on single query-document pairs with teacher scores.
+
+.. autoxpmconfig:: xpmir.letor.distillation.pointwise.DistillationPointwiseLoss
+   :members: compute
+
+.. autoxpmconfig:: xpmir.letor.distillation.pointwise.PointwiseMSELoss
 
 Data types
 ----------

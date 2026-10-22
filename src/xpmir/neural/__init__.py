@@ -1,9 +1,8 @@
 from abc import abstractmethod
 import itertools
-from typing import Iterable, Union, List, Optional, TypeVar, Generic, Sequence
+from typing import Iterable, Union, List, TypeVar, Generic, Sequence
 import torch
 from datamaestro_ir.data import IDTextRecord
-from xpm_torch.learner import TrainerContext
 from xpmir.letor.records import BaseItems, ProductItems
 from xpmir.rankers import AbstractModuleScorer
 
@@ -19,9 +18,7 @@ class DualRepresentationScorer(AbstractModuleScorer, Generic[QueriesRep, DocsRep
     of cosine/inner products between query and document tokens.
     """
 
-    def forward(
-        self, inputs: BaseItems, info: Optional[TrainerContext] = None, **kwargs
-    ):
+    def forward(self, inputs: BaseItems, **kwargs):
         # Forward to model
         enc_queries = self.encode_queries(list(inputs.unique_queries))
         enc_documents = self.encode_documents(list(inputs.unique_documents))
@@ -31,7 +28,6 @@ class DualRepresentationScorer(AbstractModuleScorer, Generic[QueriesRep, DocsRep
             return self.score_product(
                 enc_queries,
                 enc_documents,
-                info,
             ).flatten()
 
         # Score pairs
@@ -40,7 +36,6 @@ class DualRepresentationScorer(AbstractModuleScorer, Generic[QueriesRep, DocsRep
         return self.score_pairs(
             enc_queries[q_ix],
             enc_documents[d_ix],
-            info,
         ).flatten()
 
     def encode(self, texts: Iterable[str]) -> Union[DocsRep, QueriesRep]:
@@ -148,14 +143,12 @@ class DualRepresentationScorer(AbstractModuleScorer, Generic[QueriesRep, DocsRep
         self,
         queries: QueriesRep,
         documents: DocsRep,
-        info: Optional[TrainerContext] = None,
     ) -> torch.Tensor:
         """Computes the score of all possible pairs of query and document
 
         Args:
             queries (Any): The encoded queries
             documents (Any): The encoded documents
-            info (Optional[TrainerContext]): The training context (if learning)
 
         Returns:
             torch.Tensor:
@@ -169,7 +162,6 @@ class DualRepresentationScorer(AbstractModuleScorer, Generic[QueriesRep, DocsRep
         self,
         queries: QueriesRep,
         documents: DocsRep,
-        info: Optional[TrainerContext] = None,
     ) -> torch.Tensor:
         """Score the specified pairs of queries/documents.
 
