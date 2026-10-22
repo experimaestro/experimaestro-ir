@@ -1,6 +1,6 @@
 version = 1
 revision = 3
-requires-python = ">=3.10"
+requires-python = ">=3.10, <3.15"
 resolution-markers = [
     "python_full_version >= '3.13'",
     "python_full_version == '3.12.*'",
@@ -858,7 +858,7 @@ wheels = [
 
 [[package]]
 name = "experimaestro"
-version = "2.4.0"
+version = "2.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "arpeggio" },
@@ -872,8 +872,8 @@ dependencies = [
     { name = "humanfriendly" },
     { name = "jinja2" },
     { name = "marshmallow" },
-    { name = "omegaconf" },
     { name = "psutil" },
+    { name = "pydantic" },
     { name = "pyparsing" },
     { name = "pyperclip" },
     { name = "pytools" },
@@ -889,9 +889,9 @@ dependencies = [
     { name = "uvicorn", extra = ["standard"] },
     { name = "watchdog" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5a/f1/af3e42bf66952f3d682966b0b86b056da76f403b50f760436af4ecf8078d/experimaestro-2.4.0.tar.gz", hash = "sha256:bf2779a44f01827b6b6c88fcc9b9e0e2c9d90c7eb1c8521e3fbdba9c37833b8e", size = 28596077, upload-time = "2026-05-19T12:17:58.216Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/da/57/c926bc2b88d195834e3a15d1c04d0e273bd4e50bdf8b78b752c7c8b66459/experimaestro-2.7.0.tar.gz", hash = "sha256:4ca813a7bc154abdb9088bd09604c61b2a977712fcdbf74ecfc5fd4b3b5796da", size = 2383712, upload-time = "2026-10-07T16:07:52.34Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b2/3c/64276b08c926fbefd50d520fb7bb0edc8bddd25838e3ffdbc0263a4ae0a9/experimaestro-2.4.0-py3-none-any.whl", hash = "sha256:384a73bec3a1b1579aaf1b43794537f3cce8cc3f1da8fd1d8ee05f167f09907d", size = 3043363, upload-time = "2026-05-19T12:17:55.924Z" },
+    { url = "https://files.pythonhosted.org/packages/90/c0/25bb38172a7361b7b20b97df5b9e4706005925f7fcb6540dfca516284e4d/experimaestro-2.7.0-py3-none-any.whl", hash = "sha256:f2f6e3e7afdd0fa0ff67349671d4d6df7a2a41c4357979f06f595209063ba832", size = 1757600, upload-time = "2026-10-07T16:07:50.488Z" },
 ]
 
 [[package]]
@@ -989,7 +989,7 @@ requires-dist = [
     { name = "torch", marker = "extra == 'neural'", specifier = ">=2.10" },
     { name = "transformers", specifier = ">=5.8.1" },
     { name = "transformers", marker = "extra == 'neural'" },
-    { name = "xpm-torch", specifier = ">=0.2.0" },
+    { name = "xpm-torch", specifier = ">=0.3.0" },
 ]
 provides-extras = ["anserini", "fast-plaid", "neural"]
 
@@ -6117,8 +6117,26 @@ wheels = [
 ]
 
 [[package]]
+name = "xpm-mlboard"
+version = "0.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "experimaestro" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d7/02/6f3f465b3dea8db1a2a8eca5414f9ea808d7a303e4d35f83aa38dbee7612/xpm_mlboard-0.3.0.tar.gz", hash = "sha256:b978380f88fc7d691cec096d73e3554852ad806a4eb01b79e9b98ea27d74167b", size = 133307, upload-time = "2026-10-07T16:26:15.26Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0b/9d/9b984ff85b5f70c17c007a9324a3dba85085baf14bdbda897cfd2f2a0fe2/xpm_mlboard-0.3.0-py3-none-any.whl", hash = "sha256:81556da59bd788b92e01ed020bea7e580c19728a6ed1347744960d156863fbb5", size = 13078, upload-time = "2026-10-07T16:26:14.022Z" },
+]
+
+[package.optional-dependencies]
+tensorboard = [
+    { name = "setuptools" },
+    { name = "tensorboard" },
+]
+
+[[package]]
 name = "xpm-torch"
-version = "0.2.0"
+version = "0.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "experimaestro" },
@@ -6128,10 +6146,11 @@ dependencies = [
     { name = "setuptools" },
     { name = "tensorboard" },
     { name = "torchdata" },
+    { name = "xpm-mlboard", extra = ["tensorboard"] },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/28/32/32840d41ac77371673770cee729c3dfbf8266c090998653cd80449e84355/xpm_torch-0.2.0.tar.gz", hash = "sha256:1090fbd6c5f36cfd1e9e97acb0323791060cfd63a5498ab0511f29c296934a05", size = 214963, upload-time = "2026-06-05T17:21:15.901Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/00/14/c6aab38c3b0321d8ea4db034432eb2e1790623d91d637c01fea667a42973/xpm_torch-0.3.0.tar.gz", hash = "sha256:3884d395f6fa18f012749ff864a0d8aa9de56592a4656201000c186c0581b9cd", size = 305003, upload-time = "2026-10-22T08:41:00.185Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6b/6b/9e79b8d2bdd3a961029e5f9d4c26b1a7e32c7276e3a33abc544a3be61870/xpm_torch-0.2.0-py3-none-any.whl", hash = "sha256:74e6191d84dcb908c4d45be9f0bddd84658067e9a765716949f6d234acfcc2a6", size = 54627, upload-time = "2026-06-05T17:21:14.509Z" },
+    { url = "https://files.pythonhosted.org/packages/28/2a/e116c525cae0f5e0ef1d11465bbdb742c768da679baa2c846965b9d2fcc2/xpm_torch-0.3.0-py3-none-any.whl", hash = "sha256:df6a5a8db85c32de19e084bade8383da3f37da95abed5c70f31d4906d0e3d498", size = 71470, upload-time = "2026-10-22T08:40:58.334Z" },
 ]
 
 [[package]]
