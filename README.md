@@ -195,7 +195,7 @@ If you use `xpmir` in your research, please cite:
 @software{piwowarski2023xpmir,
   author = {Benjamin Piwowarski and contributors},
   title = {Experimaestro IR: A Modular Framework for Information Retrieval Research},
-  url = {https://github.com/experimaestro/experimaestro-ir},
+  url = {https://github.com/xpmir/experimaestro-ir},
   year = {2023}
 }
 ```
