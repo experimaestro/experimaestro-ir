@@ -23,6 +23,9 @@ def test_st_cross_encoder_parity(model_id):
 
     # 1. Setup raw ST implementation
     model = CrossEncoder(model_id, device=str(device))
+    # Some models (e.g. Qwen3-Reranker) load in bfloat16, whose rounding
+    # differs across kernels/CPUs: compare in float32 to test the code path
+    model.float()
 
     queries = [
         "Which planet is known as the Red Planet?",
@@ -48,6 +51,8 @@ def test_st_cross_encoder_parity(model_id):
     scorer = scorer.instance()
     scorer.to(device)
     scorer.initialize()
+    scorer.st_model.float()
+    scorer.st_model.to(device)
 
     # 3. Compare scores
     for i in range(len(queries)):
@@ -66,8 +71,6 @@ def test_st_cross_encoder_parity(model_id):
 
         # Assertions
         expected = raw_scores[i]
-        # Use a slightly higher tolerance for BFloat16 vs Float32 if necessary
-        # but Qwen3-Reranker-0.6B usually yields exact matches in sequential mode
         assert torch.allclose(score_dir.to(expected.dtype), expected, atol=2e-3), (
             f"Direct score mismatch at index {i}: expected {expected}, got {score_dir}"
         )
