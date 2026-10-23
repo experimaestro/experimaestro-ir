@@ -14,12 +14,23 @@ experimental plans locally or on a cluster.
 Install
 =======
 
-Base experimaestro-IR can be installed with ``pip install xpmir``.
+The base package is ``experimaestro-ir``. It already includes
+`impact-index <https://github.com/experimaestro/impact-index>`_, which provides
+BM25 (bag-of-words) retrieval as well as learned sparse indexes (including BMP
+and Seismic).
+
 Optional dependencies unlock additional functionality:
 
-- ``pip install xpmir[neural]`` -- PyTorch, Transformers, and Sentence
+- ``experimaestro-ir[neural]`` -- PyTorch, Transformers, and Sentence
   Transformers for neural IR models
-- ``pip install xpmir[anserini]`` -- Anserini/Pyserini for classical IR models
+- ``experimaestro-ir[anserini]`` -- Anserini/Pyserini for classical IR models
+  through Lucene (also requires Java 11+)
+- ``experimaestro-ir[fast-plaid]`` -- fast-plaid for ColBERT / PLAID
+  late-interaction indexing
+
+FAISS (dense retrieval) is not installed by any extra: add ``faiss-cpu`` or
+``faiss-gpu`` depending on your hardware. See :ref:`index-backends` for a
+summary of the index backends and their requirements.
 
 
 Example

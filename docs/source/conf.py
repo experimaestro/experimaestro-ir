@@ -128,5 +128,6 @@ mock_modules(
         "lightning",
         "lightning_fabric",
         "pytorch_lightning",
+        "sentence_transformers",
     ]
 )

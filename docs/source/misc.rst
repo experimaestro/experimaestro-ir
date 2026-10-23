@@ -70,14 +70,3 @@ for pairwise distillation).
 .. autoxpmconfig:: xpmir.letor.distillation.listwise.ListwiseHingeLoss
 .. autoxpmconfig:: xpmir.letor.distillation.samplers.DistillationListwiseSampler
 .. autoxpmconfig:: xpmir.letor.distillation.samplers.DistillationNegativesSampler
-
-
-Index utilities
----------------
-
-Bag-of-words retrieval and sparse-to-BMP format conversion.
-
-.. autoxpmconfig:: xpmir.index.bow.BOWRetriever
-.. autoxpmconfig:: xpmir.index.bow.BOWSparseRetrieverIndex
-.. autoxpmconfig:: xpmir.index.bow.BOWSparseRetrieverIndexBuilder
-.. autoxpmconfig:: xpmir.index.sparse.Sparse2BMPConverter

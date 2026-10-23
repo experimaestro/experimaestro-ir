@@ -55,4 +55,4 @@ Example:
     from xpmir.evaluation import Evaluate
 
     measures = [AP, P@20, nDCG, nDCG@10, nDCG@20, RR, RR@10]
-    Evaluate(measures=measures, ...)
+    Evaluate.C(dataset=dataset, retriever=retriever, measures=measures)

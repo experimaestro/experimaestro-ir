@@ -35,7 +35,7 @@ Built on top of [xpm-torch](https://github.com/experimaestro/xpm-torch) and [dat
 
 ### Using `uv` (Recommended)
 ```bash
-# Core package
+# Core package (includes impact-index: BM25 and learned sparse retrieval)
 uv add experimaestro-ir
 
 # With Neural IR (PyTorch, Hugging Face Transformers, Sentence Transformers)
@@ -52,6 +52,10 @@ uv add "experimaestro-ir[fast-plaid]"
 ```bash
 pip install "experimaestro-ir[neural]"
 ```
+
+> **Note:** the Anserini backend also needs a Java runtime (11+), and FAISS is
+> not installed by any extra: add `faiss-cpu` (or `faiss-gpu`) yourself for
+> dense retrieval.
 
 ---
 

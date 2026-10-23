@@ -108,8 +108,8 @@ re-rankers in a multi-stage pipeline.
 Cross-encoders (Sentence-Transformers)
 --------------------------------------
 
-XPMIR also supports cross-encoders via the `Sentence Transformers <https://sbert.net/docs/cross_encoder/usage/usage.html>`_
-library. This is particularly useful for models that require specific chat templates
+XPMIR also supports cross-encoders via the `Sentence Transformers
+<https://sbert.net/docs/cross_encoder/usage/usage.html>`__ library. This is particularly useful for models that require specific chat templates
 or prompt-based ranking (like some LLM-based rankers) that are natively supported
 by Sentence-Transformers.
 
