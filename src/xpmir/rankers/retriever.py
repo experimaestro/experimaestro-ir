@@ -78,7 +78,7 @@ class RetrieverHydrator(Retriever):
     retriever: Param[Retriever]
     """The retriever to hydrate"""
 
-    store: Param[DocumentStore]
+    store: Param[DocumentStore] = field(overrides=True)
     """The store for document texts"""
 
     def initialize(self):

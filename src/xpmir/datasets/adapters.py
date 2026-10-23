@@ -9,6 +9,7 @@ from experimaestro import (
     pathgenerator,
     Annotated,
     Meta,
+    PathGenerator,
 )
 from functools import cached_property
 from datamaestro_ir.data import (
@@ -281,7 +282,9 @@ class TopicsFoldGenerator(FileIDList, Task):
     exclude: Param[Optional[Topics]]
     """Exclude some topics from the random fold"""
 
-    path: Annotated[Path, pathgenerator("topics.lst")]
+    path: Meta[Path] = field(
+        default_factory=PathGenerator("topics.lst"), overrides=True
+    )
     """Selected topic IDs"""
 
     def __validate__(self):

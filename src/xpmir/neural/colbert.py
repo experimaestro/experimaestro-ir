@@ -286,13 +286,13 @@ class PylateColBERT(STMultiVectorEncoder):
     Backed by sentence-transformers v6+ MultiVectorEncoder.
     """
 
-    dim: Param[int] = field(default=128, ignore_default=True)
+    dim: Param[int] = field(default=128, ignore_default=True, overrides=True)
     """Output dimension of the per-token projection."""
 
-    query_maxlen: Param[int] = field(default=32, ignore_default=True)
+    query_maxlen: Param[int] = field(default=32, ignore_default=True, overrides=True)
     """Maximum number of tokens kept for a query."""
 
-    doc_maxlen: Param[int] = field(default=180, ignore_default=True)
+    doc_maxlen: Param[int] = field(default=180, ignore_default=True, overrides=True)
     """Maximum number of tokens kept for a document."""
 
     def __post_init__(self):
